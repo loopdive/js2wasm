@@ -19,7 +19,7 @@ import { isVoidType, unwrapPromiseType } from "../checker/type-mapper.js";
 import type { FieldDef, Instr, StructTypeDef, ValType } from "../ir/types.js";
 import { pushBody } from "./context/bodies.js";
 import { reportError } from "./context/errors.js";
-import { allocLocal } from "./context/locals.js";
+import { allocLocal, getLocalType } from "./context/locals.js";
 import type { ClosureInfo, CodegenContext, FunctionContext } from "./context/types.js";
 import {
   addFuncType,
@@ -2754,30 +2754,50 @@ export function emitFuncRefAsClosure(
       }
     }
     // #1205 Stage 3: after all value captures, push the boxed TDZ flag refs
-    // (one per TDZ-flagged capture). For freshly captured flags, allocate the
-    // box now and re-aim the outer fctx's `tdzFlagLocals` + `boxedTdzFlags`
-    // so subsequent set/get of the flag in the outer scope routes through
-    // the same ref cell that the trampoline closure holds.
+    // (one per TDZ-flagged capture). Sourcing rules mirror calls.ts — see
+    // the FNDECL-A4 cap-prepend block there for the full rationale. The
+    // short version: prefer live `fctx.tdzFlagLocals[name]` if it points to
+    // an i32 in the current fctx; fall back to the stored
+    // `cap.outerTdzFlagIdx` if THAT is an i32; otherwise we're in the
+    // cross-fctx transitive case (out of scope per #1205) and degrade
+    // gracefully by pushing an initialized i32 flag so the closure
+    // construction stays type-valid.
     if (numTdzFlags > 0) {
       for (const cap of tdzFlaggedNested) {
         const existingBox = fctx.boxedTdzFlags?.get(cap.name);
         if (existingBox) {
           fctx.body.push({ op: "local.get", index: existingBox.localIdx });
         } else {
-          const oldFlagIdx = fctx.tdzFlagLocals!.get(cap.name)!;
-          fctx.body.push({ op: "local.get", index: oldFlagIdx });
-          fctx.body.push({ op: "struct.new", typeIdx: i32RefCellTypeIdxForFlags });
+          const liveFlagIdx = fctx.tdzFlagLocals?.get(cap.name);
+          const liveType = liveFlagIdx !== undefined ? getLocalType(fctx, liveFlagIdx) : undefined;
+          const liveOk = liveType?.kind === "i32";
+          const storedIdx = cap.outerTdzFlagIdx;
+          const storedType = storedIdx !== undefined ? getLocalType(fctx, storedIdx) : undefined;
+          const storedOk = storedType?.kind === "i32";
+          let oldFlagIdx: number | undefined;
+          if (liveOk) oldFlagIdx = liveFlagIdx;
+          else if (storedOk) oldFlagIdx = storedIdx;
+          if (oldFlagIdx !== undefined) {
+            fctx.body.push({ op: "local.get", index: oldFlagIdx });
+            fctx.body.push({ op: "struct.new", typeIdx: i32RefCellTypeIdxForFlags });
+          } else {
+            fctx.body.push({ op: "i32.const", value: 1 });
+            fctx.body.push({ op: "struct.new", typeIdx: i32RefCellTypeIdxForFlags });
+          }
           const flagBoxLocal = allocLocal(fctx, `__tdz_box_${cap.name}`, {
             kind: "ref",
             typeIdx: i32RefCellTypeIdxForFlags,
           });
           fctx.body.push({ op: "local.tee", index: flagBoxLocal });
-          if (!fctx.boxedTdzFlags) fctx.boxedTdzFlags = new Map();
-          fctx.boxedTdzFlags.set(cap.name, {
-            refCellTypeIdx: i32RefCellTypeIdxForFlags,
-            localIdx: flagBoxLocal,
-          });
-          fctx.tdzFlagLocals!.set(cap.name, flagBoxLocal);
+          if (oldFlagIdx !== undefined) {
+            if (!fctx.boxedTdzFlags) fctx.boxedTdzFlags = new Map();
+            fctx.boxedTdzFlags.set(cap.name, {
+              refCellTypeIdx: i32RefCellTypeIdxForFlags,
+              localIdx: flagBoxLocal,
+            });
+            if (!fctx.tdzFlagLocals) fctx.tdzFlagLocals = new Map();
+            fctx.tdzFlagLocals.set(cap.name, flagBoxLocal);
+          }
         }
       }
     }
