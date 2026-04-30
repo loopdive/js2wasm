@@ -127,18 +127,6 @@
       "sprint": "46"
     },
     {
-      "id": "1210",
-      "title": "labs/benchmarks: js2wasm string-hash Wasmtime lane hits 20s timeout — WasmGC i16-array GC pressure",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [
-        "1178"
-      ],
-      "goal": "performance",
-      "status": "ready",
-      "sprint": "46"
-    },
-    {
       "id": "1209",
       "title": "labs/benchmarks: js2wasm hosted lane fails — ESM resolver error in run-node-wasm-program.mjs",
       "priority": "medium",
@@ -1639,6 +1627,18 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "compilable",
+      "status": "in-progress",
+      "sprint": "46"
+    },
+    {
+      "id": "1210",
+      "title": "labs/benchmarks: js2wasm string-hash Wasmtime lane hits 20s timeout — WasmGC i16-array GC pressure",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1178"
+      ],
+      "goal": "performance",
       "status": "in-progress",
       "sprint": "46"
     },
