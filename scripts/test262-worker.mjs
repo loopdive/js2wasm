@@ -81,6 +81,65 @@ const _origObjectProtoKeys = new Set(Object.getOwnPropertyNames(Object.prototype
 const _origObjectProtoSymbols = new Set(Object.getOwnPropertySymbols(Object.prototype));
 const _origArrayProtoSymbols = new Set(Object.getOwnPropertySymbols(Array.prototype));
 
+// #1220 — extra-property cleanup for additional prototypes.
+//
+// test262 tests sometimes attach own properties to host prototypes via
+// `Object.defineProperty(SomeProto, name, { get(){...} })` WITHOUT
+// `configurable: true`. The descriptor defaults to non-configurable, which
+// means the FIRST run in a fork installs the accessor and EVERY subsequent
+// run that tries to defineProperty the same key fails with
+// `TypeError: Cannot redefine property: <name>`.
+//
+// Concrete failures observed in the baseline:
+//   - built-ins/Iterator/prototype/map/this-non-object.js installs
+//     Number.prototype.next (the iter-helper falls back to receiver's
+//     `next` via the prototype chain). Subsequent same-fork runs throw
+//     "Cannot redefine property: next".
+//   - built-ins/TypedArray/prototype/findLastIndex/get-length-ignores-length-prop.js
+//     installs accessors on %TypedArray%.prototype.length AND on every
+//     concrete TA.prototype.length (Int8Array..Float64Array). Same
+//     "Cannot redefine property: length" on second run.
+//
+// The existing Object.prototype / Array.prototype "delete extras" loops
+// (lines below) handle their respective protos. We replicate the same
+// approach for additional prototypes that tests realistically poison.
+//
+// When `delete` succeeds (descriptor was configurable) the slate is clean
+// for the next test. When `delete` fails because the descriptor is
+// non-configurable, the property is permanent for the lifetime of the
+// process — the only recovery is a fork respawn. We mirror the existing
+// Array.prototype non-configurable FATAL-exit precedent and `process.exit(1)`,
+// which the parent pool catches via the `proc.on("exit", ...)` handler in
+// scripts/compiler-pool.ts to spawn a fresh fork.
+const _typedArrayProto = Object.getPrototypeOf(Int8Array.prototype); // %TypedArray%.prototype
+const _iteratorProto = Object.getPrototypeOf(Object.getPrototypeOf([][Symbol.iterator]()));
+const _PROTO_EXTRA_CLEANUP = [
+  ["Number.prototype", Number.prototype],
+  ["Boolean.prototype", Boolean.prototype],
+  ["%TypedArray%.prototype", _typedArrayProto],
+  ["Int8Array.prototype", Int8Array.prototype],
+  ["Uint8Array.prototype", Uint8Array.prototype],
+  ["Uint8ClampedArray.prototype", Uint8ClampedArray.prototype],
+  ["Int16Array.prototype", Int16Array.prototype],
+  ["Uint16Array.prototype", Uint16Array.prototype],
+  ["Int32Array.prototype", Int32Array.prototype],
+  ["Uint32Array.prototype", Uint32Array.prototype],
+  ["Float32Array.prototype", Float32Array.prototype],
+  ["Float64Array.prototype", Float64Array.prototype],
+  ["%IteratorPrototype%", _iteratorProto],
+  ["Map.prototype", Map.prototype],
+  ["Set.prototype", Set.prototype],
+  ["Date.prototype", Date.prototype],
+  ["Promise.prototype", Promise.prototype],
+  ["Error.prototype", Error.prototype],
+];
+const _protoExtraOrig = _PROTO_EXTRA_CLEANUP.map(([name, proto]) => ({
+  name,
+  proto,
+  names: new Set(Object.getOwnPropertyNames(proto)),
+  symbols: new Set(Object.getOwnPropertySymbols(proto)),
+}));
+
 // --- Category 2: specific methods the compiler + TypeScript use.
 // Captured by VALUE at startup. Restored by simple assignment.
 // When adding here: verify a test262 test that poisons the method actually
@@ -284,6 +343,17 @@ const _STATIC_SNAPSHOTS = [
     ],
   ],
   ["RegExp", RegExp, []],
+  // #1220 — Tests under built-ins/Promise/{all,any,race,allSettled}/invoke-resolve*.js
+  // intentionally replace `Promise.resolve` with custom callables (or non-callables
+  // like `null` / `"string"`) to verify spec invocation semantics. Without snapshot+
+  // restore, those mutations leak across tests in the same fork process and Node's
+  // own `Promise.all` (which calls `this.resolve(value)` internally) crashes with
+  // "TypeError: resolve is not a function" on every subsequent test that uses any
+  // Promise static method. The runtime-side host imports in src/runtime.ts:2955-2965
+  // close over the global `Promise` constructor, so the poisoned static methods are
+  // also reached directly by compiled `Promise.resolve(x)` / `Promise.all(arr)`.
+  // Symmetric with the existing Array/Object/String/etc. entries.
+  ["Promise", Promise, ["resolve", "reject", "all", "allSettled", "any", "race"]],
 ];
 
 // --- Category 4: accessor properties on RegExp.prototype (getters).
@@ -462,6 +532,55 @@ function restoreBuiltins() {
         delete Array.prototype[sym];
       } catch {}
     }
+  }
+
+  // #1220 — Delete extra own keys/symbols added to additional prototypes
+  // (Number, %TypedArray%, %Iterator%, etc). See comment on _PROTO_EXTRA_CLEANUP.
+  //
+  // Tests routinely call Object.defineProperty(SomeProto, k, { get(){...} })
+  // WITHOUT configurable:true (the default is false). The property then
+  // becomes permanent for the lifetime of the worker process: every later
+  // test that tries to defineProperty(SomeProto, k, ...) throws
+  // "Cannot redefine property: <k>". Common cases:
+  //   - Iterator/prototype/{map,find,...}/this-non-object.js → Number.prototype.next
+  //   - TypedArray/prototype/{findLastIndex,...} → TypedArray.prototype.length
+  //
+  // Strategy: try `delete`. If the descriptor is configurable, that succeeds
+  // and we're done. If non-configurable, mirror the existing Array.prototype
+  // FATAL-exit precedent (line 508+) and `process.exit(1)` so the parent
+  // pool spawns a fresh fork — the only way to recover a non-configurable
+  // poisoned host prototype.
+  let _protoPoisonName = null;
+  for (const { name, proto, names, symbols } of _protoExtraOrig) {
+    for (const k of Object.getOwnPropertyNames(proto)) {
+      if (!names.has(k)) {
+        try {
+          delete proto[k];
+        } catch {}
+        if (Object.prototype.hasOwnProperty.call(proto, k)) {
+          // delete failed — descriptor is non-configurable. Cannot recover.
+          const desc = Object.getOwnPropertyDescriptor(proto, k);
+          if (desc && !desc.configurable) {
+            _protoPoisonName = `${name}[${k}]`;
+            break;
+          }
+        }
+      }
+    }
+    if (_protoPoisonName) break;
+    for (const s of Object.getOwnPropertySymbols(proto)) {
+      if (!symbols.has(s)) {
+        try {
+          delete proto[s];
+        } catch {}
+      }
+    }
+  }
+  if (_protoPoisonName) {
+    console.error(
+      `[unified-worker pid=${process.pid}] FATAL: non-configurable extra property ${_protoPoisonName} — exiting for restart (#1220)`,
+    );
+    process.exit(1);
   }
 
   // Restore specific methods on prototypes (value-assignment, defineProperty fallback).
