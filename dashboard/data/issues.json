@@ -1519,26 +1519,6 @@
   ],
   "inprogress": [
     {
-      "id": "1214",
-      "title": "ci: playground benchmark baseline doesn't survive on CI runners — wasm/js timing 4x off committed numbers",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "ci-stability",
-      "status": "in-progress",
-      "sprint": "46"
-    },
-    {
-      "id": "1213",
-      "title": "ci: refresh-benchmarks workflow fails on every PR — looks for sidebar baseline at gitignored path",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "ci-stability",
-      "status": "in-progress",
-      "sprint": "46"
-    },
-    {
       "id": "1206",
       "title": "fix(build-pages): copy benchmark JSONs + frame-nav-sync.js to top-level pages-dist paths (404s on landing page)",
       "priority": "medium",
@@ -1547,19 +1527,6 @@
       "goal": "developer-experience",
       "status": "in-progress",
       "sprint": "45"
-    },
-    {
-      "id": "1204",
-      "title": "credibility: methodology document — how js2wasm is built by an AI agent team",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [
-        "1201",
-        "1202"
-      ],
-      "goal": "contributor-readiness",
-      "status": "in-progress",
-      "sprint": "46"
     },
     {
       "id": "1203",
@@ -1619,6 +1586,26 @@
   "review": [],
   "done": [
     {
+      "id": "1214",
+      "title": "ci: playground benchmark baseline doesn't survive on CI runners — wasm/js timing 4x off committed numbers",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ci-stability",
+      "status": "done",
+      "sprint": "46"
+    },
+    {
+      "id": "1213",
+      "title": "ci: refresh-benchmarks workflow fails on every PR — looks for sidebar baseline at gitignored path",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "ci-stability",
+      "status": "done",
+      "sprint": "46"
+    },
+    {
       "id": "1212",
       "title": "fix: Promise resolve/reject edge cases regress after #1211 any-boxing fix",
       "priority": "medium",
@@ -1661,6 +1648,19 @@
       "goal": "contributor-readiness",
       "status": "done",
       "sprint": "45"
+    },
+    {
+      "id": "1204",
+      "title": "credibility: methodology document — how js2wasm is built by an AI agent team",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [
+        "1201",
+        "1202"
+      ],
+      "goal": "contributor-readiness",
+      "status": "done",
+      "sprint": "46"
     },
     {
       "id": "1202",

@@ -212,9 +212,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1169l | IR Phase 4 Slice 10 step D — Date / Error / Map / Set through IR | medium | in-progress |
 | #1188 | Setup js2.loopdive.com custom domain for GitHub Pages | medium | in-progress |
 | #1203 | credibility: differential testing harness — compare js2wasm output vs V8/SpiderMonkey on 1000+ programs | high | in-progress |
-| #1204 | credibility: methodology document — how js2wasm is built by an AI agent team | medium | in-progress |
-| #1213 | ci: refresh-benchmarks workflow fails on every PR — looks for sidebar baseline at gitignored path | medium | in-progress |
-| #1214 | ci: playground benchmark baseline doesn't survive on CI runners — wasm/js timing 4x off committed numbers | medium | in-progress |
 
 ### Done
 
@@ -224,9 +221,12 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1169m | IR Phase 4 Slice 10 step E — Promise through IR (best-effort) | low | done |
 | #1187 | test-runtime: add JS-string → native-string coercion helper for dual-run testing in nativeStrings mode | medium | done |
 | #1201 | credibility: per-path test262 scores in test262-report.json — wire categorical data into landing page and report.html | high | done |
+| #1204 | credibility: methodology document — how js2wasm is built by an AI agent team | medium | done |
 | #1210 | labs/benchmarks: js2wasm string-hash Wasmtime lane hits 20s timeout — WasmGC i16-array GC pressure | high | done |
 | #1211 | js2wasm hosted fib-recursive: Wasm validator — call param types must match | medium | done |
 | #1212 | fix: Promise resolve/reject edge cases regress after #1211 any-boxing fix | medium | done |
+| #1213 | ci: refresh-benchmarks workflow fails on every PR — looks for sidebar baseline at gitignored path | medium | done |
+| #1214 | ci: playground benchmark baseline doesn't survive on CI runners — wasm/js timing 4x off committed numbers | medium | done |
 
 ### Won't Fix
 
