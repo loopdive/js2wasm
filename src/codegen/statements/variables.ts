@@ -18,6 +18,8 @@ import { coerceType, compileExpression, valTypesMatch } from "../shared.js";
 import { emitGuardedRefCast } from "../type-coercion.js";
 import { compileArrayDestructuring, compileObjectDestructuring } from "./destructuring.js";
 import { emitLocalTdzInit, emitTdzInit } from "./tdz.js";
+import { ensureNativeStringHelpers } from "../native-strings.js";
+import { compileStringBuilderInit } from "../string-builder.js";
 
 function inferArrayVecType(ctx: CodegenContext, decl: ts.VariableDeclaration): ValType | null {
   if (!ts.isIdentifier(decl.name)) return null;
@@ -159,6 +161,29 @@ export function compileVariableStatement(ctx: CodegenContext, fctx: FunctionCont
     if (stmt.declarationList.flags & ts.NodeFlags.Const) {
       if (!fctx.constBindings) fctx.constBindings = new Set();
       fctx.constBindings.add(name);
+    }
+
+    // #1210: string-builder rewrite for `let s = "";` followed by an
+    // accumulating loop. Detected pre-pass populates `pendingStringBuilders`;
+    // emit the buffer-init sequence here and skip the normal local
+    // allocation (the binding name is intentionally NOT placed in
+    // `localMap` — `compileIdentifier` and `compileNativeStringCompoundAssignment`
+    // route through `fctx.stringBuilders` instead). The TDZ flag is also
+    // not allocated, since the variable is always logically initialised
+    // immediately after the buffer is created.
+    if (fctx.pendingStringBuilders?.has(decl)) {
+      // Native string helpers (incl. __str_buf_next_cap and __str_flatten)
+      // must be available before any append site emits a call to them. The
+      // detector only fires under nativeStrings; ensure here too in case the
+      // function body uses no other native-string helpers.
+      ensureNativeStringHelpers(ctx);
+      compileStringBuilderInit(ctx, fctx, name);
+      // Mark as initialized for any TDZ flag captured by enclosing closures.
+      // (compileStringBuilderInit didn't set localMap, so emitTdzInit only
+      // touches the flag local if one was already allocated by the hoist
+      // pre-pass.)
+      emitTdzInit(ctx, fctx, name);
+      continue;
     }
 
     // Class expression: const C = class { ... } — skip, already handled as class declaration
