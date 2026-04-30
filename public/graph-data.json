@@ -16896,8 +16896,8 @@
       "id": "1190",
       "title": "research: eliminate CI test262 baseline drift (umbrella for #1189, #1191, #1192)",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "46",
       "depends_on": [],
       "files": [],
@@ -17187,6 +17187,44 @@
       "status": "done",
       "raw_status": "done",
       "sprint": "46",
+      "depends_on": [],
+      "files": [],
+      "goal": "ci-stability",
+      "cluster": "ci-stability"
+    },
+    {
+      "id": "1216",
+      "title": "ci: auto-commit playground benchmark baseline on push-to-main (architectural follow-up to #1214)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "47",
+      "depends_on": [
+        "1214"
+      ],
+      "files": [],
+      "goal": "ci-stability",
+      "cluster": "ci-stability"
+    },
+    {
+      "id": "1217",
+      "title": "ci(test262): smoke-canary — re-run main HEAD twice with fresh cache, fail if flip rate > 0",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "47",
+      "depends_on": [],
+      "files": [],
+      "goal": "ci-stability",
+      "cluster": "ci-stability"
+    },
+    {
+      "id": "1218",
+      "title": "ci(test262): auto-validate committed baseline on PR — spot-check 50 random pass entries",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "47",
       "depends_on": [],
       "files": [],
       "goal": "ci-stability",
@@ -17985,6 +18023,10 @@
     {
       "source": "688",
       "target": "742"
+    },
+    {
+      "source": "1214",
+      "target": "1216"
     },
     {
       "source": "1197",
