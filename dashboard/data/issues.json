@@ -255,16 +255,6 @@
       "sprint": "46"
     },
     {
-      "id": "1187",
-      "title": "test-runtime: add JS-string → native-string coercion helper for dual-run testing in nativeStrings mode",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "developer-experience",
-      "status": "ready",
-      "sprint": "46"
-    },
-    {
       "id": "1184",
       "title": "__str_copy_tree worklist allocates O(node.len) per flatten — bound by depth instead",
       "priority": "high",
@@ -1594,6 +1584,16 @@
     {
       "id": "1188",
       "title": "Setup js2.loopdive.com custom domain for GitHub Pages",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "developer-experience",
+      "status": "in-progress",
+      "sprint": "46"
+    },
+    {
+      "id": "1187",
+      "title": "test-runtime: add JS-string → native-string coercion helper for dual-run testing in nativeStrings mode",
       "priority": "medium",
       "feasibility": "easy",
       "depends_on": [],

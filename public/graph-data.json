@@ -16861,7 +16861,7 @@
       "title": "test-runtime: add JS-string → native-string coercion helper for dual-run testing in nativeStrings mode",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "46",
       "depends_on": [],
       "files": [],
