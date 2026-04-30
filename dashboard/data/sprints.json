@@ -2895,7 +2895,7 @@
       "1214"
     ],
     "explicitCarryOver": false,
-    "isPlanning": true,
+    "isPlanning": false,
     "isClosed": false
   }
 ]
