@@ -120,6 +120,18 @@ function categoryFor(file: string): string {
   return best;
 }
 
+// Tests in the corpus may throw `WebAssembly.Exception` objects via async
+// promise chains that the runner's outer try/catch can't reach. These show up
+// as unhandled rejections that crash the process. Swallow them — we already
+// classify the test as failed via the runner's TestResult.status, so the
+// rejection is redundant signal.
+process.on("unhandledRejection", (reason) => {
+  // Single-line note to stderr so it's still visible in CI logs without
+  // tainting the validator's structured output.
+  const msg = reason instanceof Error ? reason.message : String(reason);
+  process.stderr.write(`[unhandledRejection swallowed] ${msg.slice(0, 200)}\n`);
+});
+
 async function main(): Promise<void> {
   const baseline = loadBaseline();
   const passes = baseline.filter((e) => e.status === "pass");
