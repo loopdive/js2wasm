@@ -2929,15 +2929,31 @@ export function ensureNativeStringExternBridge(ctx: CodegenContext): void {
     const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
     ctx.nativeStrHelpers.set("__str_to_extern", funcIdx);
     ctx.funcMap.set("__str_to_extern", funcIdx);
-
+    // Flatten the input first so the param (declared as `ref $AnyString` —
+    // could be either `$NativeString` or `$ConsString`) becomes a known
+    // `ref $NativeString` we can struct.get directly. Without this, the
+    // existing body did `struct.get $NativeString fieldIdx 1` on a value
+    // typed as `ref $AnyString` and failed Wasm validation (#1187 — only
+    // surfaces when the bridge is actually executed end-to-end, which the
+    // test-runtime exposure makes possible). The flatten call lives in
+    // local idx 5 (added at the bottom of the locals list to preserve
+    // existing indices used by the loop body).
+    const flattenIdxLocal = ctx.nativeStrHelpers.get("__str_flatten")!;
+    const FLAT = 5;
     const body: Instr[] = [
       { op: "local.get", index: 0 },
+      { op: "call", funcIdx: flattenIdxLocal },
+      { op: "local.set", index: FLAT },
+      { op: "local.get", index: FLAT },
+      { op: "ref.as_non_null" },
       { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
       { op: "local.set", index: 1 },
-      { op: "local.get", index: 0 },
+      { op: "local.get", index: FLAT },
+      { op: "ref.as_non_null" },
       { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
       { op: "local.set", index: 4 },
-      { op: "local.get", index: 0 },
+      { op: "local.get", index: FLAT },
+      { op: "ref.as_non_null" },
       { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 },
       { op: "local.set", index: 3 },
       { op: "i32.const", value: 0 },
@@ -2985,6 +3001,11 @@ export function ensureNativeStringExternBridge(ctx: CodegenContext): void {
         { name: "i", type: { kind: "i32" } },
         { name: "data", type: strDataRef },
         { name: "sOff", type: { kind: "i32" } },
+        // FLAT (idx 5): nullable so the slot has a default; we tee from
+        // `__str_flatten`'s non-null result and ref.as_non_null at every
+        // read. Cannot be `ref` (non-null) because Wasm requires locals
+        // have default values.
+        { name: "flat", type: { kind: "ref_null", typeIdx: strTypeIdx } },
       ],
       body,
       exported: false,

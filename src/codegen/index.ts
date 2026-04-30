@@ -641,25 +641,29 @@ export function generateModule(
     // Register only the extern class imports actually used in source code
     collectUsedExternImports(ctx, ast.sourceFile);
 
-    // Single-pass collection of all source imports (#592):
-    // console, primitives, string literals, string methods, Math, parseInt/parseFloat,
-    // String.fromCharCode, Promise, JSON, callbacks, functional array methods,
-    // union types, generators, iterators, for-in/in-expr/Object.keys string literals,
-    // wrapper constructors, unknown constructor imports.
-    collectAllSourceImports(ctx, ast.sourceFile);
-
-    // #1187 — when the testRuntime flag is set together with nativeStrings,
-    // pre-register the bridge's host imports as REGULAR (not late) imports
-    // BEFORE force-emitting the bridge functions. Without this prep step
-    // `ensureNativeStringExternBridge` would call `ensureLateImport` for
-    // these names, which queues a deferred function-index shift that
-    // requires a `FunctionContext` to flush — and we are at module top
-    // level here, so no shift would ever fire.  Pre-registering as regular
-    // imports puts them into `funcMap` so the late-import path becomes a
-    // no-op and the helper bodies (`__str_flatten`, `__str_copy_tree`, …)
-    // capture correct funcIdx values that don't move afterwards. The
-    // bridge's `__str_to_extern` / `__str_from_extern` exports are added
-    // at the end of codegen.
+    // #1187 — testRuntime + nativeStrings: pre-register the native-string
+    // ↔ externref bridge's host imports as REGULAR imports BEFORE
+    // `collectAllSourceImports` runs. This must happen here (before line
+    // 649) because `collectAllSourceImports` triggers
+    // `ensureNativeStringHelpers` for any source containing string
+    // literals — and the test source `function identity(s: string) {
+    // return s }` carries an implicit `"identity"` literal (function-name
+    // metadata) plus the empty initializer literal, which qualifies.
+    //
+    // If the helpers are emitted before our 3 bridge imports exist in the
+    // funcMap, every helper body captures funcIdx values relative to a
+    // numImports that doesn't account for the bridge imports. Subsequent
+    // `addImport` calls (host stubs in `collectAllSourceImports`) shift
+    // the actual binary positions of those helpers but do NOT update
+    // their already-emitted funcIdx references, so cross-helper calls
+    // resolve to the wrong functions at validation time. Pre-registering
+    // here puts the bridge imports at the front of the import list with
+    // stable indices that all subsequent helpers can rely on.
+    //
+    // The bridge module functions themselves are pushed in a LATER hook
+    // (after collectAllSourceImports), where `ensureLateImport` inside
+    // `ensureNativeStringExternBridge` short-circuits on the already-
+    // registered names so no shift queue is ever set up.
     if (ctx.testRuntime && ctx.nativeStrings) {
       const fromMemTypeIdx = addFuncType(ctx, [{ kind: "i32" }, { kind: "i32" }], [{ kind: "externref" }]);
       addImport(ctx, "env", "__str_from_mem", { kind: "func", typeIdx: fromMemTypeIdx });
@@ -667,6 +671,25 @@ export function generateModule(
       addImport(ctx, "env", "__str_to_mem", { kind: "func", typeIdx: toMemTypeIdx });
       const externLenTypeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "i32" }]);
       addImport(ctx, "env", "__str_extern_len", { kind: "func", typeIdx: externLenTypeIdx });
+    }
+
+    // Single-pass collection of all source imports (#592):
+    // console, primitives, string literals, string methods, Math, parseInt/parseFloat,
+    // String.fromCharCode, Promise, JSON, callbacks, functional array methods,
+    // union types, generators, iterators, for-in/in-expr/Object.keys string literals,
+    // wrapper constructors, unknown constructor imports.
+    collectAllSourceImports(ctx, ast.sourceFile);
+
+    // #1187 (continued) — emit the bridge module functions now that
+    // `collectAllSourceImports` has finished registering host stubs.
+    // `ensureNativeStringExternBridge` calls `ensureNativeStringHelpers`
+    // (a no-op if it already ran above) and then calls `ensureLateImport`
+    // for each bridge import, which short-circuits because we
+    // pre-registered them above. The bridge's two new module functions
+    // (`__str_to_extern`, `__str_from_extern`) are pushed with
+    // `funcIdx = numImportFuncs + mod.functions.length` — both terms are
+    // final at this point, so no shift queue is opened.
+    if (ctx.testRuntime && ctx.nativeStrings) {
       ensureNativeStringExternBridge(ctx);
     }
 
