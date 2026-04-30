@@ -117,6 +117,16 @@
   ],
   "ready": [
     {
+      "id": "1212",
+      "title": "fix: Promise resolve/reject edge cases regress after #1211 any-boxing fix",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "compilable",
+      "status": "ready",
+      "sprint": "46"
+    },
+    {
       "id": "1210",
       "title": "labs/benchmarks: js2wasm string-hash Wasmtime lane hits 20s timeout — WasmGC i16-array GC pressure",
       "priority": "high",
