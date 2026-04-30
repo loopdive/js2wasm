@@ -53,7 +53,7 @@ eliminating the externref roundtrip.
 | **1122** | Keep standalone recursive numeric benchmark stable across non-run entry exports | 45 | ready | high |
 | **1126** | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | 47 | ready | high |
 | **1179** | Improve js2wasm `array-sum` hot-runtime perf — currently ~9× slower than Node and behind Javy | 45 | done | high |
-| **1184** | __str_copy_tree worklist allocates O(node.len) per flatten — bound by depth instead | 46 | ready | high |
+| **1184** | __str_copy_tree worklist allocates O(node.len) per flatten — bound by depth instead | 46 | in-progress | high |
 | **1184** | __str_copy_tree worklist allocates O(node.len) per flatten — bound by depth instead | 47 | ready | high |
 | **1195** | perf: escape-analysis scalarization for non-escaping arrays (eliminate array allocation in array-sum) | 47 | ready | high |
 | **1196** | perf: bounds-check elimination via SSA on monotonic indexed array loops | 47 | ready | high |
