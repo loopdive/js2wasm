@@ -240,6 +240,18 @@ export function unifiedVisitNode(ctx: CodegenContext, state: UnifiedCollectorSta
     const prop = node.expression;
     const receiverType = ctx.checker.getTypeAtLocation(prop.expression);
     const methodName = prop.name.text;
+    // #1215: Array<number>.join() / Array<number>.toString() must coerce each
+    // element to a string before concatenation. Without `number_toString` registered,
+    // compileArrayJoin silently drops the f64→externref conversion and emits a Wasm
+    // module that fails validation with "local.set[0] expected externref, found
+    // array.get of type f64". Register the import here so the codegen path can
+    // emit the call.
+    if (methodName === "join" || methodName === "toString") {
+      const elemType = receiverType.getNumberIndexType();
+      if (elemType && (isNumberType(elemType) || isBooleanType(elemType) || isBigIntType(elemType))) {
+        state.primitiveNeeded.add("number_toString");
+      }
+    }
     if (isNumberType(receiverType) && methodName === "toString") {
       state.primitiveNeeded.add("number_toString");
     }
