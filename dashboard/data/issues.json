@@ -117,16 +117,6 @@
   ],
   "ready": [
     {
-      "id": "1212",
-      "title": "fix: Promise resolve/reject edge cases regress after #1211 any-boxing fix",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "compilable",
-      "status": "ready",
-      "sprint": "46"
-    },
-    {
       "id": "1209",
       "title": "labs/benchmarks: js2wasm hosted lane fails — ESM resolver error in run-node-wasm-program.mjs",
       "priority": "medium",
@@ -1571,6 +1561,16 @@
     }
   ],
   "inprogress": [
+    {
+      "id": "1212",
+      "title": "fix: Promise resolve/reject edge cases regress after #1211 any-boxing fix",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "compilable",
+      "status": "in-progress",
+      "sprint": "46"
+    },
     {
       "id": "1211",
       "title": "js2wasm hosted fib-recursive: Wasm validator — call param types must match",

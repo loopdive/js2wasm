@@ -207,7 +207,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1204 | credibility: methodology document — how js2wasm is built by an AI agent team | medium | ready |
 | #1205 | Extend TDZ flag boxing to async functions / generators (#1177-followup) — async-fn closure capture path needs Stage 2/3 wiring | high | ready |
 | #1209 | labs/benchmarks: js2wasm hosted lane fails — ESM resolver error in run-node-wasm-program.mjs | medium | ready |
-| #1212 | fix: Promise resolve/reject edge cases regress after #1211 any-boxing fix | medium | ready |
 
 ### In Progress
 
@@ -219,6 +218,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1169m | IR Phase 4 Slice 10 step E — Promise through IR (best-effort) | low | in-progress |
 | #1188 | Setup js2.loopdive.com custom domain for GitHub Pages | medium | in-progress |
 | #1211 | js2wasm hosted fib-recursive: Wasm validator — call param types must match | medium | in-progress |
+| #1212 | fix: Promise resolve/reject edge cases regress after #1211 any-boxing fix | medium | in-progress |
 
 ### Done
 

@@ -17161,7 +17161,7 @@
       "title": "fix: Promise resolve/reject edge cases regress after #1211 any-boxing fix",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "46",
       "depends_on": [],
       "files": [],
