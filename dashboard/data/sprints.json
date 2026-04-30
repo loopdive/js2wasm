@@ -2723,8 +2723,8 @@
   {
     "name": "sprint 45",
     "sprintNumber": 45,
-    "status": "planned",
-    "date": "TBD (follows sprint 44)",
+    "status": "closed",
+    "date": "2026-04-23 → 2026-04-29",
     "baseline": "TBD (inherits from sprint 44 close-out)",
     "result": "",
     "issueCount": 0,
@@ -2846,7 +2846,7 @@
     ],
     "explicitCarryOver": false,
     "isPlanning": false,
-    "isClosed": false
+    "isClosed": true
   },
   {
     "name": "sprint 46",
