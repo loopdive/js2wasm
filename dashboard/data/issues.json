@@ -150,19 +150,6 @@
       "sprint": "46"
     },
     {
-      "id": "1204",
-      "title": "credibility: methodology document — how js2wasm is built by an AI agent team",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [
-        "1201",
-        "1202"
-      ],
-      "goal": "contributor-readiness",
-      "status": "ready",
-      "sprint": "46"
-    },
-    {
       "id": "1203",
       "title": "credibility: differential testing harness — compare js2wasm output vs V8/SpiderMonkey on 1000+ programs",
       "priority": "high",
@@ -1560,6 +1547,19 @@
       "goal": "developer-experience",
       "status": "in-progress",
       "sprint": "45"
+    },
+    {
+      "id": "1204",
+      "title": "credibility: methodology document — how js2wasm is built by an AI agent team",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [
+        "1201",
+        "1202"
+      ],
+      "goal": "contributor-readiness",
+      "status": "in-progress",
+      "sprint": "46"
     },
     {
       "id": "1188",

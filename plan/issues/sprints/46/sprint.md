@@ -202,7 +202,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1169 | IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen | high | ready |
 | #1190 | research: eliminate CI test262 baseline drift (umbrella for #1189, #1191, #1192) | high | ready |
 | #1203 | credibility: differential testing harness — compare js2wasm output vs V8/SpiderMonkey on 1000+ programs | high | ready |
-| #1204 | credibility: methodology document — how js2wasm is built by an AI agent team | medium | ready |
 | #1205 | Extend TDZ flag boxing to async functions / generators (#1177-followup) — async-fn closure capture path needs Stage 2/3 wiring | high | ready |
 | #1209 | labs/benchmarks: js2wasm hosted lane fails — ESM resolver error in run-node-wasm-program.mjs | medium | ready |
 
@@ -213,6 +212,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1169j | IR Phase 4 Slice 10 step B — TypedArray construction + index access through IR | medium | in-progress |
 | #1169l | IR Phase 4 Slice 10 step D — Date / Error / Map / Set through IR | medium | in-progress |
 | #1188 | Setup js2.loopdive.com custom domain for GitHub Pages | medium | in-progress |
+| #1204 | credibility: methodology document — how js2wasm is built by an AI agent team | medium | in-progress |
 | #1213 | ci: refresh-benchmarks workflow fails on every PR — looks for sidebar baseline at gitignored path | medium | in-progress |
 
 ### Done
