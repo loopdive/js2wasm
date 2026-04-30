@@ -17149,6 +17149,18 @@
       "title": "js2wasm hosted fib-recursive: Wasm validator — call param types must match",
       "priority": "medium",
       "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "46",
+      "depends_on": [],
+      "files": [],
+      "goal": "compilable",
+      "cluster": "compilable"
+    },
+    {
+      "id": "1212",
+      "title": "fix: Promise resolve/reject edge cases regress after #1211 any-boxing fix",
+      "priority": "medium",
+      "status": "ready",
       "raw_status": "ready",
       "sprint": "46",
       "depends_on": [],
@@ -18382,7 +18394,8 @@
         "1175",
         "1178",
         "1180",
-        "1211"
+        "1211",
+        "1212"
       ]
     },
     {
@@ -20863,6 +20876,10 @@
     {
       "goal": "compilable",
       "issue": "1211"
+    },
+    {
+      "goal": "compilable",
+      "issue": "1212"
     },
     {
       "goal": "compiler-architecture",

@@ -1,14 +1,17 @@
 {
   "pr": 96,
   "conclusion": "failure",
-  "head_branch": "issue-1053-arguments-length-trailing-comma",
-  "head_sha": "acdf90a8694de5d3ee261a2aa000439efa9acf6b",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24288538235",
-  "timestamp": "2026-04-11T18:22:40Z",
-  "pass": 22101,
-  "fail": 18359,
-  "compile_error": 1359,
-  "delta": 351,
-  "regressions": 22,
-  "improvements": 373
+  "head_branch": "issue-1210-string-gc",
+  "head_sha": "20a994e00328586482cb9124709b21dc0f6792d9",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25183363262",
+  "timestamp": "2026-04-30T18:55:23Z",
+  "pass": 25812,
+  "fail": 13920,
+  "compile_error": 1848,
+  "snapshot_delta": 195,
+  "net_per_test": -15,
+  "regressions": 144,
+  "regressions_real": 31,
+  "compile_timeouts": 113,
+  "improvements": 129
 }
