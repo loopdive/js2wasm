@@ -52,8 +52,17 @@ jobs:
 
       - name: Snapshot current performance baseline
         run: |
+          # Canonical committed location is `benchmarks/results/`
+          # (see scripts/generate-playground-benchmark-sidebar.mjs RESULTS_PATH).
+          # The `public/` and `playground/public/` copies are derived artifacts —
+          # they were LFS-tracked until commit 616a7a528 (#1170 LFS migration,
+          # 2026-04-25), which untracked all `public/benchmarks/results/*.json`.
+          # Prefer the committed location; fall back to derived copies in case
+          # someone has them locally (no functional difference — same payload).
           mkdir -p benchmark-baseline
-          if [ -f public/benchmarks/results/playground-benchmark-sidebar.json ]; then
+          if [ -f benchmarks/results/playground-benchmark-sidebar.json ]; then
+            cp benchmarks/results/playground-benchmark-sidebar.json benchmark-baseline/playground-benchmark-sidebar.json
+          elif [ -f public/benchmarks/results/playground-benchmark-sidebar.json ]; then
             cp public/benchmarks/results/playground-benchmark-sidebar.json benchmark-baseline/playground-benchmark-sidebar.json
           elif [ -f playground/public/benchmarks/results/playground-benchmark-sidebar.json ]; then
             cp playground/public/benchmarks/results/playground-benchmark-sidebar.json benchmark-baseline/playground-benchmark-sidebar.json
