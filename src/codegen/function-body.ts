@@ -38,6 +38,7 @@ import {
 } from "./shared.js";
 import { emitArgumentsVecBody } from "./statements/nested-declarations.js";
 import { bodyUsesArguments } from "./helpers/body-uses-arguments.js";
+import { detectStringBuilders } from "./string-builder.js";
 
 /** Maximum number of instructions for a function body to be considered inlinable */
 export const INLINE_MAX_INSTRS = 10;
@@ -893,6 +894,15 @@ export function compileFunctionBody(ctx: CodegenContext, decl: ts.FunctionDeclar
   } else {
     // Compile body statements
     if (decl.body) {
+      // #1210: pre-scan for `let s = ""; for (...) s += <expr>` builder patterns.
+      // Must run BEFORE hoistLetConstWithTdz so the hoist pass can skip
+      // pre-allocating the binding's local — the binding is replaced by a
+      // synthetic buffer/len/cap/mat triple set up at declaration time.
+      // Only runs in nativeStrings mode (JS-host concat avoids GC pressure).
+      if (ctx.nativeStrings && ctx.anyStrTypeIdx >= 0) {
+        const builders = detectStringBuilders(ctx, decl.body);
+        if (builders.size > 0) fctx.pendingStringBuilders = builders;
+      }
       // Hoist `var` declarations: pre-allocate locals so variables are accessible
       // even before their declaration site (JS var hoisting semantics).
       hoistVarDeclarations(ctx, fctx, decl.body.statements);

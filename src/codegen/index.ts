@@ -6908,6 +6908,9 @@ function walkStmtForLetConst(ctx: CodegenContext, fctx: FunctionContext, stmt: t
     const TDZ_FLAGS = ts.NodeFlags.Let | ts.NodeFlags.Const | ts.NodeFlags.Using | ts.NodeFlags.AwaitUsing;
     if (!(list.flags & TDZ_FLAGS)) return;
     for (const decl of list.declarations) {
+      // #1210: skip declarations matched by detectStringBuilders — their
+      // storage is replaced by a synthetic buffer triple at compile time.
+      if (fctx.pendingStringBuilders?.has(decl)) continue;
       if (ts.isIdentifier(decl.name)) {
         const name = decl.name.text;
         if (fctx.localMap.has(name)) continue;
