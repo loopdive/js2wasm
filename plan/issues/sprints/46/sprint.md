@@ -205,7 +205,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1169l | IR Phase 4 Slice 10 step D — Date / Error / Map / Set through IR | medium | ready |
 | #1169m | IR Phase 4 Slice 10 step E — Promise through IR (best-effort) | low | ready |
 | #1187 | test-runtime: add JS-string → native-string coercion helper for dual-run testing in nativeStrings mode | medium | ready |
-| #1188 | Setup js2.loopdive.com custom domain for GitHub Pages | medium | ready |
 | #1190 | research: eliminate CI test262 baseline drift (umbrella for #1189, #1191, #1192) | high | ready |
 | #1201 | credibility: per-path test262 scores in test262-report.json — wire categorical data into landing page and report.html | high | ready |
 | #1203 | credibility: differential testing harness — compare js2wasm output vs V8/SpiderMonkey on 1000+ programs | high | ready |
@@ -214,6 +213,12 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1209 | labs/benchmarks: js2wasm hosted lane fails — ESM resolver error in run-node-wasm-program.mjs | medium | ready |
 | #1210 | labs/benchmarks: js2wasm string-hash Wasmtime lane hits 20s timeout — WasmGC i16-array GC pressure | high | ready |
 | #1211 | js2wasm hosted fib-recursive: Wasm validator — call param types must match | medium | ready |
+
+### In Progress
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1188 | Setup js2.loopdive.com custom domain for GitHub Pages | medium | in-progress |
 
 ### Won't Fix
 

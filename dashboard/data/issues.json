@@ -277,16 +277,6 @@
       "sprint": "46"
     },
     {
-      "id": "1188",
-      "title": "Setup js2.loopdive.com custom domain for GitHub Pages",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "developer-experience",
-      "status": "ready",
-      "sprint": "46"
-    },
-    {
       "id": "1187",
       "title": "test-runtime: add JS-string → native-string coercion helper for dual-run testing in nativeStrings mode",
       "priority": "medium",
@@ -1651,6 +1641,16 @@
       "goal": "developer-experience",
       "status": "in-progress",
       "sprint": "45"
+    },
+    {
+      "id": "1188",
+      "title": "Setup js2.loopdive.com custom domain for GitHub Pages",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "developer-experience",
+      "status": "in-progress",
+      "sprint": "46"
     },
     {
       "id": "1132",
