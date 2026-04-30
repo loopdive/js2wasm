@@ -201,12 +201,14 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1169 | IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen | high | ready |
-| #1184 | __str_copy_tree worklist allocates O(node.len) per flatten — bound by depth instead | high | ready |
 | #1198 | perf: pre-size dense arrays at allocation site (`const a = []; for ... a[i] = ...` → `new Array(n)`) | high | ready |
 | #1205 | Extend TDZ flag boxing to async functions / generators (#1177-followup) — async-fn closure capture path needs Stage 2/3 wiring | high | ready |
 | #1209 | labs/benchmarks: js2wasm hosted lane fails — ESM resolver error in run-node-wasm-program.mjs | medium | ready |
 | #1217 | ci(test262): smoke-canary — re-run main HEAD twice with fresh cache, fail if flip rate > 0 | medium | ready |
 | #1218 | ci(test262): auto-validate committed baseline on PR — spot-check 50 random pass entries | medium | ready |
+| #1219 | ArrayBindingPattern iter-close: destructuring hangs when iterator never sets done:true (26 compile_timeout tests) | high | ready |
+| #1220 | test262-worker: Promise snapshot missing + prototype poisoning leaks across fork tests (+29 conformance) | high | ready |
+| #1221 | test262-worker: outer catches misclassify WebAssembly.Exception as compile_error — fix harness to reclassify as fail (~256 flaky tests) | high | ready |
 
 ### In Progress
 
@@ -214,6 +216,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 |---|---|---|---|
 | #1169j | IR Phase 4 Slice 10 step B — TypedArray construction + index access through IR | medium | in-progress |
 | #1169l | IR Phase 4 Slice 10 step D — Date / Error / Map / Set through IR | medium | in-progress |
+| #1184 | __str_copy_tree worklist allocates O(node.len) per flatten — bound by depth instead | high | in-progress |
 | #1188 | Setup js2.loopdive.com custom domain for GitHub Pages | medium | in-progress |
 | #1203 | credibility: differential testing harness — compare js2wasm output vs V8/SpiderMonkey on 1000+ programs | high | in-progress |
 | #1215 | fix: numeric-array .join() / .toString() must register number_toString — Wasm validation error | high | in-progress |

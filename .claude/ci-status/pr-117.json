@@ -1,15 +1,17 @@
 {
   "pr": 117,
   "conclusion": "failure",
-  "head_branch": "issue-1057-reapply-vec-struct-runtime",
-  "head_sha": "54ddbe72c3030c625e14f0452111e1c501ce67a5",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24292111448",
-  "timestamp": "2026-04-11T21:41:55Z",
-  "pass": 20569,
-  "fail": 16721,
-  "compile_error": 4531,
-  "snapshot_delta": -1588,
-  "net_per_test": -1588,
-  "regressions": 1614,
-  "improvements": 26
+  "head_branch": "issue-1219-iter-close",
+  "head_sha": "a3667655fdabc9d27c7a372c01d1c67e73e5718a",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25192308086",
+  "timestamp": "2026-04-30T22:33:53Z",
+  "pass": 25913,
+  "fail": 13950,
+  "compile_error": 1850,
+  "snapshot_delta": 80,
+  "net_per_test": 96,
+  "regressions": 91,
+  "regressions_real": 37,
+  "compile_timeouts": 54,
+  "improvements": 187
 }
