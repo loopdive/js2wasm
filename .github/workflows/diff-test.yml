@@ -39,7 +39,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Run differential harness
-        run: node --experimental-strip-types scripts/diff-test.ts
+        run: npx tsx scripts/diff-test.ts
         # Harness exits non-zero on any non-match; that's expected on a
         # corpus that finds real bugs. The merge gate runs separately.
         continue-on-error: true
@@ -54,7 +54,7 @@ jobs:
 
       - name: Run triage (informational)
         if: always()
-        run: node --experimental-strip-types scripts/diff-triage.ts > diff-triage.md || true
+        run: npx tsx scripts/diff-triage.ts > diff-triage.md || true
 
       - name: Upload triage report
         if: always()
@@ -68,7 +68,7 @@ jobs:
       # now mismatches. On `push: main` the baseline is refreshed below.
       - name: Delta gate (PR only)
         if: github.event_name == 'pull_request'
-        run: node --experimental-strip-types scripts/diff-test-gate.ts
+        run: npx tsx scripts/diff-test-gate.ts
 
       # On merge to main, refresh the committed baseline so the next PR
       # compares against the latest known-good state.

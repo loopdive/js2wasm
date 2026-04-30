@@ -16826,6 +16826,18 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
+      "sprint": "46",
+      "depends_on": [],
+      "files": [],
+      "goal": "performance",
+      "cluster": "performance"
+    },
+    {
+      "id": "1184",
+      "title": "__str_copy_tree worklist allocates O(node.len) per flatten — bound by depth instead",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
       "sprint": "47",
       "depends_on": [],
       "files": [],
@@ -16982,6 +16994,18 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
+      "sprint": "46",
+      "depends_on": [],
+      "files": [],
+      "goal": "performance",
+      "cluster": "performance"
+    },
+    {
+      "id": "1198",
+      "title": "perf: pre-size dense arrays at allocation site (`const a = []; for ... a[i] = ...` → `new Array(n)`)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "in-progress",
       "sprint": "47",
       "depends_on": [],
       "files": [],
@@ -17224,7 +17248,31 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
+      "sprint": "46",
+      "depends_on": [],
+      "files": [],
+      "goal": "ci-stability",
+      "cluster": "ci-stability"
+    },
+    {
+      "id": "1217",
+      "title": "ci(test262): smoke-canary — re-run main HEAD twice with fresh cache, fail if flip rate > 0",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
       "sprint": "47",
+      "depends_on": [],
+      "files": [],
+      "goal": "ci-stability",
+      "cluster": "ci-stability"
+    },
+    {
+      "id": "1218",
+      "title": "ci(test262): auto-validate committed baseline on PR — spot-check 50 random pass entries",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "46",
       "depends_on": [],
       "files": [],
       "goal": "ci-stability",
@@ -17241,6 +17289,42 @@
       "files": [],
       "goal": "ci-stability",
       "cluster": "ci-stability"
+    },
+    {
+      "id": "1219",
+      "title": "ArrayBindingPattern iter-close: destructuring hangs when iterator never sets done:true (26 compile_timeout tests)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "46",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-conformance",
+      "cluster": "spec-conformance"
+    },
+    {
+      "id": "1220",
+      "title": "test262-worker: Promise snapshot missing + prototype poisoning leaks across fork tests (+29 conformance)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "46",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-conformance",
+      "cluster": "spec-conformance"
+    },
+    {
+      "id": "1221",
+      "title": "test262-worker: outer catches misclassify WebAssembly.Exception as compile_error — fix harness to reclassify as fail (~256 flaky tests)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "46",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-conformance",
+      "cluster": "spec-conformance"
     },
     {
       "id": "backlog",
@@ -19136,9 +19220,11 @@
         "1126",
         "1179",
         "1184",
+        "1184",
         "1195",
         "1196",
         "1197",
+        "1198",
         "1198",
         "1199",
         "1200",
@@ -23006,6 +23092,10 @@
     },
     {
       "goal": "performance",
+      "issue": "1184"
+    },
+    {
+      "goal": "performance",
       "issue": "1195"
     },
     {
@@ -23015,6 +23105,10 @@
     {
       "goal": "performance",
       "issue": "1197"
+    },
+    {
+      "goal": "performance",
+      "issue": "1198"
     },
     {
       "goal": "performance",
@@ -26720,6 +26814,10 @@
     },
     {
       "goal": "core-semantics",
+      "issue": "1184"
+    },
+    {
+      "goal": "core-semantics",
       "issue": "1195"
     },
     {
@@ -26729,6 +26827,10 @@
     {
       "goal": "core-semantics",
       "issue": "1197"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1198"
     },
     {
       "goal": "core-semantics",
