@@ -98,11 +98,26 @@ jobs:
             echo "regressions=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Fail on performance regressions
-        if: steps.benchmark_diff.outputs.regressions == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.allow_performance_regressions) && !(github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'benchmark-regression-approved'))
+      - name: Print performance regressions (informational on PR/push, gating on workflow_dispatch)
+        if: steps.benchmark_diff.outputs.regressions == 'true'
         run: |
-          echo "Landing-page benchmark regressions detected relative to public/benchmarks/results/playground-benchmark-sidebar.json"
+          echo "Landing-page benchmark regressions detected relative to benchmarks/results/playground-benchmark-sidebar.json:"
           cat benchmark-reports/performance-regressions.txt
+          echo
+          echo "Note (#1214): on pull_request and push events, this step does NOT fail the workflow."
+          echo "  The committed baseline is generated locally, but CI runs on shared GitHub Actions"
+          echo "  runners (slower, noisier scheduling). Both wasm AND js measurements are affected,"
+          echo "  but wasm is more sensitive to cache/scheduling variance — so the wasm:js ratio"
+          echo "  drifts in a way that is NOT a real compiler regression."
+          echo "  To enforce regression gating manually: trigger via workflow_dispatch with"
+          echo "  allow_performance_regressions=false."
+          echo "  Architectural follow-up: regenerate baseline on push-to-main and commit it back"
+          echo "  (see #1214 option A) — this would make the gate meaningful again on PRs."
+
+      - name: Fail on performance regressions (workflow_dispatch only)
+        if: steps.benchmark_diff.outputs.regressions == 'true' && github.event_name == 'workflow_dispatch' && !inputs.allow_performance_regressions
+        run: |
+          echo "Failing workflow due to performance regressions (workflow_dispatch enforcement)."
           exit 1
 
       - name: Upload benchmark artifacts
