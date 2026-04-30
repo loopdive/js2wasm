@@ -54,6 +54,7 @@ import {
 } from "./statements.js";
 import { coercionInstrs, emitGuardedRefCast } from "./type-coercion.js";
 import { buildDestructureNullThrow, isNullOrUndefinedLiteral } from "./destructuring-params.js";
+import { detectStringBuilders } from "./string-builder.js";
 
 // ── Arrow function callbacks ──────────────────────────────────────────
 
@@ -1921,6 +1922,13 @@ export function compileArrowAsClosure(
   }
 
   let conciseBodyHasValue = false;
+
+  // #1210: detect string-builder patterns BEFORE hoisting so the hoist
+  // pass can skip pre-allocating the matched binding's local.
+  if (ts.isBlock(body) && ctx.nativeStrings && ctx.anyStrTypeIdx >= 0) {
+    const builders = detectStringBuilders(ctx, body);
+    if (builders.size > 0) liftedFctx.pendingStringBuilders = builders;
+  }
 
   // Pre-hoist let/const with TDZ flags for the closure body so that
   // accesses before the declaration site throw ReferenceError (#790).

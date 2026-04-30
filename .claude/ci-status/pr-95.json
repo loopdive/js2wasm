@@ -1,14 +1,17 @@
 {
   "pr": 95,
   "conclusion": "failure",
-  "head_branch": "issue-1060-module-resolver-dts-js",
-  "head_sha": "14a8ff663553827d238aba2f089153693d9fa2c8",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24287220228",
-  "timestamp": "2026-04-11T17:05:44Z",
-  "pass": 21896,
-  "fail": 18598,
-  "compile_error": 1325,
-  "delta": 146,
-  "regressions": 3,
-  "improvements": 149
+  "head_branch": "issue-1211-fast-mode-recursive",
+  "head_sha": "870ac712c904c6487dcd6f531be3159ca466d3a5",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25182697092",
+  "timestamp": "2026-04-30T18:40:46Z",
+  "pass": 25898,
+  "fail": 13949,
+  "compile_error": 1745,
+  "snapshot_delta": 281,
+  "net_per_test": 79,
+  "regressions": 117,
+  "regressions_real": 22,
+  "compile_timeouts": 95,
+  "improvements": 196
 }
