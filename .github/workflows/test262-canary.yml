@@ -1,0 +1,279 @@
+name: Test262 Canary (engine determinism)
+
+# Smoke-canary for test262 engine determinism (#1217).
+#
+# Runs `Test262 Sharded` twice on `main` HEAD with **fresh cache** (no
+# restore-keys, no incremental cache hits) and reports the flip count —
+# the number of tests whose status differs between the two runs.
+#
+# A non-zero flip count means the test262 result is non-deterministic:
+# could be timing-sensitive `compile_timeout`s under runner load,
+# Promise micro-task ordering nondeterminism, or something more
+# substantive. The threshold is documented inline; tune it from the
+# initial baseline run before flipping the workflow into a hard gate.
+#
+# This workflow is purely OBSERVATIONAL — it never blocks PRs, never
+# touches the baseline, never refreshes any reports. It is the cheapest
+# mechanism to detect future drift regressions; downstream concerns
+# (flake quarantine, runner-pool isolation) are out of scope here.
+#
+# Triggered manually via `workflow_dispatch` and on a nightly schedule.
+# Acceptance criterion checklist for the issue lives in
+# plan/issues/sprints/46/1217.md.
+
+on:
+  schedule:
+    # Nightly at 04:00 UTC — outside peak runner-pool load so the flip
+    # count reflects engine determinism rather than CI runner contention.
+    # Adjust if it overlaps with other heavy workflows.
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+    inputs:
+      flip_threshold:
+        description: "Flip count threshold (workflow fails if exceeded). Suggested: 10."
+        required: false
+        default: "10"
+        type: string
+      include_proposals:
+        description: "Include proposal tests (matches Test262 Sharded default)"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+concurrency:
+  # Serialize canary runs against themselves only — they don't conflict
+  # with the main `Test262 Sharded` workflow's cache (we use a fresh
+  # cache key) but two canary runs in flight would double the runner
+  # spend without adding signal.
+  group: test262-canary-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # Two parallel runs of the same `main` HEAD. We mirror the matrix
+  # shape from `test262-sharded.yml` so the two runs use the same
+  # 16-shard parallel decomposition and produce JSONLs that
+  # `test262-canary-flip-count.ts` can compare directly.
+  test262-shard-run-a:
+    name: run A — shard ${{ matrix.chunk }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        chunk: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+    env:
+      COMPILER_POOL_SIZE: "4"
+      TEST262_INCLUDE_PROPOSALS: ${{ github.event_name != 'workflow_dispatch' && '1' || (inputs.include_proposals && '1' || '0') }}
+      RUN_TIMESTAMP: ${{ github.run_id }}-A-chunk${{ matrix.chunk }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          fetch-depth: 1
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 25
+      - name: Setup pnpm via Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.30.2 --activate
+      - run: pnpm install --frozen-lockfile
+      # NOTE: deliberately NO `actions/cache` step — fresh cache is the
+      # whole point of the canary. The key would otherwise let runs A
+      # and B share the same cached `.test262-cache` and produce
+      # artificially identical results.
+      - name: Build compiler bundles
+        run: |
+          pnpm run build:compiler-bundle
+          ./node_modules/.bin/esbuild src/runtime.ts --bundle --platform=node --format=esm \
+            --outfile=scripts/runtime-bundle.mjs --external:typescript --external:binaryen
+      - name: Run shard (A)
+        run: |
+          mkdir -p vitest-blob
+          set +e
+          node node_modules/vitest/dist/cli.js run tests/test262-chunk${{ matrix.chunk }}.test.ts \
+            --reporter=blob \
+            --outputFile=vitest-blob/blob-A-${{ matrix.chunk }}.json
+          exit_code=$?
+          set -e
+          if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 1 ]; then
+            echo "Vitest exited with unexpected code $exit_code"
+            exit "$exit_code"
+          fi
+      - name: Upload run-A shard
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: test262-canary-A-${{ matrix.chunk }}
+          path: |
+            benchmarks/results/test262-results-${{ env.RUN_TIMESTAMP }}.jsonl
+          if-no-files-found: warn
+
+  test262-shard-run-b:
+    name: run B — shard ${{ matrix.chunk }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        chunk: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+    env:
+      COMPILER_POOL_SIZE: "4"
+      TEST262_INCLUDE_PROPOSALS: ${{ github.event_name != 'workflow_dispatch' && '1' || (inputs.include_proposals && '1' || '0') }}
+      RUN_TIMESTAMP: ${{ github.run_id }}-B-chunk${{ matrix.chunk }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          fetch-depth: 1
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 25
+      - name: Setup pnpm via Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.30.2 --activate
+      - run: pnpm install --frozen-lockfile
+      # No cache step — see run A for the rationale.
+      - name: Build compiler bundles
+        run: |
+          pnpm run build:compiler-bundle
+          ./node_modules/.bin/esbuild src/runtime.ts --bundle --platform=node --format=esm \
+            --outfile=scripts/runtime-bundle.mjs --external:typescript --external:binaryen
+      - name: Run shard (B)
+        run: |
+          mkdir -p vitest-blob
+          set +e
+          node node_modules/vitest/dist/cli.js run tests/test262-chunk${{ matrix.chunk }}.test.ts \
+            --reporter=blob \
+            --outputFile=vitest-blob/blob-B-${{ matrix.chunk }}.json
+          exit_code=$?
+          set -e
+          if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 1 ]; then
+            echo "Vitest exited with unexpected code $exit_code"
+            exit "$exit_code"
+          fi
+      - name: Upload run-B shard
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: test262-canary-B-${{ matrix.chunk }}
+          path: |
+            benchmarks/results/test262-results-${{ env.RUN_TIMESTAMP }}.jsonl
+          if-no-files-found: warn
+
+  flip-count:
+    name: count flips
+    needs: [test262-shard-run-a, test262-shard-run-b]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 25
+      - name: Setup pnpm via Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.30.2 --activate
+      - run: pnpm install --frozen-lockfile
+
+      - name: Download run A shards
+        uses: actions/download-artifact@v7
+        with:
+          path: shard-artifacts-A
+          pattern: test262-canary-A-*
+          merge-multiple: false
+      - name: Download run B shards
+        uses: actions/download-artifact@v7
+        with:
+          path: shard-artifacts-B
+          pattern: test262-canary-B-*
+          merge-multiple: false
+
+      - name: Merge shard JSONLs
+        run: |
+          mkdir -p canary-merged
+          find shard-artifacts-A -name 'test262-results-*.jsonl' -print0 | sort -z | xargs -0 cat > canary-merged/run-a.jsonl
+          find shard-artifacts-B -name 'test262-results-*.jsonl' -print0 | sort -z | xargs -0 cat > canary-merged/run-b.jsonl
+          # Sanity: both must have a substantial number of rows. A 0-row
+          # merge usually means a shard upload regressed silently.
+          A_LINES=$(wc -l < canary-merged/run-a.jsonl)
+          B_LINES=$(wc -l < canary-merged/run-b.jsonl)
+          echo "Run A lines: $A_LINES"
+          echo "Run B lines: $B_LINES"
+          if [ "$A_LINES" -lt 40000 ] || [ "$B_LINES" -lt 40000 ]; then
+            echo "::error::canary merge produced too few rows — refusing to compare"
+            exit 1
+          fi
+
+      # Threshold rationale (#1217 acceptance criterion #5):
+      #
+      # The initial value of 10 is conservative — it catches a meaningful
+      # determinism regression (e.g. a config change that doubles
+      # compile_timeout flap from ~5 to ~50) without false-firing on
+      # routine ~5–8 timeout-flap rounds we already observe (PR #104 saw
+      # 48 such rounds, all `compile_timeout` transitions). After the
+      # first few canary runs land their numbers in the issue comments,
+      # tune up or down based on observed median + p95.
+      #
+      # Override at dispatch time via the `flip_threshold` input.
+      - name: Run flip-count diff
+        id: flip
+        run: |
+          THRESHOLD="${{ github.event_name == 'workflow_dispatch' && inputs.flip_threshold || '10' }}"
+          set +e
+          npx tsx scripts/test262-canary-flip-count.ts \
+            canary-merged/run-a.jsonl \
+            canary-merged/run-b.jsonl \
+            --threshold "$THRESHOLD" \
+            > canary-merged/flip-report.txt
+          exit_code=$?
+          set -e
+          # The script always prints a JSON summary on the last line.
+          tail -n1 canary-merged/flip-report.txt > canary-merged/flip-summary.json
+          cat canary-merged/flip-report.txt
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          # Don't `exit $exit_code` here — let the next step decide
+          # whether a non-zero is a hard fail or a warning.
+
+      - name: Upload canary report
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: test262-canary-report
+          path: |
+            canary-merged/run-a.jsonl
+            canary-merged/run-b.jsonl
+            canary-merged/flip-report.txt
+            canary-merged/flip-summary.json
+          if-no-files-found: warn
+
+      - name: Annotate workflow summary
+        if: always()
+        run: |
+          {
+            echo "## Test262 Canary — engine determinism"
+            echo
+            echo '```json'
+            cat canary-merged/flip-summary.json
+            echo '```'
+            echo
+            echo '### Flip report'
+            echo
+            echo '```'
+            cat canary-merged/flip-report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail on excessive flips
+        if: steps.flip.outputs.exit_code == '1'
+        run: |
+          echo "::error::test262 canary flip count exceeds threshold — engine determinism has regressed"
+          cat canary-merged/flip-report.txt
+          exit 1
