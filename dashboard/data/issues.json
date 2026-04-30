@@ -117,14 +117,12 @@
   ],
   "ready": [
     {
-      "id": "1210",
-      "title": "labs/benchmarks: js2wasm string-hash Wasmtime lane hits 20s timeout — WasmGC i16-array GC pressure",
-      "priority": "high",
+      "id": "1212",
+      "title": "fix: Promise resolve/reject edge cases regress after #1211 any-boxing fix",
+      "priority": "medium",
       "feasibility": "medium",
-      "depends_on": [
-        "1178"
-      ],
-      "goal": "performance",
+      "depends_on": [],
+      "goal": "compilable",
       "status": "ready",
       "sprint": "46"
     },
@@ -1629,6 +1627,18 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "compilable",
+      "status": "in-progress",
+      "sprint": "46"
+    },
+    {
+      "id": "1210",
+      "title": "labs/benchmarks: js2wasm string-hash Wasmtime lane hits 20s timeout — WasmGC i16-array GC pressure",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1178"
+      ],
+      "goal": "performance",
       "status": "in-progress",
       "sprint": "46"
     },
