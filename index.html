@@ -1006,6 +1006,25 @@
         transition: background 0.14s ease;
       }
 
+      /* #1201 — live test262 pass-count badge alongside the feature name. */
+      .feat-row-counts {
+        font-family: var(--mono);
+        font-size: 10px;
+        color: var(--fg-faint);
+        margin-left: 8px;
+        font-weight: normal;
+        white-space: nowrap;
+      }
+      .feat-row-counts[data-tone="pass"] {
+        color: var(--ok, #4ade80);
+      }
+      .feat-row-counts[data-tone="partial"] {
+        color: var(--warn, #facc15);
+      }
+      .feat-row-counts[data-tone="fail"] {
+        color: var(--err, #f87171);
+      }
+
       .feat-row:last-child {
         border-bottom: none;
       }
@@ -1471,7 +1490,7 @@ outer: for (let i = 0; i &lt; 3; i++) {
                   >
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="language/statements">
                 <span class="feat-badge full">✓</span>
                 <span class="feat-name">for-in</span>
                 <span class="feat-desc">Iterate over object property names</span>
@@ -1491,7 +1510,7 @@ local.set $keys
                   >
                 </details>
               </div>
-              <div class="feat-row" data-sloppy>
+              <div class="feat-row" data-t262-paths="language/arguments-object" data-sloppy>
                 <span class="feat-badge none">✗</span>
                 <span class="feat-name">arguments object (full)</span>
                 <span class="feat-desc">Legacy arguments — partial, rest params preferred</span>
@@ -1510,7 +1529,7 @@ function legacy() {
                   </div>
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="language/eval-code,built-ins/eval">
                 <span class="feat-badge partial">⚠</span>
                 <span class="feat-host">host</span>
                 <span class="feat-name">eval()</span>
@@ -1537,7 +1556,7 @@ function legacy() {
             </div>
             <div class="feat-section">
               <div class="feat-edition">ES5</div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="language/block-scope">
                 <span class="feat-badge full">✓</span>
                 <span class="feat-name">Variables (var, let, const)</span>
                 <span class="feat-desc">Block-scoped and function-scoped variable declarations</span>
@@ -1562,7 +1581,7 @@ var legacy = true;</pre
                   >
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="language/function-code">
                 <span class="feat-badge full">✓</span>
                 <span class="feat-name">Functions &amp; closures</span>
                 <span class="feat-desc">Named functions, expressions, and lexical closures</span>
@@ -1656,7 +1675,7 @@ try {
                   >
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/Object">
                 <span class="feat-badge full">✓</span>
                 <span class="feat-name">Objects</span>
                 <span class="feat-desc">Literals, property access, methods, and shorthand syntax</span>
@@ -1683,7 +1702,7 @@ const obj = {
                   >
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/String">
                 <span class="feat-badge full">✓</span>
                 <span class="feat-name">Strings</span>
                 <span class="feat-desc">String methods, concatenation, and manipulation</span>
@@ -1706,7 +1725,7 @@ const obj = {
                   >
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/Number">
                 <span class="feat-badge full">✓</span>
                 <span class="feat-name">Numbers</span>
                 <span class="feat-desc">Math operations, parseInt, Number methods</span>
@@ -1730,7 +1749,7 @@ parseInt("42");
                   >
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/JSON">
                 <span class="feat-badge full">✓</span>
                 <span class="feat-host">host</span>
                 <span class="feat-name">JSON</span>
@@ -1749,7 +1768,7 @@ const str = JSON.stringify({ a: 1 });</pre
                   >
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/Error,built-ins/NativeErrors">
                 <span class="feat-badge full">✓</span>
                 <span class="feat-name">Error types</span>
                 <span class="feat-desc">Error, TypeError, RangeError, SyntaxError and more</span>
@@ -1768,7 +1787,7 @@ throw new RangeError("out of bounds");</pre
                   >
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/Array">
                 <span class="feat-badge partial">⚠</span>
                 <span class="feat-host">host</span>
                 <span class="feat-name">Arrays</span>
@@ -1795,7 +1814,7 @@ const found = arr.find(x =&gt; x &gt; 5);</pre
                   </div>
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/RegExp">
                 <span class="feat-badge partial">⚠</span>
                 <span class="feat-host">host</span>
                 <span class="feat-name">Regular expressions</span>
@@ -1904,7 +1923,7 @@ const greet = () =&gt; "hello";</pre
                   >
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="language/destructuring">
                 <span class="feat-badge full">✓</span>
                 <span class="feat-name">Destructuring</span>
                 <span class="feat-desc">Extract values from arrays and objects</span>
@@ -2005,7 +2024,7 @@ const obj = { [key]: 42 };</pre
                   >
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/GeneratorFunction,built-ins/GeneratorPrototype">
                 <span class="feat-badge full">✓</span>
                 <span class="feat-name">Generators (function*, yield)</span>
                 <span class="feat-desc">Pausable functions that produce sequences</span>
@@ -2072,7 +2091,10 @@ class Dog extends Animal { }</pre
                   </div>
                 </details>
               </div>
-              <div class="feat-row">
+              <div
+                class="feat-row"
+                data-t262-paths="built-ins/Map,built-ins/Set,built-ins/MapIteratorPrototype,built-ins/SetIteratorPrototype"
+              >
                 <span class="feat-badge partial">⚠</span>
                 <span class="feat-host">host</span>
                 <span class="feat-name">Map / Set</span>
@@ -2098,7 +2120,7 @@ s.has(2); // true</pre
                   <div class="feat-explain">Core operations work. Some iteration edge cases incomplete.</div>
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/Symbol">
                 <span class="feat-badge partial">⚠</span>
                 <span class="feat-host">host</span>
                 <span class="feat-name">Symbol</span>
@@ -2123,7 +2145,10 @@ obj[id] = 42;</pre
                   </div>
                 </details>
               </div>
-              <div class="feat-row">
+              <div
+                class="feat-row"
+                data-t262-paths="built-ins/TypedArray,built-ins/TypedArrayConstructors,built-ins/ArrayBuffer,built-ins/DataView,built-ins/Uint8Array"
+              >
                 <span class="feat-badge partial">⚠</span>
                 <span class="feat-host">host</span>
                 <span class="feat-name">TypedArray / ArrayBuffer</span>
@@ -2149,7 +2174,7 @@ view[0] = 42;</pre
                   <div class="feat-explain">Int8 through Float64 arrays work. BigInt64Array not yet.</div>
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="language/import,language/export,language/module-code">
                 <span class="feat-badge partial">⚠</span>
                 <span class="feat-name">Modules (import / export)</span>
                 <span class="feat-desc">ES module system for code organization</span>
@@ -2168,7 +2193,7 @@ export function bar() { return 1; }</pre
                   <div class="feat-explain">Static imports work. Dynamic import() not yet.</div>
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/Proxy,built-ins/Reflect">
                 <span class="feat-badge none">✗</span>
                 <span class="feat-name">Proxy / Reflect</span>
                 <span class="feat-desc">Object behavior interception and reflection</span>
@@ -2178,7 +2203,7 @@ export function bar() { return 1; }</pre
                   <div class="feat-explain">Requires runtime trap dispatch. Not AOT-compilable.</div>
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/Promise">
                 <span class="feat-badge none">✗</span>
                 <span class="feat-host">host</span>
                 <span class="feat-name">Promise .then / .catch / .finally</span>
@@ -2194,7 +2219,10 @@ export function bar() { return 1; }</pre
             </div>
             <div class="feat-section">
               <div class="feat-edition">ES2017</div>
-              <div class="feat-row">
+              <div
+                class="feat-row"
+                data-t262-paths="built-ins/AsyncFunction,built-ins/AsyncGeneratorFunction,built-ins/AsyncGeneratorPrototype,built-ins/AsyncIteratorPrototype,built-ins/AsyncFromSyncIteratorPrototype"
+              >
                 <span class="feat-badge full">✓</span>
                 <span class="feat-host">host</span>
                 <span class="feat-name">async / await</span>
@@ -2233,7 +2261,7 @@ Object.values({ x: 10 });
                   >
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/SharedArrayBuffer,built-ins/Atomics">
                 <span class="feat-badge none">✗</span>
                 <span class="feat-host">host</span>
                 <span class="feat-name">SharedArrayBuffer / Atomics</span>
@@ -2247,7 +2275,7 @@ Object.values({ x: 10 });
             </div>
             <div class="feat-section">
               <div class="feat-edition">ES2018</div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/Object">
                 <span class="feat-badge full">✓</span>
                 <span class="feat-name">Object spread / rest</span>
                 <span class="feat-desc">Object spread in literals and rest in destructuring</span>
@@ -2345,7 +2373,7 @@ const { a, ...rest } = obj;</pre
                   >
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/BigInt">
                 <span class="feat-badge partial">⚠</span>
                 <span class="feat-host">host</span>
                 <span class="feat-name">BigInt</span>
@@ -2382,7 +2410,7 @@ const sum = big + 1n;</pre
             </div>
             <div class="feat-section">
               <div class="feat-edition">ES2021</div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/WeakRef,built-ins/FinalizationRegistry">
                 <span class="feat-badge none">✗</span>
                 <span class="feat-host">host</span>
                 <span class="feat-name">WeakRef / FinalizationRegistry</span>
@@ -2675,7 +2703,7 @@ buf.resize(16);</pre
             </div>
             <div class="feat-section">
               <div class="feat-edition">ES2025</div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/Set">
                 <span class="feat-badge none">✗</span>
                 <span class="feat-host">host</span>
                 <span class="feat-name">Set methods (union, intersection, difference)</span>
@@ -2691,7 +2719,7 @@ a.union(b); // {1,2,3,4}</pre
                   <div class="feat-explain">ES2025 Set methods. Requires host import for Set operations.</div>
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/Iterator">
                 <span class="feat-badge none">✗</span>
                 <span class="feat-host">host</span>
                 <span class="feat-name">Iterator helpers (map, filter, take)</span>
@@ -2854,7 +2882,7 @@ RegExp.$1; // "123" — deprecated</pre
             </div>
             <div class="feat-section">
               <div class="feat-edition">Proposals</div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/Temporal">
                 <span class="feat-badge none">✗</span>
                 <span class="feat-name">Temporal</span>
                 <span class="feat-desc">Modern date and time API</span>
@@ -4343,6 +4371,65 @@ console.log(instance.exports.run()); // &rarr; 55</pre
           labelEl.textContent = `JavaScript feature areas implemented (${implemented}/${total} with >50% tests passing)`;
         } catch {
           // Keep the build-time fallback when the report file is unavailable.
+        }
+      })();
+
+      // #1201 — hydrate feature rows with live test262 pass counts.
+      // Each `.feat-row[data-t262-paths]` declares one or more depth-2
+      // test262 path prefixes (e.g. `built-ins/Array,built-ins/Map`).
+      // We sum pass/total across the listed paths and append a small
+      // `<span class="feat-row-counts">N/T</span>` next to the feature
+      // name. Falls back gracefully (no count shown) if the fetch fails
+      // or a path isn't present in the categories data — a wrong
+      // mapping is then visible as a missing count rather than a
+      // misleading number.
+      (async function hydrateFeatureRowCounts() {
+        try {
+          const resp = await fetch("./benchmarks/results/test262-categories.json");
+          if (!resp.ok) return;
+          const payload = await resp.json();
+          const categories = payload?.categories;
+          if (!Array.isArray(categories) || categories.length === 0) return;
+          const byPath = new Map();
+          for (const cat of categories) {
+            const key = cat?.path ?? cat?.name;
+            if (typeof key === "string") byPath.set(key, cat);
+          }
+          const rows = document.querySelectorAll(".feat-row[data-t262-paths]");
+          for (const row of rows) {
+            const paths = (row.getAttribute("data-t262-paths") || "")
+              .split(",")
+              .map((p) => p.trim())
+              .filter(Boolean);
+            let pass = 0;
+            let total = 0;
+            for (const p of paths) {
+              const cat = byPath.get(p);
+              if (!cat) continue;
+              pass += Number(cat.pass ?? 0);
+              const skip = Number(cat.skip ?? 0);
+              total += Number(cat.total ?? 0) - skip;
+            }
+            if (total <= 0) continue;
+            // Only render the count if at least one of the listed
+            // paths was found — otherwise leave the static badge alone
+            // so a stale mapping is visible rather than misleading.
+            const span = document.createElement("span");
+            span.className = "feat-row-counts";
+            span.textContent = `${pass}/${total}`;
+            const ratio = pass / total;
+            if (ratio >= 0.8) span.dataset.tone = "pass";
+            else if (ratio >= 0.5) span.dataset.tone = "partial";
+            else span.dataset.tone = "fail";
+            // Append inside `.feat-name` to stay within its grid cell —
+            // the row uses a 3-col template (`30px 1fr 24px`) so any
+            // sibling span would land in column 3 (the badge column)
+            // and break alignment.
+            const nameEl = row.querySelector(".feat-name");
+            if (nameEl) nameEl.appendChild(span);
+          }
+        } catch {
+          // Static badges remain — graceful fallback.
         }
       })();
 

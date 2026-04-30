@@ -6,78 +6,6 @@
     "include_proposals": 1,
     "label": "full test262"
   },
-  "summary": {
-    "total": 43168,
-    "pass": 25860,
-    "fail": 13909,
-    "compile_error": 1844,
-    "compile_timeout": 216,
-    "skip": 1339,
-    "compilable": 39769,
-    "stale": 0
-  },
-  "official_summary": {
-    "total": 43168,
-    "pass": 25860,
-    "fail": 13909,
-    "compile_error": 1844,
-    "compile_timeout": 216,
-    "skip": 1339,
-    "compilable": 39769,
-    "stale": 0
-  },
-  "full_summary": {
-    "total": 48372,
-    "pass": 27053,
-    "fail": 17049,
-    "compile_error": 2525,
-    "compile_timeout": 228,
-    "skip": 1517,
-    "compilable": 44102,
-    "stale": 0
-  },
-  "strict_summary": {
-    "total": 40659,
-    "pass": 24714,
-    "fail": 13044,
-    "compile_error": 1692,
-    "compile_timeout": 210,
-    "skip": 999,
-    "compilable": 37758,
-    "stale": 0
-  },
-  "scope_summaries": {
-    "annex_b": {
-      "total": 1086,
-      "pass": 493,
-      "fail": 442,
-      "compile_error": 147,
-      "compile_timeout": 4,
-      "skip": 0,
-      "compilable": 935,
-      "stale": 0
-    },
-    "proposal": {
-      "total": 5204,
-      "pass": 1193,
-      "fail": 3140,
-      "compile_error": 681,
-      "compile_timeout": 12,
-      "skip": 178,
-      "compilable": 4333,
-      "stale": 0
-    },
-    "standard": {
-      "total": 42082,
-      "pass": 25367,
-      "fail": 13467,
-      "compile_error": 1697,
-      "compile_timeout": 212,
-      "skip": 1339,
-      "compilable": 38834,
-      "stale": 0
-    }
-  },
   "categories": [
     {
       "name": "annexB/built-ins",
@@ -1019,28 +947,5 @@
       "skip": 0,
       "total": 67
     }
-  ],
-  "error_categories": {
-    "assertion_fail": 8982,
-    "illegal_cast": 138,
-    "negative_test_fail": 170,
-    "null_deref": 432,
-    "oob": 29,
-    "other": 2781,
-    "promise_error": 73,
-    "range_error": 44,
-    "runtime_error": 1931,
-    "type_error": 3575,
-    "unreachable": 17,
-    "wasm_compile": 1402
-  },
-  "skip_reasons": {
-    "compiler hang (see HANGING_TESTS)": 3,
-    "ES2017: SharedArrayBuffer (requires shared Wasm memory) (#674)": 460,
-    "ES2020: BigInt typed arrays not implemented (#838)": 28,
-    "ES2020: dynamic import()": 432,
-    "ES2021: FinalizationRegistry constructor not implemented — requires GC finalizer callbacks (#988)": 26,
-    "ES5 legacy: with statement (strict mode disallowed)": 560,
-    "TypeScript 5.x: Unicode 16.0.0 identifiers not supported (#832)": 8
-  }
+  ]
 }
