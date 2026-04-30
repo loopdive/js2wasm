@@ -197,6 +197,14 @@ This is the intended path for infrastructure vendors and strategic partners, inc
 
 Contact: `hello@loopdive.com`
 
+## Testing
+
+`js2wasm` validates correctness through three complementary test layers:
+
+- **Unit & equivalence tests** — `npm test` (vitest). Targeted regression coverage and JS↔Wasm equivalence assertions. See `tests/equivalence/`.
+- **Test262 conformance** — `pnpm run test:262` runs the official ECMAScript test suite (~48k tests) and reports per-edition / per-path pass rates. CI runs this sharded on every PR; the [report](./benchmarks/results/report.html) is regenerated on each merge.
+- **Differential testing vs V8** — `node --experimental-strip-types scripts/diff-test.ts` (#1203). For each program in `tests/differential/corpus/`, the harness runs Node-V8 directly and the compiled `.wasm` and compares stdout. test262 measures spec compliance; differential testing measures whether real programs actually produce the right answer. CI gates each PR on a delta against `benchmarks/results/diff-test-baseline.json` — no new mismatches allowed. Use `node --experimental-strip-types scripts/diff-triage.ts` to bucket mismatches by category for follow-up filing.
+
 ## Development
 
 Additional contributor workflow details, including CLA terms, are in [CONTRIBUTING.md](./CONTRIBUTING.md).
