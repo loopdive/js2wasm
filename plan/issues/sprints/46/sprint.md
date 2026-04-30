@@ -200,8 +200,12 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1169 | IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen | high | ready |
+| #1184 | __str_copy_tree worklist allocates O(node.len) per flatten — bound by depth instead | high | ready |
+| #1198 | perf: pre-size dense arrays at allocation site (`const a = []; for ... a[i] = ...` → `new Array(n)`) | high | ready |
 | #1205 | Extend TDZ flag boxing to async functions / generators (#1177-followup) — async-fn closure capture path needs Stage 2/3 wiring | high | ready |
 | #1209 | labs/benchmarks: js2wasm hosted lane fails — ESM resolver error in run-node-wasm-program.mjs | medium | ready |
+| #1217 | ci(test262): smoke-canary — re-run main HEAD twice with fresh cache, fail if flip rate > 0 | medium | ready |
+| #1218 | ci(test262): auto-validate committed baseline on PR — spot-check 50 random pass entries | medium | ready |
 
 ### In Progress
 
