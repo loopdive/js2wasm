@@ -117,6 +117,38 @@
   ],
   "ready": [
     {
+      "id": "1218",
+      "title": "ci(test262): auto-validate committed baseline on PR — spot-check 50 random pass entries",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "ci-stability",
+      "status": "ready",
+      "sprint": "47"
+    },
+    {
+      "id": "1217",
+      "title": "ci(test262): smoke-canary — re-run main HEAD twice with fresh cache, fail if flip rate > 0",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ci-stability",
+      "status": "ready",
+      "sprint": "47"
+    },
+    {
+      "id": "1216",
+      "title": "ci: auto-commit playground benchmark baseline on push-to-main (architectural follow-up to #1214)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [
+        "1214"
+      ],
+      "goal": "ci-stability",
+      "status": "ready",
+      "sprint": "47"
+    },
+    {
       "id": "1209",
       "title": "labs/benchmarks: js2wasm hosted lane fails — ESM resolver error in run-node-wasm-program.mjs",
       "priority": "medium",
@@ -210,16 +242,6 @@
       "goal": "performance",
       "status": "ready",
       "sprint": "47"
-    },
-    {
-      "id": "1190",
-      "title": "research: eliminate CI test262 baseline drift (umbrella for #1189, #1191, #1192)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "ci-hardening",
-      "status": "ready",
-      "sprint": "46"
     },
     {
       "id": "1184",
@@ -1711,6 +1733,16 @@
       "goal": "ci-hardening",
       "status": "done",
       "sprint": "45"
+    },
+    {
+      "id": "1190",
+      "title": "research: eliminate CI test262 baseline drift (umbrella for #1189, #1191, #1192)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ci-hardening",
+      "status": "done",
+      "sprint": "46"
     },
     {
       "id": "1189",
