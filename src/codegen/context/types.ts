@@ -30,6 +30,8 @@ export interface CodegenOptions {
   fast?: boolean;
   /** Use WasmGC-native strings instead of wasm:js-string imports */
   nativeStrings?: boolean;
+  /** Test-only: emit `__test_str_from_externref` / `__test_str_to_externref` exports (#1187). */
+  testRuntime?: boolean;
   /** WASI target: emit WASI imports (fd_write, proc_exit) instead of JS host imports */
   wasi?: boolean;
   /**
@@ -390,6 +392,10 @@ export interface CodegenContext {
   nativeStrHelpersEmitted: boolean;
   /** Whether native string host bridge helpers have been emitted */
   nativeStrExternBridgeEmitted: boolean;
+  /** Whether the testRuntime string helpers (#1187) have been emitted */
+  testRuntimeStringHelpersEmitted: boolean;
+  /** Test-only: emit testRuntime string-coercion exports (#1187). */
+  testRuntime: boolean;
   /** Map from native string helper name → function index */
   nativeStrHelpers: Map<string, number>;
   /** Map from value type kind → ref cell struct type index */

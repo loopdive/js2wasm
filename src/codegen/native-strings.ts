@@ -5,7 +5,7 @@
  *
  * Extracted from codegen/index.ts (#1013).
  */
-import type { Instr, ValType } from "../ir/types.js";
+import type { Instr, ValType, WasmFunction } from "../ir/types.js";
 import type { CodegenContext } from "./context/types.js";
 import { ensureLateImport } from "./expressions/late-imports.js";
 import { addImport } from "./registry/imports.js";
@@ -2988,6 +2988,258 @@ export function ensureNativeStringExternBridge(ctx: CodegenContext): void {
       ],
       body,
       exported: false,
+    });
+  }
+}
+
+/**
+ * Emit `__test_str_from_externref` and `__test_str_to_externref` exported
+ * helpers (#1187). These are the test-runtime bridge that lets vitest tests
+ * pass JS strings into Wasm exports whose native-string params have type
+ * `(ref $AnyString)`, and read native-string results back as JS strings.
+ *
+ * Gated on `ctx.testRuntime && ctx.nativeStrings`. Production builds (with
+ * `testRuntime` unset) never reach this code, so the helpers are absent
+ * from the module entirely — zero runtime overhead.
+ *
+ * Preconditions (set up by the pre-pass in `generateModule`):
+ *   - `addStringImports` has been called → `length`, `charCodeAt`, `concat`,
+ *     `substring` are registered as `wasm:js-string` imports.
+ *   - `String_fromCharCode` is registered as an `env` host import.
+ *   - `ensureNativeStringHelpers` has been called → `__str_flatten` exists.
+ */
+export function emitTestRuntimeStringHelpers(ctx: CodegenContext): void {
+  if (!ctx.testRuntime || !ctx.nativeStrings) return;
+  if (ctx.testRuntimeStringHelpersEmitted) return;
+  ctx.testRuntimeStringHelpersEmitted = true;
+
+  // Make sure $__str_flatten exists. Called HERE rather than in the pre-pass
+  // because emitting native-string helpers early causes a downstream
+  // miscompile (the body references function indices that drift before
+  // dead-elim runs). At this call site (after user code, before dead-elim)
+  // index drift is impossible.
+  ensureNativeStringHelpers(ctx);
+
+  const mod = ctx.mod;
+  const strDataTypeIdx = ctx.nativeStrDataTypeIdx;
+  const strTypeIdx = ctx.nativeStrTypeIdx; // $NativeString (FlatString)
+  const anyStrTypeIdx = ctx.anyStrTypeIdx; // $AnyString
+
+  const strDataRef: ValType = { kind: "ref", typeIdx: strDataTypeIdx };
+  const flatStrRef: ValType = { kind: "ref", typeIdx: strTypeIdx };
+  const anyStrRef: ValType = { kind: "ref", typeIdx: anyStrTypeIdx };
+  const externref: ValType = { kind: "externref" };
+
+  // Resolve helper / import indices set up by the pre-pass.
+  const lengthIdx = ctx.jsStringImports.get("length");
+  const charCodeAtIdx = ctx.jsStringImports.get("charCodeAt");
+  const concatIdx = ctx.jsStringImports.get("concat");
+  const substringIdx = ctx.jsStringImports.get("substring");
+  const fromCharCodeIdx = ctx.funcMap.get("String_fromCharCode");
+  const flattenIdx = ctx.nativeStrHelpers.get("__str_flatten");
+  if (
+    lengthIdx === undefined ||
+    charCodeAtIdx === undefined ||
+    concatIdx === undefined ||
+    substringIdx === undefined ||
+    fromCharCodeIdx === undefined ||
+    flattenIdx === undefined
+  ) {
+    // Pre-pass should have ensured these. Bail silently rather than emit a
+    // module that won't validate — the test will fail noisily on missing
+    // exports.
+    return;
+  }
+
+  // ── __test_str_from_externref(externref s) -> (ref $AnyString) ──
+  // Walks `s` char-by-char with `wasm:js-string.length` / `charCodeAt` and
+  // builds a fresh `$NativeString` (subtype of `$AnyString`).
+  //
+  // params: s(0)
+  // locals: len(1), data(2), i(3)
+  {
+    const typeIdx = addFuncType(ctx, [externref], [anyStrRef]);
+    const funcIdx = ctx.numImportFuncs + mod.functions.length;
+
+    const body: Instr[] = [
+      // len = wasm:js-string.length(s)
+      { op: "local.get", index: 0 },
+      { op: "call", funcIdx: lengthIdx },
+      { op: "local.set", index: 1 },
+
+      // data = array.new_default $__str_data(len)
+      { op: "local.get", index: 1 },
+      { op: "array.new_default", typeIdx: strDataTypeIdx },
+      { op: "local.set", index: 2 },
+
+      // i = 0
+      { op: "i32.const", value: 0 },
+      { op: "local.set", index: 3 },
+
+      // Outer block (target for the loop's break)
+      {
+        op: "block",
+        blockType: { kind: "empty" },
+        body: [
+          {
+            op: "loop",
+            blockType: { kind: "empty" },
+            body: [
+              // if i >= len, break out of the surrounding block (depth 1)
+              { op: "local.get", index: 3 },
+              { op: "local.get", index: 1 },
+              { op: "i32.ge_s" },
+              { op: "br_if", depth: 1 },
+
+              // data[i] = wasm:js-string.charCodeAt(s, i)
+              { op: "local.get", index: 2 },
+              { op: "local.get", index: 3 },
+              { op: "local.get", index: 0 },
+              { op: "local.get", index: 3 },
+              { op: "call", funcIdx: charCodeAtIdx },
+              { op: "array.set", typeIdx: strDataTypeIdx },
+
+              // i = i + 1
+              { op: "local.get", index: 3 },
+              { op: "i32.const", value: 1 },
+              { op: "i32.add" },
+              { op: "local.set", index: 3 },
+
+              // continue loop
+              { op: "br", depth: 0 },
+            ],
+          },
+        ],
+      },
+
+      // struct.new $NativeString(len, 0, data) — subtype-flows into ref $AnyString
+      { op: "local.get", index: 1 },
+      { op: "i32.const", value: 0 },
+      { op: "local.get", index: 2 },
+      { op: "struct.new", typeIdx: strTypeIdx },
+    ];
+
+    mod.functions.push({
+      name: "__test_str_from_externref",
+      typeIdx,
+      locals: [
+        { name: "len", type: { kind: "i32" } },
+        { name: "data", type: strDataRef },
+        { name: "i", type: { kind: "i32" } },
+      ],
+      body,
+      exported: true,
+    } as WasmFunction);
+    mod.exports.push({
+      name: "__test_str_from_externref",
+      desc: { kind: "func", index: funcIdx },
+    });
+  }
+
+  // ── __test_str_to_externref((ref $AnyString) s) -> externref ──
+  // Flattens to a `$NativeString`, then walks the data array and accumulates
+  // a JS string via `wasm:js-string.concat` + `String_fromCharCode`. O(n²) by
+  // string concatenation, but fine for the small strings used in tests.
+  //
+  // The result is seeded with an empty JS string via
+  // `wasm:js-string.substring(<any>, 0, 0)` so the first concat has a string
+  // operand even when len == 0.
+  //
+  // params: s(0)
+  // locals: flat(1), len(2), off(3), result(4), i(5)
+  {
+    const typeIdx = addFuncType(ctx, [anyStrRef], [externref]);
+    const funcIdx = ctx.numImportFuncs + mod.functions.length;
+
+    const body: Instr[] = [
+      // flat = __str_flatten(s)
+      { op: "local.get", index: 0 },
+      { op: "call", funcIdx: flattenIdx },
+      { op: "local.set", index: 1 },
+
+      // len = flat.len
+      { op: "local.get", index: 1 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 2 },
+
+      // off = flat.off
+      { op: "local.get", index: 1 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
+      { op: "local.set", index: 3 },
+
+      // result = substring(String_fromCharCode(0.0), 0, 0) — gives "" as externref
+      { op: "f64.const", value: 0 },
+      { op: "call", funcIdx: fromCharCodeIdx },
+      { op: "i32.const", value: 0 },
+      { op: "i32.const", value: 0 },
+      { op: "call", funcIdx: substringIdx },
+      { op: "local.set", index: 4 },
+
+      // i = 0
+      { op: "i32.const", value: 0 },
+      { op: "local.set", index: 5 },
+
+      {
+        op: "block",
+        blockType: { kind: "empty" },
+        body: [
+          {
+            op: "loop",
+            blockType: { kind: "empty" },
+            body: [
+              // if i >= len, break (depth 1 = outer block)
+              { op: "local.get", index: 5 },
+              { op: "local.get", index: 2 },
+              { op: "i32.ge_s" },
+              { op: "br_if", depth: 1 },
+
+              // result = concat(result, String_fromCharCode(data[off + i]))
+              { op: "local.get", index: 4 }, // result
+
+              { op: "local.get", index: 1 }, // flat
+              { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 }, // data
+              { op: "local.get", index: 3 }, // off
+              { op: "local.get", index: 5 }, // i
+              { op: "i32.add" },
+              { op: "array.get_u", typeIdx: strDataTypeIdx },
+              { op: "f64.convert_i32_s" },
+              { op: "call", funcIdx: fromCharCodeIdx },
+
+              { op: "call", funcIdx: concatIdx },
+              { op: "local.set", index: 4 },
+
+              // i++
+              { op: "local.get", index: 5 },
+              { op: "i32.const", value: 1 },
+              { op: "i32.add" },
+              { op: "local.set", index: 5 },
+
+              { op: "br", depth: 0 },
+            ],
+          },
+        ],
+      },
+
+      // return result
+      { op: "local.get", index: 4 },
+    ];
+
+    mod.functions.push({
+      name: "__test_str_to_externref",
+      typeIdx,
+      locals: [
+        { name: "flat", type: flatStrRef },
+        { name: "len", type: { kind: "i32" } },
+        { name: "off", type: { kind: "i32" } },
+        { name: "result", type: externref },
+        { name: "i", type: { kind: "i32" } },
+      ],
+      body,
+      exported: true,
+    } as WasmFunction);
+    mod.exports.push({
+      name: "__test_str_to_externref",
+      desc: { kind: "func", index: funcIdx },
     });
   }
 }

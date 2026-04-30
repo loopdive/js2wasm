@@ -329,6 +329,7 @@ export function compileSource(
         sourceMap: emitSourceMap,
         fast: options.fast,
         nativeStrings: options.nativeStrings,
+        testRuntime: options.testRuntime,
         wasi: options.target === "wasi",
         // Phase 2 (#1131): default experimentalIR to on so recursive
         // numeric kernels (fib, factorial, etc.) compile without the
@@ -604,6 +605,7 @@ export function compileMultiSource(
         sourceMap: emitSourceMap,
         fast: options.fast,
         nativeStrings: options.nativeStrings,
+        testRuntime: options.testRuntime,
         wasi: options.target === "wasi",
       });
       mod = result.module;
@@ -835,6 +837,7 @@ export function compileFilesSource(entryPath: string, options: CompileOptions = 
         sourceMap: emitSourceMap,
         fast: options.fast,
         nativeStrings: options.nativeStrings,
+        testRuntime: options.testRuntime,
         wasi: options.target === "wasi",
       });
       mod = result.module;
