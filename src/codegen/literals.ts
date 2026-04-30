@@ -1350,6 +1350,229 @@ function detectCountedPushLoopSize(expr: ts.ArrayLiteralExpression): number {
   return tripCount;
 }
 
+/**
+ * Detect a counted index-assign loop pattern after an empty array literal (#1198):
+ *   const arr = [];
+ *   for (let i = 0; i < N; i++) arr[i] = expr;
+ *
+ * Where N is either a numeric literal or an identifier (e.g., function parameter).
+ * Returns:
+ *   - { kind: "literal", count: N } — N is a numeric literal; pre-allocate to that size.
+ *   - { kind: "expr", node }       — N is an identifier; emit code to compile it as i32.
+ *   - null                         — pattern doesn't match; fall through to grow-on-write.
+ *
+ * Why bother distinguishing from `detectCountedPushLoopSize`? Because the index-assign
+ * pattern is the canonical array-fill shape (V8 detects and pre-sizes too), and the
+ * common form uses a parameter `n` rather than a literal — so we need the expr-case to
+ * be useful in practice (e.g. `function f(n) { const a = []; for (let i = 0; i < n; i++) a[i] = ...; }`).
+ *
+ * The body must be **conservatively non-throwing** — pre-sizing means `a.length === N`
+ * even if the body throws partway through, whereas grow-on-write would leave `a.length`
+ * at the partial fill point. Acceptance criterion #3 in the issue explicitly requires
+ * we restrict the pattern to bodies that don't observably throw.
+ *
+ * Allow-list of body RHS expression shapes (definitely don't throw):
+ *   - NumericLiteral, BigIntLiteral, true/false/null, StringLiteral
+ *   - Identifier (read of a declared local; ReferenceError already excluded by TS)
+ *   - BinaryExpression with arithmetic / bitwise / comparison / logical operators
+ *   - PrefixUnaryExpression with +, -, ~, !
+ *   - ParenthesizedExpression
+ *   - ConditionalExpression (ternary)
+ *
+ * Anything else — calls, property access, element access, new, post-increment, throw,
+ * await, yield — defeats the optimisation. The `compileExpression` path will still
+ * handle the `a[i] = ...` correctly with grow-on-write semantics; we just don't pre-size.
+ */
+type IndexAssignPrealloc = { kind: "literal"; count: number } | { kind: "expr"; node: ts.Expression };
+
+function isNonThrowingFillRhs(node: ts.Expression): boolean {
+  // Strip parentheses
+  if (ts.isParenthesizedExpression(node)) return isNonThrowingFillRhs(node.expression);
+
+  if (ts.isNumericLiteral(node)) return true;
+  if (ts.isBigIntLiteral(node)) return true;
+  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return true;
+  if (node.kind === ts.SyntaxKind.TrueKeyword) return true;
+  if (node.kind === ts.SyntaxKind.FalseKeyword) return true;
+  if (node.kind === ts.SyntaxKind.NullKeyword) return true;
+
+  if (ts.isIdentifier(node)) return true;
+
+  if (ts.isBinaryExpression(node)) {
+    const op = node.operatorToken.kind;
+    // Forbid assignment-flavoured operators (=, +=, ...) — these would mutate state.
+    if (
+      op === ts.SyntaxKind.EqualsToken ||
+      op === ts.SyntaxKind.PlusEqualsToken ||
+      op === ts.SyntaxKind.MinusEqualsToken ||
+      op === ts.SyntaxKind.AsteriskEqualsToken ||
+      op === ts.SyntaxKind.AsteriskAsteriskEqualsToken ||
+      op === ts.SyntaxKind.SlashEqualsToken ||
+      op === ts.SyntaxKind.PercentEqualsToken ||
+      op === ts.SyntaxKind.LessThanLessThanEqualsToken ||
+      op === ts.SyntaxKind.GreaterThanGreaterThanEqualsToken ||
+      op === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken ||
+      op === ts.SyntaxKind.AmpersandEqualsToken ||
+      op === ts.SyntaxKind.BarEqualsToken ||
+      op === ts.SyntaxKind.CaretEqualsToken ||
+      op === ts.SyntaxKind.AmpersandAmpersandEqualsToken ||
+      op === ts.SyntaxKind.BarBarEqualsToken ||
+      op === ts.SyntaxKind.QuestionQuestionEqualsToken ||
+      op === ts.SyntaxKind.CommaToken
+    ) {
+      return false;
+    }
+    // `in` and `instanceof` can throw TypeError if RHS is wrong shape — reject.
+    if (op === ts.SyntaxKind.InKeyword || op === ts.SyntaxKind.InstanceOfKeyword) return false;
+    return isNonThrowingFillRhs(node.left) && isNonThrowingFillRhs(node.right);
+  }
+
+  if (ts.isPrefixUnaryExpression(node)) {
+    const op = node.operator;
+    if (
+      op === ts.SyntaxKind.PlusToken ||
+      op === ts.SyntaxKind.MinusToken ||
+      op === ts.SyntaxKind.TildeToken ||
+      op === ts.SyntaxKind.ExclamationToken
+    ) {
+      return isNonThrowingFillRhs(node.operand);
+    }
+    // ++/-- mutate state — reject.
+    return false;
+  }
+
+  if (ts.isConditionalExpression(node)) {
+    return (
+      isNonThrowingFillRhs(node.condition) &&
+      isNonThrowingFillRhs(node.whenTrue) &&
+      isNonThrowingFillRhs(node.whenFalse)
+    );
+  }
+
+  // Default: reject (calls, property access, element access, new, etc.).
+  return false;
+}
+
+function detectCountedIndexAssignSize(expr: ts.ArrayLiteralExpression): IndexAssignPrealloc | null {
+  // Walk up: ArrayLiteralExpression → VariableDeclaration → VariableDeclarationList → VariableStatement → Block/SourceFile
+  const varDecl = expr.parent;
+  if (!varDecl || !ts.isVariableDeclaration(varDecl) || !ts.isIdentifier(varDecl.name)) return null;
+  const arrName = varDecl.name.text;
+
+  const declList = varDecl.parent;
+  if (!declList || !ts.isVariableDeclarationList(declList)) return null;
+  const varStmt = declList.parent;
+  if (!varStmt || !ts.isVariableStatement(varStmt)) return null;
+
+  const block = varStmt.parent;
+  if (!block) return null;
+  let stmts: ts.NodeArray<ts.Statement>;
+  if (ts.isBlock(block)) stmts = block.statements;
+  else if (ts.isSourceFile(block)) stmts = block.statements;
+  else return null;
+
+  const idx = stmts.indexOf(varStmt);
+  if (idx < 0 || idx + 1 >= stmts.length) return null;
+  const nextStmt = stmts[idx + 1]!;
+  if (!ts.isForStatement(nextStmt)) return null;
+
+  // Initializer: `let i = 0` or `var i = 0`
+  const init = nextStmt.initializer;
+  if (!init || !ts.isVariableDeclarationList(init)) return null;
+  if (init.declarations.length !== 1) return null;
+  const loopDecl = init.declarations[0]!;
+  if (!ts.isIdentifier(loopDecl.name)) return null;
+  const loopVar = loopDecl.name.text;
+  if (!loopDecl.initializer || !ts.isNumericLiteral(loopDecl.initializer) || loopDecl.initializer.text !== "0") {
+    return null;
+  }
+
+  // Condition: `i < N` where N is a NumericLiteral or Identifier
+  const cond = nextStmt.condition;
+  if (!cond || !ts.isBinaryExpression(cond)) return null;
+  if (cond.operatorToken.kind !== ts.SyntaxKind.LessThanToken) return null;
+  if (!ts.isIdentifier(cond.left) || cond.left.text !== loopVar) return null;
+
+  let bound: IndexAssignPrealloc;
+  if (ts.isNumericLiteral(cond.right)) {
+    const tripCount = Number(cond.right.text);
+    if (!Number.isFinite(tripCount) || tripCount <= 0 || tripCount > 100_000_000) return null;
+    bound = { kind: "literal", count: tripCount };
+  } else if (ts.isIdentifier(cond.right)) {
+    // Bound is an identifier (e.g. function parameter `n`). The identifier must NOT
+    // alias the loop variable, the array variable, or be reassigned in the loop body
+    // (we check the body further down).
+    if (cond.right.text === loopVar || cond.right.text === arrName) return null;
+    bound = { kind: "expr", node: cond.right };
+  } else {
+    return null;
+  }
+
+  // Incrementor: `i++` or `++i` or `i += 1`
+  const inc = nextStmt.incrementor;
+  if (!inc) return null;
+  if (ts.isPostfixUnaryExpression(inc) || ts.isPrefixUnaryExpression(inc)) {
+    if (inc.operator !== ts.SyntaxKind.PlusPlusToken) return null;
+    if (!ts.isIdentifier(inc.operand) || inc.operand.text !== loopVar) return null;
+  } else if (ts.isBinaryExpression(inc)) {
+    if (inc.operatorToken.kind !== ts.SyntaxKind.PlusEqualsToken) return null;
+    if (!ts.isIdentifier(inc.left) || inc.left.text !== loopVar) return null;
+    if (!ts.isNumericLiteral(inc.right) || inc.right.text !== "1") return null;
+  } else {
+    return null;
+  }
+
+  // Body: must be a single ExpressionStatement of shape `arr[loopVar] = <rhs>`
+  // where rhs is conservatively non-throwing.
+  const body = nextStmt.statement;
+  let bodyStmt: ts.Statement;
+  if (ts.isBlock(body)) {
+    if (body.statements.length !== 1) return null;
+    bodyStmt = body.statements[0]!;
+  } else {
+    bodyStmt = body;
+  }
+  if (!ts.isExpressionStatement(bodyStmt)) return null;
+  const assignExpr = bodyStmt.expression;
+  if (!ts.isBinaryExpression(assignExpr)) return null;
+  if (assignExpr.operatorToken.kind !== ts.SyntaxKind.EqualsToken) return null;
+
+  // Left: arr[loopVar]
+  const left = assignExpr.left;
+  if (!ts.isElementAccessExpression(left)) return null;
+  if (!ts.isIdentifier(left.expression) || left.expression.text !== arrName) return null;
+  if (!ts.isIdentifier(left.argumentExpression) || left.argumentExpression.text !== loopVar) return null;
+
+  // Right: must be conservatively non-throwing.
+  if (!isNonThrowingFillRhs(assignExpr.right)) return null;
+
+  // Final safety check: the RHS must NOT reference the array (would be a self-read,
+  // and grow-on-write semantics would behave differently than pre-sized + filled).
+  // Also reject if the RHS reassigns the bound identifier (only relevant for expr-case).
+  let rhsTouchesArr = false;
+  let rhsTouchesBound = false;
+  const visit = (node: ts.Node): void => {
+    if (ts.isIdentifier(node)) {
+      if (node.text === arrName) rhsTouchesArr = true;
+      if (bound.kind === "expr" && (bound.node as ts.Identifier).text === node.text) {
+        // The bound identifier appearing in RHS as a *read* is fine; we already verified
+        // the RHS is non-throwing and pure. The risk is only if it's *mutated* — but our
+        // allow-list (numeric arithmetic on identifiers, ternaries, etc.) doesn't include
+        // assignment forms, so no mutation can occur. Mark it so we know the RHS depends
+        // on the bound; doesn't disqualify, just observability.
+        rhsTouchesBound = true;
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(assignExpr.right);
+  if (rhsTouchesArr) return null;
+  // rhsTouchesBound is informational; intentionally not used to reject.
+  void rhsTouchesBound;
+
+  return bound;
+}
+
 export function compileArrayLiteral(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -1404,8 +1627,12 @@ export function compileArrayLiteral(
   }
 
   if (expr.elements.length === 0) {
-    // Detect counted push loop pattern and preallocate (#1001)
-    const prealloc = detectCountedPushLoopSize(expr);
+    // Detect counted push loop pattern and preallocate (#1001).
+    const pushPrealloc = detectCountedPushLoopSize(expr);
+    // Detect counted index-assign loop pattern and preallocate (#1198). Only consult
+    // this if the push detector didn't already match — the patterns are mutually
+    // exclusive at the syntactic level (one uses .push, the other uses [i] = ...).
+    const idxPrealloc = pushPrealloc > 0 ? null : detectCountedIndexAssignSize(expr);
 
     // Empty array — try to determine element type from contextual type (e.g. number[])
     let emptyElemKind = "externref";
@@ -1430,7 +1657,31 @@ export function compileArrayLiteral(
       return null;
     }
     fctx.body.push({ op: "i32.const", value: 0 }); // length field (field 0)
-    fctx.body.push({ op: "i32.const", value: prealloc > 0 ? prealloc : 0 }); // size for array.new_default (#1001: preallocate if counted push loop detected)
+    // Capacity for the backing WasmGC array. Three cases:
+    //   (1) Push pattern matched (#1001): emit literal trip count.
+    //   (2) Index-assign pattern matched (#1198) with literal N: emit i32.const N.
+    //   (3) Index-assign pattern matched (#1198) with identifier N: compile N as i32.
+    //   (4) No pattern: emit i32.const 0 (grow-on-write).
+    if (pushPrealloc > 0) {
+      fctx.body.push({ op: "i32.const", value: pushPrealloc });
+    } else if (idxPrealloc) {
+      if (idxPrealloc.kind === "literal") {
+        fctx.body.push({ op: "i32.const", value: idxPrealloc.count });
+      } else {
+        // Compile the bound expression as i32. Element-set codegen will still
+        // grow if the user index ever exceeds N (defensive: shouldn't happen
+        // in a correctly-matched pattern but the safety net costs nothing).
+        const sizeResult = compileExpression(ctx, fctx, idxPrealloc.node, { kind: "i32" });
+        if (!sizeResult) {
+          // Fallback: if compilation of the bound expression failed, emit 0
+          // and rely on grow-on-write. This shouldn't happen for an Identifier
+          // (the only kind we accept), but keep the fallback for safety.
+          fctx.body.push({ op: "i32.const", value: 0 });
+        }
+      }
+    } else {
+      fctx.body.push({ op: "i32.const", value: 0 });
+    }
     fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx }); // data field (field 1)
     fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx }); // wrap in vec struct
     return { kind: "ref_null", typeIdx: vecTypeIdx };
