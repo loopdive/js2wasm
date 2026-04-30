@@ -218,8 +218,13 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1188 | Setup js2.loopdive.com custom domain for GitHub Pages | medium | in-progress |
-| #1210 | labs/benchmarks: js2wasm string-hash Wasmtime lane hits 20s timeout — WasmGC i16-array GC pressure | high | in-progress |
 | #1211 | js2wasm hosted fib-recursive: Wasm validator — call param types must match | medium | in-progress |
+
+### Done
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1210 | labs/benchmarks: js2wasm string-hash Wasmtime lane hits 20s timeout — WasmGC i16-array GC pressure | high | done |
 
 ### Won't Fix
 

@@ -1631,18 +1631,6 @@
       "sprint": "46"
     },
     {
-      "id": "1210",
-      "title": "labs/benchmarks: js2wasm string-hash Wasmtime lane hits 20s timeout — WasmGC i16-array GC pressure",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [
-        "1178"
-      ],
-      "goal": "performance",
-      "status": "in-progress",
-      "sprint": "46"
-    },
-    {
       "id": "1206",
       "title": "fix(build-pages): copy benchmark JSONs + frame-nav-sync.js to top-level pages-dist paths (404s on landing page)",
       "priority": "medium",
@@ -1675,6 +1663,18 @@
   ],
   "review": [],
   "done": [
+    {
+      "id": "1210",
+      "title": "labs/benchmarks: js2wasm string-hash Wasmtime lane hits 20s timeout — WasmGC i16-array GC pressure",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1178"
+      ],
+      "goal": "performance",
+      "status": "done",
+      "sprint": "46"
+    },
     {
       "id": "1208",
       "title": "landing: surface ADRs — rename 'How it works' to 'Approach', add Architecture section with ADR HTML renderings",
