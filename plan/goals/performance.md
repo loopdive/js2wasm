@@ -51,7 +51,7 @@ eliminating the externref roundtrip.
 | **1120** | Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks | 45 | done | high |
 | **1121** | Infer numeric recursive fast path without JSDoc hints on exported entrypoints | 45 | done | high |
 | **1122** | Keep standalone recursive numeric benchmark stable across non-run entry exports | 45 | ready | high |
-| **1126** | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | 46 | ready | high |
+| **1126** | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | 47 | ready | high |
 | **1179** | Improve js2wasm `array-sum` hot-runtime perf — currently ~9× slower than Node and behind Javy | 45 | done | high |
 | **1184** | __str_copy_tree worklist allocates O(node.len) per flatten — bound by depth instead | 47 | ready | high |
 | **1195** | perf: escape-analysis scalarization for non-escaping arrays (eliminate array allocation in array-sum) | 47 | ready | high |

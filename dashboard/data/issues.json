@@ -528,7 +528,7 @@
       ],
       "goal": "performance",
       "status": "ready",
-      "sprint": "46"
+      "sprint": "47"
     },
     {
       "id": "1122",
@@ -685,16 +685,6 @@
       "goal": "ci-hardening",
       "status": "ready",
       "sprint": ""
-    },
-    {
-      "id": "1080",
-      "title": "[umbrella] Fix CI baseline-drift regression gate — main is not self-healing",
-      "priority": "critical",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "ci-hardening",
-      "status": "ready",
-      "sprint": "46"
     },
     {
       "id": "1075",
@@ -2616,6 +2606,16 @@
       "goal": "ci-hardening",
       "status": "done",
       "sprint": "40"
+    },
+    {
+      "id": "1080",
+      "title": "[umbrella] Fix CI baseline-drift regression gate — main is not self-healing",
+      "priority": "critical",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ci-hardening",
+      "status": "done",
+      "sprint": "45"
     },
     {
       "id": "1079",
