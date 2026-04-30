@@ -221,6 +221,30 @@ export interface FunctionContext {
     paramOffset: number;
     paramTypes: ValType[];
   };
+  /**
+   * #1210: bindings detected as `let s = ""; for (...) s += <expr>` builders
+   * whose storage should be rewritten to a doubling i16-array buffer at
+   * compile time. Populated by `detectStringBuilders` during the
+   * function-body pre-scan, BEFORE `hoistLetConstWithTdz` runs (so the
+   * hoist pass can skip pre-allocating these decls' locals).
+   */
+  pendingStringBuilders?: Set<ts.VariableDeclaration>;
+  /**
+   * #1210: live string-builder bindings keyed by binding name. While
+   * present, `s += <expr>` routes to `compileStringBuilderAppend`
+   * (in-place buffer write), and identifier reads materialize a fresh
+   * `$NativeString` view of the current buffer state via
+   * `emitStringBuilderRead`.
+   */
+  stringBuilders?: Map<
+    string,
+    {
+      bufLocalIdx: number; // ref_null $__str_data — the growable i16 buffer
+      lenLocalIdx: number; // i32 — current logical length
+      capLocalIdx: number; // i32 — current physical capacity (== buf.length)
+      materializedLocalIdx: number; // ref_null $AnyString — reserved for future cache
+    }
+  >;
 }
 
 /** Context shared across all codegen. */

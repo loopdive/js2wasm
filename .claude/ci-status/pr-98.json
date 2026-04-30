@@ -1,14 +1,17 @@
 {
   "pr": 98,
   "conclusion": "failure",
-  "head_branch": "issue-1061-multisource-allowjs",
-  "head_sha": "ac17673a1e8f93f782694be58606b4e674dda0ad",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24288421435",
-  "timestamp": "2026-04-11T18:12:31Z",
-  "pass": 21896,
-  "fail": 18599,
-  "compile_error": 1325,
-  "delta": 146,
-  "regressions": 4,
-  "improvements": 150
+  "head_branch": "issue-1205-tdz-async-gen",
+  "head_sha": "389476076f7eb4a30dc971c2251da4f52e415ab8",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25183686930",
+  "timestamp": "2026-04-30T19:05:33Z",
+  "pass": 25650,
+  "fail": 13771,
+  "compile_error": 2190,
+  "snapshot_delta": -173,
+  "net_per_test": -175,
+  "regressions": 320,
+  "regressions_real": 216,
+  "compile_timeouts": 104,
+  "improvements": 145
 }

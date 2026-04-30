@@ -557,6 +557,71 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
     });
   }
 
+  // --- $__str_buf_next_cap(curCap: i32, needed: i32) -> i32 ---
+  // Returns a capacity at least as large as `needed`, doubling `curCap` until
+  // the requirement is met. Used by the #1210 string-builder rewrite to size
+  // the growable i16 buffer with O(log N) reallocations instead of O(N) per
+  // `s += <expr>`. If `needed` exceeds INT32 doubling, returns `needed`
+  // directly (caller traps on out-of-memory at the array.new_default site).
+  {
+    const typeIdx = addFuncType(ctx, [{ kind: "i32" }, { kind: "i32" }], [{ kind: "i32" }]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_buf_next_cap", funcIdx);
+
+    // params: curCap(0), needed(1)
+    // Strategy: ensure at least 16 bytes, then double until >= needed.
+    const body: Instr[] = [
+      // if curCap < 16 then curCap = 16 (ensures starting size)
+      { op: "local.get", index: 0 },
+      { op: "i32.const", value: 16 },
+      { op: "i32.lt_s" },
+      {
+        op: "if",
+        blockType: { kind: "empty" },
+        then: [
+          { op: "i32.const", value: 16 },
+          { op: "local.set", index: 0 },
+        ],
+      },
+      // while (curCap < needed) curCap = curCap * 2
+      // block { loop { if (curCap >= needed) br outer; curCap *= 2; br inner } }
+      {
+        op: "block",
+        blockType: { kind: "empty" },
+        body: [
+          {
+            op: "loop",
+            blockType: { kind: "empty" },
+            body: [
+              // if curCap >= needed: br outer (depth 1)
+              { op: "local.get", index: 0 },
+              { op: "local.get", index: 1 },
+              { op: "i32.ge_s" },
+              { op: "br_if", depth: 1 },
+              // curCap *= 2
+              { op: "local.get", index: 0 },
+              { op: "i32.const", value: 1 },
+              { op: "i32.shl" },
+              { op: "local.set", index: 0 },
+              // restart loop
+              { op: "br", depth: 0 },
+            ],
+          },
+        ],
+      },
+      // return curCap
+      { op: "local.get", index: 0 },
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_buf_next_cap",
+      typeIdx,
+      locals: [],
+      body,
+      exported: false,
+    });
+  }
+
   // --- $__str_equals(a: ref $NativeString, b: ref $NativeString) -> i32 ---
   {
     const typeIdx = addFuncType(ctx, [strRef, strRef], [{ kind: "i32" }]);
