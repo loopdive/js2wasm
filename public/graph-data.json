@@ -16825,7 +16825,7 @@
       "title": "__str_copy_tree worklist allocates O(node.len) per flatten — bound by depth instead",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "46",
       "depends_on": [],
       "files": [],

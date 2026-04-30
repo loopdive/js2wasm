@@ -264,16 +264,6 @@
       "sprint": "47"
     },
     {
-      "id": "1184",
-      "title": "__str_copy_tree worklist allocates O(node.len) per flatten — bound by depth instead",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "performance",
-      "status": "ready",
-      "sprint": "46"
-    },
-    {
       "id": "1172",
       "title": "Codebase modularity audit — reduce coupling, improve layering, harden interfaces",
       "priority": "high",
@@ -1607,6 +1597,16 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "developer-experience",
+      "status": "in-progress",
+      "sprint": "46"
+    },
+    {
+      "id": "1184",
+      "title": "__str_copy_tree worklist allocates O(node.len) per flatten — bound by depth instead",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "performance",
       "status": "in-progress",
       "sprint": "46"
     },
