@@ -45,7 +45,7 @@ compilation boundaries, and simpler runtime/compiler interfaces.
 | **1169i** | IR Phase 4 Slice 10 — remaining builtins (RegExp, TypedArray, DataView) through the IR path | 45 | done | high |
 | **1169j** | IR Phase 4 Slice 10 step B — TypedArray construction + index access through IR | 46 | in-progress | medium |
 | **1169k** | IR Phase 4 Slice 10 step C — ArrayBuffer + DataView through IR | 46 | in-progress | medium |
-| **1169l** | IR Phase 4 Slice 10 step D — Date / Error / Map / Set through IR | 46 | ready | medium |
+| **1169l** | IR Phase 4 Slice 10 step D — Date / Error / Map / Set through IR | 46 | in-progress | medium |
 | **1169m** | IR Phase 4 Slice 10 step E — Promise through IR (best-effort) | 46 | ready | low |
 | **1181** | IR Phase 4 Slice 6 part 2 — AST→IR bridge for vec for-of (#1169e follow-up) | 45 | done | high |
 | **1182** | IR Phase 4 Slice 6 part 3 — host iterator protocol through the IR (`iter.*` instrs, Map/Set/generator iteration) | 45 | done | medium |

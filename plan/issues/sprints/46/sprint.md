@@ -200,7 +200,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1169 | IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen | high | ready |
-| #1169l | IR Phase 4 Slice 10 step D — Date / Error / Map / Set through IR | medium | ready |
 | #1169m | IR Phase 4 Slice 10 step E — Promise through IR (best-effort) | low | ready |
 | #1187 | test-runtime: add JS-string → native-string coercion helper for dual-run testing in nativeStrings mode | medium | ready |
 | #1190 | research: eliminate CI test262 baseline drift (umbrella for #1189, #1191, #1192) | high | ready |
@@ -217,6 +216,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 |---|---|---|---|
 | #1169j | IR Phase 4 Slice 10 step B — TypedArray construction + index access through IR | medium | in-progress |
 | #1169k | IR Phase 4 Slice 10 step C — ArrayBuffer + DataView through IR | medium | in-progress |
+| #1169l | IR Phase 4 Slice 10 step D — Date / Error / Map / Set through IR | medium | in-progress |
 | #1188 | Setup js2.loopdive.com custom domain for GitHub Pages | medium | in-progress |
 | #1211 | js2wasm hosted fib-recursive: Wasm validator — call param types must match | medium | in-progress |
 

@@ -16627,7 +16627,7 @@
       "title": "IR Phase 4 Slice 10 step D — Date / Error / Map / Set through IR",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "46",
       "depends_on": [],
       "files": [],
