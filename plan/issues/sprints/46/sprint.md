@@ -212,13 +212,13 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1205 | Extend TDZ flag boxing to async functions / generators (#1177-followup) — async-fn closure capture path needs Stage 2/3 wiring | high | ready |
 | #1209 | labs/benchmarks: js2wasm hosted lane fails — ESM resolver error in run-node-wasm-program.mjs | medium | ready |
 | #1210 | labs/benchmarks: js2wasm string-hash Wasmtime lane hits 20s timeout — WasmGC i16-array GC pressure | high | ready |
-| #1211 | js2wasm hosted fib-recursive: Wasm validator — call param types must match | medium | ready |
 
 ### In Progress
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1188 | Setup js2.loopdive.com custom domain for GitHub Pages | medium | in-progress |
+| #1211 | js2wasm hosted fib-recursive: Wasm validator — call param types must match | medium | in-progress |
 
 ### Won't Fix
 

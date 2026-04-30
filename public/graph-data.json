@@ -17149,7 +17149,7 @@
       "title": "js2wasm hosted fib-recursive: Wasm validator — call param types must match",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "46",
       "depends_on": [],
       "files": [],

@@ -117,16 +117,6 @@
   ],
   "ready": [
     {
-      "id": "1211",
-      "title": "js2wasm hosted fib-recursive: Wasm validator — call param types must match",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "compilable",
-      "status": "ready",
-      "sprint": "46"
-    },
-    {
       "id": "1210",
       "title": "labs/benchmarks: js2wasm string-hash Wasmtime lane hits 20s timeout — WasmGC i16-array GC pressure",
       "priority": "high",
@@ -1632,6 +1622,16 @@
     }
   ],
   "inprogress": [
+    {
+      "id": "1211",
+      "title": "js2wasm hosted fib-recursive: Wasm validator — call param types must match",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "compilable",
+      "status": "in-progress",
+      "sprint": "46"
+    },
     {
       "id": "1206",
       "title": "fix(build-pages): copy benchmark JSONs + frame-nav-sync.js to top-level pages-dist paths (404s on landing page)",
