@@ -206,6 +206,9 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1209 | labs/benchmarks: js2wasm hosted lane fails — ESM resolver error in run-node-wasm-program.mjs | medium | ready |
 | #1217 | ci(test262): smoke-canary — re-run main HEAD twice with fresh cache, fail if flip rate > 0 | medium | ready |
 | #1218 | ci(test262): auto-validate committed baseline on PR — spot-check 50 random pass entries | medium | ready |
+| #1219 | ArrayBindingPattern iter-close: destructuring hangs when iterator never sets done:true (26 compile_timeout tests) | high | ready |
+| #1220 | test262-worker: Promise snapshot missing + prototype poisoning leaks across fork tests (+29 conformance) | high | ready |
+| #1221 | test262-worker: outer catches misclassify WebAssembly.Exception as compile_error — fix harness to reclassify as fail (~256 flaky tests) | high | ready |
 
 ### In Progress
 

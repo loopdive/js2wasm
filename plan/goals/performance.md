@@ -59,7 +59,7 @@ eliminating the externref roundtrip.
 | **1196** | perf: bounds-check elimination via SSA on monotonic indexed array loops | 47 | ready | high |
 | **1197** | perf: i32 element specialization for `number[]` arrays under `\| 0` / `& mask` / `>> n` patterns | 47 | ready | high |
 | **1198** | perf: pre-size dense arrays at allocation site (`const a = []; for ... a[i] = ...` → `new Array(n)`) | 46 | ready | high |
-| **1198** | perf: pre-size dense arrays at allocation site (`const a = []; for ... a[i] = ...` → `new Array(n)`) | 47 | ready | high |
+| **1198** | perf: pre-size dense arrays at allocation site (`const a = []; for ... a[i] = ...` → `new Array(n)`) | 47 | in-progress | high |
 | **1199** | perf: linear-memory backing for typed numeric arrays (`Array<number>` with i32-only ops → `i32.load`/`i32.store`) | 48 | ready | medium |
 | **1200** | perf: loop-invariant code motion in optimizer pass (hoist `arr.length` etc. out of `for` conditions) | 48 | ready | medium |
 | **1209** | labs/benchmarks: js2wasm hosted lane fails — ESM resolver error in run-node-wasm-program.mjs | 46 | ready | medium |

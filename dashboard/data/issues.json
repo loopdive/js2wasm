@@ -117,6 +117,36 @@
   ],
   "ready": [
     {
+      "id": "1221",
+      "title": "test262-worker: outer catches misclassify WebAssembly.Exception as compile_error — fix harness to reclassify as fail (~256 flaky tests)",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "spec-conformance",
+      "status": "ready",
+      "sprint": "46"
+    },
+    {
+      "id": "1220",
+      "title": "test262-worker: Promise snapshot missing + prototype poisoning leaks across fork tests (+29 conformance)",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "spec-conformance",
+      "status": "ready",
+      "sprint": "46"
+    },
+    {
+      "id": "1219",
+      "title": "ArrayBindingPattern iter-close: destructuring hangs when iterator never sets done:true (26 compile_timeout tests)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-conformance",
+      "status": "ready",
+      "sprint": "46"
+    },
+    {
       "id": "1218",
       "title": "ci(test262): auto-validate committed baseline on PR — spot-check 50 random pass entries",
       "priority": "medium",
@@ -202,16 +232,6 @@
       "goal": "performance",
       "status": "ready",
       "sprint": "48"
-    },
-    {
-      "id": "1198",
-      "title": "perf: pre-size dense arrays at allocation site (`const a = []; for ... a[i] = ...` → `new Array(n)`)",
-      "priority": "high",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "performance",
-      "status": "ready",
-      "sprint": "46"
     },
     {
       "id": "1197",
@@ -1569,6 +1589,16 @@
       "goal": "correctness",
       "status": "in-progress",
       "sprint": "46"
+    },
+    {
+      "id": "1198",
+      "title": "perf: pre-size dense arrays at allocation site (`const a = []; for ... a[i] = ...` → `new Array(n)`)",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "performance",
+      "status": "in-progress",
+      "sprint": "47"
     },
     {
       "id": "1188",
