@@ -201,7 +201,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 |---|---|---|---|
 | #1169 | IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen | high | ready |
 | #1190 | research: eliminate CI test262 baseline drift (umbrella for #1189, #1191, #1192) | high | ready |
-| #1201 | credibility: per-path test262 scores in test262-report.json — wire categorical data into landing page and report.html | high | ready |
 | #1203 | credibility: differential testing harness — compare js2wasm output vs V8/SpiderMonkey on 1000+ programs | high | ready |
 | #1204 | credibility: methodology document — how js2wasm is built by an AI agent team | medium | ready |
 | #1205 | Extend TDZ flag boxing to async functions / generators (#1177-followup) — async-fn closure capture path needs Stage 2/3 wiring | high | ready |
@@ -212,19 +211,21 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1169j | IR Phase 4 Slice 10 step B — TypedArray construction + index access through IR | medium | in-progress |
-| #1169k | IR Phase 4 Slice 10 step C — ArrayBuffer + DataView through IR | medium | in-progress |
 | #1169l | IR Phase 4 Slice 10 step D — Date / Error / Map / Set through IR | medium | in-progress |
-| #1169m | IR Phase 4 Slice 10 step E — Promise through IR (best-effort) | low | in-progress |
-| #1187 | test-runtime: add JS-string → native-string coercion helper for dual-run testing in nativeStrings mode | medium | in-progress |
 | #1188 | Setup js2.loopdive.com custom domain for GitHub Pages | medium | in-progress |
-| #1211 | js2wasm hosted fib-recursive: Wasm validator — call param types must match | medium | in-progress |
-| #1212 | fix: Promise resolve/reject edge cases regress after #1211 any-boxing fix | medium | in-progress |
+| #1213 | ci: refresh-benchmarks workflow fails on every PR — looks for sidebar baseline at gitignored path | medium | in-progress |
 
 ### Done
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #1169k | IR Phase 4 Slice 10 step C — ArrayBuffer + DataView through IR | medium | done |
+| #1169m | IR Phase 4 Slice 10 step E — Promise through IR (best-effort) | low | done |
+| #1187 | test-runtime: add JS-string → native-string coercion helper for dual-run testing in nativeStrings mode | medium | done |
+| #1201 | credibility: per-path test262 scores in test262-report.json — wire categorical data into landing page and report.html | high | done |
 | #1210 | labs/benchmarks: js2wasm string-hash Wasmtime lane hits 20s timeout — WasmGC i16-array GC pressure | high | done |
+| #1211 | js2wasm hosted fib-recursive: Wasm validator — call param types must match | medium | done |
+| #1212 | fix: Promise resolve/reject edge cases regress after #1211 any-boxing fix | medium | done |
 
 ### Won't Fix
 

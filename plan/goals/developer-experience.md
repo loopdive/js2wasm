@@ -36,7 +36,7 @@ and internal tooling should make compiler work easier, not harder.
 | **1008** | Add mobile-first layout support to the playground | 45 | ready | medium |
 | **1039** | Landing page ES edition UI: circular progress prefix + per-feature error list |  | ready | medium |
 | **1147** | Add a public Docs page to the site | 45 | ready | medium |
-| **1187** | test-runtime: add JS-string → native-string coercion helper for dual-run testing in nativeStrings mode | 46 | in-progress | medium |
+| **1187** | test-runtime: add JS-string → native-string coercion helper for dual-run testing in nativeStrings mode | 46 | done | medium |
 | **1188** | Setup js2.loopdive.com custom domain for GitHub Pages | 46 | in-progress | medium |
 | **1193** | tooling: ci-status-watcher.sh hook doesn't push notifications to dev agents (uses gh @me which resolves to human, not agent) | 45 | done | medium |
 | **1206** | fix(build-pages): copy benchmark JSONs + frame-nav-sync.js to top-level pages-dist paths (404s on landing page) | 45 | in-progress | medium |
