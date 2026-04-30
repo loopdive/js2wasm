@@ -19,7 +19,7 @@ import type { FieldDef, Instr, StructTypeDef, ValType, WasmFunction } from "../i
 import { emitMethodParamDefaults, promoteAccessorCapturesToGlobals } from "./closures.js";
 import { popBody, pushBody } from "./context/bodies.js";
 import { reportError } from "./context/errors.js";
-import { allocLocal } from "./context/locals.js";
+import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
 import { emitUndefined, patchStructNewForAddedField } from "./expressions/late-imports.js";
 import { resolveStructName } from "./expressions/misc.js";
@@ -1350,6 +1350,201 @@ function detectCountedPushLoopSize(expr: ts.ArrayLiteralExpression): number {
   return tripCount;
 }
 
+/**
+ * Detect a counted dense-fill loop pattern after an empty array literal (#1198):
+ *   const arr = [];
+ *   for (let i = 0; i < N; i++) arr[i] = <pure expr involving i and outer locals>;
+ *
+ * This is the cousin of `detectCountedPushLoopSize` for `a[i] = …` instead of
+ * `a.push(…)`. The match unlocks pre-sizing the WasmGC backing array to N up
+ * front, eliminating O(n²) grow-and-copy churn that the per-write
+ * grow-on-demand path emits.
+ *
+ * Returns the loop-bound `ts.Expression` if the pattern matches, `null`
+ * otherwise. The caller compiles the expression to i32 at allocation time
+ * (literal `N` is constant-folded into `i32.const N`; an identifier compiles
+ * via the normal expression path with an i32 hint).
+ *
+ * **Conservative checks** — the matcher rejects shapes whose pre-sizing
+ * would change observable semantics:
+ *
+ * - Loop body must be **exactly** `arr[i] = expr` (one expression statement
+ *   wrapping a single assignment).
+ * - The RHS must be "non-throwing" — only NumericLiteral, Identifier,
+ *   PrefixUnary on the above, BinaryExpression composing the above. This
+ *   excludes calls, property access, and element access (any of which can
+ *   throw in JS, which would leave a partial-fill `arr.length` that doesn't
+ *   match the pre-sized value).
+ * - LHS must be `arr[i]` exactly — no `arr[i+1]`, no `arr[other]`, no
+ *   `arr.field` in the RHS that could read the array under construction.
+ * - The loop body must not reference `arr` anywhere else (rules out `arr
+ *   .length` reads, which would observe the pre-sized length immediately
+ *   instead of the grow-as-you-go length).
+ */
+function detectCountedFillLoopBound(expr: ts.ArrayLiteralExpression): ts.Expression | null {
+  // Same outer-walk as detectCountedPushLoopSize: literal must be the
+  // initializer of a single variable declaration whose next sibling
+  // statement is the for-loop.
+  const varDecl = expr.parent;
+  if (!varDecl || !ts.isVariableDeclaration(varDecl) || !ts.isIdentifier(varDecl.name)) return null;
+  const arrName = varDecl.name.text;
+
+  const declList = varDecl.parent;
+  if (!declList || !ts.isVariableDeclarationList(declList)) return null;
+  const varStmt = declList.parent;
+  if (!varStmt || !ts.isVariableStatement(varStmt)) return null;
+
+  const block = varStmt.parent;
+  if (!block) return null;
+  let stmts: ts.NodeArray<ts.Statement>;
+  if (ts.isBlock(block)) stmts = block.statements;
+  else if (ts.isSourceFile(block)) stmts = block.statements;
+  else return null;
+
+  const idx = stmts.indexOf(varStmt);
+  if (idx < 0 || idx + 1 >= stmts.length) return null;
+  const nextStmt = stmts[idx + 1]!;
+  if (!ts.isForStatement(nextStmt)) return null;
+
+  // Initializer: `let i = 0` (or var). Single declaration, init === 0.
+  const init = nextStmt.initializer;
+  if (!init || !ts.isVariableDeclarationList(init)) return null;
+  if (init.declarations.length !== 1) return null;
+  const loopDecl = init.declarations[0]!;
+  if (!ts.isIdentifier(loopDecl.name)) return null;
+  const loopVar = loopDecl.name.text;
+  if (!loopDecl.initializer || !ts.isNumericLiteral(loopDecl.initializer) || loopDecl.initializer.text !== "0") {
+    return null;
+  }
+
+  // Condition: `i < BOUND` where BOUND is any expression. We capture it for
+  // the caller to compile; we never evaluate it here.
+  const cond = nextStmt.condition;
+  if (!cond || !ts.isBinaryExpression(cond)) return null;
+  if (cond.operatorToken.kind !== ts.SyntaxKind.LessThanToken) return null;
+  if (!ts.isIdentifier(cond.left) || cond.left.text !== loopVar) return null;
+  const boundExpr = cond.right;
+
+  // BOUND may not reference the array under construction — that would
+  // observe the pre-sized length and change semantics.
+  if (!isExprFreeOfReference(boundExpr, arrName)) return null;
+
+  // Incrementor: `i++` or `++i`.
+  const inc = nextStmt.incrementor;
+  if (!inc) return null;
+  if (ts.isPostfixUnaryExpression(inc) || ts.isPrefixUnaryExpression(inc)) {
+    if (inc.operator !== ts.SyntaxKind.PlusPlusToken) return null;
+    if (!ts.isIdentifier(inc.operand) || inc.operand.text !== loopVar) return null;
+  } else {
+    return null;
+  }
+
+  // Body: exactly one expression statement of shape `arr[loopVar] = pureExpr`.
+  const bodyStmtNode = nextStmt.statement;
+  let bodyStmt: ts.Statement;
+  if (ts.isBlock(bodyStmtNode)) {
+    if (bodyStmtNode.statements.length !== 1) return null;
+    bodyStmt = bodyStmtNode.statements[0]!;
+  } else {
+    bodyStmt = bodyStmtNode;
+  }
+  if (!ts.isExpressionStatement(bodyStmt)) return null;
+  const assign = bodyStmt.expression;
+  if (!ts.isBinaryExpression(assign)) return null;
+  if (assign.operatorToken.kind !== ts.SyntaxKind.EqualsToken) return null;
+
+  // LHS: `arr[loopVar]`.
+  const lhs = assign.left;
+  if (!ts.isElementAccessExpression(lhs)) return null;
+  if (!ts.isIdentifier(lhs.expression) || lhs.expression.text !== arrName) return null;
+  if (!ts.isIdentifier(lhs.argumentExpression) || lhs.argumentExpression.text !== loopVar) return null;
+
+  // RHS must be pure (non-throwing) AND must not reference the array.
+  if (!isPureFillRhs(assign.right, arrName)) return null;
+
+  return boundExpr;
+}
+
+/**
+ * Is `expr` a "pure" fill RHS — guaranteed non-throwing and free of any read
+ * of `arrName`? Conservative: only literals, identifier reads, parenthesized
+ * versions of those, and unary / binary compositions of the above.
+ */
+function isPureFillRhs(expr: ts.Expression, arrName: string): boolean {
+  if (ts.isParenthesizedExpression(expr)) return isPureFillRhs(expr.expression, arrName);
+  if (ts.isNumericLiteral(expr)) return true;
+  if (expr.kind === ts.SyntaxKind.TrueKeyword || expr.kind === ts.SyntaxKind.FalseKeyword) return true;
+  if (expr.kind === ts.SyntaxKind.NullKeyword) return true;
+  if (ts.isStringLiteral(expr)) return true;
+  if (ts.isIdentifier(expr)) {
+    // Plain identifier read is pure (variable access doesn't throw); but we
+    // must reject reads of the array under construction.
+    return expr.text !== arrName;
+  }
+  if (ts.isPrefixUnaryExpression(expr)) {
+    const op = expr.operator;
+    // Only allow safely-pure unary ops. `++`/`--` are mutations (could
+    // touch the array if the operand is a complex thing); we keep it
+    // simple and allow `+` `-` `~` `!` only.
+    if (
+      op === ts.SyntaxKind.PlusToken ||
+      op === ts.SyntaxKind.MinusToken ||
+      op === ts.SyntaxKind.TildeToken ||
+      op === ts.SyntaxKind.ExclamationToken
+    ) {
+      return isPureFillRhs(expr.operand, arrName);
+    }
+    return false;
+  }
+  if (ts.isBinaryExpression(expr)) {
+    // Reject assignment / compound-assignment.
+    const k = expr.operatorToken.kind;
+    if (
+      k === ts.SyntaxKind.EqualsToken ||
+      k === ts.SyntaxKind.PlusEqualsToken ||
+      k === ts.SyntaxKind.MinusEqualsToken ||
+      k === ts.SyntaxKind.AsteriskEqualsToken ||
+      k === ts.SyntaxKind.SlashEqualsToken ||
+      k === ts.SyntaxKind.PercentEqualsToken ||
+      k === ts.SyntaxKind.AmpersandEqualsToken ||
+      k === ts.SyntaxKind.BarEqualsToken ||
+      k === ts.SyntaxKind.CaretEqualsToken ||
+      k === ts.SyntaxKind.LessThanLessThanEqualsToken ||
+      k === ts.SyntaxKind.GreaterThanGreaterThanEqualsToken ||
+      k === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken ||
+      k === ts.SyntaxKind.AsteriskAsteriskEqualsToken ||
+      k === ts.SyntaxKind.QuestionQuestionEqualsToken ||
+      k === ts.SyntaxKind.BarBarEqualsToken ||
+      k === ts.SyntaxKind.AmpersandAmpersandEqualsToken ||
+      k === ts.SyntaxKind.CommaToken
+    ) {
+      return false;
+    }
+    return isPureFillRhs(expr.left, arrName) && isPureFillRhs(expr.right, arrName);
+  }
+  return false;
+}
+
+/**
+ * Cheap walk that returns true iff `expr` doesn't textually reference
+ * the identifier `name`. We scan the AST and reject any Identifier whose
+ * text matches; PropertyAccessExpression names (the `.foo` part) are
+ * skipped because they are not variable references.
+ */
+function isExprFreeOfReference(expr: ts.Node, name: string): boolean {
+  if (ts.isIdentifier(expr)) return expr.text !== name;
+  if (ts.isPropertyAccessExpression(expr)) {
+    return isExprFreeOfReference(expr.expression, name);
+    // expr.name is a property *name*, not a variable reference — skipped.
+  }
+  let ok = true;
+  expr.forEachChild((child) => {
+    if (!ok) return;
+    if (!isExprFreeOfReference(child, name)) ok = false;
+  });
+  return ok;
+}
+
 export function compileArrayLiteral(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -1406,6 +1601,13 @@ export function compileArrayLiteral(
   if (expr.elements.length === 0) {
     // Detect counted push loop pattern and preallocate (#1001)
     const prealloc = detectCountedPushLoopSize(expr);
+    // Detect counted dense-fill loop pattern (#1198) — sister of the
+    // push-loop matcher. When the array is followed by a
+    // `for (let i = 0; i < N; i++) arr[i] = pureExpr` loop, we know the
+    // final length is exactly N and we can pre-size both the data buffer
+    // and the vec.length field, eliminating the O(n²) grow-and-copy cost
+    // the per-write grow-on-demand path otherwise pays.
+    const fillBoundExpr = prealloc > 0 ? null : detectCountedFillLoopBound(expr);
 
     // Empty array — try to determine element type from contextual type (e.g. number[])
     let emptyElemKind = "externref";
@@ -1429,6 +1631,44 @@ export function compileArrayLiteral(
       reportError(ctx, expr, "Empty array literal: invalid vec type");
       return null;
     }
+
+    if (fillBoundExpr !== null) {
+      // Dense-fill prealloc (#1198): emit `vec.length = N` AND
+      // `vec.data = array.new_default(N)`. Setting length=N up front
+      // matches the post-loop observable state — `arr.length === N`
+      // after every iteration writes its slot — so the optimization
+      // preserves semantics for the canonical pattern detected.
+      //
+      // For a literal-numeric bound, fold to `i32.const N`.
+      // Otherwise compile the bound expression with an i32 hint and
+      // tee into a temp local so we can use it for both the struct's
+      // length field and the array.new_default size.
+      if (ts.isNumericLiteral(fillBoundExpr)) {
+        const n = Number(fillBoundExpr.text);
+        if (Number.isFinite(n) && n >= 0 && n <= 1_000_000_000) {
+          fctx.body.push({ op: "i32.const", value: n }); // length field
+          fctx.body.push({ op: "i32.const", value: n }); // size for array.new_default
+          fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
+          fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+          return { kind: "ref_null", typeIdx: vecTypeIdx };
+        }
+        // Fall through to the empty-allocation path on out-of-range
+        // literals; preserves grow-on-write semantics for pathological
+        // cases without changing observable behaviour.
+      } else {
+        // Identifier or expression bound. Compile with i32 hint and
+        // stash in a temp local so we can re-emit it for both fields.
+        const tmpN = allocTempLocal(fctx, { kind: "i32" });
+        compileExpression(ctx, fctx, fillBoundExpr, { kind: "i32" });
+        fctx.body.push({ op: "local.tee", index: tmpN }); // length field (top of stack)
+        fctx.body.push({ op: "local.get", index: tmpN }); // size for array.new_default
+        fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx });
+        fctx.body.push({ op: "struct.new", typeIdx: vecTypeIdx });
+        releaseTempLocal(fctx, tmpN);
+        return { kind: "ref_null", typeIdx: vecTypeIdx };
+      }
+    }
+
     fctx.body.push({ op: "i32.const", value: 0 }); // length field (field 0)
     fctx.body.push({ op: "i32.const", value: prealloc > 0 ? prealloc : 0 }); // size for array.new_default (#1001: preallocate if counted push loop detected)
     fctx.body.push({ op: "array.new_default", typeIdx: arrTypeIdx }); // data field (field 1)
