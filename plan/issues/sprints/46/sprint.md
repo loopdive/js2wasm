@@ -214,6 +214,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1203 | credibility: differential testing harness — compare js2wasm output vs V8/SpiderMonkey on 1000+ programs | high | in-progress |
 | #1204 | credibility: methodology document — how js2wasm is built by an AI agent team | medium | in-progress |
 | #1213 | ci: refresh-benchmarks workflow fails on every PR — looks for sidebar baseline at gitignored path | medium | in-progress |
+| #1214 | ci: playground benchmark baseline doesn't survive on CI runners — wasm/js timing 4x off committed numbers | medium | in-progress |
 
 ### Done
 
