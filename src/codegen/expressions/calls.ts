@@ -5050,45 +5050,46 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             // tee into a new outer-fctx local, and re-aim
             // `fctx.tdzFlagLocals` + `fctx.boxedTdzFlags` so subsequent
             // emitLocalTdzInit / emitLocalTdzCheck in the outer scope route
-            // through the same box. This is the construct-time piece that
-            // makes a *subsequent* arrow-closure capture in the same outer
-            // scope share the same box (matches closures.ts:2110-2114).
+            // through the same box.
             //
             // #1205 sourcing rules — the i32 flag must come from a location
-            // we can verify is an i32 in the *current* fctx. Three cases:
+            // we can verify is an i32 in the *current* fctx. Two cases:
             //
             //   1. Live `fctx.tdzFlagLocals.get(name)` returns an idx whose
-            //      local type is i32 — use it directly (the common case).
-            //   2. Live lookup is missing or wrong-typed (block-scope
-            //      shadow cleared the map; fn-decl hoisted past a try
-            //      block) but `cap.outerTdzFlagIdx` points to an i32 local
-            //      in *this* fctx — use the stored idx. This is the
-            //      same-fctx-different-block case.
-            //   3. Neither sourcing path gives us a verified-i32 local.
-            //      We're in the cross-function transitive case (e.g. fn A
-            //      calls fn B from a sibling fctx where B's captured flag
-            //      doesn't exist) — the architect's spec marks this
-            //      out-of-scope. Push i32.const 1 (treat as initialized)
-            //      so we generate a type-valid call. Inside the lifted
-            //      body, the TDZ check will pass — semantically wrong if
-            //      the variable is in TDZ at the transitive call site,
-            //      but matches the pre-#1205 behavior where the lifted
-            //      body had no flag at all.
+            //      local type is i32 in the current fctx — use it directly.
+            //      This is the common case (fn-decl hoisted in same fctx
+            //      as the let-decl, no block shadowing in between).
+            //
+            //   2. Live lookup is missing or points to a non-i32 local.
+            //      This covers two sub-cases that we treat the same way:
+            //
+            //      a. Block-scope shadow cleared the live entry. The
+            //         stored `cap.outerTdzFlagIdx` still points to an i32
+            //         local — but its RUNTIME VALUE is stale, because the
+            //         inner let-decl's `emitLocalTdzInit` was a no-op
+            //         (the live entry was deleted by `saveBlockScopedShadows`)
+            //         so the flag was never set to 1 inside the block.
+            //
+            //      b. Cross-function transitive (fn A calls fn B and B
+            //         captures a TDZ-flagged var that A does NOT capture).
+            //         A's fctx has no source for B's flag. The stored idx
+            //         points to a slot in B's hoist fctx, NOT in A's.
+            //
+            //      In both sub-cases, we cannot trust any runtime i32
+            //      slot in the current fctx to give us the right flag
+            //      value. Push `i32.const 1` (treat as initialized).
+            //      This matches the pre-#1205 behavior, where the lifted
+            //      body had no flag check at all — the call site's
+            //      static TDZ analysis (calls.ts:4968-4977 above this
+            //      block) is the authoritative pre-call check; if it
+            //      didn't fire, the variable is past its TDZ.
             const liveFlagIdx = fctx.tdzFlagLocals?.get(cap.name);
             const liveType = liveFlagIdx !== undefined ? getLocalType(fctx, liveFlagIdx) : undefined;
             const liveOk = liveType?.kind === "i32";
-            const storedIdx = cap.outerTdzFlagIdx;
-            const storedType = storedIdx !== undefined ? getLocalType(fctx, storedIdx) : undefined;
-            const storedOk = storedType?.kind === "i32";
-            let oldFlagIdx: number | undefined;
-            if (liveOk) oldFlagIdx = liveFlagIdx;
-            else if (storedOk) oldFlagIdx = storedIdx;
-            if (oldFlagIdx !== undefined) {
-              fctx.body.push({ op: "local.get", index: oldFlagIdx });
+            if (liveOk && liveFlagIdx !== undefined) {
+              fctx.body.push({ op: "local.get", index: liveFlagIdx });
               fctx.body.push({ op: "struct.new", typeIdx: i32RefCellTypeIdx });
             } else {
-              // Cross-fctx transitive — degrade gracefully (out of scope per
-              // #1205 spec). Push initialized flag so the call validates.
               fctx.body.push({ op: "i32.const", value: 1 });
               fctx.body.push({ op: "struct.new", typeIdx: i32RefCellTypeIdx });
             }
@@ -5097,10 +5098,12 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
               typeIdx: i32RefCellTypeIdx,
             });
             fctx.body.push({ op: "local.tee", index: flagBoxLocal });
-            // Only re-aim outer fctx's flag maps if we sourced from THIS
-            // fctx — otherwise we'd corrupt the maps with a synthetic box
-            // that has no relationship to any actual outer flag.
-            if (oldFlagIdx !== undefined) {
+            // Only re-aim outer fctx's flag maps when we sourced from a
+            // verified i32 in THIS fctx — otherwise we'd corrupt the maps
+            // with a synthetic box that has no relationship to any actual
+            // outer flag, which would in turn break later TDZ checks /
+            // initializations in the outer scope.
+            if (liveOk) {
               if (!fctx.boxedTdzFlags) fctx.boxedTdzFlags = new Map();
               fctx.boxedTdzFlags.set(cap.name, {
                 refCellTypeIdx: i32RefCellTypeIdx,

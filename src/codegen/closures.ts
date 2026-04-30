@@ -2756,12 +2756,10 @@ export function emitFuncRefAsClosure(
     // #1205 Stage 3: after all value captures, push the boxed TDZ flag refs
     // (one per TDZ-flagged capture). Sourcing rules mirror calls.ts — see
     // the FNDECL-A4 cap-prepend block there for the full rationale. The
-    // short version: prefer live `fctx.tdzFlagLocals[name]` if it points to
-    // an i32 in the current fctx; fall back to the stored
-    // `cap.outerTdzFlagIdx` if THAT is an i32; otherwise we're in the
-    // cross-fctx transitive case (out of scope per #1205) and degrade
-    // gracefully by pushing an initialized i32 flag so the closure
-    // construction stays type-valid.
+    // short version: only trust the LIVE `fctx.tdzFlagLocals[name]` lookup
+    // when it points to an i32 in the current fctx. Otherwise (block-shadow
+    // or cross-fctx transitive) push `i32.const 1` (treat as initialized) —
+    // matches pre-#1205 behavior where the lifted body had no flag check.
     if (numTdzFlags > 0) {
       for (const cap of tdzFlaggedNested) {
         const existingBox = fctx.boxedTdzFlags?.get(cap.name);
@@ -2771,14 +2769,8 @@ export function emitFuncRefAsClosure(
           const liveFlagIdx = fctx.tdzFlagLocals?.get(cap.name);
           const liveType = liveFlagIdx !== undefined ? getLocalType(fctx, liveFlagIdx) : undefined;
           const liveOk = liveType?.kind === "i32";
-          const storedIdx = cap.outerTdzFlagIdx;
-          const storedType = storedIdx !== undefined ? getLocalType(fctx, storedIdx) : undefined;
-          const storedOk = storedType?.kind === "i32";
-          let oldFlagIdx: number | undefined;
-          if (liveOk) oldFlagIdx = liveFlagIdx;
-          else if (storedOk) oldFlagIdx = storedIdx;
-          if (oldFlagIdx !== undefined) {
-            fctx.body.push({ op: "local.get", index: oldFlagIdx });
+          if (liveOk && liveFlagIdx !== undefined) {
+            fctx.body.push({ op: "local.get", index: liveFlagIdx });
             fctx.body.push({ op: "struct.new", typeIdx: i32RefCellTypeIdxForFlags });
           } else {
             fctx.body.push({ op: "i32.const", value: 1 });
@@ -2789,7 +2781,7 @@ export function emitFuncRefAsClosure(
             typeIdx: i32RefCellTypeIdxForFlags,
           });
           fctx.body.push({ op: "local.tee", index: flagBoxLocal });
-          if (oldFlagIdx !== undefined) {
+          if (liveOk) {
             if (!fctx.boxedTdzFlags) fctx.boxedTdzFlags = new Map();
             fctx.boxedTdzFlags.set(cap.name, {
               refCellTypeIdx: i32RefCellTypeIdxForFlags,
