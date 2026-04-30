@@ -1,14 +1,17 @@
 {
   "pr": 94,
   "conclusion": "failure",
-  "head_branch": "issue-1055-regexp-modifier-syntax",
-  "head_sha": "20f70effc8adf084560f8dc368b3142f16d1e8c8",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24287188326",
-  "timestamp": "2026-04-11T17:02:34Z",
-  "pass": 21986,
-  "fail": 18508,
-  "compile_error": 1325,
-  "delta": 236,
-  "regressions": 5,
-  "improvements": 241
+  "head_branch": "issue-1187-test-runtime-string-coerce",
+  "head_sha": "a358287a4517f2c7e82481138f30cae71a110230",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25182408064",
+  "timestamp": "2026-04-30T18:34:59Z",
+  "pass": 25807,
+  "fail": 13921,
+  "compile_error": 1850,
+  "snapshot_delta": 190,
+  "net_per_test": -21,
+  "regressions": 153,
+  "regressions_real": 26,
+  "compile_timeouts": 127,
+  "improvements": 132
 }
