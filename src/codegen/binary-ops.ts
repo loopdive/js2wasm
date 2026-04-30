@@ -13,6 +13,7 @@ import {
   isWrapperObjectType,
 } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
+import { isAnyValue } from "./any-helpers.js";
 import { reportError } from "./context/errors.js";
 import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
@@ -1276,6 +1277,18 @@ export function compileBinaryExpression(
       releaseTempLocal(fctx, tmpR);
       return compileNumericBinaryOp(ctx, fctx, op, expr);
     }
+    // For arithmetic / bitwise ops on two i32 operands, use compileI32BinaryOp
+    // which emits the matching i32 instruction (i32.add, i32.sub, …).
+    // compileBooleanBinaryOp only handles comparison/equality — its `default:`
+    // arm falls through silently on `+ - * %` etc., leaving both operands on
+    // the stack with no combining op (#1211: caused recursive `f(n - 1)` in
+    // any-typed fast-mode functions to be miscompiled into `f(1)` because the
+    // TS-checker types the recursive param as `any`, so the i32-arith guard at
+    // line ~1202 above (which requires `isNumberType(leftTsType)`) doesn't
+    // fire and the dispatch falls into this branch instead).
+    if (leftType.kind === "i32" && rightType.kind === "i32" && isNumericOp) {
+      return compileI32BinaryOp(ctx, fctx, op, expr);
+    }
     return compileBooleanBinaryOp(ctx, fctx, op);
   }
 
@@ -1667,10 +1680,24 @@ function compileAnyBinaryDispatch(
   const funcIdx = ctx.funcMap.get(helperName);
   if (funcIdx === undefined) return null;
 
-  // Compile both operands without numeric hint so they produce ref $AnyValue
+  // Compile both operands. The helpers (`__any_add`, `__any_eq`, …) all take
+  // `(ref null $AnyValue, ref null $AnyValue)` parameters, so any operand
+  // that didn't naturally produce an AnyValue must be boxed before the call.
+  // Without this coercion, recursive `any`-typed functions whose body
+  // contains `f(...) + f(...)` validate as "call param types must match"
+  // because the recursive call returns f64 (or i32) while the helper
+  // expects ref $AnyValue (#1211).
+  const anyValueTarget: ValType = { kind: "ref_null", typeIdx: ctx.anyValueTypeIdx };
   const leftType = compileExpression(ctx, fctx, expr.left);
+  if (!leftType) return null;
+  if (!isAnyValue(leftType, ctx)) {
+    coerceType(ctx, fctx, leftType, anyValueTarget);
+  }
   const rightType = compileExpression(ctx, fctx, expr.right);
-  if (!leftType || !rightType) return null;
+  if (!rightType) return null;
+  if (!isAnyValue(rightType, ctx)) {
+    coerceType(ctx, fctx, rightType, anyValueTarget);
+  }
 
   fctx.body.push({ op: "call", funcIdx });
 
