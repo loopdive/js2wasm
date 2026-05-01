@@ -76,6 +76,7 @@
     "lint": "biome lint --diagnostic-level=error",
     "typecheck": "tsc --noEmit",
     "generate:editions": "npx tsx scripts/generate-editions.ts",
+    "generate:feature-examples": "npx tsx scripts/generate-feature-examples.ts",
     "generate:size-benchmarks": "npx tsx scripts/generate-size-benchmarks.ts",
     "generate:browser-runtime-benchmarks": "node scripts/generate-browser-runtime-benchmarks.mjs",
     "build:planning-artifacts": "node scripts/build-planning-artifacts.mjs",
