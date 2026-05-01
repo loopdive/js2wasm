@@ -202,14 +202,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 |---|---|---|---|
 | #1169 | IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen | high | ready |
 
-### In Progress
-
-| Issue | Title | Priority | Status |
-|---|---|---|---|
-| #1205 | Extend TDZ flag boxing to async functions / generators (#1177-followup) — async-fn closure capture path needs Stage 2/3 wiring | high | in-progress |
-| #1217 | ci(test262): smoke-canary — re-run main HEAD twice with fresh cache, fail if flip rate > 0 | medium | in-progress |
-| #1218 | ci(test262): auto-validate committed baseline on PR — spot-check 50 random pass entries | medium | in-progress |
-
 ### Done
 
 | Issue | Title | Priority | Status |
@@ -228,6 +220,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1201 | credibility: per-path test262 scores in test262-report.json — wire categorical data into landing page and report.html | high | done |
 | #1203 | credibility: differential testing harness — compare js2wasm output vs V8/SpiderMonkey on 1000+ programs | high | done |
 | #1204 | credibility: methodology document — how js2wasm is built by an AI agent team | medium | done |
+| #1205 | Extend TDZ flag boxing to async functions / generators (#1177-followup) — async-fn closure capture path needs Stage 2/3 wiring | high | done |
 | #1209 | labs/benchmarks: js2wasm hosted lane fails — ESM resolver error in run-node-wasm-program.mjs | medium | done |
 | #1210 | labs/benchmarks: js2wasm string-hash Wasmtime lane hits 20s timeout — WasmGC i16-array GC pressure | high | done |
 | #1211 | js2wasm hosted fib-recursive: Wasm validator — call param types must match | medium | done |
@@ -236,6 +229,8 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1214 | ci: playground benchmark baseline doesn't survive on CI runners — wasm/js timing 4x off committed numbers | medium | done |
 | #1215 | fix: numeric-array .join() / .toString() must register number_toString — Wasm validation error | high | done |
 | #1216 | ci: auto-commit playground benchmark baseline on push-to-main (architectural follow-up to #1214) | medium | done |
+| #1217 | ci(test262): smoke-canary — re-run main HEAD twice with fresh cache, fail if flip rate > 0 | medium | done |
+| #1218 | ci(test262): auto-validate committed baseline on PR — spot-check 50 random pass entries | medium | done |
 | #1219 | ArrayBindingPattern iter-close: destructuring hangs when iterator never sets done:true (26 compile_timeout tests) | high | done |
 | #1220 | test262-worker: Promise snapshot missing + prototype poisoning leaks across fork tests (+29 conformance) | high | done |
 | #1221 | test262-worker: outer catches misclassify WebAssembly.Exception as compile_error — fix harness to reclassify as fail (~256 flaky tests) | high | done |
