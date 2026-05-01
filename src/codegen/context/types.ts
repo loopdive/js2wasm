@@ -30,6 +30,8 @@ export interface CodegenOptions {
   fast?: boolean;
   /** Use WasmGC-native strings instead of wasm:js-string imports */
   nativeStrings?: boolean;
+  /** Test-only: emit `__test_str_from_externref` / `__test_str_to_externref` exports (#1187). */
+  testRuntime?: boolean;
   /** WASI target: emit WASI imports (fd_write, proc_exit) instead of JS host imports */
   wasi?: boolean;
   /**
@@ -219,6 +221,30 @@ export interface FunctionContext {
     paramOffset: number;
     paramTypes: ValType[];
   };
+  /**
+   * #1210: bindings detected as `let s = ""; for (...) s += <expr>` builders
+   * whose storage should be rewritten to a doubling i16-array buffer at
+   * compile time. Populated by `detectStringBuilders` during the
+   * function-body pre-scan, BEFORE `hoistLetConstWithTdz` runs (so the
+   * hoist pass can skip pre-allocating these decls' locals).
+   */
+  pendingStringBuilders?: Set<ts.VariableDeclaration>;
+  /**
+   * #1210: live string-builder bindings keyed by binding name. While
+   * present, `s += <expr>` routes to `compileStringBuilderAppend`
+   * (in-place buffer write), and identifier reads materialize a fresh
+   * `$NativeString` view of the current buffer state via
+   * `emitStringBuilderRead`.
+   */
+  stringBuilders?: Map<
+    string,
+    {
+      bufLocalIdx: number; // ref_null $__str_data — the growable i16 buffer
+      lenLocalIdx: number; // i32 — current logical length
+      capLocalIdx: number; // i32 — current physical capacity (== buf.length)
+      materializedLocalIdx: number; // ref_null $AnyString — reserved for future cache
+    }
+  >;
 }
 
 /** Context shared across all codegen. */
@@ -414,6 +440,10 @@ export interface CodegenContext {
   nativeStrHelpersEmitted: boolean;
   /** Whether native string host bridge helpers have been emitted */
   nativeStrExternBridgeEmitted: boolean;
+  /** Whether the testRuntime string helpers (#1187) have been emitted */
+  testRuntimeStringHelpersEmitted: boolean;
+  /** Test-only: emit testRuntime string-coercion exports (#1187). */
+  testRuntime: boolean;
   /** Map from native string helper name → function index */
   nativeStrHelpers: Map<string, number>;
   /** Map from value type kind → ref cell struct type index */

@@ -1,15 +1,17 @@
 {
   "pr": 114,
   "conclusion": "failure",
-  "head_branch": "test/revert-all-three-probe",
-  "head_sha": "377f54d3033c1318a1dc4aea9ba18a8715c180b4",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24290813706",
-  "timestamp": "2026-04-11T20:25:16Z",
-  "pass": 22157,
-  "fail": 18337,
-  "compile_error": 1326,
-  "snapshot_delta": 1533,
-  "net_per_test": 1533,
-  "regressions": 82,
-  "improvements": 1615
+  "head_branch": "issue-1220-test262-worker-snapshots",
+  "head_sha": "366d8b6cf8abf5157239cb1efee3ff361abbf527",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25207893885",
+  "timestamp": "2026-05-01T08:27:19Z",
+  "pass": 25872,
+  "fail": 13886,
+  "compile_error": 1776,
+  "snapshot_delta": 254,
+  "net_per_test": 31,
+  "regressions": 104,
+  "regressions_real": 18,
+  "compile_timeouts": 86,
+  "improvements": 135
 }

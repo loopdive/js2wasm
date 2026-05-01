@@ -411,6 +411,14 @@ export function runTest262Chunk(chunkIndex: number, totalChunks: number) {
                   }
                 }
               } catch (e: any) {
+                // #1221: recordResult() throws a ConformanceError after
+                // writing the JSONL row whenever status !== "pass". If we
+                // catch THAT and call recordResult again, we double-write
+                // the row (e.g. a "fail" row followed by a "compile_error"
+                // row prefixed "[fail] …"). Re-throw so the inner record
+                // is the only JSONL entry, matching the non-FIXTURE path
+                // which has no outer catch.
+                if (e instanceof ConformanceError) throw e;
                 recordResult(relPath, category, "compile_error", e.message ?? String(e), undefined, scopeInfo);
               }
               return;

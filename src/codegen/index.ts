@@ -76,6 +76,7 @@ import {
 } from "./declarations.js";
 import { destructureParamArray, destructureParamObject } from "./destructuring-params.js";
 import {
+  emitTestRuntimeStringHelpers,
   ensureNativeStringExternBridge,
   ensureNativeStringHelpers,
   flatStringType,
@@ -641,6 +642,25 @@ export function generateModule(
     // Register only the extern class imports actually used in source code
     collectUsedExternImports(ctx, ast.sourceFile);
 
+    // #1187 — pre-register imports needed by the testRuntime string-coercion
+    // helpers BEFORE `collectAllSourceImports` runs. The unified collector's
+    // finalize step registers native-string runtime helpers (via
+    // `ensureNativeStringHelpers`) as DEFINED functions at the current
+    // `numImportFuncs` boundary; if we add testRuntime imports AFTER that, the
+    // already-emitted helper bodies hold stale `call funcIdx` values that
+    // collide with the newly-inserted import slots (e.g. `__str_copy_tree`
+    // gets shadowed by `String_fromCharCode`). Pre-registering here avoids
+    // any late-import shift.
+    if (ctx.testRuntime && ctx.nativeStrings) {
+      // wasm:js-string.length, charCodeAt, concat, substring, equals
+      addStringImports(ctx);
+      // env.String_fromCharCode((f64) -> externref) — used by __test_str_to_externref
+      if (!ctx.funcMap.has("String_fromCharCode")) {
+        const fccTypeIdx = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
+        addImport(ctx, "env", "String_fromCharCode", { kind: "func", typeIdx: fccTypeIdx });
+      }
+    }
+
     // Single-pass collection of all source imports (#592):
     // console, primitives, string literals, string methods, Math, parseInt/parseFloat,
     // String.fromCharCode, Promise, JSON, callbacks, functional array methods,
@@ -834,6 +854,11 @@ export function generateModule(
     // Emit __dv_byte_{len,get,set} exports so the runtime can implement
     // DataView.prototype.{get,set}{Uint,Int,Float}* on i32_byte vec structs (#1056)
     emitDataViewByteExports(ctx);
+
+    // Emit __test_str_from_externref / __test_str_to_externref exports for
+    // dual-run testing in nativeStrings mode (#1187). No-op unless
+    // ctx.testRuntime && ctx.nativeStrings.
+    emitTestRuntimeStringHelpers(ctx);
 
     // Emit __call_@@iterator export for runtime Symbol.iterator dispatch on WasmGC structs
     emitIteratorMethodExport(ctx);
@@ -6908,6 +6933,9 @@ function walkStmtForLetConst(ctx: CodegenContext, fctx: FunctionContext, stmt: t
     const TDZ_FLAGS = ts.NodeFlags.Let | ts.NodeFlags.Const | ts.NodeFlags.Using | ts.NodeFlags.AwaitUsing;
     if (!(list.flags & TDZ_FLAGS)) return;
     for (const decl of list.declarations) {
+      // #1210: skip declarations matched by detectStringBuilders — their
+      // storage is replaced by a synthetic buffer triple at compile time.
+      if (fctx.pendingStringBuilders?.has(decl)) continue;
       if (ts.isIdentifier(decl.name)) {
         const name = decl.name.text;
         if (fctx.localMap.has(name)) continue;

@@ -40,6 +40,7 @@ import {
 } from "./late-imports.js";
 import { emitMappedArgParamSync, emitMappedArgReverseSync } from "./logical-ops.js";
 import { resolveStructName, resolveStructNameForExpr } from "./misc.js";
+import { compileStringBuilderAppend, getBuilderInfo } from "../string-builder.js";
 
 /**
  * Emit a null/undefined guard for an externref-typed destructuring source.
@@ -3284,6 +3285,27 @@ function compileNativeStringCompoundAssignment(
   const anyStrType: ValType = { kind: "ref", typeIdx: ctx.anyStrTypeIdx };
   const anyStrTypeNullable: ValType = { kind: "ref_null", typeIdx: ctx.anyStrTypeIdx };
 
+  // #1210: route detected `let s = ""; for (...) s += <expr>` builder
+  // patterns to the in-place buffer append, avoiding O(N) ConsString
+  // allocations.
+  const sb = getBuilderInfo(fctx, name);
+  if (sb !== undefined) {
+    // Compile RHS and coerce to ref $AnyString — same coercion the legacy
+    // path uses below, lifted into a small helper.
+    const coerced = compileAndCoerceToAnyStr(ctx, fctx, expr.right);
+    if (coerced === null) {
+      reportError(ctx, expr, "Failed to compile string += RHS");
+      return null;
+    }
+    compileStringBuilderAppend(ctx, fctx, coerced, sb);
+    // The += statement is normally side-effecting (statement-level) — the
+    // wrapping ExpressionStatement drops the result. Push a sentinel
+    // `ref.null $AnyString` so callers that DO consume the value get a
+    // typed value to drop / coerce.
+    fctx.body.push({ op: "ref.null", typeIdx: ctx.anyStrTypeIdx } as Instr);
+    return anyStrTypeNullable;
+  }
+
   const localIdx = fctx.localMap.get(name);
   const capturedIdx = ctx.capturedGlobals.get(name);
   const moduleIdx = ctx.moduleGlobals.get(name);
@@ -3359,6 +3381,71 @@ function compileNativeStringCompoundAssignment(
     fctx.body.push({ op: "global.get", index: moduleIdxPost });
   }
 
+  return anyStrType;
+}
+
+/**
+ * Compile a string-typed expression and coerce the result to a non-null
+ * `ref $AnyString`. Handles the same coercion paths as
+ * `compileNativeStringCompoundAssignment` (numbers via `number_toString`,
+ * externref via `any.convert_extern + ref.cast`, booleans via
+ * `emitBoolToString`). Used by the #1210 string-builder rewrite.
+ *
+ * Returns the resulting ValType (always `ref $AnyString` on success), or
+ * null on failure.
+ */
+function compileAndCoerceToAnyStr(ctx: CodegenContext, fctx: FunctionContext, expr: ts.Expression): ValType | null {
+  const anyStrType: ValType = { kind: "ref", typeIdx: ctx.anyStrTypeIdx };
+  const rhsType = compileExpression(ctx, fctx, expr);
+  if (!rhsType) return null;
+
+  if (rhsType.kind === "ref" || rhsType.kind === "ref_null") {
+    // Already a ref to a string-like type. If nullable, force non-null —
+    // __str_flatten and array.copy require non-null operands.
+    if (rhsType.kind === "ref_null") {
+      fctx.body.push({ op: "ref.as_non_null" } as Instr);
+    }
+    return anyStrType;
+  }
+  if (rhsType.kind === "f64" || rhsType.kind === "i32") {
+    const rhsTsType = ctx.checker.getTypeAtLocation(expr);
+    if (isBooleanType(rhsTsType) && rhsType.kind === "i32") {
+      emitBoolToString(ctx, fctx);
+      fctx.body.push({ op: "any.convert_extern" } as Instr);
+      fctx.body.push({ op: "ref.cast", typeIdx: ctx.anyStrTypeIdx } as Instr);
+      return anyStrType;
+    }
+    if (rhsType.kind === "i32") fctx.body.push({ op: "f64.convert_i32_s" });
+    const toStr = ctx.funcMap.get("number_toString");
+    if (toStr !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: toStr });
+      fctx.body.push({ op: "any.convert_extern" } as Instr);
+      fctx.body.push({ op: "ref.cast", typeIdx: ctx.anyStrTypeIdx } as Instr);
+      return anyStrType;
+    }
+    // Standalone-mode gap: no host number_toString. Drop the value and emit
+    // an empty native string so the append is a no-op.
+    fctx.body.push({ op: "drop" });
+    // Empty NativeString: struct.new $NativeString(0, 0, array.new_default 0)
+    fctx.body.push({ op: "i32.const", value: 0 });
+    fctx.body.push({ op: "i32.const", value: 0 });
+    fctx.body.push({ op: "i32.const", value: 0 });
+    fctx.body.push({ op: "array.new_default", typeIdx: ctx.nativeStrDataTypeIdx });
+    fctx.body.push({ op: "struct.new", typeIdx: ctx.nativeStrTypeIdx });
+    return anyStrType;
+  }
+  if (rhsType.kind === "externref") {
+    fctx.body.push({ op: "any.convert_extern" } as Instr);
+    fctx.body.push({ op: "ref.cast", typeIdx: ctx.anyStrTypeIdx } as Instr);
+    return anyStrType;
+  }
+  // Other types (i64 etc.) — drop and emit empty string as fallback.
+  fctx.body.push({ op: "drop" });
+  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "array.new_default", typeIdx: ctx.nativeStrDataTypeIdx });
+  fctx.body.push({ op: "struct.new", typeIdx: ctx.nativeStrTypeIdx });
   return anyStrType;
 }
 

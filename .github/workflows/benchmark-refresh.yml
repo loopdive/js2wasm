@@ -52,8 +52,17 @@ jobs:
 
       - name: Snapshot current performance baseline
         run: |
+          # Canonical committed location is `benchmarks/results/`
+          # (see scripts/generate-playground-benchmark-sidebar.mjs RESULTS_PATH).
+          # The `public/` and `playground/public/` copies are derived artifacts —
+          # they were LFS-tracked until commit 616a7a528 (#1170 LFS migration,
+          # 2026-04-25), which untracked all `public/benchmarks/results/*.json`.
+          # Prefer the committed location; fall back to derived copies in case
+          # someone has them locally (no functional difference — same payload).
           mkdir -p benchmark-baseline
-          if [ -f public/benchmarks/results/playground-benchmark-sidebar.json ]; then
+          if [ -f benchmarks/results/playground-benchmark-sidebar.json ]; then
+            cp benchmarks/results/playground-benchmark-sidebar.json benchmark-baseline/playground-benchmark-sidebar.json
+          elif [ -f public/benchmarks/results/playground-benchmark-sidebar.json ]; then
             cp public/benchmarks/results/playground-benchmark-sidebar.json benchmark-baseline/playground-benchmark-sidebar.json
           elif [ -f playground/public/benchmarks/results/playground-benchmark-sidebar.json ]; then
             cp playground/public/benchmarks/results/playground-benchmark-sidebar.json benchmark-baseline/playground-benchmark-sidebar.json
@@ -89,11 +98,26 @@ jobs:
             echo "regressions=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Fail on performance regressions
-        if: steps.benchmark_diff.outputs.regressions == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.allow_performance_regressions) && !(github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'benchmark-regression-approved'))
+      - name: Print performance regressions (informational on PR/push, gating on workflow_dispatch)
+        if: steps.benchmark_diff.outputs.regressions == 'true'
         run: |
-          echo "Landing-page benchmark regressions detected relative to public/benchmarks/results/playground-benchmark-sidebar.json"
+          echo "Landing-page benchmark regressions detected relative to benchmarks/results/playground-benchmark-sidebar.json:"
           cat benchmark-reports/performance-regressions.txt
+          echo
+          echo "Note (#1214): on pull_request and push events, this step does NOT fail the workflow."
+          echo "  The committed baseline is generated locally, but CI runs on shared GitHub Actions"
+          echo "  runners (slower, noisier scheduling). Both wasm AND js measurements are affected,"
+          echo "  but wasm is more sensitive to cache/scheduling variance — so the wasm:js ratio"
+          echo "  drifts in a way that is NOT a real compiler regression."
+          echo "  To enforce regression gating manually: trigger via workflow_dispatch with"
+          echo "  allow_performance_regressions=false."
+          echo "  Architectural follow-up: regenerate baseline on push-to-main and commit it back"
+          echo "  (see #1214 option A) — this would make the gate meaningful again on PRs."
+
+      - name: Fail on performance regressions (workflow_dispatch only)
+        if: steps.benchmark_diff.outputs.regressions == 'true' && github.event_name == 'workflow_dispatch' && !inputs.allow_performance_regressions
+        run: |
+          echo "Failing workflow due to performance regressions (workflow_dispatch enforcement)."
           exit 1
 
       - name: Upload benchmark artifacts

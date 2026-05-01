@@ -20,6 +20,7 @@ import { emitNullGuardedStructGet } from "../property-access.js";
 import { coerceType, compileExpression } from "../shared.js";
 import { emitTdzCheck } from "../statements.js";
 import { ensureLateImport, flushLateImportShifts, shiftLateImportIndices } from "./late-imports.js";
+import { emitStringBuilderRead, getBuilderInfo } from "../string-builder.js";
 
 export function emitLocalTdzCheck(ctx: CodegenContext, fctx: FunctionContext, name: string, flagIdx: number): void {
   const throwRefErrIdx = ensureLateImport(ctx, "__throw_reference_error", [{ kind: "externref" }], []);
@@ -322,6 +323,16 @@ export function emitStaticTdzThrow(ctx: CodegenContext, fctx: FunctionContext, n
 
 function compileIdentifier(ctx: CodegenContext, fctx: FunctionContext, id: ts.Identifier): ValType | null {
   const name = id.text;
+
+  // #1210: string-builder bindings are stored as a (buf, len, cap, mat)
+  // tuple of synthetic locals. The binding name is intentionally NOT in
+  // `localMap` — read access materializes a NativeString lazily and caches
+  // it in `mat`. Check this before the normal local lookup.
+  const sb = getBuilderInfo(fctx, name);
+  if (sb !== undefined) {
+    return emitStringBuilderRead(ctx, fctx, sb);
+  }
+
   const localIdx = fctx.localMap.get(name);
   if (localIdx !== undefined) {
     // TDZ check for function-local let/const variables

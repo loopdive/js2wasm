@@ -13,6 +13,7 @@ benchmarks/results/*.json
 !benchmarks/results/wat-analysis-report.json
 !benchmarks/results/latest.json
 !benchmarks/results/history.json
+!benchmarks/results/diff-test-baseline.json
 benchmarks/results/*.md
 benchmarks/results/*.txt
 .pnpm-store/

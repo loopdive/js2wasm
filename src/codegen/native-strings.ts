@@ -5,7 +5,7 @@
  *
  * Extracted from codegen/index.ts (#1013).
  */
-import type { Instr, ValType } from "../ir/types.js";
+import type { Instr, ValType, WasmFunction } from "../ir/types.js";
 import type { CodegenContext } from "./context/types.js";
 import { ensureLateImport } from "./expressions/late-imports.js";
 import { addImport } from "./registry/imports.js";
@@ -183,14 +183,14 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
     //   cur(6): ref_null $AnyString — current node in the descent
     //   worklist(7): ref_null $AnyString_arr — pending right-children
     //   wlTop(8): i32 — number of items currently on the worklist
-    //   nodeLen(9): i32 — node.len (used to size the worklist)
+    //   newWl(9): ref_null $AnyString_arr — scratch slot for grow-on-push reallocation (#1184)
     const FLAT = 3;
     const FLAT_OFF = 4;
     const FLAT_LEN = 5;
     const CUR = 6;
     const WL = 7;
     const WL_TOP = 8;
-    const NODE_LEN = 9;
+    const NEW_WL = 9;
 
     const body: Instr[] = [
       // Fast path: if node is already a FlatString, copy directly and return.
@@ -233,14 +233,29 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
       },
 
       // Slow path: rope traversal with an explicit worklist of right-children.
-      // nodeLen = node.len
-      { op: "local.get", index: 0 },
-      { op: "struct.get", typeIdx: anyStrTypeIdx, fieldIdx: 0 },
-      { op: "local.set", index: NODE_LEN },
-
-      // worklist = array.new_default<ref_null $AnyString>(nodeLen)
-      // nodeLen is a safe upper bound on rope depth (≥ 1 char per leaf).
-      { op: "local.get", index: NODE_LEN },
+      //
+      // #1184: pre-#1184, this allocated a worklist sized at `node.len` (a generous
+      // upper bound on rope depth — depth ≤ leaves ≤ chars). For balanced ropes
+      // (depth ~log N) on a long string, that's a huge over-allocation: a 1MB
+      // ConsString with a balanced rope has depth ~20 but allocates 1M ref slots
+      // (≈8MB on 64-bit WasmGC). Each `String.prototype.charAt` / `charCodeAt` /
+      // `substring` etc. on a ConsString triggers a fresh flatten → copy_tree →
+      // huge allocation, producing severe GC pressure on string-heavy workloads.
+      //
+      // Strategy: dynamic growth. Start with a small fixed initial capacity (16
+      // slots — enough for any rope of depth ≤ 16, which covers virtually all
+      // balanced ropes up to ~1MB). When the worklist would overflow on push,
+      // double its capacity via array.copy. Final capacity is at most the rope
+      // depth; geometric reallocation gives O(depth) total allocation.
+      //
+      // Worst-case (left-leaning rope of depth N): log2(N/16) reallocations,
+      // total slots allocated = 2N (geometric series). Same order as the
+      // pre-#1184 N-slot single-allocation, but spread across log N small
+      // allocations. The common case (depth ≤ 16) does ONE 16-slot allocation
+      // — orders of magnitude smaller than `node.len`.
+      //
+      // worklist = array.new_default<ref_null $AnyString>(16)
+      { op: "i32.const", value: 16 },
       { op: "array.new_default", typeIdx: wlArrTypeIdx },
       { op: "local.set", index: WL },
 
@@ -276,6 +291,42 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
                       { op: "ref.as_non_null" },
                       { op: "ref.test", typeIdx: strTypeIdx },
                       { op: "br_if", depth: 1 },
+
+                      // #1184: grow worklist if full (wlTop >= worklist.len).
+                      // Doubling-grow: array.new_default(len * 2), array.copy old → new.
+                      { op: "local.get", index: WL_TOP },
+                      { op: "local.get", index: WL },
+                      { op: "ref.as_non_null" },
+                      { op: "array.len" },
+                      { op: "i32.ge_s" },
+                      {
+                        op: "if",
+                        blockType: { kind: "empty" },
+                        then: [
+                          // newWl = array.new_default(worklist.len << 1)
+                          { op: "local.get", index: WL } as Instr,
+                          { op: "ref.as_non_null" } as Instr,
+                          { op: "array.len" } as Instr,
+                          { op: "i32.const", value: 1 } as Instr,
+                          { op: "i32.shl" } as Instr,
+                          { op: "array.new_default", typeIdx: wlArrTypeIdx } as Instr,
+                          { op: "local.set", index: NEW_WL } as Instr,
+
+                          // array.copy(newWl, 0, worklist, 0, wlTop)
+                          { op: "local.get", index: NEW_WL } as Instr,
+                          { op: "ref.as_non_null" } as Instr,
+                          { op: "i32.const", value: 0 } as Instr,
+                          { op: "local.get", index: WL } as Instr,
+                          { op: "ref.as_non_null" } as Instr,
+                          { op: "i32.const", value: 0 } as Instr,
+                          { op: "local.get", index: WL_TOP } as Instr,
+                          { op: "array.copy", dstTypeIdx: wlArrTypeIdx, srcTypeIdx: wlArrTypeIdx } as Instr,
+
+                          // worklist = newWl
+                          { op: "local.get", index: NEW_WL } as Instr,
+                          { op: "local.set", index: WL } as Instr,
+                        ],
+                      },
 
                       // worklist[wlTop] = (cur as ConsString).right
                       { op: "local.get", index: WL },
@@ -378,7 +429,7 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
         { name: "cur", type: { kind: "ref_null", typeIdx: anyStrTypeIdx } },
         { name: "worklist", type: wlArrRefNull },
         { name: "wlTop", type: { kind: "i32" } },
-        { name: "nodeLen", type: { kind: "i32" } },
+        { name: "newWl", type: wlArrRefNull },
       ],
       body,
       exported: false,
@@ -552,6 +603,71 @@ export function ensureNativeStringHelpers(ctx: CodegenContext): void {
         { name: "flatA", type: { kind: "ref_null", typeIdx: strTypeIdx } },
         { name: "flatB", type: { kind: "ref_null", typeIdx: strTypeIdx } },
       ],
+      body,
+      exported: false,
+    });
+  }
+
+  // --- $__str_buf_next_cap(curCap: i32, needed: i32) -> i32 ---
+  // Returns a capacity at least as large as `needed`, doubling `curCap` until
+  // the requirement is met. Used by the #1210 string-builder rewrite to size
+  // the growable i16 buffer with O(log N) reallocations instead of O(N) per
+  // `s += <expr>`. If `needed` exceeds INT32 doubling, returns `needed`
+  // directly (caller traps on out-of-memory at the array.new_default site).
+  {
+    const typeIdx = addFuncType(ctx, [{ kind: "i32" }, { kind: "i32" }], [{ kind: "i32" }]);
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.nativeStrHelpers.set("__str_buf_next_cap", funcIdx);
+
+    // params: curCap(0), needed(1)
+    // Strategy: ensure at least 16 bytes, then double until >= needed.
+    const body: Instr[] = [
+      // if curCap < 16 then curCap = 16 (ensures starting size)
+      { op: "local.get", index: 0 },
+      { op: "i32.const", value: 16 },
+      { op: "i32.lt_s" },
+      {
+        op: "if",
+        blockType: { kind: "empty" },
+        then: [
+          { op: "i32.const", value: 16 },
+          { op: "local.set", index: 0 },
+        ],
+      },
+      // while (curCap < needed) curCap = curCap * 2
+      // block { loop { if (curCap >= needed) br outer; curCap *= 2; br inner } }
+      {
+        op: "block",
+        blockType: { kind: "empty" },
+        body: [
+          {
+            op: "loop",
+            blockType: { kind: "empty" },
+            body: [
+              // if curCap >= needed: br outer (depth 1)
+              { op: "local.get", index: 0 },
+              { op: "local.get", index: 1 },
+              { op: "i32.ge_s" },
+              { op: "br_if", depth: 1 },
+              // curCap *= 2
+              { op: "local.get", index: 0 },
+              { op: "i32.const", value: 1 },
+              { op: "i32.shl" },
+              { op: "local.set", index: 0 },
+              // restart loop
+              { op: "br", depth: 0 },
+            ],
+          },
+        ],
+      },
+      // return curCap
+      { op: "local.get", index: 0 },
+    ];
+
+    ctx.mod.functions.push({
+      name: "__str_buf_next_cap",
+      typeIdx,
+      locals: [],
       body,
       exported: false,
     });
@@ -2988,6 +3104,258 @@ export function ensureNativeStringExternBridge(ctx: CodegenContext): void {
       ],
       body,
       exported: false,
+    });
+  }
+}
+
+/**
+ * Emit `__test_str_from_externref` and `__test_str_to_externref` exported
+ * helpers (#1187). These are the test-runtime bridge that lets vitest tests
+ * pass JS strings into Wasm exports whose native-string params have type
+ * `(ref $AnyString)`, and read native-string results back as JS strings.
+ *
+ * Gated on `ctx.testRuntime && ctx.nativeStrings`. Production builds (with
+ * `testRuntime` unset) never reach this code, so the helpers are absent
+ * from the module entirely — zero runtime overhead.
+ *
+ * Preconditions (set up by the pre-pass in `generateModule`):
+ *   - `addStringImports` has been called → `length`, `charCodeAt`, `concat`,
+ *     `substring` are registered as `wasm:js-string` imports.
+ *   - `String_fromCharCode` is registered as an `env` host import.
+ *   - `ensureNativeStringHelpers` has been called → `__str_flatten` exists.
+ */
+export function emitTestRuntimeStringHelpers(ctx: CodegenContext): void {
+  if (!ctx.testRuntime || !ctx.nativeStrings) return;
+  if (ctx.testRuntimeStringHelpersEmitted) return;
+  ctx.testRuntimeStringHelpersEmitted = true;
+
+  // Make sure $__str_flatten exists. Called HERE rather than in the pre-pass
+  // because emitting native-string helpers early causes a downstream
+  // miscompile (the body references function indices that drift before
+  // dead-elim runs). At this call site (after user code, before dead-elim)
+  // index drift is impossible.
+  ensureNativeStringHelpers(ctx);
+
+  const mod = ctx.mod;
+  const strDataTypeIdx = ctx.nativeStrDataTypeIdx;
+  const strTypeIdx = ctx.nativeStrTypeIdx; // $NativeString (FlatString)
+  const anyStrTypeIdx = ctx.anyStrTypeIdx; // $AnyString
+
+  const strDataRef: ValType = { kind: "ref", typeIdx: strDataTypeIdx };
+  const flatStrRef: ValType = { kind: "ref", typeIdx: strTypeIdx };
+  const anyStrRef: ValType = { kind: "ref", typeIdx: anyStrTypeIdx };
+  const externref: ValType = { kind: "externref" };
+
+  // Resolve helper / import indices set up by the pre-pass.
+  const lengthIdx = ctx.jsStringImports.get("length");
+  const charCodeAtIdx = ctx.jsStringImports.get("charCodeAt");
+  const concatIdx = ctx.jsStringImports.get("concat");
+  const substringIdx = ctx.jsStringImports.get("substring");
+  const fromCharCodeIdx = ctx.funcMap.get("String_fromCharCode");
+  const flattenIdx = ctx.nativeStrHelpers.get("__str_flatten");
+  if (
+    lengthIdx === undefined ||
+    charCodeAtIdx === undefined ||
+    concatIdx === undefined ||
+    substringIdx === undefined ||
+    fromCharCodeIdx === undefined ||
+    flattenIdx === undefined
+  ) {
+    // Pre-pass should have ensured these. Bail silently rather than emit a
+    // module that won't validate — the test will fail noisily on missing
+    // exports.
+    return;
+  }
+
+  // ── __test_str_from_externref(externref s) -> (ref $AnyString) ──
+  // Walks `s` char-by-char with `wasm:js-string.length` / `charCodeAt` and
+  // builds a fresh `$NativeString` (subtype of `$AnyString`).
+  //
+  // params: s(0)
+  // locals: len(1), data(2), i(3)
+  {
+    const typeIdx = addFuncType(ctx, [externref], [anyStrRef]);
+    const funcIdx = ctx.numImportFuncs + mod.functions.length;
+
+    const body: Instr[] = [
+      // len = wasm:js-string.length(s)
+      { op: "local.get", index: 0 },
+      { op: "call", funcIdx: lengthIdx },
+      { op: "local.set", index: 1 },
+
+      // data = array.new_default $__str_data(len)
+      { op: "local.get", index: 1 },
+      { op: "array.new_default", typeIdx: strDataTypeIdx },
+      { op: "local.set", index: 2 },
+
+      // i = 0
+      { op: "i32.const", value: 0 },
+      { op: "local.set", index: 3 },
+
+      // Outer block (target for the loop's break)
+      {
+        op: "block",
+        blockType: { kind: "empty" },
+        body: [
+          {
+            op: "loop",
+            blockType: { kind: "empty" },
+            body: [
+              // if i >= len, break out of the surrounding block (depth 1)
+              { op: "local.get", index: 3 },
+              { op: "local.get", index: 1 },
+              { op: "i32.ge_s" },
+              { op: "br_if", depth: 1 },
+
+              // data[i] = wasm:js-string.charCodeAt(s, i)
+              { op: "local.get", index: 2 },
+              { op: "local.get", index: 3 },
+              { op: "local.get", index: 0 },
+              { op: "local.get", index: 3 },
+              { op: "call", funcIdx: charCodeAtIdx },
+              { op: "array.set", typeIdx: strDataTypeIdx },
+
+              // i = i + 1
+              { op: "local.get", index: 3 },
+              { op: "i32.const", value: 1 },
+              { op: "i32.add" },
+              { op: "local.set", index: 3 },
+
+              // continue loop
+              { op: "br", depth: 0 },
+            ],
+          },
+        ],
+      },
+
+      // struct.new $NativeString(len, 0, data) — subtype-flows into ref $AnyString
+      { op: "local.get", index: 1 },
+      { op: "i32.const", value: 0 },
+      { op: "local.get", index: 2 },
+      { op: "struct.new", typeIdx: strTypeIdx },
+    ];
+
+    mod.functions.push({
+      name: "__test_str_from_externref",
+      typeIdx,
+      locals: [
+        { name: "len", type: { kind: "i32" } },
+        { name: "data", type: strDataRef },
+        { name: "i", type: { kind: "i32" } },
+      ],
+      body,
+      exported: true,
+    } as WasmFunction);
+    mod.exports.push({
+      name: "__test_str_from_externref",
+      desc: { kind: "func", index: funcIdx },
+    });
+  }
+
+  // ── __test_str_to_externref((ref $AnyString) s) -> externref ──
+  // Flattens to a `$NativeString`, then walks the data array and accumulates
+  // a JS string via `wasm:js-string.concat` + `String_fromCharCode`. O(n²) by
+  // string concatenation, but fine for the small strings used in tests.
+  //
+  // The result is seeded with an empty JS string via
+  // `wasm:js-string.substring(<any>, 0, 0)` so the first concat has a string
+  // operand even when len == 0.
+  //
+  // params: s(0)
+  // locals: flat(1), len(2), off(3), result(4), i(5)
+  {
+    const typeIdx = addFuncType(ctx, [anyStrRef], [externref]);
+    const funcIdx = ctx.numImportFuncs + mod.functions.length;
+
+    const body: Instr[] = [
+      // flat = __str_flatten(s)
+      { op: "local.get", index: 0 },
+      { op: "call", funcIdx: flattenIdx },
+      { op: "local.set", index: 1 },
+
+      // len = flat.len
+      { op: "local.get", index: 1 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 0 },
+      { op: "local.set", index: 2 },
+
+      // off = flat.off
+      { op: "local.get", index: 1 },
+      { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 1 },
+      { op: "local.set", index: 3 },
+
+      // result = substring(String_fromCharCode(0.0), 0, 0) — gives "" as externref
+      { op: "f64.const", value: 0 },
+      { op: "call", funcIdx: fromCharCodeIdx },
+      { op: "i32.const", value: 0 },
+      { op: "i32.const", value: 0 },
+      { op: "call", funcIdx: substringIdx },
+      { op: "local.set", index: 4 },
+
+      // i = 0
+      { op: "i32.const", value: 0 },
+      { op: "local.set", index: 5 },
+
+      {
+        op: "block",
+        blockType: { kind: "empty" },
+        body: [
+          {
+            op: "loop",
+            blockType: { kind: "empty" },
+            body: [
+              // if i >= len, break (depth 1 = outer block)
+              { op: "local.get", index: 5 },
+              { op: "local.get", index: 2 },
+              { op: "i32.ge_s" },
+              { op: "br_if", depth: 1 },
+
+              // result = concat(result, String_fromCharCode(data[off + i]))
+              { op: "local.get", index: 4 }, // result
+
+              { op: "local.get", index: 1 }, // flat
+              { op: "struct.get", typeIdx: strTypeIdx, fieldIdx: 2 }, // data
+              { op: "local.get", index: 3 }, // off
+              { op: "local.get", index: 5 }, // i
+              { op: "i32.add" },
+              { op: "array.get_u", typeIdx: strDataTypeIdx },
+              { op: "f64.convert_i32_s" },
+              { op: "call", funcIdx: fromCharCodeIdx },
+
+              { op: "call", funcIdx: concatIdx },
+              { op: "local.set", index: 4 },
+
+              // i++
+              { op: "local.get", index: 5 },
+              { op: "i32.const", value: 1 },
+              { op: "i32.add" },
+              { op: "local.set", index: 5 },
+
+              { op: "br", depth: 0 },
+            ],
+          },
+        ],
+      },
+
+      // return result
+      { op: "local.get", index: 4 },
+    ];
+
+    mod.functions.push({
+      name: "__test_str_to_externref",
+      typeIdx,
+      locals: [
+        { name: "flat", type: flatStrRef },
+        { name: "len", type: { kind: "i32" } },
+        { name: "off", type: { kind: "i32" } },
+        { name: "result", type: externref },
+        { name: "i", type: { kind: "i32" } },
+      ],
+      body,
+      exported: true,
+    } as WasmFunction);
+    mod.exports.push({
+      name: "__test_str_to_externref",
+      desc: { kind: "func", index: funcIdx },
     });
   }
 }
