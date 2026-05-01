@@ -196,6 +196,20 @@ const BINARY_FOLD_TABLE: Readonly<Record<IrBinop, BinaryFolder>> = {
   // i32 logical (bool && / bool ||, operands are 0|1).
   "i32.and": (l, r) => i32Bool(l, r, (a, b) => a !== 0 && b !== 0),
   "i32.or": (l, r) => i32Bool(l, r, (a, b) => a !== 0 || b !== 0),
+  // Slice 11 (#1169n) — JS bitwise ops over f64 operands. ToInt32 each
+  // operand (JS coerces) and apply the i32 op; result is the int32 value
+  // re-coerced to f64. Uses native JS operators which already implement
+  // ToInt32 and ToUint32 — so the constants we produce match what the
+  // backend would produce at runtime.
+  "js.bitand": (l, r) => jsBitwiseF64(l, r, (a, b) => a & b),
+  "js.bitor": (l, r) => jsBitwiseF64(l, r, (a, b) => a | b),
+  "js.bitxor": (l, r) => jsBitwiseF64(l, r, (a, b) => a ^ b),
+  "js.shl": (l, r) => jsBitwiseF64(l, r, (a, b) => a << b),
+  "js.shr_s": (l, r) => jsBitwiseF64(l, r, (a, b) => a >> b),
+  // `>>>` returns a Uint32 in JS — wrap explicitly so TS doesn't widen
+  // the lambda return to `number` ambiguously, and so the const f64 we
+  // produce is the unsigned interpretation.
+  "js.shr_u": (l, r) => jsBitwiseF64(l, r, (a, b) => a >>> b),
 };
 
 function foldBinary(op: IrBinop, l: IrConst, r: IrConst): IrConst | null {
@@ -247,4 +261,19 @@ function toI32(c: IrConst): number | null {
   if (c.kind === "i32") return c.value;
   if (c.kind === "bool") return c.value ? 1 : 0;
   return null;
+}
+
+/**
+ * Slice 11 (#1169n) — fold a `js.bit*` op over two f64 constants. JS
+ * coerces each operand to ToInt32/ToUint32, applies the i32 op, and the
+ * result is a 32-bit integer that we re-coerce to f64 for IR const land.
+ *
+ * Native JS `&`, `|`, `^`, `<<`, `>>`, `>>>` implement ToInt32/ToUint32 by
+ * spec, so applying the JS operator inside the lambda gives a correct
+ * result; we just box it back as `kind: "f64"` so downstream IR sees an
+ * f64-typed constant matching the result type the lowerer will emit.
+ */
+function jsBitwiseF64(l: IrConst, r: IrConst, fn: (a: number, b: number) => number): IrConst | null {
+  if (l.kind !== "f64" || r.kind !== "f64") return null;
+  return { kind: "f64", value: fn(l.value, r.value) };
 }
