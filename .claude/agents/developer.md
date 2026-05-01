@@ -43,14 +43,19 @@ Message **specific agents only** — no broadcasts unless claiming a shared file
    - Compiler source conflicts (`src/**/*.ts`): create `[CONFLICT]` task in TaskList, assign to `senior-developer`. Do NOT resolve inline.
 2. Run scoped local checks again after the merge
 3. `git push origin <branch>`
-4. `gh pr create --base main --title "fix(#N): <description>" --body "..."`
-5. **Wait for CI**: use a **foreground blocking loop** — do NOT use background tasks or `run_in_background`. Run:
+4. **Re-merge main immediately before opening the PR** — more commits may have landed since step 1:
    ```bash
-   until [ -f .claude/ci-status/pr-<N>.json ] && \
-     [ "$(jq -r '.head_sha' .claude/ci-status/pr-<N>.json)" = "$(git rev-parse HEAD)" ]; \
-     do sleep 60; done
+   git fetch origin && git merge origin/main --no-edit && git push origin <branch>
    ```
-   This keeps the agent occupied (no idle_notification spam) until CI result lands.
+   Then open the PR:
+   `gh pr create --base main --title "fix(#N): <description>" --body "..."`
+5. **Wait for CI**: use a **background loop + Monitor** — do NOT foreground-poll (burns tokens). Run the loop with `run_in_background: true`:
+   ```bash
+   until [ -f /workspace/.claude/ci-status/pr-<N>.json ] && \
+     [ "$(jq -r '.head_sha' /workspace/.claude/ci-status/pr-<N>.json)" = "<HEAD_SHA>" ]; \
+     do sleep 60; done && echo "CI_READY"
+   ```
+   Then immediately call the Monitor tool on that background process. The agent blocks on Monitor output (zero token burn) and wakes only when `CI_READY` appears.
 6. Run `/dev-self-merge <N>` — outputs MERGE or ESCALATE
 7. On MERGE: `gh pr merge <N> --merge --admin`
 8. On ESCALATE: message tech lead with which criterion failed + values
