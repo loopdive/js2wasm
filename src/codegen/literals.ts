@@ -1650,6 +1650,16 @@ export function compileArrayLiteral(
         }
       }
     }
+    // #1197: caller (variable-declaration codegen) may have flagged this `[]`
+    // initializer as belonging to an i32-specialized number[] local. Override
+    // the element kind from f64 to i32. The contextual TS type is still
+    // `number[]`, so without this hook codegen would default to __vec_f64.
+    if (
+      emptyElemKind === "f64" &&
+      (ctx as unknown as { _i32ElemArrayOverride?: boolean })._i32ElemArrayOverride === true
+    ) {
+      emptyElemKind = "i32";
+    }
     const vecTypeIdx = getOrRegisterVecType(ctx, emptyElemKind);
     const arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
     if (arrTypeIdx < 0) {
@@ -1883,6 +1893,14 @@ export function compileArrayConstructorCall(
   } else {
     // Default to f64 for untyped arrays
     elemWasm = { kind: "f64" };
+  }
+
+  // #1197: i32-specialized number[] override — see compileArrayLiteral above.
+  if (
+    elemWasm.kind === "f64" &&
+    (ctx as unknown as { _i32ElemArrayOverride?: boolean })._i32ElemArrayOverride === true
+  ) {
+    elemWasm = { kind: "i32" };
   }
 
   const elemKind =
