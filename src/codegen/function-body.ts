@@ -39,6 +39,7 @@ import {
 import { emitArgumentsVecBody } from "./statements/nested-declarations.js";
 import { bodyUsesArguments } from "./helpers/body-uses-arguments.js";
 import { detectStringBuilders } from "./string-builder.js";
+import { collectI32SpecializedArrays } from "./array-element-typing.js";
 
 /** Maximum number of instructions for a function body to be considered inlinable */
 export const INLINE_MAX_INSTRS = 10;
@@ -599,6 +600,11 @@ export function compileFunctionBody(ctx: CodegenContext, decl: ts.FunctionDeclar
   // value flowing through them is constrained to int32 by `| 0` coercion.
   const i32CoercedLocals = collectI32CoercedLocals(decl);
 
+  // #1197: detect `number[]` locals whose element storage can lower to i32.
+  // Depends on the i32 scalar set so that `arr[i] = sum` (where `sum` is i32)
+  // counts as an i32-safe write.
+  const i32SpecializedArrays = collectI32SpecializedArrays(decl, i32CoercedLocals);
+
   const fctx: FunctionContext = {
     name: func.name,
     params,
@@ -613,6 +619,7 @@ export function compileFunctionBody(ctx: CodegenContext, decl: ts.FunctionDeclar
     savedBodies: [],
     isGenerator,
     i32CoercedLocals: i32CoercedLocals.size > 0 ? i32CoercedLocals : undefined,
+    i32SpecializedArrays: i32SpecializedArrays.size > 0 ? i32SpecializedArrays : undefined,
   };
 
   // Register params as locals

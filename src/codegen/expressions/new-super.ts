@@ -2503,6 +2503,19 @@ function compileNewExpression(ctx: CodegenContext, fctx: FunctionContext, expr: 
       elemWasm = elemTsType ? resolveWasmType(ctx, elemTsType) : { kind: "f64" };
     }
 
+    // #1197: i32-specialized number[] override — caller (variable-declaration
+    // codegen) flagged this `new Array(...)` as belonging to an i32-specialized
+    // local. Override the element kind from f64 to i32. We must also re-resolve
+    // vecTypeIdx/arrTypeIdx through the i32 registration.
+    if (
+      elemWasm.kind === "f64" &&
+      (ctx as unknown as { _i32ElemArrayOverride?: boolean })._i32ElemArrayOverride === true
+    ) {
+      elemWasm = { kind: "i32" };
+      vecTypeIdx = getOrRegisterVecType(ctx, "i32", { kind: "i32" });
+      arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
+    }
+
     if (arrTypeIdx < 0) {
       // Fallback: use externref vec type for Array<any> or unresolvable element types
       vecTypeIdx = getOrRegisterVecType(ctx, "externref", { kind: "externref" });

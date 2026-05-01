@@ -26,7 +26,7 @@ import {
 } from "../index.js";
 import { buildDestructureNullThrow } from "../destructuring-params.js";
 import { resolveComputedKeyExpression } from "../literals.js";
-import { emitNullGuardedStructGet, isProvablyNonNull } from "../property-access.js";
+import { emitNullGuardedStructGet, isProvablyNonNull, isSafeBoundsEliminated } from "../property-access.js";
 import type { InnerResult } from "../shared.js";
 import { coerceType, compileExpression, valTypesMatch } from "../shared.js";
 import { compileStringLiteral, emitBoolToString } from "../string-ops.js";
@@ -2116,6 +2116,26 @@ function compileElementAssignment(
     }
     const valLocal = allocLocal(fctx, `__val_${fctx.locals.length}`, arrDef.element);
     fctx.body.push({ op: "local.set", index: valLocal });
+
+    // #1196: Bounds-check elimination on writes — when the for-loop pattern
+    // proves `i < arr.length`, the index is in [0, length) so capacity is
+    // already sufficient and `vec.length` does not need to grow. Skip the
+    // grow check + length-update entirely and emit a direct `array.set`.
+    if (isSafeBoundsEliminated(fctx, target)) {
+      // Vec data field is `(ref $arr)` (non-nullable), so struct.get yields
+      // a non-null ref directly — no ref.as_non_null needed.
+      fctx.body.push({ op: "local.get", index: vecLocal });
+      fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 }); // get data
+      fctx.body.push({ op: "local.get", index: idxLocal });
+      fctx.body.push({ op: "local.get", index: valLocal });
+      fctx.body.push({ op: "array.set", typeIdx: arrTypeIdx });
+      // Mapped arguments reverse sync (#849)
+      if (fctx.mappedArgsInfo && ts.isIdentifier(target.expression) && target.expression.text === "arguments") {
+        emitMappedArgReverseSync(ctx, fctx, idxLocal, valLocal);
+      }
+      fctx.body.push({ op: "local.get", index: valLocal });
+      return elemValResult;
+    }
 
     // Get data array into a local so we can update it after potential grow
     const dataLocal = allocLocal(fctx, `__vec_data_${fctx.locals.length}`, {
