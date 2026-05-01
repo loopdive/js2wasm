@@ -2853,7 +2853,7 @@
   {
     "name": "sprint 46",
     "sprintNumber": 46,
-    "status": "planning",
+    "status": "active",
     "date": "2026-04-30 → TBD",
     "baseline": "25,830 / 43,168 = 59.8% (inherited from S45 close)",
     "result": "",
@@ -2871,7 +2871,6 @@
       "1188",
       "1189",
       "1190",
-      "1198",
       "1201",
       "1203",
       "1204",
@@ -2884,7 +2883,10 @@
       "1214",
       "1215",
       "1217",
-      "1218"
+      "1218",
+      "1219",
+      "1220",
+      "1221"
     ],
     "completedIssueIds": [
       "1169k",
@@ -2898,10 +2900,11 @@
       "1211",
       "1212",
       "1213",
-      "1214"
+      "1214",
+      "1221"
     ],
     "explicitCarryOver": false,
-    "isPlanning": true,
+    "isPlanning": false,
     "isClosed": false
   }
 ]

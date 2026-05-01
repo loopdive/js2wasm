@@ -494,6 +494,32 @@ function restoreBuiltins() {
       );
       process.exit(1);
     }
+    // #1221: callability probe. The typeof check above only catches
+    // non-callable poison. A test that assigns a Wasm-throwing function
+    // (`Array.prototype[Symbol.iterator] = wasmInstance.exports.thrower`)
+    // and made the descriptor non-configurable bypasses the typeof check
+    // — but the very next `for...of` below (and every for-of in the TS
+    // compiler's internals) would invoke it and throw a
+    // WebAssembly.Exception. Without an exit here, that exception
+    // propagates out of restoreBuiltins → out of doCompile → caught at
+    // the outer try with status:"compile_error", error:"[object
+    // WebAssembly.Exception]" — and EVERY subsequent test in this fork
+    // hits the same trap (the blast radius can be ~100s of tests). Probe
+    // by calling it on an empty array; if it throws, the fork is
+    // unrecoverable — exit so the pool respawns.
+    try {
+      const probeIter = cur.call([]);
+      // Some valid iterators are objects without .next yet — calling
+      // .next() on the probe is the real correctness signal. Wrap so a
+      // throw from .next() also trips the FATAL branch.
+      if (probeIter && typeof probeIter.next === "function") probeIter.next();
+    } catch (probeErr) {
+      const kind = probeErr?.constructor?.name ?? typeof probeErr;
+      console.error(
+        `[unified-worker pid=${process.pid}] FATAL: Array.prototype[Symbol.iterator] throws when called (${kind}) — exiting for restart (#1221)`,
+      );
+      process.exit(1);
+    }
   }
 
   // Remove numeric-indexed accessor properties added to Array.prototype
@@ -1073,13 +1099,33 @@ process.on("message", async (msg) => {
       });
     }
   } catch (outerErr) {
-    process.send({
-      id,
-      status: "compile_error",
-      error: outerErr.message ?? String(outerErr),
-      compileMs,
-      execMs: performance.now() - execStart,
-    });
+    // #1221: A WebAssembly.Exception that escapes the inner try (e.g. thrown
+    // by `restoreBuiltins` walking a poisoned Symbol.iterator, or by a
+    // microtask resumed at an `await` boundary) is a runtime throw, not a
+    // compile failure. Route it through extractWasmExceptionMessage so the
+    // error text is meaningful instead of "[object WebAssembly.Exception]"
+    // and emit status:"fail" so the dashboard groups it with real runtime
+    // failures. The inner instantiate catch already handles the common case
+    // (#1155) — this closes the remaining outer-catch leak that produced up
+    // to ~1,176 misclassified rows in the test262 baseline.
+    if (outerErr instanceof WebAssembly.Exception) {
+      process.send({
+        id,
+        status: "fail",
+        error: extractWasmExceptionMessage(outerErr, instance ?? null),
+        isException: true,
+        compileMs,
+        execMs: performance.now() - execStart,
+      });
+    } else {
+      process.send({
+        id,
+        status: "compile_error",
+        error: outerErr.message ?? String(outerErr),
+        compileMs,
+        execMs: performance.now() - execStart,
+      });
+    }
   }
 
   // Drop Wasm references

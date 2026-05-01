@@ -1,15 +1,17 @@
 {
   "pr": 113,
   "conclusion": "failure",
-  "head_branch": "test/revert-107-probe",
-  "head_sha": "8f963437bf52b2423e68dcbdd7c4764dcf833350",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24290605051",
-  "timestamp": "2026-04-11T20:13:51Z",
-  "pass": 20599,
-  "fail": 16661,
-  "compile_error": 4561,
-  "snapshot_delta": -25,
-  "net_per_test": -25,
-  "regressions": 25,
-  "improvements": 0
+  "head_branch": "issue-1198-presize-arrays",
+  "head_sha": "380b3a0144f3bd5aefe6a2f7b739bf21d8dba630",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25191697070",
+  "timestamp": "2026-04-30T22:21:11Z",
+  "pass": 25856,
+  "fail": 13910,
+  "compile_error": 1852,
+  "snapshot_delta": 17,
+  "net_per_test": 15,
+  "regressions": 125,
+  "regressions_real": 32,
+  "compile_timeouts": 93,
+  "improvements": 140
 }
