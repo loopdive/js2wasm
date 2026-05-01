@@ -719,7 +719,12 @@ export function generateModule(
     // cross-signature `call` against a legacy-compiled callee.
     if (options?.experimentalIR) {
       const typeMap = buildTypeMap(ast.sourceFile, ast.checker);
-      const selection = planIrCompilation(ast.sourceFile, { experimentalIR: true }, typeMap);
+      // #1169q telemetry — when JS2WASM_LOG_IR_FALLBACKS is set, request the
+      // selector to track every top-level FunctionDeclaration that didn't
+      // make it into `funcs` along with the rejection reason. Logged to
+      // stderr at end of compile. Off by default (zero overhead).
+      const trackFallbacks = process.env.JS2WASM_LOG_IR_FALLBACKS === "1";
+      const selection = planIrCompilation(ast.sourceFile, { experimentalIR: true, trackFallbacks }, typeMap);
       // Slice 4 (#1169d) — build the class-shape registry from the
       // legacy class collection (`ctx.classSet`, `ctx.structFields`,
       // `ctx.funcMap`). Done BEFORE override resolution so class-typed
@@ -806,6 +811,27 @@ export function generateModule(
           column: 0,
           severity: "warning",
         });
+      }
+      // #1169q telemetry — when JS2WASM_LOG_IR_FALLBACKS=1, log a one-line
+      // summary per compile to stderr: total top-level FunctionDeclarations
+      // claimed vs. fallback, with rejection reason histogram. This is the
+      // gating measurement before retiring the legacy path: drive the
+      // claim rate to ~100% (excluding deferred features) and only THEN
+      // delete expressions.ts / statements.ts. See #1169q.
+      if (trackFallbacks && selection.fallbacks) {
+        const total = selection.funcs.size + selection.fallbacks.length;
+        const reasonHist: Record<string, number> = {};
+        for (const fb of selection.fallbacks) {
+          reasonHist[fb.reason] = (reasonHist[fb.reason] ?? 0) + 1;
+        }
+        const fileLabel = ast.sourceFile.fileName || "<source>";
+        const reasonStr = Object.entries(reasonHist)
+          .sort((a, b) => b[1] - a[1])
+          .map(([r, n]) => `${r}=${n}`)
+          .join(",");
+        process.stderr.write(
+          `[ir-fallback] file=${fileLabel} total=${total} claimed=${selection.funcs.size} fallback=${selection.fallbacks.length} reasons=${reasonStr}\n`,
+        );
       }
     }
 
