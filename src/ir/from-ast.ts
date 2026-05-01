@@ -1070,6 +1070,40 @@ function lowerExpr(expr: ts.Expression, cx: LowerCtx, hint: IrType): IrValueId {
   if (expr.kind === ts.SyntaxKind.RegularExpressionLiteral) {
     return lowerRegExpLiteral(expr, cx);
   }
+  // Slice 11 (#1169n) — `delete <expr>`. The IR-claim shape doesn't
+  // support property deletes that change runtime behavior (slice 11
+  // doesn't track per-instance prop existence). Most `delete` uses
+  // in IR-claimable functions delete properties that are statically
+  // known to exist (so the result is `true`), or delete unresolved
+  // refs (also `true`). We lower the operand for side effects (e.g.
+  // `delete f().x` must still call f) and then push the constant
+  // `true`.
+  if (ts.isDeleteExpression(expr)) {
+    // Lower operand for side effects only — the result is unused.
+    // Property-access operand: lower the receiver (the .name part is
+    // statically resolved, so the access itself has no runtime effect
+    // on the IR-claim shape). Other operands lower via `lowerExpr`.
+    if (ts.isPropertyAccessExpression(expr.expression)) {
+      // Lower the receiver expression for side effects; ignore the
+      // produced SSA value (DCE drops it if pure).
+      void lowerExpr(expr.expression.expression, cx, irVal({ kind: "f64" }));
+    } else {
+      void lowerExpr(expr.expression, cx, irVal({ kind: "f64" }));
+    }
+    return cx.builder.emitConst({ kind: "bool", value: true }, irVal({ kind: "i32" }));
+  }
+  // Slice 11 (#1169n) — `void <expr>`. Lower the operand for side
+  // effects, then push the IR's f64 NaN sentinel as the result. The
+  // hint type drives whether downstream code treats this as f64 or
+  // coerces to externref. For now, emit f64 NaN (the closest scalar
+  // approximation of `undefined` in numeric context). Functions that
+  // use `void` outside f64 context will need a future widening to
+  // emit a proper undefined-typed value; for slice 11, throw if the
+  // operand context demands a non-f64 result.
+  if (ts.isVoidExpression(expr)) {
+    void lowerExpr(expr.expression, cx, irVal({ kind: "f64" }));
+    return cx.builder.emitConst({ kind: "f64", value: NaN }, irVal({ kind: "f64" }));
+  }
   throw new Error(`ir/from-ast: unsupported expression kind ${ts.SyntaxKind[expr.kind]} in ${cx.funcName}`);
 }
 
@@ -1179,6 +1213,12 @@ function staticTypeOfFor(t: IrType): string | null {
 function lowerPropertyAccess(expr: ts.PropertyAccessExpression, cx: LowerCtx): IrValueId {
   if (!ts.isIdentifier(expr.name)) {
     throw new Error(`ir/from-ast: computed property access not in slice 2 (${cx.funcName})`);
+  }
+  // Slice 11 (#1169n) — optional chaining (`obj?.prop`) is accepted
+  // by the selector but the lowerer doesn't yet emit the null-guard.
+  // Throw cleanly so the function falls back to legacy.
+  if (expr.questionDotToken) {
+    throw new Error(`ir/from-ast: optional chaining (?.) not in slice 11 (${cx.funcName})`);
   }
   const propName = expr.name.text;
 
@@ -1366,6 +1406,12 @@ function phase1PropertyName(name: ts.PropertyName): string | null {
  * ignored — both are bugs.
  */
 function lowerCall(expr: ts.CallExpression, cx: LowerCtx): IrValueId {
+  // Slice 11 (#1169n) — optional call (`fn?.()` / `obj?.method()`).
+  // The lowerer doesn't yet emit the null-guard branch; throw clean
+  // fallback so the function reverts to legacy.
+  if (expr.questionDotToken) {
+    throw new Error(`ir/from-ast: optional call (?.()) not in slice 11 (${cx.funcName})`);
+  }
   // Slice 4 (#1169d): method call — `<recv>.<methodName>(args)`. The
   // receiver must lower to an IrType.class; the method must exist on
   // the class shape and be non-void (slice 4 only handles methods with
@@ -2549,6 +2595,20 @@ function lowerPrefixUnary(expr: ts.PrefixUnaryExpression, cx: LowerCtx): IrValue
 function lowerBinary(expr: ts.BinaryExpression, cx: LowerCtx): IrValueId {
   const op = expr.operatorToken.kind;
 
+  // Slice 11 (#1169n) — early fallback for ops the selector accepts
+  // shape-only but the lowerer doesn't yet implement. Throwing BEFORE
+  // we lower operands keeps the error message short and avoids
+  // cascading errors from operand lowering.
+  if (
+    op === ts.SyntaxKind.PercentToken ||
+    op === ts.SyntaxKind.AsteriskAsteriskToken ||
+    op === ts.SyntaxKind.QuestionQuestionToken ||
+    op === ts.SyntaxKind.InKeyword ||
+    op === ts.SyntaxKind.InstanceOfKeyword
+  ) {
+    throw new Error(`ir/from-ast: operator '${ts.tokenToString(op)}' not in slice 11 (${cx.funcName})`);
+  }
+
   // === / !== / == / != with a `null` literal: slice 1 has no nullable IR
   // types yet, so every operand we can lower trivially evaluates to false
   // for === null / true for !== null. Try this fold first; it short-
@@ -2660,6 +2720,44 @@ function lowerBinary(expr: ts.BinaryExpression, cx: LowerCtx): IrValueId {
       binop = "i32.or";
       resultType = irVal({ kind: "i32" });
       break;
+    // Slice 11 (#1169n) — bitwise ops on f64 operands. Each lowers to
+    // ToInt32 + i32 op + convert back; the lowerer's `case "binary"`
+    // arm dispatches on the `js.*` prefix to emit the multi-instr
+    // sequence using a per-function scratch local pair. Result is
+    // always f64.
+    case ts.SyntaxKind.AmpersandToken:
+      requireF64(isF64, "&", cx.funcName);
+      binop = "js.bitand";
+      resultType = irVal({ kind: "f64" });
+      break;
+    case ts.SyntaxKind.BarToken:
+      requireF64(isF64, "|", cx.funcName);
+      binop = "js.bitor";
+      resultType = irVal({ kind: "f64" });
+      break;
+    case ts.SyntaxKind.CaretToken:
+      requireF64(isF64, "^", cx.funcName);
+      binop = "js.bitxor";
+      resultType = irVal({ kind: "f64" });
+      break;
+    case ts.SyntaxKind.LessThanLessThanToken:
+      requireF64(isF64, "<<", cx.funcName);
+      binop = "js.shl";
+      resultType = irVal({ kind: "f64" });
+      break;
+    case ts.SyntaxKind.GreaterThanGreaterThanToken:
+      requireF64(isF64, ">>", cx.funcName);
+      binop = "js.shr_s";
+      resultType = irVal({ kind: "f64" });
+      break;
+    case ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken:
+      requireF64(isF64, ">>>", cx.funcName);
+      binop = "js.shr_u";
+      resultType = irVal({ kind: "f64" });
+      break;
+    // Slice 11 (#1169n) — `%`, `**`, `??`, `in`, `instanceof` are
+    // intercepted by the early-fallback check at the top of
+    // `lowerBinary`; if any reach here the early-throw is missing.
     default:
       throw new Error(`ir/from-ast: unsupported binary operator ${ts.tokenToString(op)} in ${cx.funcName}`);
   }
