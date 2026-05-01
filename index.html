@@ -3016,25 +3016,25 @@ export function run() {
               <span class="how-step-size" id="how-fib-wasm-size">(0.2 KB gzipped)</span>
             </h3>
             <pre class="how-code wat">
-;; simplified — actual output includes
-;; box/unbox for externref returns
-(func $fibonacci (param f64) (result externref)
+;; Actual compiler output — number → f64 throughout.
+;; No boxing, no anyref, no dispatch overhead.
+(func $fibonacci (param f64) (result f64)
   local.get 0
   f64.const 1
   f64.le
-  if
-    local.get 0
-    call $__box_number
-    return
-  end
-  local.get 0  f64.const 1  f64.sub
-  call $fibonacci  call $__unbox_number
-  local.get 0  f64.const 2  f64.sub
-  call $fibonacci  call $__unbox_number
-  f64.add
-  call $__box_number)
+  (if
+    (then
+      local.get 0
+      return)
+    (else
+      local.get 0  f64.const 1  f64.sub
+      call $fibonacci
+      local.get 0  f64.const 2  f64.sub
+      call $fibonacci
+      f64.add
+      return)))
 
-(func $run (export "run") (result externref)
+(func $run (export "run") (result f64)
   f64.const 10
   call $fibonacci)</pre
             >

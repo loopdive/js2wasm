@@ -1,2 +1,11 @@
 *.log filter=lfs diff=lfs merge=lfs -text
 *.wasm filter=lfs diff=lfs merge=lfs -text
+
+# Loadtime benchmark artifacts are tiny (≤13KB each) and need to be served
+# verbatim by GitHub Pages on every deploy. LFS smudge requires `lfs: true`
+# on actions/checkout, which we'd rather not depend on for files this small —
+# and storing them as LFS pointers in `public/` previously caused the deploy
+# to ship pointer text instead of wasm bytes (CompileError: expected magic
+# word 00 61 73 6d, found 76 65 72 73). Track them as plain binary blobs.
+public/benchmarks/results/loadtime/*.wasm -filter -diff -merge binary
+benchmarks/results/loadtime/*.wasm        -filter -diff -merge binary

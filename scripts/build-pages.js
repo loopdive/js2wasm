@@ -350,7 +350,10 @@ for (const file of ["site-nav.js", "t262-charts.js", "trend-chart.js", "perf-ben
 
 // Render ADR markdown → HTML pages so the landing page can link to
 // on-origin /js2wasm/docs/adr/*.html instead of broken raw .md URLs.
-await import("./build-adr-html.mjs");
+// `buildAdrPages` is gated behind isMainModule in build-adr-html.mjs, so
+// `await import(...)` alone is a no-op — call the export explicitly.
+const { buildAdrPages } = await import("./build-adr-html.mjs");
+buildAdrPages();
 
 // Copy sprint-stats.json to dashboard data when dashboard artifacts exist.
 if (hasDashboardBundle) {
