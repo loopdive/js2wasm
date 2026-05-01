@@ -32,7 +32,6 @@ wrap_checklist:
 
 | Issue | Title | Priority | Agent | PR |
 |---|---|---|---|---|
-| #1222 | ci: wasm-hash noise filter — exclude byte-identical regressions from PR gate | high | dev-1222 | pending |
 | #1224 | class method dstr-parameter defaults: null-guard fires before default is applied (408 failures) | high | dev-1224 | pending |
 | #1225 | Nested dstr from null/undefined: missing TypeError (~244 tests) | high | dev-1225 | pending |
 | #1169n | IR Phase 4 Slice 11 — switch statements + missing binary/unary operators | high | dev-1169n | pending |
@@ -59,6 +58,7 @@ wrap_checklist:
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #1222 | ci: wasm-hash noise filter — exclude byte-identical regressions from PR gate | high | done |
 | #1196 | perf: bounds-check elimination (landed in S46) | high | done |
 | #1197 | perf: i32 element specialization (landed in S46) | high | done |
 | #1198 | perf: pre-size dense arrays (landed in S46) | high | done |
