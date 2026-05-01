@@ -99,6 +99,8 @@ jobs:
           net_per_test=null
           regressions=null
           regressions_real=null
+          regressions_wasm_change=null
+          wasm_identical_noise=null
           compile_timeouts=null
           improvements=null
           if [ -f /tmp/merged-report/test262-report-merged.json ]; then
@@ -129,6 +131,14 @@ jobs:
             # unchanged for backwards-compat with the dashboard.
             compile_timeouts=$(grep -oE 'Compile timeouts \(pass → compile_timeout\): [0-9]+' /tmp/merged-report/test262-regressions.txt | grep -oE '[0-9]+$' || echo 0)
             regressions_real=$(grep -oE 'Regressions excluding compile_timeout: [0-9]+' /tmp/merged-report/test262-regressions.txt | grep -oE '[0-9]+$' || echo 0)
+            # #1222: regressions where the compiled Wasm binary differs between
+            # base and branch. Pass→fail flips on a byte-identical binary are
+            # physically impossible compiler regressions — they're CI runner
+            # variance (scheduling, memory pressure, GC timing). The merge gate
+            # uses `regressions_wasm_change` in preference to `regressions_real`
+            # so symmetric-flip noise patterns no longer trigger gate failure.
+            regressions_wasm_change=$(grep -oE 'Regressions with wasm-hash change: [0-9]+' /tmp/merged-report/test262-regressions.txt | grep -oE '[0-9]+$' || echo 0)
+            wasm_identical_noise=$(grep -oE 'Wasm-identical noise \(pass → other, same wasm_sha\): [0-9]+' /tmp/merged-report/test262-regressions.txt | grep -oE '[0-9]+$' || echo 0)
           fi
 
           # net_per_test: improvements − regressions (per-test, from diff-test262.ts).
@@ -154,6 +164,8 @@ jobs:
             --argjson net_per_test "${net_per_test:-null}" \
             --argjson regressions "${regressions:-null}" \
             --argjson regressions_real "${regressions_real:-null}" \
+            --argjson regressions_wasm_change "${regressions_wasm_change:-null}" \
+            --argjson wasm_identical_noise "${wasm_identical_noise:-null}" \
             --argjson compile_timeouts "${compile_timeouts:-null}" \
             --argjson improvements "${improvements:-null}" \
             '{
@@ -170,6 +182,8 @@ jobs:
               net_per_test: $net_per_test,
               regressions: $regressions,
               regressions_real: $regressions_real,
+              regressions_wasm_change: $regressions_wasm_change,
+              wasm_identical_noise: $wasm_identical_noise,
               compile_timeouts: $compile_timeouts,
               improvements: $improvements
             }' > "$out"
