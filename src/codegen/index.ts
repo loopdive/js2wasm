@@ -5413,28 +5413,45 @@ export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void 
   const props = tsType.getProperties();
 
   const fields: FieldDef[] = [];
+  // #1118 follow-up: track callable-property arities so structs whose methods
+  // differ in arity don't dedup. Two object literals like `{ then(r) {…} }`
+  // and `{ then(r, j) {…} }` both stringify their `then` field to externref,
+  // so without this distinguishing info their structs would dedup. The
+  // method placeholders share a funcMap entry, and the second method body
+  // overrides the first's typeIdx — breaking trampolines created against
+  // the original arity. Including the arity in the hash key keeps such
+  // structs distinct.
+  const methodSigParts: string[] = [];
   for (const prop of props) {
     const propType = ctx.checker.getTypeOfSymbol(prop);
     // Recursively register nested object types as structs before resolving
     ensureStructForType(ctx, propType);
     // Use resolveWasmType so nested structs get ref types, not externref
     let wasmType = resolveWasmType(ctx, propType);
+    const callSigs = propType.getCallSignatures();
     // For valueOf/toString callable properties, store as eqref instead of externref
     // so coercion can recover the closure and call it via call_ref
-    if (
-      wasmType.kind === "externref" &&
-      propType.getCallSignatures().length > 0 &&
-      (prop.name === "valueOf" || prop.name === "toString")
-    ) {
+    if (wasmType.kind === "externref" && callSigs.length > 0 && (prop.name === "valueOf" || prop.name === "toString")) {
       wasmType = { kind: "eqref" };
     }
     fields.push({ name: prop.name, type: wasmType, mutable: true });
+    if (callSigs.length > 0) {
+      const sig = callSigs[0]!;
+      // Include arity AND return-type signature in the hash key. Two object
+      // literals like `{ valueOf() { return 42n } }` and
+      // `{ valueOf() { throw ... } }` both have arity 0 but different return
+      // types (i64 vs never/void). Without distinguishing them, the placeholder
+      // method's typeIdx flips between the two, breaking trampolines.
+      const retType = ctx.checker.getReturnTypeOfSignature(sig);
+      const retStr = retType ? ctx.checker.typeToString(retType) : "void";
+      methodSigParts.push(`${prop.name}#${sig.parameters.length}->${retStr}`);
+    }
   }
 
   // Structural dedup: O(1) hash-based lookup for matching anonymous struct fields.
   // This avoids creating duplicate struct types for the same shape when TS returns
   // different ts.Type objects (e.g. variable type vs. initializer type).
-  const hashKey = fieldsHashKey(fields);
+  const hashKey = fieldsHashKey(fields) + (methodSigParts.length > 0 ? "||" + methodSigParts.join(",") : "");
   const existingName = ctx.anonStructHash.get(hashKey);
   if (existingName) {
     ctx.anonTypeMap.set(tsType, existingName);

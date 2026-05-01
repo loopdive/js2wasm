@@ -129,6 +129,60 @@ describe("#1118 — object-literal methods + dynamic dispatch", () => {
     });
   });
 
+  describe("regression: structurally-similar struct dedup with mismatched method signatures", () => {
+    // Two object literals whose fields are structurally identical
+    // (single field stored as externref/eqref) but whose methods differ
+    // in arity OR return type used to dedup to the same anonymous struct.
+    // The shared method placeholder's typeIdx was overwritten by the
+    // second compilation, breaking trampolines created against the first.
+    // The result: invalid Wasm at runtime ("not enough arguments on the
+    // stack for call" or "type error in fallthru[0]"). The fix includes
+    // method arity + return-type info in the struct dedup hash key so
+    // such structs stay distinct.
+
+    it("two object literals with `then` of different arities both compile to valid Wasm", async () => {
+      // Pre-fix: produced "not enough arguments on the stack for call (need 3, got 2)"
+      // when instantiating, because both objects' methods deduped to the same
+      // placeholder funcMap entry and the second body's arity overrode the first.
+      const exports = await compileToWasm(`
+        export function test(): number {
+          const fulfiller: any = { then(resolve: any) { return 1; } };
+          const lateRejector: any = { then(resolve: any, reject: any) { return 2; } };
+          return fulfiller.then(0);
+        }
+      `);
+      expect(exports.test()).toBe(1);
+    });
+
+    it("two object literals with `valueOf` of different return types both compile", async () => {
+      // Pre-fix: produced "type error in fallthru[0] (expected i64, got externref)"
+      // because obj1.valueOf returns bigint (i64) and obj2.valueOf throws (never),
+      // and the deduped placeholder typeIdx flipped between them.
+      const exports = await compileToWasm(`
+        export function test(): number {
+          const obj1: any = { valueOf() { return 42n; } };
+          const obj2: any = { valueOf() { throw new Error("boom"); } };
+          return 1;
+        }
+      `);
+      expect(exports.test()).toBe(1);
+    });
+
+    it("two object literals with `next` returning different shapes both compile", async () => {
+      // Pre-fix: AggregateError/errors-iterabletolist-failures.js produced
+      // "type error in fallthru[0] (expected externref, got (ref null 41))"
+      // for the same dedup-with-different-return-types reason as valueOf above.
+      const exports = await compileToWasm(`
+        export function test(): number {
+          const it1: any = { next() { return undefined; } };
+          const it2: any = { next() { return 'hi'; } };
+          return 1;
+        }
+      `);
+      expect(exports.test()).toBe(1);
+    });
+  });
+
   describe("globalThis access works (Fix 1 from the original issue)", () => {
     it("globalThis.Array.isArray", async () => {
       const exports = await compileToWasm(`
