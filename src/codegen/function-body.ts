@@ -40,6 +40,7 @@ import { emitArgumentsVecBody } from "./statements/nested-declarations.js";
 import { bodyUsesArguments } from "./helpers/body-uses-arguments.js";
 import { detectStringBuilders } from "./string-builder.js";
 import { collectI32SpecializedArrays } from "./array-element-typing.js";
+import { detectArrayReduceFusion, applyArrayReduceFusion } from "./array-reduce-fusion.js";
 
 /** Maximum number of instructions for a function body to be considered inlinable */
 export const INLINE_MAX_INSTRS = 10;
@@ -910,16 +911,26 @@ export function compileFunctionBody(ctx: CodegenContext, decl: ts.FunctionDeclar
         const builders = detectStringBuilders(ctx, decl.body);
         if (builders.size > 0) fctx.pendingStringBuilders = builders;
       }
+      // #1195: array-reduce-fusion — detect the fill+reduce shape and
+      // rewrite the AST to eliminate the temporary array. Runs BEFORE
+      // hoisting so the fused statement list is what gets hoisted /
+      // compiled. The detector is conservative; if any precondition
+      // fails, the original statements are returned unchanged.
+      const fusionMatches = detectArrayReduceFusion(ctx, decl.body);
+      const bodyStatements: ts.Statement[] =
+        fusionMatches.length > 0
+          ? applyArrayReduceFusion(decl.body.statements, fusionMatches)
+          : (decl.body.statements as unknown as ts.Statement[]);
       // Hoist `var` declarations: pre-allocate locals so variables are accessible
       // even before their declaration site (JS var hoisting semantics).
-      hoistVarDeclarations(ctx, fctx, decl.body.statements);
+      hoistVarDeclarations(ctx, fctx, bodyStatements);
       // Hoist `let`/`const` declarations with TDZ flags so nested functions can
       // capture them. The TDZ flag ensures ReferenceError if accessed before init.
-      hoistLetConstWithTdz(ctx, fctx, decl.body.statements);
+      hoistLetConstWithTdz(ctx, fctx, bodyStatements);
       // Hoist function declarations: JS semantics require function declarations
       // to be available before their textual position in the enclosing scope.
-      hoistFunctionDeclarations(ctx, fctx, decl.body.statements);
-      for (const stmt of decl.body.statements) {
+      hoistFunctionDeclarations(ctx, fctx, bodyStatements);
+      for (const stmt of bodyStatements) {
         compileStatement(ctx, fctx, stmt);
       }
     }
