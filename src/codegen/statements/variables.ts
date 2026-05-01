@@ -347,16 +347,25 @@ export function compileVariableStatement(ctx: CodegenContext, fctx: FunctionCont
     // Check if this variable has widened properties (empty obj with later prop assignments)
     const widenedStructName = ctx.widenedVarStructMap.get(name);
     const widenedTypeIdx = widenedStructName !== undefined ? ctx.structMap.get(widenedStructName) : undefined;
+    // #1197: i32-specialized number[] arrays get __vec_i32 instead of __vec_f64.
+    // The override is applied AFTER the standard type computation so it stacks
+    // cleanly with widened/inferred paths above (the analysis pass restricts
+    // candidates to bare `let arr: number[] = ...` so neither path applies).
+    const isI32SpecializedArray =
+      fctx.i32SpecializedArrays?.has(name) === true && (varType.flags & ts.TypeFlags.Object) !== 0;
+
     const wasmType: ValType = isI32CoercedLocal
       ? { kind: "i32" }
-      : widenedTypeIdx !== undefined
-        ? { kind: "ref_null" as const, typeIdx: widenedTypeIdx }
-        : (inferredVecType ??
-          (decl.initializer && isStringMethodReturningHostArray(ctx, decl.initializer)
-            ? { kind: "externref" as const }
-            : decl.initializer && isPromiseHostCall(ctx, decl.initializer)
+      : isI32SpecializedArray
+        ? { kind: "ref_null" as const, typeIdx: getOrRegisterVecType(ctx, "i32", { kind: "i32" }) }
+        : widenedTypeIdx !== undefined
+          ? { kind: "ref_null" as const, typeIdx: widenedTypeIdx }
+          : (inferredVecType ??
+            (decl.initializer && isStringMethodReturningHostArray(ctx, decl.initializer)
               ? { kind: "externref" as const }
-              : resolveWasmType(ctx, varType)));
+              : decl.initializer && isPromiseHostCall(ctx, decl.initializer)
+                ? { kind: "externref" as const }
+                : resolveWasmType(ctx, varType)));
 
     // If this var/let/const was already pre-hoisted at function entry, reuse that slot.
     // For let/const: the pre-pass (hoistLetConstWithTdz) always pre-allocates a slot
@@ -476,7 +485,18 @@ export function compileVariableStatement(ctx: CodegenContext, fctx: FunctionCont
           stackType = closureType;
         }
       } else {
-        const resultType = compileExpression(ctx, fctx, decl.initializer, wasmType);
+        // #1197: while compiling the initializer for an i32-specialized number[]
+        // local, set a transient flag so the array literal / Array() constructor
+        // compiler emits an i32 backing array instead of f64.
+        const ctxAny = ctx as unknown as { _i32ElemArrayOverride?: boolean };
+        const prevElemOverride = ctxAny._i32ElemArrayOverride;
+        if (isI32SpecializedArray) ctxAny._i32ElemArrayOverride = true;
+        let resultType: ValType | null;
+        try {
+          resultType = compileExpression(ctx, fctx, decl.initializer, wasmType);
+        } finally {
+          ctxAny._i32ElemArrayOverride = prevElemOverride;
+        }
         stackType = resultType ?? wasmType;
         // Coerce if the expression produced a type that doesn't match the local
         if (resultType && !valTypesMatch(resultType, wasmType)) {

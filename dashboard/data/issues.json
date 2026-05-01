@@ -117,16 +117,6 @@
   ],
   "ready": [
     {
-      "id": "1221",
-      "title": "test262-worker: outer catches misclassify WebAssembly.Exception as compile_error — fix harness to reclassify as fail (~256 flaky tests)",
-      "priority": "high",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "spec-conformance",
-      "status": "ready",
-      "sprint": "46"
-    },
-    {
       "id": "1220",
       "title": "test262-worker: Promise snapshot missing + prototype poisoning leaks across fork tests (+29 conformance)",
       "priority": "high",
@@ -165,18 +155,6 @@
       "goal": "ci-stability",
       "status": "ready",
       "sprint": "46"
-    },
-    {
-      "id": "1216",
-      "title": "ci: auto-commit playground benchmark baseline on push-to-main (architectural follow-up to #1214)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [
-        "1214"
-      ],
-      "goal": "ci-stability",
-      "status": "ready",
-      "sprint": "47"
     },
     {
       "id": "1209",
@@ -234,26 +212,6 @@
       "sprint": "48"
     },
     {
-      "id": "1197",
-      "title": "perf: i32 element specialization for `number[]` arrays under `| 0` / `& mask` / `>> n` patterns",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "performance",
-      "status": "ready",
-      "sprint": "47"
-    },
-    {
-      "id": "1196",
-      "title": "perf: bounds-check elimination via SSA on monotonic indexed array loops",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "performance",
-      "status": "ready",
-      "sprint": "47"
-    },
-    {
       "id": "1195",
       "title": "perf: escape-analysis scalarization for non-escaping arrays (eliminate array allocation in array-sum)",
       "priority": "high",
@@ -262,16 +220,6 @@
       "goal": "performance",
       "status": "ready",
       "sprint": "47"
-    },
-    {
-      "id": "1184",
-      "title": "__str_copy_tree worklist allocates O(node.len) per flatten — bound by depth instead",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "performance",
-      "status": "ready",
-      "sprint": "46"
     },
     {
       "id": "1172",
@@ -1611,6 +1559,16 @@
       "sprint": "46"
     },
     {
+      "id": "1184",
+      "title": "__str_copy_tree worklist allocates O(node.len) per flatten — bound by depth instead",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "performance",
+      "status": "in-progress",
+      "sprint": "46"
+    },
+    {
       "id": "1169l",
       "title": "IR Phase 4 Slice 10 step D — Date / Error / Map / Set through IR",
       "priority": "medium",
@@ -1647,6 +1605,16 @@
   ],
   "review": [],
   "done": [
+    {
+      "id": "1221",
+      "title": "test262-worker: outer catches misclassify WebAssembly.Exception as compile_error — fix harness to reclassify as fail (~256 flaky tests)",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "spec-conformance",
+      "status": "done",
+      "sprint": "46"
+    },
     {
       "id": "1214",
       "title": "ci: playground benchmark baseline doesn't survive on CI runners — wasm/js timing 4x off committed numbers",

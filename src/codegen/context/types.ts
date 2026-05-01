@@ -162,6 +162,14 @@ export interface FunctionContext {
    */
   i32CoercedLocals?: Set<string>;
   /**
+   * #1197: Set of let/const locals declared as `number[]` whose element
+   * storage can safely lower to `i32` instead of `f64` (every write site is
+   * provably i32-shaped, every use is a whitelisted access pattern, no
+   * closure capture). The variable-declaration codegen consults this set
+   * to pick the `__vec_i32` vec type at allocation time.
+   */
+  i32SpecializedArrays?: Set<string>;
+  /**
    * Free list for temporary locals, keyed by ValType key string.
    * Used by allocTempLocal/releaseTempLocal to reuse locals of the same type.
    */
