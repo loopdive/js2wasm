@@ -1069,16 +1069,25 @@ function isPhase1Expr(expr: ts.Expression, scope: ReadonlySet<string>, localClas
     return isPhase1Expr(expr.expression, scope, localClasses);
   }
   // Slice 2 — element access with a literal string key (sugar for
-  // property access on a known shape). Numeric/computed keys are
-  // out of scope and rejected here so the function falls back to
-  // legacy.
+  // property access on a known shape).
+  //
+  // Slice 12 (#1169o) — broaden to accept any Phase-1 argument
+  // expression. The lowerer dispatches by receiver type:
+  //   - String-literal arg + object receiver → existing object-shape
+  //     property path (unchanged).
+  //   - Any other arg + vec receiver         → `vec.get` with
+  //     i32-coerced index.
+  //   - Other combinations                    → throw clean fallback so
+  //     the function reverts to legacy.
   if (ts.isElementAccessExpression(expr)) {
-    const arg = expr.argumentExpression;
-    if (!ts.isStringLiteral(arg) && arg.kind !== ts.SyntaxKind.NoSubstitutionTemplateLiteral) {
-      return false;
-    }
-    return isPhase1Expr(expr.expression, scope, localClasses);
+    return (
+      isPhase1Expr(expr.expression, scope, localClasses) && isPhase1Expr(expr.argumentExpression, scope, localClasses)
+    );
   }
+  // Slice 12 (#1169o) — array literals not yet selector-accepted in
+  // expression position. `f([1, 2, 3])` keeps falling back to legacy
+  // because the call-graph closure drops the caller. A follow-up
+  // slice that adds a `vec.new_fixed` IR instr can flip this on.
   // Slice 11 (#1169n) — `delete <expr>` and `void <expr>`. Both are
   // accepted at the selector level when their operand is a Phase-1
   // expression. Lowering emits:
