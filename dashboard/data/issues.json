@@ -117,6 +117,43 @@
   ],
   "ready": [
     {
+      "id": "1233",
+      "title": "IR Phase 4 Slice 13d — Array per-element-type methods through IR",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [
+        "1231"
+      ],
+      "goal": "ir-migration",
+      "status": "ready",
+      "sprint": "backlog"
+    },
+    {
+      "id": "1232",
+      "title": "IR Phase 4 Slice 13c — String fixed-signature methods through IR",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1231"
+      ],
+      "goal": "ir-migration",
+      "status": "ready",
+      "sprint": "backlog"
+    },
+    {
+      "id": "1231",
+      "title": "IR Phase 4 Slice 13b — pseudo-ExternClassInfo registration for String + Array",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1169o",
+        "1169p"
+      ],
+      "goal": "ir-migration",
+      "status": "ready",
+      "sprint": "backlog"
+    },
+    {
       "id": "1223",
       "title": "playground: horizontal swipe on overflowing tab bar drags tab instead of scrolling (mobile)",
       "priority": "medium",
@@ -167,18 +204,6 @@
         "1169n",
         "1169o",
         "1169p"
-      ],
-      "goal": "ir-migration",
-      "status": "ready",
-      "sprint": "47"
-    },
-    {
-      "id": "1169p",
-      "title": "IR Phase 4 Slice 13 — String + Array prototype methods through IR",
-      "priority": "medium",
-      "feasibility": "hard",
-      "depends_on": [
-        "1169o"
       ],
       "goal": "ir-migration",
       "status": "ready",
@@ -1468,6 +1493,18 @@
       "feasibility": "hard",
       "depends_on": [],
       "goal": "performance",
+      "status": "in-progress",
+      "sprint": "47"
+    },
+    {
+      "id": "1169p",
+      "title": "IR Phase 4 Slice 13 — String + Array prototype methods through IR",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [
+        "1169o"
+      ],
+      "goal": "ir-migration",
       "status": "in-progress",
       "sprint": "47"
     },

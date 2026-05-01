@@ -16675,7 +16675,7 @@
       "title": "IR Phase 4 Slice 13 — String + Array prototype methods through IR",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "47",
       "depends_on": [],
       "files": [],
@@ -17482,6 +17482,46 @@
       "test262_fail": 156
     },
     {
+      "id": "1231",
+      "title": "IR Phase 4 Slice 13b — pseudo-ExternClassInfo registration for String + Array",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "backlog",
+      "depends_on": [],
+      "files": [],
+      "goal": "ir-migration",
+      "cluster": "ir-migration"
+    },
+    {
+      "id": "1232",
+      "title": "IR Phase 4 Slice 13c — String fixed-signature methods through IR",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "backlog",
+      "depends_on": [
+        "1231"
+      ],
+      "files": [],
+      "goal": "ir-migration",
+      "cluster": "ir-migration"
+    },
+    {
+      "id": "1233",
+      "title": "IR Phase 4 Slice 13d — Array per-element-type methods through IR",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "backlog",
+      "depends_on": [
+        "1231"
+      ],
+      "files": [],
+      "goal": "ir-migration",
+      "cluster": "ir-migration"
+    },
+    {
       "id": "backlog",
       "title": "js2wasm Backlog",
       "priority": "medium",
@@ -17562,6 +17602,14 @@
     {
       "source": "1164",
       "target": "1165"
+    },
+    {
+      "source": "1231",
+      "target": "1232"
+    },
+    {
+      "source": "1231",
+      "target": "1233"
     },
     {
       "source": "481",
