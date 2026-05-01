@@ -3072,34 +3072,46 @@ document.body.appendChild(el);</pre
                 <span class="how-step-size" id="how-dom-wasm-size">(0.3 KB gzipped)</span>
               </h3>
               <pre class="how-code wat">
+;; Actual compiler output. Identifiers shown for readability;
+;; the real WAT uses numeric indices ($doc → 0, $div → 1, …).
 (import "env" "global_document"
   (func $doc (result externref)))
 (import "env" "Document_createElement"
   (func $createElement
-    (param externref externref externref)
-    (result externref)))
+    (param externref externref) (result externref)))
 (import "env" "Element_set_textContent"
   (func $setTC (param externref externref)))
+(import "env" "Document_get_body"
+  (func $getBody (param externref) (result externref)))
 (import "env" "Node_appendChild"
   (func $appendChild
-    (param externref externref)
-    (result externref)))
-(import "env" "Document_get_body"
-  (func $getBody (param externref)
-    (result externref)))
+    (param externref externref) (result externref)))
+
+;; String literals are imported as constant externref globals
+;; (wasm:js-string-constants) — they never appear in the binary.
+(import "string_constants" "div"
+  (global $div externref))
+(import "string_constants" "Hello from Wasm"
+  (global $hello externref))
+
+(global $el (mut externref) (ref.null extern))
 
 (func $__module_init
   call $doc
-  string.const "div"
+  global.get $div
   call $createElement
-  local.tee $el
-  string.const "Hello from Wasm"
+  global.set $el
+
+  global.get $el
+  global.get $hello
   call $setTC
+
   call $doc
   call $getBody
-  local.get $el
+  global.get $el
   call $appendChild
-  drop)</pre
+  drop)
+(start $__module_init)</pre
               >
               <span class="how-code-label">dom.wat</span>
             </div>
