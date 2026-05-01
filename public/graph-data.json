@@ -16650,8 +16650,8 @@
       "id": "1169n",
       "title": "IR Phase 4 Slice 11 — switch statements + missing binary/unary operators through IR",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "review",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "47",
       "depends_on": [],
       "files": [],
@@ -17181,7 +17181,7 @@
       "title": "perf(test262): root-cause and fix the 136 compile_timeout tests (~7.6 min wall-clock cost per run)",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "review",
       "sprint": "47",
       "depends_on": [],
       "files": [],
@@ -17465,6 +17465,21 @@
       "goal": "test262-conformance",
       "cluster": "test262-conformance",
       "test262_fail": 104
+    },
+    {
+      "id": "1227",
+      "title": "fix(runner): compiler-pool timeout starts at enqueue time, not dispatch time — causes 156 false compile_timeouts",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "47",
+      "depends_on": [
+        "1207"
+      ],
+      "files": [],
+      "goal": "ci-stability",
+      "cluster": "ci-stability",
+      "test262_fail": 156
     },
     {
       "id": "backlog",
@@ -18275,6 +18290,10 @@
     {
       "source": "1205",
       "target": "1223"
+    },
+    {
+      "source": "1207",
+      "target": "1227"
     },
     {
       "source": "1197",
