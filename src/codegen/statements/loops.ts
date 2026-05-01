@@ -179,6 +179,118 @@ function detectI32LoopVar(stmt: ts.ForStatement): { name: string; initValue: num
   return { name, initValue };
 }
 
+/**
+ * #1196: Detect mutations of the loop index or array binding inside a for-loop
+ * body. Used by the bounds-check elimination pass — we can only elide bounds
+ * checks for `arr[i]` if both `i` and `arr` are stable across every iteration.
+ *
+ * Returns `true` if the body contains anything that could mutate either
+ * binding:
+ *   - Direct assignment / compound assignment to `i` or `arr`
+ *     (`i = …`, `i += …`, `arr = …`, etc.)
+ *   - `i++ / ++i / i-- / --i` or the same on `arr`
+ *   - Method calls on `arr` (`arr.push()`, `arr.length = …`, etc.)
+ *   - `arr.length = …` assignment
+ *   - Any nested function / arrow / class — closures could capture and mutate
+ *     either binding outside our static view (conservative).
+ *
+ * Notes:
+ *   - `arr[k] = v` writes through the array but does not change the binding
+ *     itself or `arr.length` (when `k < arr.length`), so element writes are
+ *     allowed — they're the whole point of the optimisation.
+ */
+function loopBodyMutatesIndexOrArray(body: ts.Statement, indexName: string, arrayName: string): boolean {
+  let mutates = false;
+
+  function isAssignmentOp(kind: ts.SyntaxKind): boolean {
+    return (
+      kind === ts.SyntaxKind.EqualsToken ||
+      kind === ts.SyntaxKind.PlusEqualsToken ||
+      kind === ts.SyntaxKind.MinusEqualsToken ||
+      kind === ts.SyntaxKind.AsteriskEqualsToken ||
+      kind === ts.SyntaxKind.SlashEqualsToken ||
+      kind === ts.SyntaxKind.PercentEqualsToken ||
+      kind === ts.SyntaxKind.AsteriskAsteriskEqualsToken ||
+      kind === ts.SyntaxKind.LessThanLessThanEqualsToken ||
+      kind === ts.SyntaxKind.GreaterThanGreaterThanEqualsToken ||
+      kind === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken ||
+      kind === ts.SyntaxKind.AmpersandEqualsToken ||
+      kind === ts.SyntaxKind.BarEqualsToken ||
+      kind === ts.SyntaxKind.CaretEqualsToken ||
+      kind === ts.SyntaxKind.QuestionQuestionEqualsToken ||
+      kind === ts.SyntaxKind.AmpersandAmpersandEqualsToken ||
+      kind === ts.SyntaxKind.BarBarEqualsToken
+    );
+  }
+
+  function visit(node: ts.Node): void {
+    if (mutates) return;
+
+    // Direct assignment to index / array binding, or to arr.length
+    if (ts.isBinaryExpression(node) && isAssignmentOp(node.operatorToken.kind)) {
+      const lhs = node.left;
+      if (ts.isIdentifier(lhs) && (lhs.text === indexName || lhs.text === arrayName)) {
+        mutates = true;
+        return;
+      }
+      // arr.length = …
+      if (
+        ts.isPropertyAccessExpression(lhs) &&
+        ts.isIdentifier(lhs.expression) &&
+        lhs.expression.text === arrayName &&
+        lhs.name.text === "length"
+      ) {
+        mutates = true;
+        return;
+      }
+    }
+
+    // Pre/post-fix increment/decrement: i++, ++i, i--, --i, arr++, etc.
+    if (
+      (ts.isPostfixUnaryExpression(node) || ts.isPrefixUnaryExpression(node)) &&
+      (node.operator === ts.SyntaxKind.PlusPlusToken || node.operator === ts.SyntaxKind.MinusMinusToken)
+    ) {
+      const op = node.operand;
+      if (ts.isIdentifier(op) && (op.text === indexName || op.text === arrayName)) {
+        mutates = true;
+        return;
+      }
+    }
+
+    // Any method call on `arr` — conservatively assume it could mutate length
+    // (push/pop/shift/unshift/splice/sort/reverse/copyWithin/fill, etc.). Pure
+    // reads via element access (`arr[i]`) and `.length` reads are property
+    // accesses, not call expressions — so they don't trigger here.
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      ts.isIdentifier(node.expression.expression) &&
+      node.expression.expression.text === arrayName
+    ) {
+      mutates = true;
+      return;
+    }
+
+    // Any nested function / arrow / class — could capture and mutate either
+    // binding via a runtime call we can't statically reason about. Conservative.
+    if (
+      ts.isFunctionDeclaration(node) ||
+      ts.isFunctionExpression(node) ||
+      ts.isArrowFunction(node) ||
+      ts.isClassDeclaration(node) ||
+      ts.isClassExpression(node)
+    ) {
+      mutates = true;
+      return;
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  visit(body);
+  return mutates;
+}
+
 export function compileForStatement(ctx: CodegenContext, fctx: FunctionContext, stmt: ts.ForStatement): void {
   // Save localMap entries for let/const initializers that shadow outer variables.
   // `for (let x = ...; ...)` creates a block scope that ends after the loop.
@@ -356,22 +468,32 @@ export function compileForStatement(ctx: CodegenContext, fctx: FunctionContext, 
     fctx.body = condBody;
   }
 
-  // --- Bounds check elimination: detect `i < arr.length` pattern ---
-  // When the condition is `indexVar < arrayVar.length` (or `arrayVar.length > indexVar`),
-  // mark the pair so element accesses like `arrayVar[indexVar]` can skip bounds checks.
+  // --- Bounds check elimination: detect `i < arr.length` pattern (#1196) ---
+  // When the condition is strictly `indexVar < arrayVar.length` (or
+  // `arrayVar.length > indexVar`) AND the loop body does not mutate `i` or
+  // `arr`, mark the pair so element accesses like `arrayVar[indexVar]` can
+  // skip bounds checks.
+  //
+  // Soundness rules:
+  //   - Strict `<` / `>` only: `<=` / `>=` allow `i == arr.length` which is
+  //     out of bounds.
+  //   - Body must not assign to `i` or `arr`, and must not call any method on
+  //     `arr` (could mutate length, e.g. push/pop/splice/etc.).
+  //   - Body must not contain a nested function — closures could capture and
+  //     mutate either binding outside our static view.
   const savedSafeIndexed = fctx.safeIndexedArrays;
   if (stmt.condition && ts.isBinaryExpression(stmt.condition)) {
     const cond = stmt.condition;
     const op = cond.operatorToken.kind;
     let indexExpr: ts.Expression | undefined;
     let lengthExpr: ts.Expression | undefined;
-    // i < arr.length  OR  i <= arr.length - 1
-    if (op === ts.SyntaxKind.LessThanToken || op === ts.SyntaxKind.LessThanEqualsToken) {
+    // Strict `i < arr.length`
+    if (op === ts.SyntaxKind.LessThanToken) {
       indexExpr = cond.left;
       lengthExpr = cond.right;
     }
-    // arr.length > i  OR  arr.length >= i + 1
-    if (op === ts.SyntaxKind.GreaterThanToken || op === ts.SyntaxKind.GreaterThanEqualsToken) {
+    // Strict `arr.length > i`
+    if (op === ts.SyntaxKind.GreaterThanToken) {
       indexExpr = cond.right;
       lengthExpr = cond.left;
     }
@@ -386,10 +508,14 @@ export function compileForStatement(ctx: CodegenContext, fctx: FunctionContext, 
     ) {
       const indexVar = indexExpr.text;
       const arrayVar = lengthExpr.expression.text;
-      if (!fctx.safeIndexedArrays) {
-        fctx.safeIndexedArrays = new Set();
+      // Walk the body to confirm `i` and `arr` are not mutated. Only mark the
+      // pair safe when both are stable across every iteration.
+      if (!loopBodyMutatesIndexOrArray(stmt.statement, indexVar, arrayVar)) {
+        if (!fctx.safeIndexedArrays) {
+          fctx.safeIndexedArrays = new Set();
+        }
+        fctx.safeIndexedArrays.add(`${arrayVar}:${indexVar}`);
       }
-      fctx.safeIndexedArrays.add(`${arrayVar}:${indexVar}`);
     }
   }
 
