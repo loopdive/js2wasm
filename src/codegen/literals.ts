@@ -16,7 +16,7 @@
 import ts from "typescript";
 import { isVoidType, unwrapPromiseType } from "../checker/type-mapper.js";
 import type { FieldDef, Instr, StructTypeDef, ValType, WasmFunction } from "../ir/types.js";
-import { emitMethodParamDefaults, promoteAccessorCapturesToGlobals } from "./closures.js";
+import { emitMethodParamDefaults, emitObjectMethodAsClosure, promoteAccessorCapturesToGlobals } from "./closures.js";
 import { popBody, pushBody } from "./context/bodies.js";
 import { reportError } from "./context/errors.js";
 import { allocLocal } from "./context/locals.js";
@@ -707,6 +707,62 @@ export function compileObjectLiteralForStruct(
     const shorthandProp = !prop
       ? expr.properties.find((p) => ts.isShorthandPropertyAssignment(p) && p.name.text === field.name)
       : undefined;
+    // #1118: Method shorthand `{ m() {…} }` — `resolvePropertyNameText`
+    // returns undefined for MethodDeclaration, so the search above misses
+    // it. Look it up explicitly by name. The pre-pass in
+    // `ensureStructForType` already registered the method's funcMap entry;
+    // emit a closure-struct ref to it and convert to the field type.
+    // Without this, the field defaults to `undefined` and dynamic dispatch
+    // through `any` (the test262 wrapper pattern) returns null.
+    const methodProp =
+      !prop && !shorthandProp
+        ? expr.properties.find(
+            (p): p is ts.MethodDeclaration =>
+              ts.isMethodDeclaration(p) &&
+              !!p.name &&
+              ((ts.isIdentifier(p.name) && p.name.text === field.name) ||
+                (ts.isStringLiteral(p.name) && p.name.text === field.name) ||
+                (ts.isNumericLiteral(p.name) && p.name.text === field.name)),
+          )
+        : undefined;
+    if (methodProp) {
+      const methodFullName = `${typeName}_${field.name}`;
+      const methodFuncIdx = ctx.funcMap.get(methodFullName);
+      if (methodFuncIdx !== undefined) {
+        const closureType = emitObjectMethodAsClosure(ctx, fctx, methodFullName, methodFuncIdx, structTypeIdx);
+        if (closureType) {
+          // Coerce closure-struct ref → field type. The common case is
+          // externref (un-typed obj literal), which needs extern.convert_any.
+          // For a concretely-typed struct field of the same closure type,
+          // no coercion is needed.
+          if (field.type.kind === "externref") {
+            fctx.body.push({ op: "extern.convert_any" } as Instr);
+          } else if (field.type.kind === "eqref") {
+            // ref → eqref: GC ref subtype, no instruction needed (implicit).
+          } else if (
+            (field.type.kind === "ref" || field.type.kind === "ref_null") &&
+            (field.type as { typeIdx: number }).typeIdx !== (closureType as { typeIdx: number }).typeIdx
+          ) {
+            // Mismatched ref types — fall back to the default branch by
+            // dropping our closure and re-emitting undefined below. This
+            // shouldn't happen for well-formed fields but keeps codegen
+            // sound under TypeChecker quirks.
+            fctx.body.push({ op: "drop" } as Instr);
+            fctx.body.push({ op: "ref.null", typeIdx: (field.type as { typeIdx: number }).typeIdx });
+          }
+          continue; // field handled
+        }
+      }
+      // Fall through to the default-undefined branch if the closure
+      // emission failed (e.g. unsupported signature). Better to leave
+      // the field undefined than to leave the stack unbalanced.
+      if (field.type.kind === "externref") emitUndefined(ctx, fctx);
+      else if (field.type.kind === "eqref") fctx.body.push({ op: "ref.null.eq" });
+      else if (field.type.kind === "ref" || field.type.kind === "ref_null")
+        fctx.body.push({ op: "ref.null", typeIdx: field.type.typeIdx });
+      else fctx.body.push({ op: "i32.const", value: 0 });
+      continue;
+    }
     if (prop && ts.isPropertyAssignment(prop)) {
       // Track closure types for valueOf/toString fields
       const bodyLenBefore = fctx.body.length;

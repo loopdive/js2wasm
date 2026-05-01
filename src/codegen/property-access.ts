@@ -1690,19 +1690,33 @@ export function compilePropertyAccess(
     }
 
     // Handle instance method accessed as value (not call): obj.method (#820, #1149)
-    // Returns null externref to prevent null deref traps from the fallthrough path.
-    // Applies to both class instances and object-literal struct types: object-literal
-    // methods are registered in classMethodSet under `${typeName}_${propName}` even
-    // though the struct type itself is not in classSet. Without this, the fallback
-    // path would dynamically add a struct field for the method and read its null
-    // default, causing a null_deref trap when the detached method reference is later
-    // invoked — instead of the TypeError the JS caller would expect.
+    // For OBJECT LITERAL struct types, the method's struct field now holds a
+    // proper closure-ref (#1118 — `compileObjectLiteralForStruct` calls
+    // `emitObjectMethodAsClosure`), so we read the field to get a callable
+    // value. For CLASS instances the field doesn't exist; fall through to the
+    // legacy null-externref placeholder.
     {
       const methodFullName = `${typeName}_${propName}`;
       if (ctx.classMethodSet.has(methodFullName) || ctx.staticMethodSet.has(methodFullName)) {
         const funcIdx = ctx.funcMap.get(methodFullName);
         if (funcIdx !== undefined) {
-          // Compile and drop the object expression (for side effects)
+          // #1118: Object literal — read the struct field which holds the closure.
+          // Detected by: typeName is a registered struct AND the struct has a
+          // matching field. classSet.has(typeName) excludes class instances.
+          const structFields = ctx.structFields.get(typeName);
+          const fieldIdx = structFields ? structFields.findIndex((f) => f.name === propName) : -1;
+          const structTypeIdx = ctx.structMap.get(typeName);
+          if (!ctx.classSet.has(typeName) && structFields && fieldIdx >= 0 && structTypeIdx !== undefined) {
+            // Compile the object → struct ref on stack → struct.get the field.
+            const objResult = compileExpression(ctx, fctx, expr.expression);
+            if (objResult) {
+              fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+              const fType = structFields[fieldIdx]!.type;
+              return fType;
+            }
+          }
+          // Legacy fallback for class methods or unresolved cases:
+          // compile + drop the object, return null externref placeholder.
           const objResult = compileExpression(ctx, fctx, expr.expression);
           if (objResult) {
             fctx.body.push({ op: "drop" });

@@ -2841,6 +2841,79 @@ export function emitFuncRefAsClosure(
   return { kind: "ref", typeIdx: structTypeIdx };
 }
 
+/**
+ * #1118: Emit an object-literal method as a first-class closure value.
+ *
+ * Object-literal methods are compiled as Wasm functions with signature
+ * `(self_obj, ...userParams) → ret`. When the method is read as a value
+ * (e.g. `var f = obj.m;` or stored in the obj's own struct field), we
+ * need a closure-struct ref whose funcref takes `(closure_self, …userParams)`.
+ *
+ * The two signatures differ in their first param: the method expects the
+ * object's struct ref, the closure value passes its own closure struct.
+ * We bridge them with a trampoline that drops `closure_self` and pushes
+ * `ref.null <objStruct>` for the method's `self_obj` slot, then forwards
+ * the user params and tail-calls the method.
+ *
+ * The trampoline implements method extraction with unbound `this` — JS
+ * spec says `var f = obj.m; f();` invokes `m` with `this = undefined`
+ * (strict mode) or `this = globalThis` (sloppy). For methods that don't
+ * reference `this` (the common test262 yield-star pattern), the null
+ * `self_obj` is fine; methods that DO use `this` will trap inside the
+ * body, mirroring spec semantics.
+ *
+ * Returns the closure-struct ref ValType (which the caller can convert
+ * to externref via `extern.convert_any` if the field type expects it).
+ */
+export function emitObjectMethodAsClosure(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  methodName: string,
+  methodFuncIdx: number,
+  objStructTypeIdx: number,
+): ValType | null {
+  const sig = getFuncSignature(ctx, methodFuncIdx);
+  if (!sig) return null;
+  // Method signature: [(ref null objStruct), ...userParams] → results.
+  // Strip the leading self_obj to derive the closure value's user-visible
+  // signature.
+  if (sig.params.length === 0) return null;
+  const userParams = sig.params.slice(1);
+  const results = sig.results;
+
+  const wrapperTypes = getOrCreateFuncRefWrapperTypes(ctx, userParams, results);
+  if (!wrapperTypes) return null;
+  const { structTypeIdx, liftedFuncTypeIdx } = wrapperTypes;
+
+  // Create the trampoline. Signature matches the wrapper's lifted func
+  // type: (closure_self, ...userParams) → ret. We ignore closure_self,
+  // push ref.null <objStruct> for the method's self_obj, then forward
+  // the user params.
+  const trampolineName = `__obj_meth_tramp_${methodName}_${ctx.closureCounter++}`;
+  const trampolineBody: Instr[] = [{ op: "ref.null", typeIdx: objStructTypeIdx } as Instr];
+  for (let i = 0; i < userParams.length; i++) {
+    // Skip closure_self at param 0; user params start at index 1
+    trampolineBody.push({ op: "local.get", index: i + 1 } as Instr);
+  }
+  trampolineBody.push({ op: "call", funcIdx: methodFuncIdx } as Instr);
+
+  const trampolineFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+  ctx.mod.functions.push({
+    name: trampolineName,
+    typeIdx: liftedFuncTypeIdx,
+    locals: [],
+    body: trampolineBody,
+    exported: false,
+  });
+  ctx.funcMap.set(trampolineName, trampolineFuncIdx);
+
+  // Emit: ref.func $trampoline, struct.new $closure_struct
+  fctx.body.push({ op: "ref.func", funcIdx: trampolineFuncIdx });
+  fctx.body.push({ op: "struct.new", typeIdx: structTypeIdx });
+
+  return { kind: "ref", typeIdx: structTypeIdx };
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────
 
 /**

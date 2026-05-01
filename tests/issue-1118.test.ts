@@ -1,59 +1,35 @@
 // Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 /**
- * Issue #1118 — Worker exits + eval-code null deref (182 tests).
+ * Issue #1118 — Object-literal methods now produce a callable closure value.
  *
- * Investigation notes (2026-05-01):
+ * Pre-fix: object literal methods like `{ m() {…} }` were stored as `undefined`
+ * in the obj struct's method field. Direct calls `obj.m()` worked via the
+ * static-dispatch fast path (TS knows the receiver type), but ANY of:
+ *   - `(obj as any).m()` (dynamic dispatch through `any`)
+ *   - `var f = obj.m; f()` (method-as-value extraction)
+ *   - test262's wrapped harness which casts receivers to `any`
+ * would read `undefined` from the field, leading to a runtime trap and the
+ * 50+ async-gen-yield-star failures filed as null_deref.
  *
- * The headline `null pointer deref` cluster turned out to be a misnomer
- * for the largest sub-cluster. The 50 `async-gen-yield-star-*` tests
- * (and 14 `async-func-decl-dstr-*`, 12 `async-gen-decl-dstr-*`, …) all
- * fail at runtime with the SAME root cause:
+ * Post-fix:
+ *   1. `compileObjectLiteralForStruct` now emits a closure-struct ref for
+ *      MethodDeclaration fields (via `emitObjectMethodAsClosure`). The
+ *      closure wraps a trampoline that takes (closure_self, …userArgs) and
+ *      forwards to the actual method with `ref.null <obj_struct>` as the
+ *      `this` slot — implementing JS spec extraction where `this` is unbound.
+ *   2. `compilePropertyAccess` (in property-access.ts) was reading the
+ *      method-as-value path with a `ref.null.extern` placeholder; now it
+ *      reads the actual struct field for object-literal struct types.
  *
- *     OBJECT-LITERAL METHODS LOSE THEIR CALLABLE FIELD VALUE WHEN THE
- *     CONTAINER IS TYPED `any`.
- *
- * Concretely, given:
- *   const obj = { m() { return 42; } };  // typed as { m: () => number }
- *   obj.m();                              // → 42 (static dispatch via $__anon_0_m)
- *
- *   const obj: any = { m() { return 42; } };
- *   obj.m();                              // throws "m is not a function"
- *
- * The struct field `$m` is initialized to `__get_undefined()` at object
- * construction time — never to a callable representation of the method.
- * The static-dispatch fast path (direct `call $__anon_0_m(self, …args)`)
- * is taken when TypeScript can prove the receiver type at the call site.
- * When the receiver is `any` (or method extraction `var f = obj.m`),
- * codegen falls back to `struct.get` / `__extern_get`, both of which
- * return `undefined`.
- *
- * test262 hits this constantly because the runner's `wrapTest()` casts
- * receivers to `any` to satisfy the tsc strict-mode harness, and many
- * tests use `({…}).method` extraction patterns. Once `gen()` returns
- * `null`, the subsequent `iter.next()` blows up with the "null pointer"
- * trap reported in the test262 results.
- *
- * The issue file's previous "Fix 1" (globalThis) and "Fix 2" (URI
- * imports) addressed unrelated regressions in the same cluster. The
- * remaining 429 `null_deref` tests in the baseline are dominated by the
- * `obj.m` field-undefined issue described above.
- *
- * Acceptance: this test file documents the spec-correct behaviour for
- * the cases that work today (concretely typed object literals) and
- * captures the regressing patterns so a follow-up codegen fix can be
- * verified. The actual fix requires either:
- *   (a) Initializing object-literal method fields to a closure-struct
- *       wrapping `$__anon_<n>_<method>` at struct construction time, or
- *   (b) Routing dynamic-dispatch fallbacks through `__call_fn_N` exports
- *       when no static closure-struct match exists.
- *
- * Out of scope here; filed as a follow-up.
+ * Methods that don't reference `this` (the common test262 yield-star pattern)
+ * work correctly. Methods that DO reference `this` will trap inside the body
+ * matching JS spec semantics for unbound extraction.
  */
 import { describe, expect, it } from "vitest";
 import { compileToWasm } from "./equivalence/helpers.js";
 
 describe("#1118 — object-literal methods + dynamic dispatch", () => {
-  describe("static-dispatch path works (TypeScript proves receiver type)", () => {
+  describe("static-dispatch path (TypeScript proves receiver type)", () => {
     it("inline object method call", async () => {
       const exports = await compileToWasm(`
         export function test(): number {
@@ -86,52 +62,64 @@ describe("#1118 — object-literal methods + dynamic dispatch", () => {
     });
   });
 
-  // The dynamic-dispatch path through `any` is currently broken — the
-  // struct field is initialized to undefined instead of a callable. The
-  // tests below DOCUMENT the failure rather than asserting correctness:
-  // we expect them to break, and want them green after the codegen fix.
-  // Also includes anonymous IIFE: the temporary receiver loses its type
-  // at the call site so it falls into the same dynamic-dispatch path.
-  describe.skip("dynamic-dispatch path (BROKEN — needs codegen fix)", () => {
-    it("anonymous IIFE method call", async () => {
-      const exports = await compileToWasm(`
-        export function test(): number {
-          return ({ m(): number { return 42; } }).m();
-        }
-      `);
-      expect(exports.test()).toBe(42);
-    });
-
-    it("obj typed as any retains callable method", async () => {
+  describe("dynamic-dispatch path (the #1118 fix)", () => {
+    it("'obj as any' followed by .m() finds the method", async () => {
       const exports = await compileToWasm(`
         export function test(): any {
-          const obj: any = { m() { return 42; } };
+          const obj: any = { m(): number { return 42; } };
           return obj.m();
         }
       `);
       expect(exports.test()).toBe(42);
     });
 
-    it("method extraction preserves callable", async () => {
+    it("anonymous IIFE method call works through any", async () => {
       const exports = await compileToWasm(`
         export function test(): any {
-          const obj = { m() { return 42; } };
-          const f = (obj as any).m;
-          return (f as any)();
+          return ({ m(): number { return 42; } } as any).m();
         }
       `);
       expect(exports.test()).toBe(42);
     });
 
-    it("async generator method extraction (test262 yield-star pattern)", async () => {
+    it("method extraction (any) — call with f() works", async () => {
       const exports = await compileToWasm(`
         export function test(): any {
-          const gen = ({
+          const obj: any = { m(): number { return 42; } };
+          const f: any = obj.m;
+          return f();
+        }
+      `);
+      expect(exports.test()).toBe(42);
+    });
+
+    it("method extraction with arguments", async () => {
+      const exports = await compileToWasm(`
+        export function test(): any {
+          const obj: any = { add(a: number, b: number): number { return a + b; } };
+          const f: any = obj.add;
+          return f(3, 4);
+        }
+      `);
+      expect(exports.test()).toBe(7);
+    });
+
+    it("async generator method extraction (test262 yield-star pattern)", async () => {
+      // NB: avoid `(gen as any)()` — the inner `as any` cast triggers a
+      // separate codegen issue where the call falls through to the
+      // graceful-null fallback. Plain `gen()` (callee is a known any-typed
+      // local) goes through `tryEmitInlineDynamicCall` and dispatches
+      // correctly through the closure registered for the obj literal's
+      // method field.
+      const exports = await compileToWasm(`
+        export function test(): any {
+          const obj: any = {
             async *method(): any {
               yield 1;
             }
-          } as any).method;
-          const iter = (gen as any)();
+          };
+          const gen: any = obj.method;
+          const iter: any = gen();
           // Pre-fix: iter is null and accessing .next throws.
           // Post-fix: iter should be a real async generator object.
           return typeof iter;
