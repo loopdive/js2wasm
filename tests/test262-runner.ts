@@ -10,8 +10,19 @@
  */
 import { existsSync, readdirSync, readFileSync } from "fs";
 import { join, relative } from "path";
+import { createHash } from "crypto";
 import { compile } from "../src/index.js";
 import { buildImports } from "../src/runtime.js";
+
+/**
+ * Compute a short (12-char) sha256 hex digest of a compiled Wasm binary.
+ * Used for the dev-self-merge regression-gate noise filter (#1222): if a test
+ * appears to "regress" but the Wasm binary is byte-identical on both base and
+ * branch, the runtime difference is pure CI noise and should not count.
+ */
+export function computeWasmSha(binary: Uint8Array): string {
+  return createHash("sha256").update(binary).digest("hex").slice(0, 12);
+}
 
 // ── Metadata parsing ────────────────────────────────────────────────
 
@@ -2066,6 +2077,13 @@ export interface TestResult {
   reason?: string;
   error?: string;
   timing?: TestTiming;
+  /**
+   * 12-char sha256 hex digest of the compiled Wasm binary, or null if no
+   * binary was produced (skip / compile_error / compile_timeout). Used by the
+   * PR regression-gate noise filter (#1222): regressions where wasm_sha is
+   * unchanged between base and branch are CI noise, not real regressions.
+   */
+  wasm_sha?: string | null;
 }
 
 /** Default per-test timeout in milliseconds (prevents infinite-loop hangs) */
@@ -2535,6 +2553,11 @@ export async function runTest262File(
     };
   }
 
+  // Compile succeeded — compute wasm_sha for the regression-gate noise filter (#1222).
+  // All subsequent return paths in this function operate on a valid `result.binary`,
+  // so attach the same hash to every outcome (pass/fail/runtime-error).
+  const wasm_sha = computeWasmSha(result.binary);
+
   // For runtime negative tests, if the compiler produced warnings that indicate
   // it detected the expected error at compile time (TDZ violations, scope errors,
   // undeclared variables), count as a pass — the compiler caught what JS would
@@ -2551,6 +2574,7 @@ export async function runTest262File(
         instantiateMs: 0,
         executeMs: 0,
       },
+      wasm_sha,
     };
   }
 
@@ -2581,6 +2605,7 @@ export async function runTest262File(
           instantiateMs: round2(instantiateMs),
           executeMs: 0,
         },
+        wasm_sha,
       };
     }
 
@@ -2604,11 +2629,12 @@ export async function runTest262File(
         status: "fail",
         error: `expected runtime ${meta.negative!.type} but execution succeeded`,
         timing,
+        wasm_sha,
       };
     }
 
     if (ret === 1 || ret === 1.0) {
-      return { file: relPath, category, status: "pass", timing };
+      return { file: relPath, category, status: "pass", timing, wasm_sha };
     }
     // ret >= 2: the (ret-1)th assert (1-based) that failed
     //   (__assert_count starts at 1, incremented before check, so first assert → 2)
@@ -2644,6 +2670,7 @@ export async function runTest262File(
       status: "fail",
       error: `returned ${ret}${assertCtx}`,
       timing,
+      wasm_sha,
     };
   } catch (err: any) {
     const totalMs = performance.now() - totalStart;
@@ -2657,7 +2684,7 @@ export async function runTest262File(
     if (isRuntimeNegative) {
       // Runtime negative test: execution threw/trapped — this is the expected
       // behavior. The test passes.
-      return { file: relPath, category, status: "pass", timing };
+      return { file: relPath, category, status: "pass", timing, wasm_sha };
     }
 
     // WebAssembly.CompileError during instantiation is a compile error, not a test failure
@@ -2668,6 +2695,7 @@ export async function runTest262File(
         status: "compile_error",
         error: enrichErrorMessage(err.message, err, result.sourceMap, bodyLineOffset),
         timing,
+        wasm_sha,
       };
     }
     // Traps from unreachable() count as assertion failures
@@ -2678,6 +2706,7 @@ export async function runTest262File(
         status: "fail",
         error: enrichErrorMessage(err.message, err, result.sourceMap, bodyLineOffset),
         timing,
+        wasm_sha,
       };
     }
     return {
@@ -2686,6 +2715,7 @@ export async function runTest262File(
       status: "fail",
       error: enrichErrorMessage(String(err), err, result.sourceMap, bodyLineOffset),
       timing,
+      wasm_sha,
     };
   }
 }
