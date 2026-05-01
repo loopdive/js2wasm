@@ -1,15 +1,17 @@
 {
   "pr": 123,
   "conclusion": "failure",
-  "head_branch": "issue-1090-toprimitive",
-  "head_sha": "d9f8511e6d384467a953b014085063b9b774b7bb",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24303263120",
-  "timestamp": "2026-04-12T09:19:39Z",
-  "pass": 12991,
-  "fail": 9062,
-  "compile_error": 19757,
-  "snapshot_delta": -9194,
-  "net_per_test": -9194,
-  "regressions": 9419,
-  "improvements": 225
+  "head_branch": "feature-examples-refresh",
+  "head_sha": "32b3b7df7cf5057ae7e383e5b4e7041c5ceec02c",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25210422973",
+  "timestamp": "2026-05-01T10:19:30Z",
+  "pass": 25841,
+  "fail": 13931,
+  "compile_error": 1767,
+  "snapshot_delta": 11,
+  "net_per_test": 6,
+  "regressions": 120,
+  "regressions_real": 31,
+  "compile_timeouts": 89,
+  "improvements": 126
 }
