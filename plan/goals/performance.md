@@ -56,8 +56,8 @@ eliminating the externref roundtrip.
 | **1184** | __str_copy_tree worklist allocates O(node.len) per flatten — bound by depth instead | 46 | in-progress | high |
 | **1184** | __str_copy_tree worklist allocates O(node.len) per flatten — bound by depth instead | 47 | ready | high |
 | **1195** | perf: escape-analysis scalarization for non-escaping arrays (eliminate array allocation in array-sum) | 47 | ready | high |
-| **1196** | perf: bounds-check elimination via SSA on monotonic indexed array loops | 47 | ready | high |
-| **1197** | perf: i32 element specialization for `number[]` arrays under `\| 0` / `& mask` / `>> n` patterns | 47 | ready | high |
+| **1196** | perf: bounds-check elimination via SSA on monotonic indexed array loops | 47 | in-progress | high |
+| **1197** | perf: i32 element specialization for `number[]` arrays under `\| 0` / `& mask` / `>> n` patterns | 47 | in-progress | high |
 | **1198** | perf: pre-size dense arrays at allocation site (`const a = []; for ... a[i] = ...` → `new Array(n)`) | 46 | ready | high |
 | **1198** | perf: pre-size dense arrays at allocation site (`const a = []; for ... a[i] = ...` → `new Array(n)`) | 47 | in-progress | high |
 | **1199** | perf: linear-memory backing for typed numeric arrays (`Array<number>` with i32-only ops → `i32.load`/`i32.store`) | 48 | ready | medium |

@@ -117,6 +117,16 @@
   ],
   "ready": [
     {
+      "id": "1221",
+      "title": "test262-worker: outer catches misclassify WebAssembly.Exception as compile_error — fix harness to reclassify as fail (~256 flaky tests)",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "spec-conformance",
+      "status": "ready",
+      "sprint": "46"
+    },
+    {
       "id": "1220",
       "title": "test262-worker: Promise snapshot missing + prototype poisoning leaks across fork tests (+29 conformance)",
       "priority": "high",
@@ -137,24 +147,16 @@
       "sprint": "46"
     },
     {
-      "id": "1218",
-      "title": "ci(test262): auto-validate committed baseline on PR — spot-check 50 random pass entries",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "ci-stability",
-      "status": "ready",
-      "sprint": "46"
-    },
-    {
-      "id": "1217",
-      "title": "ci(test262): smoke-canary — re-run main HEAD twice with fresh cache, fail if flip rate > 0",
+      "id": "1216",
+      "title": "ci: auto-commit playground benchmark baseline on push-to-main (architectural follow-up to #1214)",
       "priority": "medium",
       "feasibility": "medium",
-      "depends_on": [],
+      "depends_on": [
+        "1214"
+      ],
       "goal": "ci-stability",
       "status": "ready",
-      "sprint": "46"
+      "sprint": "47"
     },
     {
       "id": "1209",
@@ -175,19 +177,6 @@
       "goal": "developer-experience",
       "status": "ready",
       "sprint": "47"
-    },
-    {
-      "id": "1205",
-      "title": "Extend TDZ flag boxing to async functions / generators (#1177-followup) — async-fn closure capture path needs Stage 2/3 wiring",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [
-        "1177",
-        "1185"
-      ],
-      "goal": "test262-conformance",
-      "status": "ready",
-      "sprint": "46"
     },
     {
       "id": "1200",
@@ -1509,6 +1498,26 @@
   ],
   "inprogress": [
     {
+      "id": "1218",
+      "title": "ci(test262): auto-validate committed baseline on PR — spot-check 50 random pass entries",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "ci-stability",
+      "status": "in-progress",
+      "sprint": "46"
+    },
+    {
+      "id": "1217",
+      "title": "ci(test262): smoke-canary — re-run main HEAD twice with fresh cache, fail if flip rate > 0",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ci-stability",
+      "status": "in-progress",
+      "sprint": "46"
+    },
+    {
       "id": "1215",
       "title": "fix: numeric-array .join() / .toString() must register number_toString — Wasm validation error",
       "priority": "high",
@@ -1529,6 +1538,19 @@
       "sprint": "45"
     },
     {
+      "id": "1205",
+      "title": "Extend TDZ flag boxing to async functions / generators (#1177-followup) — async-fn closure capture path needs Stage 2/3 wiring",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1177",
+        "1185"
+      ],
+      "goal": "test262-conformance",
+      "status": "in-progress",
+      "sprint": "46"
+    },
+    {
       "id": "1203",
       "title": "credibility: differential testing harness — compare js2wasm output vs V8/SpiderMonkey on 1000+ programs",
       "priority": "high",
@@ -1543,6 +1565,26 @@
       "title": "perf: pre-size dense arrays at allocation site (`const a = []; for ... a[i] = ...` → `new Array(n)`)",
       "priority": "high",
       "feasibility": "easy",
+      "depends_on": [],
+      "goal": "performance",
+      "status": "in-progress",
+      "sprint": "47"
+    },
+    {
+      "id": "1197",
+      "title": "perf: i32 element specialization for `number[]` arrays under `| 0` / `& mask` / `>> n` patterns",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "performance",
+      "status": "in-progress",
+      "sprint": "47"
+    },
+    {
+      "id": "1196",
+      "title": "perf: bounds-check elimination via SSA on monotonic indexed array loops",
+      "priority": "high",
+      "feasibility": "medium",
       "depends_on": [],
       "goal": "performance",
       "status": "in-progress",
@@ -1605,16 +1647,6 @@
   ],
   "review": [],
   "done": [
-    {
-      "id": "1221",
-      "title": "test262-worker: outer catches misclassify WebAssembly.Exception as compile_error — fix harness to reclassify as fail (~256 flaky tests)",
-      "priority": "high",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "spec-conformance",
-      "status": "done",
-      "sprint": "46"
-    },
     {
       "id": "1214",
       "title": "ci: playground benchmark baseline doesn't survive on CI runners — wasm/js timing 4x off committed numbers",
