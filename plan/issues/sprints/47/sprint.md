@@ -47,11 +47,11 @@ wrap_checklist:
 | Issue | Title | Priority | Blocked by |
 |---|---|---|---|
 | #1226 | class/elements: static async private method invalid Wasm (~104 tests) | high | — |
+| #1227 | fix(runner): compiler-pool timer fires at enqueue — 156 false compile_timeouts | high | — |
 | #1169o | IR Phase 4 Slice 12 — dynamic element access + array literals | high | — |
 | #1169p | IR Phase 4 Slice 13 — String + Array prototype methods | medium | #1169o |
 | #1169q | IR Phase 4 Slice 14 — retire legacy codegen | high | #1169n, #1169o, #1169p |
 | #1195 | perf: escape-analysis scalarization for non-escaping arrays | high | — |
-| #1207 | perf(test262): root-cause and fix the 136 compile_timeout tests | high | — |
 | #1223 | TDZ async/gen: writer+reader fn-decl sharing via destructure-assign | medium | #1177 |
 
 ### Done
@@ -60,6 +60,7 @@ wrap_checklist:
 |---|---|---|---|
 | #1222 | ci: wasm-hash noise filter — exclude byte-identical regressions from PR gate | high | done |
 | #1169n | IR Phase 4 Slice 11 — switch + missing binary/unary operators | high | done |
+| #1207 | perf(test262): root-cause 156 compile_timeouts — all queue-wait noise (#1227 fixes) | high | done |
 | #1196 | perf: bounds-check elimination (landed in S46) | high | done |
 | #1197 | perf: i32 element specialization (landed in S46) | high | done |
 | #1198 | perf: pre-size dense arrays (landed in S46) | high | done |
