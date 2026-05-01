@@ -29,6 +29,12 @@ jobs:
           submodules: recursive
           fetch-depth: 0
           fetch-tags: true
+          # Smudge LFS-tracked files. Without this, .wasm/.log files arrive as
+          # pointer stubs and any binary served from public/ ships as text —
+          # e.g. loadtime wasm modules failing with `expected magic word 00 61
+          # 73 6d, found 76 65 72 73`. Loadtime artifacts are also opted out
+          # of LFS via .gitattributes for safety.
+          lfs: true
 
       - name: Fetch baseline data from baselines repo
         run: |

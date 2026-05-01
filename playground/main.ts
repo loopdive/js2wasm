@@ -1974,8 +1974,8 @@ const benchmarkExamples: BenchmarkExample[] = [
   {
     name: "loop.ts",
     path: "examples/benchmarks/loop.ts",
-    title: "Loop: sum 1..1M",
-    description: "Tight numeric loop, no allocations",
+    title: "Loop: 1M Int32 sum",
+    description: "Tight i32 loop with explicit | 0 wrap, no allocations",
     benchmarkFunction: "bench_loop",
   },
   {
