@@ -34,7 +34,7 @@ wrap_checklist:
 |---|---|---|---|---|
 | #1225 | Nested dstr from null/undefined: missing TypeError (~244 tests) | high | dev-1225 | #130 |
 | #1169o | IR Phase 4 Slice 12 — dynamic element access + array literals | high | dev-1169n | #132 |
-| #1195 | perf: escape-analysis scalarization for non-escaping arrays | high | dev-1224 | pending |
+| #1157 | RegExp flags='undefinedy' from String.prototype paths (~288 tests) | high | dev-1224 | pending |
 
 ### Blocked
 
@@ -62,6 +62,7 @@ wrap_checklist:
 | #1207 | perf(test262): root-cause 156 compile_timeouts — all queue-wait noise (#1227 fixes) | high | done |
 | #1224 | class/dstr defaults: investigation done, 2 root causes found, tests added | high | done |
 | #1226 | class/elements: static async private method — tests added (bug already fixed) | high | done |
+| #1195 | perf: array-reduce-fusion — eliminate temp array in fill+reduce shape | high | done |
 | #1227 | fix(runner): pool timer fires at dispatch, not enqueue — 156 false CTs fixed | high | done |
 | #1196 | perf: bounds-check elimination (landed in S46) | high | done |
 | #1197 | perf: i32 element specialization (landed in S46) | high | done |
