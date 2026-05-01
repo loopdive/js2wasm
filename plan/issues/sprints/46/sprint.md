@@ -201,41 +201,44 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1169 | IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen | high | ready |
-| #1198 | perf: pre-size dense arrays at allocation site (`const a = []; for ... a[i] = ...` → `new Array(n)`) | high | ready |
-| #1205 | Extend TDZ flag boxing to async functions / generators (#1177-followup) — async-fn closure capture path needs Stage 2/3 wiring | high | ready |
-| #1209 | labs/benchmarks: js2wasm hosted lane fails — ESM resolver error in run-node-wasm-program.mjs | medium | ready |
-| #1217 | ci(test262): smoke-canary — re-run main HEAD twice with fresh cache, fail if flip rate > 0 | medium | ready |
-| #1218 | ci(test262): auto-validate committed baseline on PR — spot-check 50 random pass entries | medium | ready |
-| #1219 | ArrayBindingPattern iter-close: destructuring hangs when iterator never sets done:true (26 compile_timeout tests) | high | ready |
-| #1220 | test262-worker: Promise snapshot missing + prototype poisoning leaks across fork tests (+29 conformance) | high | ready |
-| #1221 | test262-worker: outer catches misclassify WebAssembly.Exception as compile_error — fix harness to reclassify as fail (~256 flaky tests) | high | ready |
 
 ### In Progress
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
-| #1169j | IR Phase 4 Slice 10 step B — TypedArray construction + index access through IR | medium | in-progress |
-| #1169l | IR Phase 4 Slice 10 step D — Date / Error / Map / Set through IR | medium | in-progress |
-| #1184 | __str_copy_tree worklist allocates O(node.len) per flatten — bound by depth instead | high | in-progress |
-| #1188 | Setup js2.loopdive.com custom domain for GitHub Pages | medium | in-progress |
-| #1203 | credibility: differential testing harness — compare js2wasm output vs V8/SpiderMonkey on 1000+ programs | high | in-progress |
-| #1215 | fix: numeric-array .join() / .toString() must register number_toString — Wasm validation error | high | in-progress |
+| #1205 | Extend TDZ flag boxing to async functions / generators (#1177-followup) — async-fn closure capture path needs Stage 2/3 wiring | high | in-progress |
+| #1216 | ci: auto-commit playground benchmark baseline on push-to-main (architectural follow-up to #1214) | medium | in-progress |
+| #1217 | ci(test262): smoke-canary — re-run main HEAD twice with fresh cache, fail if flip rate > 0 | medium | in-progress |
+| #1218 | ci(test262): auto-validate committed baseline on PR — spot-check 50 random pass entries | medium | in-progress |
+| #1219 | ArrayBindingPattern iter-close: destructuring hangs when iterator never sets done:true (26 compile_timeout tests) | high | in-progress |
+| #1220 | test262-worker: Promise snapshot missing + prototype poisoning leaks across fork tests (+29 conformance) | high | in-progress |
 
 ### Done
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #1169j | IR Phase 4 Slice 10 step B — TypedArray construction + index access through IR | medium | done |
 | #1169k | IR Phase 4 Slice 10 step C — ArrayBuffer + DataView through IR | medium | done |
+| #1169l | IR Phase 4 Slice 10 step D — Date / Error / Map / Set through IR | medium | done |
 | #1169m | IR Phase 4 Slice 10 step E — Promise through IR (best-effort) | low | done |
+| #1184 | __str_copy_tree worklist allocates O(node.len) per flatten — bound by depth instead | high | done |
 | #1187 | test-runtime: add JS-string → native-string coercion helper for dual-run testing in nativeStrings mode | medium | done |
+| #1188 | Setup js2.loopdive.com custom domain for GitHub Pages | medium | done |
 | #1190 | research: eliminate CI test262 baseline drift (umbrella for #1189, #1191, #1192) | high | done |
+| #1196 | perf: bounds-check elimination via SSA on monotonic indexed array loops | high | done |
+| #1197 | perf: i32 element specialization for `number[]` arrays under `\| 0` / `& mask` / `>> n` patterns | high | done |
+| #1198 | perf: pre-size dense arrays at allocation site (`const a = []; for ... a[i] = ...` → `new Array(n)`) | high | done |
 | #1201 | credibility: per-path test262 scores in test262-report.json — wire categorical data into landing page and report.html | high | done |
+| #1203 | credibility: differential testing harness — compare js2wasm output vs V8/SpiderMonkey on 1000+ programs | high | done |
 | #1204 | credibility: methodology document — how js2wasm is built by an AI agent team | medium | done |
+| #1209 | labs/benchmarks: js2wasm hosted lane fails — ESM resolver error in run-node-wasm-program.mjs | medium | done |
 | #1210 | labs/benchmarks: js2wasm string-hash Wasmtime lane hits 20s timeout — WasmGC i16-array GC pressure | high | done |
 | #1211 | js2wasm hosted fib-recursive: Wasm validator — call param types must match | medium | done |
 | #1212 | fix: Promise resolve/reject edge cases regress after #1211 any-boxing fix | medium | done |
 | #1213 | ci: refresh-benchmarks workflow fails on every PR — looks for sidebar baseline at gitignored path | medium | done |
 | #1214 | ci: playground benchmark baseline doesn't survive on CI runners — wasm/js timing 4x off committed numbers | medium | done |
+| #1215 | fix: numeric-array .join() / .toString() must register number_toString — Wasm validation error | high | done |
+| #1221 | test262-worker: outer catches misclassify WebAssembly.Exception as compile_error — fix harness to reclassify as fail (~256 flaky tests) | high | done |
 
 ### Won't Fix
 

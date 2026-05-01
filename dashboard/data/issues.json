@@ -117,54 +117,27 @@
   ],
   "ready": [
     {
-      "id": "1220",
-      "title": "test262-worker: Promise snapshot missing + prototype poisoning leaks across fork tests (+29 conformance)",
-      "priority": "high",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "spec-conformance",
+      "id": "1223",
+      "title": "TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up)",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [
+        "1177",
+        "1205"
+      ],
+      "goal": "test262-conformance",
       "status": "ready",
-      "sprint": "46"
+      "sprint": "47"
     },
     {
-      "id": "1219",
-      "title": "ArrayBindingPattern iter-close: destructuring hangs when iterator never sets done:true (26 compile_timeout tests)",
+      "id": "1222",
+      "title": "ci: wasm-hash noise filter — exclude byte-identical regressions from PR gate",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
-      "goal": "spec-conformance",
+      "goal": "ci-quality",
       "status": "ready",
-      "sprint": "46"
-    },
-    {
-      "id": "1218",
-      "title": "ci(test262): auto-validate committed baseline on PR — spot-check 50 random pass entries",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "ci-stability",
-      "status": "ready",
-      "sprint": "46"
-    },
-    {
-      "id": "1217",
-      "title": "ci(test262): smoke-canary — re-run main HEAD twice with fresh cache, fail if flip rate > 0",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "ci-stability",
-      "status": "ready",
-      "sprint": "46"
-    },
-    {
-      "id": "1209",
-      "title": "labs/benchmarks: js2wasm hosted lane fails — ESM resolver error in run-node-wasm-program.mjs",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "performance",
-      "status": "ready",
-      "sprint": "46"
+      "sprint": "47"
     },
     {
       "id": "1207",
@@ -175,19 +148,6 @@
       "goal": "developer-experience",
       "status": "ready",
       "sprint": "47"
-    },
-    {
-      "id": "1205",
-      "title": "Extend TDZ flag boxing to async functions / generators (#1177-followup) — async-fn closure capture path needs Stage 2/3 wiring",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [
-        "1177",
-        "1185"
-      ],
-      "goal": "test262-conformance",
-      "status": "ready",
-      "sprint": "46"
     },
     {
       "id": "1200",
@@ -1509,12 +1469,42 @@
   ],
   "inprogress": [
     {
-      "id": "1215",
-      "title": "fix: numeric-array .join() / .toString() must register number_toString — Wasm validation error",
+      "id": "1220",
+      "title": "test262-worker: Promise snapshot missing + prototype poisoning leaks across fork tests (+29 conformance)",
       "priority": "high",
       "feasibility": "easy",
       "depends_on": [],
-      "goal": "correctness",
+      "goal": "spec-conformance",
+      "status": "in-progress",
+      "sprint": "46"
+    },
+    {
+      "id": "1219",
+      "title": "ArrayBindingPattern iter-close: destructuring hangs when iterator never sets done:true (26 compile_timeout tests)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-conformance",
+      "status": "in-progress",
+      "sprint": "46"
+    },
+    {
+      "id": "1218",
+      "title": "ci(test262): auto-validate committed baseline on PR — spot-check 50 random pass entries",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "ci-stability",
+      "status": "in-progress",
+      "sprint": "46"
+    },
+    {
+      "id": "1217",
+      "title": "ci(test262): smoke-canary — re-run main HEAD twice with fresh cache, fail if flip rate > 0",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ci-stability",
       "status": "in-progress",
       "sprint": "46"
     },
@@ -1529,66 +1519,15 @@
       "sprint": "45"
     },
     {
-      "id": "1203",
-      "title": "credibility: differential testing harness — compare js2wasm output vs V8/SpiderMonkey on 1000+ programs",
+      "id": "1205",
+      "title": "Extend TDZ flag boxing to async functions / generators (#1177-followup) — async-fn closure capture path needs Stage 2/3 wiring",
       "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "correctness",
-      "status": "in-progress",
-      "sprint": "46"
-    },
-    {
-      "id": "1198",
-      "title": "perf: pre-size dense arrays at allocation site (`const a = []; for ... a[i] = ...` → `new Array(n)`)",
-      "priority": "high",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "performance",
-      "status": "in-progress",
-      "sprint": "47"
-    },
-    {
-      "id": "1188",
-      "title": "Setup js2.loopdive.com custom domain for GitHub Pages",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "developer-experience",
-      "status": "in-progress",
-      "sprint": "46"
-    },
-    {
-      "id": "1184",
-      "title": "__str_copy_tree worklist allocates O(node.len) per flatten — bound by depth instead",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "performance",
-      "status": "in-progress",
-      "sprint": "46"
-    },
-    {
-      "id": "1169l",
-      "title": "IR Phase 4 Slice 10 step D — Date / Error / Map / Set through IR",
-      "priority": "medium",
-      "feasibility": "easy",
+      "feasibility": "hard",
       "depends_on": [
-        "1169i"
+        "1177",
+        "1185"
       ],
-      "goal": "compiler-architecture",
-      "status": "in-progress",
-      "sprint": "46"
-    },
-    {
-      "id": "1169j",
-      "title": "IR Phase 4 Slice 10 step B — TypedArray construction + index access through IR",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [
-        "1169i"
-      ],
-      "goal": "compiler-architecture",
+      "goal": "test262-conformance",
       "status": "in-progress",
       "sprint": "46"
     },
@@ -1612,6 +1551,16 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "spec-conformance",
+      "status": "done",
+      "sprint": "46"
+    },
+    {
+      "id": "1215",
+      "title": "fix: numeric-array .join() / .toString() must register number_toString — Wasm validation error",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "correctness",
       "status": "done",
       "sprint": "46"
     },
@@ -1668,6 +1617,16 @@
       "sprint": "46"
     },
     {
+      "id": "1209",
+      "title": "labs/benchmarks: js2wasm hosted lane fails — ESM resolver error in run-node-wasm-program.mjs",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "performance",
+      "status": "done",
+      "sprint": "46"
+    },
+    {
       "id": "1208",
       "title": "landing: surface ADRs — rename 'How it works' to 'Approach', add Architecture section with ADR HTML renderings",
       "priority": "high",
@@ -1693,6 +1652,16 @@
       "sprint": "46"
     },
     {
+      "id": "1203",
+      "title": "credibility: differential testing harness — compare js2wasm output vs V8/SpiderMonkey on 1000+ programs",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "correctness",
+      "status": "done",
+      "sprint": "46"
+    },
+    {
       "id": "1202",
       "title": "credibility: Architecture Decision Records — document the 8 core design choices that define js2wasm",
       "priority": "high",
@@ -1709,6 +1678,16 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "test-infrastructure",
+      "status": "done",
+      "sprint": "46"
+    },
+    {
+      "id": "1198",
+      "title": "perf: pre-size dense arrays at allocation site (`const a = []; for ... a[i] = ...` → `new Array(n)`)",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "performance",
       "status": "done",
       "sprint": "46"
     },
@@ -1763,6 +1742,16 @@
       "sprint": "46"
     },
     {
+      "id": "1188",
+      "title": "Setup js2.loopdive.com custom domain for GitHub Pages",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "developer-experience",
+      "status": "done",
+      "sprint": "46"
+    },
+    {
       "id": "1187",
       "title": "test-runtime: add JS-string → native-string coercion helper for dual-run testing in nativeStrings mode",
       "priority": "medium",
@@ -1791,6 +1780,16 @@
       "goal": "compiler-architecture",
       "status": "done",
       "sprint": "45"
+    },
+    {
+      "id": "1184",
+      "title": "__str_copy_tree worklist allocates O(node.len) per flatten — bound by depth instead",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "performance",
+      "status": "done",
+      "sprint": "46"
     },
     {
       "id": "1183",
@@ -1944,8 +1943,32 @@
       "sprint": "46"
     },
     {
+      "id": "1169l",
+      "title": "IR Phase 4 Slice 10 step D — Date / Error / Map / Set through IR",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [
+        "1169i"
+      ],
+      "goal": "compiler-architecture",
+      "status": "done",
+      "sprint": "46"
+    },
+    {
       "id": "1169k",
       "title": "IR Phase 4 Slice 10 step C — ArrayBuffer + DataView through IR",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [
+        "1169i"
+      ],
+      "goal": "compiler-architecture",
+      "status": "done",
+      "sprint": "46"
+    },
+    {
+      "id": "1169j",
+      "title": "IR Phase 4 Slice 10 step B — TypedArray construction + index access through IR",
       "priority": "medium",
       "feasibility": "easy",
       "depends_on": [
