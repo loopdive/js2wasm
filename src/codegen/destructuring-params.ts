@@ -298,6 +298,51 @@ export function destructureParamObjectExternref(
       const nestedLocal = allocLocal(fctx, `__ext_dparam_nested_${fctx.locals.length}`, elemType);
       fctx.body.push({ op: "local.set", index: nestedLocal });
       ensureBindingLocals(ctx, fctx, element.name);
+
+      // Apply initializer (only when value is `undefined`, per spec — null does
+      // NOT trigger default). E.g. `{ w: { x, y, z } = defaults }` (#1225).
+      if (element.initializer) {
+        const undefIdx = ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+        if (undefIdx !== undefined) {
+          flushLateImportShifts(ctx, fctx);
+          fctx.body.push({ op: "local.get", index: nestedLocal });
+          fctx.body.push({ op: "call", funcIdx: undefIdx });
+          const savedBodyInit = fctx.body;
+          const initThen: Instr[] = [];
+          fctx.body = initThen;
+          // Compile initializer; coerce to externref so we can store back.
+          const initType = compileExpression(ctx, fctx, element.initializer, elemType);
+          if (initType && initType.kind !== "externref") {
+            if (initType.kind === "ref" || initType.kind === "ref_null") {
+              fctx.body.push({ op: "extern.convert_any" } as Instr);
+            } else if (initType.kind === "f64") {
+              const bIdx = ctx.funcMap.get("__box_number");
+              if (bIdx !== undefined) fctx.body.push({ op: "call", funcIdx: bIdx });
+            } else if (initType.kind === "i32") {
+              fctx.body.push({ op: "f64.convert_i32_s" });
+              const bIdx = ctx.funcMap.get("__box_number");
+              if (bIdx !== undefined) fctx.body.push({ op: "call", funcIdx: bIdx });
+            }
+          }
+          fctx.body.push({ op: "local.set", index: nestedLocal } as Instr);
+          fctx.body = savedBodyInit;
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "empty" },
+            then: initThen,
+            else: [],
+          });
+        }
+      }
+
+      // Per ECMA-262 §13.15.5.5 RequireObjectCoercible / §8.4.2 GetIterator,
+      // destructuring null/undefined through a non-empty nested pattern must
+      // throw TypeError. Emit the guard BEFORE recursing so we throw even when
+      // the nested destructure path silently no-ops on null (#1225).
+      if (element.name.elements.length > 0) {
+        emitExternrefDestructureGuard(ctx, fctx, nestedLocal);
+      }
+
       if (ts.isObjectBindingPattern(element.name)) {
         destructureParamObjectExternref(ctx, fctx, nestedLocal, element.name);
       } else {
