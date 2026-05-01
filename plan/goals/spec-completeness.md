@@ -99,7 +99,7 @@ pass rate goes from "good" to "excellent."
 | **1100** | Wasm-native Proxy: meta-object protocol without JS host |  | ready | medium |
 | **1101** | Wasm-native WeakRef and FinalizationRegistry via WasmGC weak references |  | ready | low |
 | **1102** | Wasm-native eval: ahead-of-time compilation strategy for eval() and Function() |  | ready | medium |
-| **1118** | Worker/timeout exits and eval-code null deref (182 tests) |  | ready | medium |
+| **1118** | Worker/timeout exits and eval-code null deref (182 tests) | 47 | in-progress | medium |
 | **1136** | Array.prototype.flat() and flatMap() not implemented | 42 | done | medium |
 | **1137** | ES2023 array methods: toReversed, toSorted, toSpliced, with — not implemented | 42 | done | medium |
 | **1138** | Destructuring: unresolvable defaults throw ReferenceError instead of being undefined | 42 | done | high |
@@ -115,7 +115,7 @@ pass rate goes from "good" to "excellent."
 | **1151** | Async function synchronous throws bypass Promise.reject wrapping |  | ready | high |
 | **1154** | test262 worker: Array.prototype poisoning leaks into TypeScript compiler — Array.from fails at compile time (~378 test262 regressions) |  | open | high |
 | **1156** | Array.prototype method-as-value called with non-function arg produces 'number N is not a function' (~164 tests) | 44 | done | medium |
-| **1157** | RegExp constructor called with flags='undefinedy' from String.prototype method paths (~288 test262 regressions) |  | open | high |
+| **1157** | RegExp constructor called with flags='undefinedy' from String.prototype method paths (~288 test262 regressions) | 47 | done | high |
 | **1160** | Array.from codegen error — test262-worker prototype poisoning leak (730 tests) | 44 | done | high |
 | **1161** | Cannot destructure null/undefined in private class method params (~429 dstr tests) | 44 | done | high |
 | **1162** | yield* async — unexpected undefined AST node in compileExpression (~161 tests) | 44 | done | high |
