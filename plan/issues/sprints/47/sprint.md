@@ -86,10 +86,10 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1169p | IR Phase 4 Slice 13 — String + Array prototype methods through IR | medium | ready |
 | #1169q | IR Phase 4 Slice 14 — retire legacy codegen: delete expressions.ts, statements.ts, repair passes | high | ready |
 | #1195 | perf: escape-analysis scalarization for non-escaping arrays (eliminate array allocation in array-sum) | high | ready |
-| #1207 | perf(test262): root-cause and fix the 136 compile_timeout tests (~7.6 min wall-clock cost per run) | high | ready |
 | #1223 | TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up) | medium | ready |
 | #1225 | Nested destructuring from null/undefined: missing TypeError (~244 tests in for-of/dstr, assignment/dstr, class/dstr) | high | ready |
 | #1226 | class/elements: static async private method produces invalid Wasm — call missing argument (~104 tests) | high | ready |
+| #1227 | fix(runner): compiler-pool timeout starts at enqueue time, not dispatch time — causes 156 false compile_timeouts | high | ready |
 
 ### In Progress
 
@@ -101,12 +101,13 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
-| #1169n | IR Phase 4 Slice 11 — switch statements + missing binary/unary operators through IR | high | review |
+| #1207 | perf(test262): root-cause and fix the 136 compile_timeout tests (~7.6 min wall-clock cost per run) | high | review |
 
 ### Done
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #1169n | IR Phase 4 Slice 11 — switch statements + missing binary/unary operators through IR | high | done |
 | #1196 | perf: bounds-check elimination via SSA on monotonic indexed array loops | high | done |
 | #1197 | perf: i32 element specialization for `number[]` arrays under `\| 0` / `& mask` / `>> n` patterns | high | done |
 | #1198 | perf: pre-size dense arrays at allocation site (`const a = []; for ... a[i] = ...` → `new Array(n)`) | high | done |
