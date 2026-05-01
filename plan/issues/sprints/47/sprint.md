@@ -85,7 +85,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1126 | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | high | ready |
-| #1169p | IR Phase 4 Slice 13 — String + Array prototype methods through IR | medium | ready |
 | #1169q | IR Phase 4 Slice 14 — retire legacy codegen: delete expressions.ts, statements.ts, repair passes | high | ready |
 | #1223 | TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up) | medium | ready |
 
@@ -94,6 +93,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1118 | Worker/timeout exits and eval-code null deref (182 tests) | medium | in-progress |
+| #1169p | IR Phase 4 Slice 13 — String + Array prototype methods through IR | medium | in-progress |
 | #1195 | perf: escape-analysis scalarization for non-escaping arrays (eliminate array allocation in array-sum) | high | in-progress |
 | #1225 | Nested destructuring from null/undefined: missing TypeError (~244 tests in for-of/dstr, assignment/dstr, class/dstr) | high | in-progress |
 
