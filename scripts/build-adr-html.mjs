@@ -217,7 +217,7 @@ export function renderAdrPage(filename, source) {
 
 export { htmlShell, escapeHtml };
 
-function buildAdrPages() {
+export function buildAdrPages() {
   if (!existsSync(ADR_SOURCE_DIR)) {
     console.log(`[build-adr-html] no docs/adr directory found at ${ADR_SOURCE_DIR} — skipping`);
     return;
