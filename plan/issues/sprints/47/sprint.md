@@ -32,10 +32,17 @@ wrap_checklist:
 
 | Issue | Title | Priority | Agent | PR |
 |---|---|---|---|---|
-| #1177 | TDZ Stage 1 — re-land capture-index correction (fix + revert = net zero on PR #76) | high | tech-lead | #125 |
 | #1222 | ci: wasm-hash noise filter — exclude byte-identical regressions from PR gate | high | dev-1222 | pending |
 | #1224 | class method dstr-parameter defaults: null-guard fires before default is applied (408 failures) | high | dev-1224 | pending |
+| #1225 | Nested dstr from null/undefined: missing TypeError (~244 tests) | high | dev-1225 | pending |
 | #1169n | IR Phase 4 Slice 11 — switch statements + missing binary/unary operators | high | dev-1169n | pending |
+
+### Blocked
+
+| Issue | Title | Why blocked |
+|---|---|---|
+| #1177 Stage1 | TDZ Stage 1 — re-land capture-index correction | PR #125 closed: fix causes 59 new compile_timeout + 81 real regressions (net=-16). Stage 1 is still unsafe despite Stages 2&3 landing. Needs deep investigation. |
+| #1223 | TDZ async/gen: writer+reader fn-decl sharing via destructure-assign | Blocked on #1177 Stage1 |
 
 ### Ready
 
