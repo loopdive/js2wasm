@@ -47,6 +47,7 @@ wrap_checklist:
 
 | Issue | Title | Priority | Blocked by |
 |---|---|---|---|
+| #1226 | class/elements: static async private method invalid Wasm (~104 tests) | high | — |
 | #1169o | IR Phase 4 Slice 12 — dynamic element access + array literals | high | #1169n |
 | #1169p | IR Phase 4 Slice 13 — String + Array prototype methods | medium | #1169o |
 | #1169q | IR Phase 4 Slice 14 — retire legacy codegen | high | #1169n, #1169o, #1169p |
