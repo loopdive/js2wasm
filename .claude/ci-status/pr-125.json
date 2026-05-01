@@ -1,15 +1,17 @@
 {
   "pr": 125,
   "conclusion": "failure",
-  "head_branch": "issue-1092-wrong-error-type",
-  "head_sha": "0407fe65ea4b7244b1aa4f7271570f578663f265",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24303731026",
-  "timestamp": "2026-04-12T09:49:08Z",
-  "pass": 12943,
-  "fail": 9041,
-  "compile_error": 19825,
-  "snapshot_delta": -9242,
-  "net_per_test": -9242,
-  "regressions": 9415,
-  "improvements": 173
+  "head_branch": "issue-1177-stage1",
+  "head_sha": "8b34d909374997d7d7c8e32cd2e0d0af6f0495f0",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25219534735",
+  "timestamp": "2026-05-01T15:13:19Z",
+  "pass": 25901,
+  "fail": 13972,
+  "compile_error": 1755,
+  "snapshot_delta": -15,
+  "net_per_test": -16,
+  "regressions": 140,
+  "regressions_real": 81,
+  "compile_timeouts": 59,
+  "improvements": 124
 }
