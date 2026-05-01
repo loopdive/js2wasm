@@ -255,9 +255,11 @@ function whyNotIrClaimable(
 
   const entry = typeMap?.get(fn.name.text);
 
+  let isVoidReturn = false;
   if (!isGenerator) {
     const returnResolved = resolveReturnType(fn, entry?.returnType);
     if (returnResolved === null) return "return-type-not-resolvable";
+    isVoidReturn = returnResolved === "void";
   }
 
   const scope = new Set<string>();
@@ -278,7 +280,8 @@ function whyNotIrClaimable(
 
   const body = fn.body;
   if (!body) return "body-shape-rejected";
-  if (!isPhase1StatementList(body.statements, scope, localClasses, isGenerator)) return "body-shape-rejected";
+  if (!isPhase1StatementList(body.statements, scope, localClasses, isGenerator, isVoidReturn))
+    return "body-shape-rejected";
 
   return null;
 }
@@ -314,9 +317,11 @@ function isIrClaimable(
   // but missing or unusual annotations also pass; the lowerer always
   // emits externref for generator results regardless of what the
   // selector saw.
+  let isVoidReturn = false;
   if (!isGenerator) {
     const returnResolved = resolveReturnType(fn, entry?.returnType);
     if (returnResolved === null) return false;
+    isVoidReturn = returnResolved === "void";
   }
 
   // All params must resolve to a concrete primitive.
@@ -338,7 +343,7 @@ function isIrClaimable(
 
   const body = fn.body;
   if (!body) return false;
-  return isPhase1StatementList(body.statements, scope, localClasses, isGenerator);
+  return isPhase1StatementList(body.statements, scope, localClasses, isGenerator, isVoidReturn);
 }
 
 /**
@@ -350,13 +355,25 @@ function isIrClaimable(
  * call sites still treats the result as a null-vs-non-null discriminator,
  * so adding a third positive value is backward-compatible.
  */
-type ResolvedKind = "f64" | "bool" | "string" | "object" | null;
+// Slice 14 (#1228) — `any` and `void` are accepted at the selector level:
+//   - `any` (param or return) lowers to externref via `resolvePositionType`.
+//   - `void` (return only) means the function has zero result types; lowering
+//     constructs the IrFunctionBuilder with `[]` results and accepts bare
+//     `return;` / fall-through tails. `void` in param position is rejected
+//     (no JS source emits a `void`-typed param value, so there's nothing to
+//     accept).
+type ResolvedKind = "f64" | "bool" | "string" | "object" | "any" | "void" | null;
 
 function resolveParamType(p: ts.ParameterDeclaration, mapped: LatticeType | undefined): ResolvedKind {
   if (p.type) {
     if (p.type.kind === ts.SyntaxKind.NumberKeyword) return "f64";
     if (p.type.kind === ts.SyntaxKind.BooleanKeyword) return "bool";
     if (p.type.kind === ts.SyntaxKind.StringKeyword) return "string";
+    // Slice 14 (#1228) — `any` param lowers to externref. The IR's
+    // `resolvePositionType` returns `irVal({ kind: "externref" })` for
+    // AnyKeyword. JS spec leaves operations on `any` to runtime semantics,
+    // and externref is the catch-all that already accepts any host value.
+    if (p.type.kind === ts.SyntaxKind.AnyKeyword) return "any";
     // Slice 2 (#1169b) — accept TypeLiteral / TypeReference at the
     // selector level. The actual shape resolution happens in
     // codegen/index.ts:resolvePositionType, which materializes an
@@ -383,6 +400,10 @@ function resolveReturnType(fn: ts.FunctionDeclaration, mapped: LatticeType | und
     if (fn.type.kind === ts.SyntaxKind.NumberKeyword) return "f64";
     if (fn.type.kind === ts.SyntaxKind.BooleanKeyword) return "bool";
     if (fn.type.kind === ts.SyntaxKind.StringKeyword) return "string";
+    // Slice 14 (#1228) — `void` return: function has zero result types.
+    if (fn.type.kind === ts.SyntaxKind.VoidKeyword) return "void";
+    // Slice 14 (#1228) — `any` return lowers to externref (same as for params).
+    if (fn.type.kind === ts.SyntaxKind.AnyKeyword) return "any";
     if (ts.isTypeLiteralNode(fn.type) || ts.isTypeReferenceNode(fn.type) || ts.isArrayTypeNode(fn.type))
       return "object";
     return null;
@@ -409,6 +430,10 @@ function isPhase1StatementList(
   // bare returns continue to be rejected (their return type wouldn't
   // resolve to a primitive anyway).
   isGenerator: boolean = false,
+  // Slice 14 (#1228): when true, the enclosing function returns void.
+  // Allows bare `return;` and ExpressionStatement at the tail position
+  // (the lowerer synthesizes the implicit empty-values return).
+  isVoidReturn: boolean = false,
 ): boolean {
   if (stmts.length < 1) return false;
   for (let i = 0; i < stmts.length - 1; i++) {
@@ -488,9 +513,9 @@ function isPhase1StatementList(
     // reinterpret as `if (cond) <tail> else { <rest> }`.
     if (ts.isIfStatement(s) && !s.elseStatement) {
       if (!isPhase1Expr(s.expression, scope, localClasses)) return false;
-      if (!isPhase1Tail(s.thenStatement, new Set(scope), localClasses, isGenerator)) return false;
+      if (!isPhase1Tail(s.thenStatement, new Set(scope), localClasses, isGenerator, isVoidReturn)) return false;
       const rest = stmts.slice(i + 1);
-      return isPhase1StatementList(rest, new Set(scope), localClasses, isGenerator);
+      return isPhase1StatementList(rest, new Set(scope), localClasses, isGenerator, isVoidReturn);
     }
     // Slice 6 part 2 (#1181) — for-of statement (always non-tail). The
     // body is itself shape-checked. The bridge in `from-ast.ts` lowers
@@ -516,7 +541,7 @@ function isPhase1StatementList(
     }
     return false;
   }
-  return isPhase1Tail(stmts[stmts.length - 1]!, scope, localClasses, isGenerator);
+  return isPhase1Tail(stmts[stmts.length - 1]!, scope, localClasses, isGenerator, isVoidReturn);
 }
 
 /**
@@ -710,25 +735,27 @@ function isPhase1Tail(
   scope: Set<string>,
   localClasses: ReadonlySet<string>,
   isGenerator: boolean = false,
+  isVoidReturn: boolean = false,
 ): boolean {
   if (ts.isReturnStatement(stmt)) {
     // Slice 7b (#1169f): bare `return;` (no expression) is allowed in
     // generator tails — the lowerer's `lowerTail` generator branch
     // handles the no-expression case by emitting the epilogue without
-    // a final push. Non-generator bare returns continue to be rejected
-    // (they'd type as void, which the selector's return-type gate
-    // already rules out anyway).
-    if (!stmt.expression) return isGenerator;
+    // a final push.
+    //
+    // Slice 14 (#1228): bare `return;` is also allowed in void-returning
+    // functions. The lowerer's void branch terminates with empty values.
+    if (!stmt.expression) return isGenerator || isVoidReturn;
     return isPhase1Expr(stmt.expression, scope, localClasses);
   }
   if (ts.isBlock(stmt)) {
-    return isPhase1StatementList(stmt.statements, new Set(scope), localClasses, isGenerator);
+    return isPhase1StatementList(stmt.statements, new Set(scope), localClasses, isGenerator, isVoidReturn);
   }
   if (ts.isIfStatement(stmt)) {
     if (!stmt.elseStatement) return false;
     if (!isPhase1Expr(stmt.expression, scope, localClasses)) return false;
-    if (!isPhase1Tail(stmt.thenStatement, new Set(scope), localClasses, isGenerator)) return false;
-    if (!isPhase1Tail(stmt.elseStatement, new Set(scope), localClasses, isGenerator)) return false;
+    if (!isPhase1Tail(stmt.thenStatement, new Set(scope), localClasses, isGenerator, isVoidReturn)) return false;
+    if (!isPhase1Tail(stmt.elseStatement, new Set(scope), localClasses, isGenerator, isVoidReturn)) return false;
     return true;
   }
   // Slice 9 (#1169h) — throw at function tail. `function f() { throw new
@@ -736,6 +763,13 @@ function isPhase1Tail(
   // abrupt completion that terminates the function (no return needed).
   if (ts.isThrowStatement(stmt)) {
     return isPhase1ThrowStatement(stmt, scope, localClasses);
+  }
+  // Slice 14 (#1228) — void function tail: an ExpressionStatement (call
+  // or other side-effect expression) can stand in for the implicit
+  // return. The lowerer's void branch synthesizes the empty-values
+  // terminator after the expression's side effects.
+  if (isVoidReturn && ts.isExpressionStatement(stmt)) {
+    return isPhase1Expr(stmt.expression, scope, localClasses);
   }
   return false;
 }
