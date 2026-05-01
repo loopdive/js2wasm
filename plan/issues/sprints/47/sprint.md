@@ -33,8 +33,8 @@ wrap_checklist:
 | Issue | Title | Priority | Agent | PR |
 |---|---|---|---|---|
 | #1225 | Nested dstr from null/undefined: missing TypeError (~244 tests) | high | dev-1225 | #130 |
-| #1169o | IR Phase 4 Slice 12 — dynamic element access + array literals | high | dev-1169n | pending |
-| #1227 | fix(runner): compiler-pool timer fix — 156 false compile_timeouts | high | dev-1222 | #131 |
+| #1169o | IR Phase 4 Slice 12 — dynamic element access + array literals | high | dev-1169n | #132 |
+| #1195 | perf: escape-analysis scalarization for non-escaping arrays | high | dev-1224 | pending |
 
 ### Blocked
 
@@ -47,8 +47,6 @@ wrap_checklist:
 
 | Issue | Title | Priority | Blocked by |
 |---|---|---|---|
-| #1226 | class/elements: static async private method invalid Wasm (~104 tests) | high | — |
-| #1227 | fix(runner): compiler-pool timer fires at enqueue — 156 false compile_timeouts | high | — |
 | #1169o | IR Phase 4 Slice 12 — dynamic element access + array literals | high | — |
 | #1169p | IR Phase 4 Slice 13 — String + Array prototype methods | medium | #1169o |
 | #1169q | IR Phase 4 Slice 14 — retire legacy codegen | high | #1169n, #1169o, #1169p |
@@ -63,6 +61,8 @@ wrap_checklist:
 | #1169n | IR Phase 4 Slice 11 — switch + missing binary/unary operators | high | done |
 | #1207 | perf(test262): root-cause 156 compile_timeouts — all queue-wait noise (#1227 fixes) | high | done |
 | #1224 | class/dstr defaults: investigation done, 2 root causes found, tests added | high | done |
+| #1226 | class/elements: static async private method — tests added (bug already fixed) | high | done |
+| #1227 | fix(runner): pool timer fires at dispatch, not enqueue — 156 false CTs fixed | high | done |
 | #1196 | perf: bounds-check elimination (landed in S46) | high | done |
 | #1197 | perf: i32 element specialization (landed in S46) | high | done |
 | #1198 | perf: pre-size dense arrays (landed in S46) | high | done |
@@ -90,20 +90,13 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1195 | perf: escape-analysis scalarization for non-escaping arrays (eliminate array allocation in array-sum) | high | ready |
 | #1223 | TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up) | medium | ready |
 | #1225 | Nested destructuring from null/undefined: missing TypeError (~244 tests in for-of/dstr, assignment/dstr, class/dstr) | high | ready |
-| #1226 | class/elements: static async private method produces invalid Wasm — call missing argument (~104 tests) | high | ready |
-| #1227 | fix(runner): compiler-pool timeout starts at enqueue time, not dispatch time — causes 156 false compile_timeouts | high | ready |
-
-### In Progress
-
-| Issue | Title | Priority | Status |
-|---|---|---|---|
-| #1224 | class method dstr-parameter defaults: Cannot destructure null/undefined — guard fires before default is applied (408 failures) | high | in-progress |
 
 ### Review
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1207 | perf(test262): root-cause and fix the 136 compile_timeout tests (~7.6 min wall-clock cost per run) | high | review |
+| #1227 | fix(runner): compiler-pool timeout starts at enqueue time, not dispatch time — causes 156 false compile_timeouts | high | review |
 
 ### Done
 
@@ -115,5 +108,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1198 | perf: pre-size dense arrays at allocation site (`const a = []; for ... a[i] = ...` → `new Array(n)`) | high | done |
 | #1216 | ci: auto-commit playground benchmark baseline on push-to-main (architectural follow-up to #1214) | medium | done |
 | #1222 | ci: wasm-hash noise filter — exclude byte-identical regressions from PR gate | high | done |
+| #1224 | class method dstr-parameter defaults: Cannot destructure null/undefined — guard fires before default is applied (408 failures) | high | done |
+| #1226 | class/elements: static async private method produces invalid Wasm — call missing argument (~104 tests) | high | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->
