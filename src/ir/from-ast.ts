@@ -1008,6 +1008,16 @@ function lowerExpr(expr: ts.Expression, cx: LowerCtx, hint: IrType): IrValueId {
   if (ts.isElementAccessExpression(expr)) {
     return lowerElementAccess(expr, cx);
   }
+  // Slice 12 (#1169o) — `ArrayLiteralExpression` is selector-accepted
+  // for shape but the IR doesn't yet emit `vec.new_fixed`. Throw clean
+  // fallback so the enclosing function reverts to legacy. The selector
+  // accepts the shape primarily so functions whose only "non-Phase-1"
+  // construct is an array-literal callee argument (e.g. `f([1,2,3])`)
+  // don't drop their callee from the IR claim set via the call-graph
+  // closure.
+  if (ts.isArrayLiteralExpression(expr)) {
+    throw new Error(`ir/from-ast: ArrayLiteralExpression not in slice 12 (${cx.funcName})`);
+  }
   if (ts.isIdentifier(expr)) {
     const p = cx.scope.get(expr.text);
     if (!p) throw new Error(`ir/from-ast: identifier "${expr.text}" is not in scope in ${cx.funcName}`);
@@ -1376,23 +1386,70 @@ function lowerObjectLiteral(expr: ts.ObjectLiteralExpression, cx: LowerCtx): IrV
  */
 function lowerElementAccess(expr: ts.ElementAccessExpression, cx: LowerCtx): IrValueId {
   const arg = expr.argumentExpression;
-  if (!ts.isStringLiteral(arg) && arg.kind !== ts.SyntaxKind.NoSubstitutionTemplateLiteral) {
-    throw new Error(`ir/from-ast: non-string-literal element access not in slice 2 (${cx.funcName})`);
-  }
-  const propName = (arg as ts.StringLiteral | ts.NoSubstitutionTemplateLiteral).text;
+  const isStringLitKey = ts.isStringLiteral(arg) || arg.kind === ts.SyntaxKind.NoSubstitutionTemplateLiteral;
+  // Lower the receiver first so we can dispatch by its IrType.
   const recv = lowerExpr(expr.expression, cx, irVal({ kind: "f64" }));
   const recvType = cx.builder.typeOf(recv);
-  if (recvType.kind !== "object") {
-    throw new Error(`ir/from-ast: element access on ${describeIrType(recvType)} is not in slice 2 (${cx.funcName})`);
+
+  // Slice 2 — string-literal key on an object-shaped receiver: read the
+  // named field. This path matches `obj["fieldName"]` ≡ `obj.fieldName`.
+  if (isStringLitKey && recvType.kind === "object") {
+    const propName = (arg as ts.StringLiteral | ts.NoSubstitutionTemplateLiteral).text;
+    const fieldIdx = recvType.shape.fields.findIndex((f) => f.name === propName);
+    if (fieldIdx < 0) {
+      throw new Error(
+        `ir/from-ast: object has no field "${propName}" (shape: ${describeIrType(recvType)}) in ${cx.funcName}`,
+      );
+    }
+    const fieldType = recvType.shape.fields[fieldIdx]!.type;
+    return cx.builder.emitObjectGet(recv, propName, fieldType);
   }
-  const fieldIdx = recvType.shape.fields.findIndex((f) => f.name === propName);
-  if (fieldIdx < 0) {
-    throw new Error(
-      `ir/from-ast: object has no field "${propName}" (shape: ${describeIrType(recvType)}) in ${cx.funcName}`,
-    );
+
+  // Slice 12 (#1169o) — dynamic element access on a vec receiver.
+  // The receiver's ValType must resolve to a vec via the resolver; the
+  // index is lowered as f64 (JS Number) and truncated to i32 for the
+  // backend `vec.get`. Negative or out-of-range indices follow Wasm
+  // `array.get` semantics (trap on out-of-bounds, just like the legacy
+  // bounds-checked path) — slice 12 doesn't add an explicit JS-style
+  // `undefined` return for OOB. Functions whose hot path indexes
+  // outside `[0, length)` should already be falling back to legacy via
+  // the array-prototype-method scope (#1169p).
+  const recvVal = asVal(recvType);
+  if (recvVal && (recvVal.kind === "ref" || recvVal.kind === "ref_null")) {
+    const vec = cx.resolver?.resolveVec?.(recvVal);
+    if (vec) {
+      // Lower the index expression as f64 (JS Number semantics), then
+      // truncate to i32 via the new `i32.trunc_sat_f64_s` IrUnop (slice
+      // 12). Saturation handles NaN→0 and out-of-range values, matching
+      // what test262's typical `arr[i]` patterns expect (i is always a
+      // valid array index for IR-claimable functions).
+      const idxF64 = lowerExpr(arg, cx, irVal({ kind: "f64" }));
+      const idxF64Type = cx.builder.typeOf(idxF64);
+      const idxValTy = asVal(idxF64Type);
+      if (!idxValTy) {
+        throw new Error(
+          `ir/from-ast: element-access index has unexpected IrType ${describeIrType(idxF64Type)} in ${cx.funcName}`,
+        );
+      }
+      let idxI32: IrValueId;
+      if (idxValTy.kind === "i32") {
+        // Already i32 (e.g. a comparison or bool result — unusual but
+        // possible for compound expressions). Use directly.
+        idxI32 = idxF64;
+      } else if (idxValTy.kind === "f64") {
+        idxI32 = cx.builder.emitUnary("i32.trunc_sat_f64_s", idxF64, irVal({ kind: "i32" }));
+      } else {
+        throw new Error(
+          `ir/from-ast: element-access index must be number or bool (got ${idxValTy.kind}) in ${cx.funcName}`,
+        );
+      }
+      return cx.builder.emitVecGet(recv, idxI32, irVal(vec.elementValType));
+    }
   }
-  const fieldType = recvType.shape.fields[fieldIdx]!.type;
-  return cx.builder.emitObjectGet(recv, propName, fieldType);
+
+  throw new Error(
+    `ir/from-ast: element access on ${describeIrType(recvType)} with index ${ts.SyntaxKind[arg.kind]} not in slice 12 (${cx.funcName})`,
+  );
 }
 
 /**
