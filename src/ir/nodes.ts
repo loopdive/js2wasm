@@ -425,7 +425,19 @@ export type IrBinop =
   | "i32.ne"
   // i32 logical (for bool && / || — operands assumed 0|1)
   | "i32.and"
-  | "i32.or";
+  | "i32.or"
+  // Slice 11 (#1169n) — JS bitwise ops on f64 operands.
+  // Each lowers to: ToInt32(lhs); ToInt32(rhs); i32.<op>; convert back to f64.
+  // The `js.*` prefix marks them as composite (multi-Wasm-instr) ops; the
+  // lowerer's `case "binary"` arm dispatches on this prefix to emit the
+  // ToInt32 / convert dance using a per-function shared scratch local.
+  // Result type is f64 for all.
+  | "js.bitand"
+  | "js.bitor"
+  | "js.bitxor"
+  | "js.shl"
+  | "js.shr_s"
+  | "js.shr_u";
 
 /**
  * Typed unary primitive. `f64.neg` negates a number. `i32.eqz` implements
