@@ -394,7 +394,31 @@ export interface CodegenContext {
   /** Module-level variable initializers (compiled into __module_init) */
   moduleInitStatements: ts.Statement[];
   /** Nested function capture info. */
-  nestedFuncCaptures: Map<string, { name: string; outerLocalIdx: number; mutable?: boolean; valType?: ValType }[]>;
+  nestedFuncCaptures: Map<
+    string,
+    {
+      name: string;
+      outerLocalIdx: number;
+      mutable?: boolean;
+      valType?: ValType;
+      /**
+       * #1205: Whether this capture's TDZ flag must be propagated to the lifted
+       * function as an extra leading param. When true, the lifted fn signature
+       * gains a trailing flag-ref-cell param after all value captures and the
+       * call site (calls.ts) prepends the boxed flag ref. Mirrors the arrow-
+       * function Stage 3 wiring in `compileArrowAsClosure`.
+       */
+      hasTdzFlag?: boolean;
+      /**
+       * #1205: At-construction-time outer-fctx flag local index. May point
+       * to either the raw i32 flag local (must be wrapped at the call site)
+       * or an already-boxed ref-cell local (passed through directly). Stored
+       * as metadata so the call site can re-resolve via `fctx.tdzFlagLocals`
+       * / `fctx.boxedTdzFlags` at call time.
+       */
+      outerTdzFlagIdx?: number;
+    }[]
+  >;
   /** Map from child className → parent className (for local class inheritance) */
   classParentMap: Map<string, string>;
   /** Counter for assigning unique class tags (for instanceof support) */
