@@ -1,5 +1,45 @@
 # test262 `compile_timeout` cluster analysis (issue #1207, Phase 1)
 
+> **Update 2026-05-01 (issue-1207-timeout-clusters branch):** The iter-close
+> hang cluster (Cluster 1, 26 tests) appears to have been fixed since the
+> 2026-04-30 baseline. The current `benchmarks/results/test262-current.jsonl`
+> reports **156 `compile_timeout` entries** (down from 270). A
+> single-threaded isolation probe over **all 156** of those files compiles
+> in **31.6 s total wall-clock** (max individual compile: 553 ms; nothing
+> >1 s). 134 of the 156 compile cleanly to a Wasm binary; the other 22
+> hit a legitimate `compile_error` in <1 s.
+>
+> **The residual 156 are 100% runner-pool queue-wait artefacts, not compiler
+> bugs.** Root cause: `scripts/compiler-pool.ts:195` starts the
+> `setTimeout(..., timeoutMs)` at *enqueue* time, before the job is
+> dispatched to a worker. On a saturated 9-fork pool, queued jobs sit
+> 20–30 s waiting for a free fork; the timer fires before the worker
+> picks them up. This explains the bimodal distribution (nothing between
+> 5 s and 25 s, then a spike at the timeout wall) without invoking
+> per-test compiler bugs.
+>
+> **Recommended action:** file a follow-up issue (e.g. `#1207a`) to move
+> the timer creation from `enqueue` into `dispatch` — a one-spot change
+> in `scripts/compiler-pool.ts`. The `Phase 2 — fix the root causes
+> (separate issues per cluster)` plan in the original issue is no longer
+> relevant: the clusters aren't real, they're artefacts of how the queue
+> orders work. Phase 3 (lower the ceiling to 10 s) is safe to land
+> *after* the dispatch-time-timer fix, since real compile times are
+> all <1 s in isolation.
+>
+> **Probe location:** `.tmp/probe-all-timeouts.mts` (gitignored; loads
+> `compile_timeout` entries from the baseline JSONL, recompiles each in
+> the same process with a 60 s ceiling, writes
+> `.tmp/isolation-results.jsonl`). Re-run after the runner fix lands to
+> verify the timeout count drops to single digits.
+>
+> The original 2026-04-30 analysis below remains valid as historical
+> context for the iter-close cluster that has since been fixed, and for
+> the runner-load hypothesis (Cluster 2) that this updated probe now
+> confirms quantitatively.
+
+---
+
 Date: 2026-04-30 (this analysis), 2026-05-01 (write-up)
 Baseline: `benchmarks/results/test262-current.jsonl`
 Author: senior-developer (research only — no code changes)
