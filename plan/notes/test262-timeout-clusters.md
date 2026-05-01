@@ -1,5 +1,69 @@
 # test262 `compile_timeout` cluster analysis (issue #1207, Phase 1)
 
+> **Update 2026-05-01 (post-#1227, residual analysis):** After PR #131
+> landed the dispatch-time-timer fix (#1227), the next baseline refresh
+> dropped the `compile_timeout` count from 156 → 86 (a 45% reduction —
+> tech-lead reported "155 → 75" mid-refresh; the committed JSONL settled
+> at 86). I drove a per-test subprocess probe over **all 86** residuals
+> (compile + instantiate + execute, 8 s wall-clock cap per test, each in
+> its own `node` process so a hung test cannot stall the rest). Results:
+>
+> | result | count | meaning |
+> |---|---:|---|
+> | `pass` | 37 | finishes cleanly in <1 s in isolation |
+> | `fail` | 26 | finishes in <1 s with a real test failure |
+> | `compile_error` | 10 | sub-second compile error (real) |
+> | `hang` | **9** | exec exceeded the 8 s subprocess timeout — **genuine runtime infinite loop in our Wasm shim** |
+> | `probe_error` | 4 | file not found in test262/ (baseline drift) |
+>
+> **73 of 86 residuals (85%) finish fine in isolation.** They are still
+> CI-runner artefacts — but no longer queue-wait artefacts (since #1227
+> moved the timer to dispatch). The remaining contention shape is
+> post-dispatch fork starvation: even after a worker has accepted a job,
+> on a saturated 9-fork pool a single fork can be CPU-starved for tens
+> of seconds when GC, JIT-tier-up, IPC backpressure, or other forks all
+> compete for cores. The bimodal distribution (nothing between 5 s and
+> 25 s) persists for the same reason it did before — when a fork stalls,
+> it tends to stall through the timeout wall, not 8 seconds short of it.
+>
+> **The 9 genuine hangs cluster cleanly into 3 patterns** (not separate
+> compiler bugs):
+>
+> 1. **65k-codepoint `eval`/RegExp loops** (5 tests):
+>    - `test/language/literals/regexp/S7.8.5_A1.1_T2.js`
+>    - `test/language/literals/regexp/S7.8.5_A1.4_T2.js`
+>    - `test/language/literals/regexp/S7.8.5_A2.1_T2.js`
+>    - `test/language/literals/regexp/S7.8.5_A2.4_T2.js`
+>    - `test/language/comments/S7.4_A6.js`
+>
+>    All five share the shape `for (var cu = 0; cu <= 0xFFFF; ++cu) { eval("/" + ... + String.fromCharCode(cu) + "/"); }` — 65,536 calls into our `eval` / `RegExp` shim per test. Each iteration is fast in V8 (μs); ours hangs the 8 s ceiling, suggesting per-iteration cost in the seconds. Likely a non-pathological `eval` slowdown (compile + instantiate per call) compounded by 65k iterations — not a single bug, more a "don't pay compile + instantiate every iteration" perf path.
+>
+> 2. **AnnexB RegExp BMP escape coverage** (2 tests):
+>    - `test/annexB/built-ins/RegExp/RegExp-leading-escape-BMP.js`
+>    - `test/annexB/built-ins/RegExp/RegExp-trailing-escape-BMP.js`
+>
+>    Same 65k-codepoint shape but using `new RegExp(...)` instead of `eval("/.../")`. Same root cause as cluster 1: the per-call cost in our `RegExp` constructor stacks up over 65k iterations.
+>
+> 3. **`Array.prototype.{unshift,reverse}` on length ≈ 2^53 sparse objects** (2 tests):
+>    - `test/built-ins/Array/prototype/unshift/length-near-integer-limit.js`
+>    - `test/built-ins/Array/prototype/reverse/length-exceeding-integer-limit-with-object.js`
+>
+>    These build an array-like with `length: 2 ** 53 - 2` and a sparse set of indexed properties (a getter at one index that throws to short-circuit). The spec algorithms iterate `from k = len-1 down to 0`, with `HasProperty` checks per index. V8 short-circuits via the getter on the very first iteration; ours appears to walk all ~9 quadrillion indices. The fix is to use `O(defined-properties)` rather than `O(length)` iteration in our `Array.prototype.{unshift,reverse,…}` shims, but only when the receiver is a plain object with a giant `length` (not a real `Array`). Any test exercising this length-near-2^53 pattern lands in this cluster.
+>
+> **Honourable mention** (slow but not hung): `test/built-ins/Array/prototype/forEach/15.4.4.18-7-c-ii-1.js` finishes in 5.3 s in isolation — well under the 30 s pool ceiling, but borderline. The test puts a single value at index 999,999 of a 6-element array; our `forEach` shim then visits every index from 0 to 999,999 instead of only the defined ones. Same shape as cluster 3 but at a smaller scale.
+>
+> **Recommended action** — file three follow-ups, *all small / medium*:
+>
+> - **#1207b — `Array.prototype.{unshift,reverse,forEach,…}` should iterate over defined properties, not `[0, length)`, for non-Array receivers.** Unblocks cluster 3 (2 hangs) + the forEach honourable mention. Probably 1–3 lines per shim in `src/runtime.ts`.
+> - **#1207c — `eval(literal)` and `new RegExp(literal)` inside hot loops should reuse the parsed/compiled form across iterations** (or at minimum, avoid IPC per call to a host import). Unblocks clusters 1 + 2 (7 hangs total). This is a perf path, not a correctness fix.
+> - **#1207d — investigate post-dispatch fork starvation in the test262 pool.** Possible knobs: drop pool size from 9 to 7, lengthen GC pauses' visibility, use `nice` to keep the master process scheduled. This is what the remaining 73 phantom timeouts are; lowering the ceiling (Phase 3) would just convert them into fail-on-CI noise rather than fixing them.
+>
+> **Phase 3 of the original issue (drop the 30 s timeout to 10 s) is now safe** — every honest compile is <1 s. But it'll still surface the 73 phantom timeouts as `fail` rather than `compile_timeout`, so it should be paired with #1207d, not landed standalone.
+>
+> **Probe scripts** (gitignored under `.tmp/`): `probe-residual-timeouts.mts` (compile-only, single-process), `probe-residual-exec.mts` (compile + exec, single-process — hangs on first runtime infinite loop), `probe-one-residual.mts` (one test per process), `run-residuals.sh` (driver that runs `probe-one-residual.mts` over all baseline `compile_timeout` entries with an 8 s per-test ceiling). Re-run after #1207b/c lands to confirm the hang count drops.
+
+---
+
 > **Update 2026-05-01 (issue-1207-timeout-clusters branch):** The iter-close
 > hang cluster (Cluster 1, 26 tests) appears to have been fixed since the
 > 2026-04-30 baseline. The current `benchmarks/results/test262-current.jsonl`
