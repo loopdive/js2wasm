@@ -117,27 +117,34 @@
   ],
   "ready": [
     {
-      "id": "1223",
-      "title": "TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up)",
-      "priority": "medium",
-      "feasibility": "hard",
-      "depends_on": [
-        "1177",
-        "1205"
-      ],
+      "id": "1226",
+      "title": "class/elements: static async private method produces invalid Wasm — call missing argument (~104 tests)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
       "goal": "test262-conformance",
       "status": "ready",
       "sprint": "47"
     },
     {
-      "id": "1222",
-      "title": "ci: wasm-hash noise filter — exclude byte-identical regressions from PR gate",
+      "id": "1225",
+      "title": "Nested destructuring from null/undefined: missing TypeError (~244 tests in for-of/dstr, assignment/dstr, class/dstr)",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
-      "goal": "ci-quality",
+      "goal": "test262-conformance",
       "status": "ready",
       "sprint": "47"
+    },
+    {
+      "id": "1223",
+      "title": "playground: horizontal swipe on overflowing tab bar drags tab instead of scrolling (mobile)",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "playground-ux",
+      "status": "ready",
+      "sprint": ""
     },
     {
       "id": "1207",
@@ -190,6 +197,44 @@
       "goal": "maintainability",
       "status": "ready",
       "sprint": "45"
+    },
+    {
+      "id": "1169q",
+      "title": "IR Phase 4 Slice 14 — retire legacy codegen: delete expressions.ts, statements.ts, repair passes",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1169n",
+        "1169o",
+        "1169p"
+      ],
+      "goal": "ir-migration",
+      "status": "ready",
+      "sprint": "47"
+    },
+    {
+      "id": "1169p",
+      "title": "IR Phase 4 Slice 13 — String + Array prototype methods through IR",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [
+        "1169o"
+      ],
+      "goal": "ir-migration",
+      "status": "ready",
+      "sprint": "47"
+    },
+    {
+      "id": "1169o",
+      "title": "IR Phase 4 Slice 12 — dynamic element access + array literals through IR",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1169n"
+      ],
+      "goal": "ir-migration",
+      "status": "ready",
+      "sprint": "47"
     },
     {
       "id": "1169",
@@ -1469,6 +1514,16 @@
   ],
   "inprogress": [
     {
+      "id": "1224",
+      "title": "class method dstr-parameter defaults: Cannot destructure null/undefined — guard fires before default is applied (408 failures)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "test262-conformance",
+      "status": "in-progress",
+      "sprint": "47"
+    },
+    {
       "id": "1206",
       "title": "fix(build-pages): copy benchmark JSONs + frame-nav-sync.js to top-level pages-dist paths (404s on landing page)",
       "priority": "medium",
@@ -1489,8 +1544,29 @@
       "sprint": "42"
     }
   ],
-  "review": [],
+  "review": [
+    {
+      "id": "1169n",
+      "title": "IR Phase 4 Slice 11 — switch statements + missing binary/unary operators through IR",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ir-migration",
+      "status": "review",
+      "sprint": "47"
+    }
+  ],
   "done": [
+    {
+      "id": "1222",
+      "title": "ci: wasm-hash noise filter — exclude byte-identical regressions from PR gate",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ci-quality",
+      "status": "done",
+      "sprint": "47"
+    },
     {
       "id": "1221",
       "title": "test262-worker: outer catches misclassify WebAssembly.Exception as compile_error — fix harness to reclassify as fail (~256 flaky tests)",

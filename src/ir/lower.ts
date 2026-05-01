@@ -493,6 +493,27 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
   }
   const slotWasmIdx = (slotIndex: number): number => slotBase + slotIndex;
 
+  // Slice 11 (#1169n) — JS bitwise ops need TWO scratch f64 locals:
+  //   - $js_bitwise_rhs: stash the right operand while we apply
+  //     ToInt32 to the left.
+  //   - $js_bitwise_tmp: scratch slot used INSIDE `emitJsToInt32` to
+  //     duplicate the truncated value for modulo reduction.
+  // Both are allocated lazily; one pair per function, reused across
+  // every bitwise op in the body.
+  let jsBitwiseRhsIdx: number | null = null;
+  let jsBitwiseTmpIdx: number | null = null;
+  const ensureJsBitwiseScratch = (): { rhs: number; tmp: number } => {
+    if (jsBitwiseRhsIdx === null) {
+      jsBitwiseRhsIdx = func.params.length + locals.length;
+      locals.push({ name: "$js_bitwise_rhs", type: { kind: "f64" } });
+    }
+    if (jsBitwiseTmpIdx === null) {
+      jsBitwiseTmpIdx = func.params.length + locals.length;
+      locals.push({ name: "$js_bitwise_tmp", type: { kind: "f64" } });
+    }
+    return { rhs: jsBitwiseRhsIdx, tmp: jsBitwiseTmpIdx };
+  };
+
   // --- emission -----------------------------------------------------------
 
   const materialized = new Set<IrValueId>();
@@ -542,6 +563,51 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
       case "binary":
         emitValue(instr.lhs, out);
         emitValue(instr.rhs, out);
+        // Slice 11 (#1169n) — JS bitwise composite ops. Each pops two
+        // f64 from the stack, applies JS ToInt32 to each, runs the i32
+        // op, and converts back to f64. We use a per-function scratch
+        // f64 local to stash the right operand while we ToInt32 the
+        // left (Wasm has no general "swap" op).
+        if (
+          instr.op === "js.bitand" ||
+          instr.op === "js.bitor" ||
+          instr.op === "js.bitxor" ||
+          instr.op === "js.shl" ||
+          instr.op === "js.shr_s" ||
+          instr.op === "js.shr_u"
+        ) {
+          const { rhs: rhsSlot, tmp: tmpSlot } = ensureJsBitwiseScratch();
+          // Stack: [lhs_f64, rhs_f64]
+          out.push({ op: "local.set", index: rhsSlot });
+          // Stack: [lhs_f64]; rhsSlot holds rhs.
+          emitJsToInt32(out, tmpSlot);
+          // Stack: [lhs_i32]
+          out.push({ op: "local.get", index: rhsSlot });
+          // Stack: [lhs_i32, rhs_f64]
+          emitJsToInt32(out, tmpSlot);
+          // Stack: [lhs_i32, rhs_i32]
+          const i32op =
+            instr.op === "js.bitand"
+              ? "i32.and"
+              : instr.op === "js.bitor"
+                ? "i32.or"
+                : instr.op === "js.bitxor"
+                  ? "i32.xor"
+                  : instr.op === "js.shl"
+                    ? "i32.shl"
+                    : instr.op === "js.shr_s"
+                      ? "i32.shr_s"
+                      : "i32.shr_u";
+          out.push({ op: i32op } as unknown as Instr);
+          // `>>>` returns a Uint32; everything else is Int32. Convert
+          // back to f64 with the matching signedness.
+          if (instr.op === "js.shr_u") {
+            out.push({ op: "f64.convert_i32_u" } as unknown as Instr);
+          } else {
+            out.push({ op: "f64.convert_i32_s" });
+          }
+          return;
+        }
         out.push({ op: instr.op } as unknown as Instr);
         return;
       case "unary":
@@ -1770,6 +1836,47 @@ function describeIrTypeShallow(t: IrType): string {
   if (t.kind === "extern") return `extern<${t.className}>`;
   if (t.kind === "union") return `union<${t.members.map((m) => m.kind).join(",")}>`;
   return `boxed<${t.inner.kind}>`;
+}
+
+/**
+ * Slice 11 (#1169n) — emit JS ToInt32 for the f64 currently on top of
+ * the value stack. After this runs, the stack holds an i32 whose bit
+ * pattern matches what `(value | 0)` would produce in JS — including
+ * NaN→0, Infinity→0, and modulo-2^32 wrap for out-of-range inputs.
+ *
+ * This mirrors the legacy `emitToInt32` helper in
+ * `src/codegen/binary-ops.ts:1973`. It needs a single f64 scratch
+ * local (passed in `tmpLocalIdx`) to duplicate the truncated value
+ * for the modulo-2^32 reduction step.
+ *
+ * Sequence:
+ *   - f64.trunc                  ; truncate fractional part toward zero
+ *   - local.tee tmp; local.get tmp
+ *                                ; duplicate the trunc'd value
+ *   - f64.const 2^32; f64.div; f64.floor; f64.const 2^32; f64.mul; f64.sub
+ *                                ; reduce modulo 2^32 → range [0, 2^32)
+ *   - i32.trunc_sat_f64_u        ; bit pattern of int32 result
+ *
+ * NaN handling: trunc(NaN)=NaN, NaN/x=NaN, floor(NaN)=NaN, NaN*x=NaN,
+ * x-NaN=NaN, trunc_sat_f64_u(NaN)=0. So NaN→0 falls out naturally
+ * without a branch.
+ */
+function emitJsToInt32(out: Instr[], tmpLocalIdx: number): void {
+  // Stack: [f64]
+  out.push({ op: "f64.trunc" } as unknown as Instr);
+  // Stack: [f64_trunc]
+  out.push({ op: "local.tee", index: tmpLocalIdx });
+  out.push({ op: "local.get", index: tmpLocalIdx });
+  // Stack: [f64_trunc, f64_trunc]
+  out.push({ op: "f64.const", value: 4294967296 });
+  out.push({ op: "f64.div" });
+  out.push({ op: "f64.floor" } as unknown as Instr);
+  out.push({ op: "f64.const", value: 4294967296 });
+  out.push({ op: "f64.mul" });
+  out.push({ op: "f64.sub" });
+  // Stack: [f64_in_range]
+  out.push({ op: "i32.trunc_sat_f64_u" } as unknown as Instr);
+  // Stack: [i32]
 }
 
 function emitConst(instr: Extract<IrInstr, { kind: "const" }>, out: Instr[], funcName: string): void {

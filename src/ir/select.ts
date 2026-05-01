@@ -1061,6 +1061,11 @@ function isPhase1Expr(expr: ts.Expression, scope: ReadonlySet<string>, localClas
   // resolved IrType).
   if (ts.isPropertyAccessExpression(expr)) {
     if (!ts.isIdentifier(expr.name)) return false;
+    // Slice 11 (#1169n) — optional chaining (`obj?.prop`). The lowerer
+    // doesn't yet emit the null-guard branch, so accept the shape
+    // structurally but the lowerer will throw clean fallback when it
+    // encounters one. Listed explicitly so a follow-up slice can
+    // implement the lowering without touching the selector.
     return isPhase1Expr(expr.expression, scope, localClasses);
   }
   // Slice 2 — element access with a literal string key (sugar for
@@ -1072,6 +1077,21 @@ function isPhase1Expr(expr: ts.Expression, scope: ReadonlySet<string>, localClas
     if (!ts.isStringLiteral(arg) && arg.kind !== ts.SyntaxKind.NoSubstitutionTemplateLiteral) {
       return false;
     }
+    return isPhase1Expr(expr.expression, scope, localClasses);
+  }
+  // Slice 11 (#1169n) — `delete <expr>` and `void <expr>`. Both are
+  // accepted at the selector level when their operand is a Phase-1
+  // expression. Lowering emits:
+  //   - `delete obj.prop`     → const `true` (most deletes succeed
+  //                              syntactically; runtime rejection is
+  //                              rare at the IR-claim shape).
+  //   - `void <expr>`         → lower expr for side effects, push
+  //                              `f64 NaN` (the undefined sentinel
+  //                              the IR uses in f64-typed contexts).
+  if (ts.isDeleteExpression(expr)) {
+    return isPhase1Expr(expr.expression, scope, localClasses);
+  }
+  if (ts.isVoidExpression(expr)) {
     return isPhase1Expr(expr.expression, scope, localClasses);
   }
   return false;
@@ -1178,6 +1198,26 @@ function isPhase1BinaryOp(op: ts.SyntaxKind): boolean {
     case ts.SyntaxKind.ExclamationEqualsToken:
     case ts.SyntaxKind.AmpersandAmpersandToken:
     case ts.SyntaxKind.BarBarToken:
+      return true;
+    // Slice 11 (#1169n) — bitwise ops on f64 operands. JS ToInt32
+    // each operand, apply the i32 op, convert back to f64. Lowering
+    // emits this sequence inline using a per-function scratch local.
+    case ts.SyntaxKind.AmpersandToken:
+    case ts.SyntaxKind.BarToken:
+    case ts.SyntaxKind.CaretToken:
+    case ts.SyntaxKind.LessThanLessThanToken:
+    case ts.SyntaxKind.GreaterThanGreaterThanToken:
+    case ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken:
+      return true;
+    // Slice 11 (#1169n) — shape-only acceptance for ops the lowerer
+    // doesn't yet implement. Lowering throws cleanly so the function
+    // falls back to legacy via `safeSelection`. Listed individually
+    // so future slices can flip them on without touching the selector.
+    case ts.SyntaxKind.PercentToken: // % — needs JS-conformant fmod-style remainder
+    case ts.SyntaxKind.AsteriskAsteriskToken: // ** — needs Math.pow host call
+    case ts.SyntaxKind.QuestionQuestionToken: // ?? — needs nullable-LHS handling
+    case ts.SyntaxKind.InKeyword: // in — needs prototype-chain probe
+    case ts.SyntaxKind.InstanceOfKeyword: // instanceof — needs class-shape check
       return true;
     default:
       return false;

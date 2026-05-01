@@ -2926,5 +2926,33 @@
     "explicitCarryOver": false,
     "isPlanning": false,
     "isClosed": false
+  },
+  {
+    "name": "sprint 47",
+    "sprintNumber": 47,
+    "status": "active",
+    "date": "2026-05-01 → TBD",
+    "baseline": "27,104 / 46,632 = 58.1% pass (at S46 close, after #1177/#1219/#1220/#1221)",
+    "result": "",
+    "issueCount": 0,
+    "issueIds": [
+      "1126",
+      "1169n",
+      "1169o",
+      "1169p",
+      "1169q",
+      "1195",
+      "1207",
+      "1222",
+      "1224",
+      "1225",
+      "1226"
+    ],
+    "completedIssueIds": [
+      "1222"
+    ],
+    "explicitCarryOver": false,
+    "isPlanning": false,
+    "isClosed": false
   }
 ]

@@ -16647,6 +16647,54 @@
       "cluster": "compiler-architecture"
     },
     {
+      "id": "1169n",
+      "title": "IR Phase 4 Slice 11 — switch statements + missing binary/unary operators through IR",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "review",
+      "sprint": "47",
+      "depends_on": [],
+      "files": [],
+      "goal": "ir-migration",
+      "cluster": "ir-migration"
+    },
+    {
+      "id": "1169o",
+      "title": "IR Phase 4 Slice 12 — dynamic element access + array literals through IR",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "47",
+      "depends_on": [],
+      "files": [],
+      "goal": "ir-migration",
+      "cluster": "ir-migration"
+    },
+    {
+      "id": "1169p",
+      "title": "IR Phase 4 Slice 13 — String + Array prototype methods through IR",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "47",
+      "depends_on": [],
+      "files": [],
+      "goal": "ir-migration",
+      "cluster": "ir-migration"
+    },
+    {
+      "id": "1169q",
+      "title": "IR Phase 4 Slice 14 — retire legacy codegen: delete expressions.ts, statements.ts, repair passes",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "47",
+      "depends_on": [],
+      "files": [],
+      "goal": "ir-migration",
+      "cluster": "ir-migration"
+    },
+    {
       "id": "1170",
       "title": "Move test262 baselines out of Git LFS — eliminate LFS dependency from CI",
       "priority": "high",
@@ -17330,15 +17378,39 @@
     },
     {
       "id": "1222",
-      "title": "ci: wasm-hash noise filter — exclude byte-identical regressions from PR gate",
+      "title": "Premature i32 specialization for `let s = 0` accumulators silently saturates on overflow",
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "core-semantics",
+      "cluster": "core-semantics"
+    },
+    {
+      "id": "1222",
+      "title": "ci: wasm-hash noise filter — exclude byte-identical regressions from PR gate",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "47",
       "depends_on": [],
       "files": [],
       "goal": "ci-quality",
       "cluster": "ci-quality"
+    },
+    {
+      "id": "1223",
+      "title": "playground: horizontal swipe on overflowing tab bar drags tab instead of scrolling (mobile)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "playground-ux",
+      "cluster": "playground-ux"
     },
     {
       "id": "1223",
@@ -17354,6 +17426,45 @@
       "files": [],
       "goal": "test262-conformance",
       "cluster": "test262-conformance"
+    },
+    {
+      "id": "1224",
+      "title": "class method dstr-parameter defaults: Cannot destructure null/undefined — guard fires before default is applied (408 failures)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "47",
+      "depends_on": [],
+      "files": [],
+      "goal": "test262-conformance",
+      "cluster": "test262-conformance",
+      "test262_fail": 408
+    },
+    {
+      "id": "1225",
+      "title": "Nested destructuring from null/undefined: missing TypeError (~244 tests in for-of/dstr, assignment/dstr, class/dstr)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "47",
+      "depends_on": [],
+      "files": [],
+      "goal": "test262-conformance",
+      "cluster": "test262-conformance",
+      "test262_fail": 244
+    },
+    {
+      "id": "1226",
+      "title": "class/elements: static async private method produces invalid Wasm — call missing argument (~104 tests)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "47",
+      "depends_on": [],
+      "files": [],
+      "goal": "test262-conformance",
+      "cluster": "test262-conformance",
+      "test262_fail": 104
     },
     {
       "id": "backlog",
@@ -18856,7 +18967,8 @@
         "1024",
         "1025",
         "1031",
-        "1098"
+        "1098",
+        "1222"
       ]
     },
     {
@@ -21995,6 +22107,10 @@
     {
       "goal": "core-semantics",
       "issue": "1098"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1222"
     },
     {
       "goal": "correctness",
@@ -25845,6 +25961,10 @@
     {
       "goal": "compilable",
       "issue": "1098"
+    },
+    {
+      "goal": "compilable",
+      "issue": "1222"
     },
     {
       "goal": "compilable",
