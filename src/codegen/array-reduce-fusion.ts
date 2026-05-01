@@ -93,7 +93,7 @@ export function detectArrayReduceFusion(ctx: CodegenContext, fnBody: ts.Block | 
   // the validation burden and is out of scope for this PR.
   let i = 0;
   while (i < stmts.length - 3) {
-    const m = tryMatchAt(checker, stmts, i, fnBody);
+    const m = tryMatchAt(checker, stmts, i);
     if (m) {
       matches.push(m);
       i = m.endIdx + 1;
@@ -114,7 +114,6 @@ function tryMatchAt(
   checker: ts.TypeChecker,
   stmts: readonly ts.Statement[],
   startIdx: number,
-  fnBody: ts.Block,
 ): ReduceFusionMatch | null {
   // ------- Stage 1: identify decl, writeLoop, accDecl, readLoop -------
   const declStmt = stmts[startIdx];
@@ -154,13 +153,24 @@ function tryMatchAt(
   const readInfo = parseReadLoop(checker, readLoop, arrName, arrSym, accName, accSym, writeInfo);
   if (!readInfo) return null;
 
-  // ------- Stage 2: validate non-escape across the WHOLE function body -------
+  // ------- Stage 2: validate non-escape across the function body -------
   // The array MUST NOT be referenced anywhere except the two loops.
-  // Stage 1 already guarantees the right STRUCTURE inside the loops; this
-  // sweep checks the rest of the function for any leak.
+  // Stage 1 already guarantees the right STRUCTURE inside the loops.
+  //
+  // Optimisation: a `const arr = []` binding cannot be referenced BEFORE its
+  // declaration site — that would be a TDZ ReferenceError per spec. So we
+  // only need to scan statements at indices [startIdx+4 .. end]. This drops
+  // worst-case cost from O(N²) (countSymbolRefsOutside walks the whole body
+  // for each candidate × N candidates) to O(N) total, which matters when
+  // many candidate patterns appear in one large function.
   const dCtx: DetectionContext = { arrName, arrSym };
-  const arrRefsOutside = countSymbolRefsOutside(checker, fnBody, dCtx, [writeLoop, readLoop]);
-  if (arrRefsOutside > 0) return null;
+  let escaped = false;
+  for (let j = startIdx + 4; j < stmts.length && !escaped; j++) {
+    if (referencesSymbolStatement(checker, stmts[j]!, dCtx.arrSym)) {
+      escaped = true;
+    }
+  }
+  if (escaped) return null;
 
   // ------- Stage 3: build the fused replacement -------
   // The fused loop reuses the WRITE loop's index var name (semantically
@@ -429,44 +439,18 @@ function referencesSymbol(checker: ts.TypeChecker, node: ts.Node, sym: ts.Symbol
 }
 
 /**
- * Count symbol references to `dCtx.arrSym` in `fnBody`, excluding the
- * subtrees rooted at any node in `excluded`. The detector calls this with
- * the write- and read-loops as exclusions to verify the array is used
- * NOWHERE else in the function (escape-analysis approximation).
+ * Same as `referencesSymbol` but for a single top-level statement; bails as
+ * soon as a reference is found. Used by the post-read-loop escape sweep —
+ * the optimised replacement for `countSymbolRefsOutside` (which walked the
+ * whole body for every candidate, giving O(N²)).
  */
-function countSymbolRefsOutside(
-  checker: ts.TypeChecker,
-  fnBody: ts.Block,
-  dCtx: DetectionContext,
-  excluded: ts.Node[],
-): number {
-  const skip = new Set<ts.Node>(excluded);
-  let count = 0;
-  function visit(node: ts.Node): void {
-    if (skip.has(node)) return;
-    // The decl itself contains an Identifier `arrName` — that's the binding
-    // site, not a reference. ts.isVariableDeclaration's `name` resolves to
-    // the symbol but we don't count it.
-    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
-      const s = checker.getSymbolAtLocation(node.name);
-      if (s === dCtx.arrSym) {
-        // Visit only the initializer (the binding name itself is not a use).
-        if (node.initializer) visit(node.initializer);
-        return;
-      }
-    }
-    if (ts.isIdentifier(node) && node.text === dCtx.arrName) {
-      const s = checker.getSymbolAtLocation(node);
-      if (s === dCtx.arrSym) {
-        count++;
-        return;
-      }
-    }
-    ts.forEachChild(node, visit);
-  }
-  visit(fnBody);
-  return count;
+function referencesSymbolStatement(checker: ts.TypeChecker, stmt: ts.Statement, sym: ts.Symbol): boolean {
+  return referencesSymbol(checker, stmt, sym);
 }
+
+// (countSymbolRefsOutside removed — replaced by referencesSymbolStatement
+// post-read-loop scan, which exploits the TDZ guarantee on `const arr = []`
+// to avoid the O(body) per-candidate walk that gave O(N²) worst case.)
 
 /**
  * Build the fused for-loop. Strategy: REUSE the original read-loop's AST
