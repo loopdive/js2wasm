@@ -117,28 +117,6 @@
   ],
   "ready": [
     {
-      "id": "1227",
-      "title": "fix(runner): compiler-pool timeout starts at enqueue time, not dispatch time — causes 156 false compile_timeouts",
-      "priority": "high",
-      "feasibility": "easy",
-      "depends_on": [
-        "1207"
-      ],
-      "goal": "ci-stability",
-      "status": "ready",
-      "sprint": "47"
-    },
-    {
-      "id": "1226",
-      "title": "class/elements: static async private method produces invalid Wasm — call missing argument (~104 tests)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "test262-conformance",
-      "status": "ready",
-      "sprint": "47"
-    },
-    {
       "id": "1225",
       "title": "Nested destructuring from null/undefined: missing TypeError (~244 tests in for-of/dstr, assignment/dstr, class/dstr)",
       "priority": "high",
@@ -1516,16 +1494,6 @@
   ],
   "inprogress": [
     {
-      "id": "1224",
-      "title": "class method dstr-parameter defaults: Cannot destructure null/undefined — guard fires before default is applied (408 failures)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "test262-conformance",
-      "status": "in-progress",
-      "sprint": "47"
-    },
-    {
       "id": "1206",
       "title": "fix(build-pages): copy benchmark JSONs + frame-nav-sync.js to top-level pages-dist paths (404s on landing page)",
       "priority": "medium",
@@ -1548,6 +1516,18 @@
   ],
   "review": [
     {
+      "id": "1227",
+      "title": "fix(runner): compiler-pool timeout starts at enqueue time, not dispatch time — causes 156 false compile_timeouts",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [
+        "1207"
+      ],
+      "goal": "ci-stability",
+      "status": "review",
+      "sprint": "47"
+    },
+    {
       "id": "1207",
       "title": "perf(test262): root-cause and fix the 136 compile_timeout tests (~7.6 min wall-clock cost per run)",
       "priority": "high",
@@ -1559,6 +1539,26 @@
     }
   ],
   "done": [
+    {
+      "id": "1226",
+      "title": "class/elements: static async private method produces invalid Wasm — call missing argument (~104 tests)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "test262-conformance",
+      "status": "done",
+      "sprint": "47"
+    },
+    {
+      "id": "1224",
+      "title": "class method dstr-parameter defaults: Cannot destructure null/undefined — guard fires before default is applied (408 failures)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "test262-conformance",
+      "status": "done",
+      "sprint": "47"
+    },
     {
       "id": "1222",
       "title": "ci: wasm-hash noise filter — exclude byte-identical regressions from PR gate",

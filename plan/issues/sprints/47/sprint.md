@@ -90,20 +90,13 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1195 | perf: escape-analysis scalarization for non-escaping arrays (eliminate array allocation in array-sum) | high | ready |
 | #1223 | TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up) | medium | ready |
 | #1225 | Nested destructuring from null/undefined: missing TypeError (~244 tests in for-of/dstr, assignment/dstr, class/dstr) | high | ready |
-| #1226 | class/elements: static async private method produces invalid Wasm — call missing argument (~104 tests) | high | ready |
-| #1227 | fix(runner): compiler-pool timeout starts at enqueue time, not dispatch time — causes 156 false compile_timeouts | high | ready |
-
-### In Progress
-
-| Issue | Title | Priority | Status |
-|---|---|---|---|
-| #1224 | class method dstr-parameter defaults: Cannot destructure null/undefined — guard fires before default is applied (408 failures) | high | in-progress |
 
 ### Review
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1207 | perf(test262): root-cause and fix the 136 compile_timeout tests (~7.6 min wall-clock cost per run) | high | review |
+| #1227 | fix(runner): compiler-pool timeout starts at enqueue time, not dispatch time — causes 156 false compile_timeouts | high | review |
 
 ### Done
 
@@ -115,5 +108,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1198 | perf: pre-size dense arrays at allocation site (`const a = []; for ... a[i] = ...` → `new Array(n)`) | high | done |
 | #1216 | ci: auto-commit playground benchmark baseline on push-to-main (architectural follow-up to #1214) | medium | done |
 | #1222 | ci: wasm-hash noise filter — exclude byte-identical regressions from PR gate | high | done |
+| #1224 | class method dstr-parameter defaults: Cannot destructure null/undefined — guard fires before default is applied (408 failures) | high | done |
+| #1226 | class/elements: static async private method produces invalid Wasm — call missing argument (~104 tests) | high | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->
