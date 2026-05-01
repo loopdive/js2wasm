@@ -526,10 +526,10 @@ function buildFusedLoop(
   // semantically, but no longer relies on the eliminated array). If the
   // bounds were already text-equal (case 2 in parseReadLoop), reuse the
   // original condition node so its symbols stay intact.
-  let newCondition = readLoop.condition;
-  if (readInfo.boundIsArrLength) {
+  let newCondition: ts.Expression | undefined = readLoop.condition;
+  if (readInfo.boundIsArrLength && readLoop.condition && ts.isBinaryExpression(readLoop.condition)) {
     newCondition = factory.createBinaryExpression(
-      readLoop.condition!.left,
+      readLoop.condition.left,
       ts.factory.createToken(ts.SyntaxKind.LessThanToken),
       writeInfo.bound,
     );

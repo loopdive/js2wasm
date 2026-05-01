@@ -917,8 +917,10 @@ export function compileFunctionBody(ctx: CodegenContext, decl: ts.FunctionDeclar
       // compiled. The detector is conservative; if any precondition
       // fails, the original statements are returned unchanged.
       const fusionMatches = detectArrayReduceFusion(ctx, decl.body);
-      const bodyStatements: readonly ts.Statement[] =
-        fusionMatches.length > 0 ? applyArrayReduceFusion(decl.body.statements, fusionMatches) : decl.body.statements;
+      const bodyStatements: ts.Statement[] =
+        fusionMatches.length > 0
+          ? applyArrayReduceFusion(decl.body.statements, fusionMatches)
+          : (decl.body.statements as unknown as ts.Statement[]);
       // Hoist `var` declarations: pre-allocate locals so variables are accessible
       // even before their declaration site (JS var hoisting semantics).
       hoistVarDeclarations(ctx, fctx, bodyStatements);
