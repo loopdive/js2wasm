@@ -16953,6 +16953,54 @@
       "cluster": "performance"
     },
     {
+      "id": "1196",
+      "title": "perf: bounds-check elimination via SSA on monotonic indexed array loops",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "46",
+      "depends_on": [],
+      "files": [],
+      "goal": "performance",
+      "cluster": "performance"
+    },
+    {
+      "id": "1196",
+      "title": "perf: bounds-check elimination via SSA on monotonic indexed array loops",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "47",
+      "depends_on": [],
+      "files": [],
+      "goal": "performance",
+      "cluster": "performance"
+    },
+    {
+      "id": "1197",
+      "title": "perf: i32 element specialization for `number[]` arrays under `| 0` / `& mask` / `>> n` patterns",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "46",
+      "depends_on": [],
+      "files": [],
+      "goal": "performance",
+      "cluster": "performance"
+    },
+    {
+      "id": "1197",
+      "title": "perf: i32 element specialization for `number[]` arrays under `| 0` / `& mask` / `>> n` patterns",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "47",
+      "depends_on": [],
+      "files": [],
+      "goal": "performance",
+      "cluster": "performance"
+    },
+    {
       "id": "1198",
       "title": "perf: pre-size dense arrays at allocation site (`const a = []; for ... a[i] = ...` → `new Array(n)`)",
       "priority": "high",
@@ -17057,8 +17105,8 @@
       "id": "1205",
       "title": "Extend TDZ flag boxing to async functions / generators (#1177-followup) — async-fn closure capture path needs Stage 2/3 wiring",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "46",
       "depends_on": [
         "1177",
@@ -17193,11 +17241,39 @@
       "cluster": "correctness"
     },
     {
-      "id": "1217",
-      "title": "ci(test262): smoke-canary — re-run main HEAD twice with fresh cache, fail if flip rate > 0",
+      "id": "1216",
+      "title": "ci: auto-commit playground benchmark baseline on push-to-main (architectural follow-up to #1214)",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "46",
+      "depends_on": [
+        "1214"
+      ],
+      "files": [],
+      "goal": "ci-stability",
+      "cluster": "ci-stability"
+    },
+    {
+      "id": "1216",
+      "title": "ci: auto-commit playground benchmark baseline on push-to-main (architectural follow-up to #1214)",
       "priority": "medium",
       "status": "ready",
       "raw_status": "in-progress",
+      "sprint": "47",
+      "depends_on": [
+        "1214"
+      ],
+      "files": [],
+      "goal": "ci-stability",
+      "cluster": "ci-stability"
+    },
+    {
+      "id": "1217",
+      "title": "ci(test262): smoke-canary — re-run main HEAD twice with fresh cache, fail if flip rate > 0",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "46",
       "depends_on": [],
       "files": [],
@@ -17208,8 +17284,8 @@
       "id": "1218",
       "title": "ci(test262): auto-validate committed baseline on PR — spot-check 50 random pass entries",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "46",
       "depends_on": [],
       "files": [],
@@ -17220,8 +17296,8 @@
       "id": "1219",
       "title": "ArrayBindingPattern iter-close: destructuring hangs when iterator never sets done:true (26 compile_timeout tests)",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "46",
       "depends_on": [],
       "files": [],
@@ -17232,8 +17308,8 @@
       "id": "1220",
       "title": "test262-worker: Promise snapshot missing + prototype poisoning leaks across fork tests (+29 conformance)",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "46",
       "depends_on": [],
       "files": [],
@@ -18070,8 +18146,16 @@
       "target": "1210"
     },
     {
+      "source": "1214",
+      "target": "1216"
+    },
+    {
       "source": "688",
       "target": "742"
+    },
+    {
+      "source": "1214",
+      "target": "1216"
     },
     {
       "source": "1177",
@@ -18080,6 +18164,10 @@
     {
       "source": "1205",
       "target": "1223"
+    },
+    {
+      "source": "1197",
+      "target": "1199"
     },
     {
       "source": "321",
@@ -19174,6 +19262,10 @@
         "1179",
         "1184",
         "1195",
+        "1196",
+        "1196",
+        "1197",
+        "1197",
         "1198",
         "1198",
         "1199",
@@ -23046,6 +23138,22 @@
     },
     {
       "goal": "performance",
+      "issue": "1196"
+    },
+    {
+      "goal": "performance",
+      "issue": "1196"
+    },
+    {
+      "goal": "performance",
+      "issue": "1197"
+    },
+    {
+      "goal": "performance",
+      "issue": "1197"
+    },
+    {
+      "goal": "performance",
       "issue": "1198"
     },
     {
@@ -26753,6 +26861,22 @@
     {
       "goal": "core-semantics",
       "issue": "1195"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1196"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1196"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1197"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1197"
     },
     {
       "goal": "core-semantics",

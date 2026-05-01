@@ -1,0 +1,59 @@
+name: Test262 baseline validate
+
+# Spot-check 50 random `pass` entries from the committed
+# `benchmarks/results/test262-current.jsonl` against current main HEAD on
+# every PR. If any sampled "pass" entry no longer passes, the workflow
+# fails the PR with a clean message pointing at refresh-committed-baseline.
+#
+# Why: the committed JSONL is what `dev-self-merge` Step 4 reads for
+# bucket-by-path regression analysis. If it gets corrupted (mass-rewritten
+# by a malformed merge, desynced by a workflow bug), bucket analysis
+# silently produces wrong answers and the merge gate becomes unreliable.
+#
+# Cost: ~1 minute per run (50 tests × ~1s). See #1218.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "benchmarks/results/test262-current.jsonl"
+      - "src/**"
+      - "scripts/validate-test262-baseline.ts"
+      - ".github/workflows/test262-baseline-validate.yml"
+  push:
+    branches: [main]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: read
+
+jobs:
+  baseline-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout (with test262 submodule)
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Setup pnpm via Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.30.2 --activate
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Validate baseline
+        env:
+          # Deterministic seed derived from the PR number — same PR re-runs
+          # always sample the same 50 tests.
+          PR_NUMBER: ${{ github.event.pull_request.number || github.run_number }}
+        run: npx tsx scripts/validate-test262-baseline.ts
