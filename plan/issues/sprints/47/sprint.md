@@ -34,7 +34,6 @@ wrap_checklist:
 |---|---|---|---|---|
 | #1224 | class method dstr-parameter defaults: null-guard fires before default is applied (408 failures) | high | dev-1224 | pending |
 | #1225 | Nested dstr from null/undefined: missing TypeError (~244 tests) | high | dev-1225 | pending |
-| #1169n | IR Phase 4 Slice 11 — switch statements + missing binary/unary operators | high | dev-1169n | pending |
 
 ### Blocked
 
@@ -48,7 +47,7 @@ wrap_checklist:
 | Issue | Title | Priority | Blocked by |
 |---|---|---|---|
 | #1226 | class/elements: static async private method invalid Wasm (~104 tests) | high | — |
-| #1169o | IR Phase 4 Slice 12 — dynamic element access + array literals | high | #1169n |
+| #1169o | IR Phase 4 Slice 12 — dynamic element access + array literals | high | — |
 | #1169p | IR Phase 4 Slice 13 — String + Array prototype methods | medium | #1169o |
 | #1169q | IR Phase 4 Slice 14 — retire legacy codegen | high | #1169n, #1169o, #1169p |
 | #1195 | perf: escape-analysis scalarization for non-escaping arrays | high | — |
@@ -60,6 +59,7 @@ wrap_checklist:
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1222 | ci: wasm-hash noise filter — exclude byte-identical regressions from PR gate | high | done |
+| #1169n | IR Phase 4 Slice 11 — switch + missing binary/unary operators | high | done |
 | #1196 | perf: bounds-check elimination (landed in S46) | high | done |
 | #1197 | perf: i32 element specialization (landed in S46) | high | done |
 | #1198 | perf: pre-size dense arrays (landed in S46) | high | done |
