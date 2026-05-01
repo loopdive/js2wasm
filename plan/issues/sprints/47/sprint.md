@@ -33,8 +33,8 @@ wrap_checklist:
 | Issue | Title | Priority | Agent | PR |
 |---|---|---|---|---|
 | #1225 | Nested dstr from null/undefined: missing TypeError (~244 tests) | high | dev-1225 | #130 |
-| #1169o | IR Phase 4 Slice 12 — dynamic element access + array literals | high | dev-1169n | pending |
-| #1227 | fix(runner): compiler-pool timer fix — 156 false compile_timeouts | high | dev-1222 | #131 |
+| #1169o | IR Phase 4 Slice 12 — dynamic element access + array literals | high | dev-1169n | #132 |
+| #1195 | perf: escape-analysis scalarization for non-escaping arrays | high | dev-1224 | pending |
 
 ### Blocked
 
@@ -47,8 +47,6 @@ wrap_checklist:
 
 | Issue | Title | Priority | Blocked by |
 |---|---|---|---|
-| #1226 | class/elements: static async private method invalid Wasm (~104 tests) | high | — |
-| #1227 | fix(runner): compiler-pool timer fires at enqueue — 156 false compile_timeouts | high | — |
 | #1169o | IR Phase 4 Slice 12 — dynamic element access + array literals | high | — |
 | #1169p | IR Phase 4 Slice 13 — String + Array prototype methods | medium | #1169o |
 | #1169q | IR Phase 4 Slice 14 — retire legacy codegen | high | #1169n, #1169o, #1169p |
@@ -63,6 +61,8 @@ wrap_checklist:
 | #1169n | IR Phase 4 Slice 11 — switch + missing binary/unary operators | high | done |
 | #1207 | perf(test262): root-cause 156 compile_timeouts — all queue-wait noise (#1227 fixes) | high | done |
 | #1224 | class/dstr defaults: investigation done, 2 root causes found, tests added | high | done |
+| #1226 | class/elements: static async private method — tests added (bug already fixed) | high | done |
+| #1227 | fix(runner): pool timer fires at dispatch, not enqueue — 156 false CTs fixed | high | done |
 | #1196 | perf: bounds-check elimination (landed in S46) | high | done |
 | #1197 | perf: i32 element specialization (landed in S46) | high | done |
 | #1198 | perf: pre-size dense arrays (landed in S46) | high | done |
