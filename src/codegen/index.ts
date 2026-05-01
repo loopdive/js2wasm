@@ -784,8 +784,28 @@ export function generateModule(
         funcs: new Set<string>([...selection.funcs].filter((n) => overrideMap.has(n))),
       };
       const report = compileIrPathFunctions(ctx, ast.sourceFile, safeSelection, overrideMap, classShapes);
+      // Slice 12 (#1169o) — IR-path failures are NOT compile errors. The
+      // legacy path has already produced a working `body` for every
+      // function before `compileIrPathFunctions` runs; an IR throw here
+      // is a "we tried to optimise this function via IR, it didn't fit
+      // the IR's claim shape, falling back to legacy" event. Emitting
+      // these as severity-"error" diagnostics flips test262 tests to
+      // `compile_error` even though the resulting Wasm is identical to
+      // a non-experimentalIR build (the legacy body is preserved).
+      //
+      // Emit as severity-"warning" so they remain visible to the
+      // bridge tests (#1181's `irErrors` filter still sees them) but
+      // don't affect the test262 `result.success || severity==="error"`
+      // gate. Cleaner long-term: thread an `IrPathReport` channel through
+      // `CompileResult` separate from compile diagnostics; tracked as a
+      // follow-up.
       for (const err of report.errors) {
-        reportErrorNoNode(ctx, `IR path failed for ${err.func}: ${err.message}`);
+        ctx.errors.push({
+          message: `IR path failed for ${err.func}: ${err.message}`,
+          line: 0,
+          column: 0,
+          severity: "warning",
+        });
       }
     }
 

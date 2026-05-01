@@ -442,8 +442,14 @@ export type IrBinop =
 /**
  * Typed unary primitive. `f64.neg` negates a number. `i32.eqz` implements
  * bool negation (`!x` where x is bool — 0↔1).
+ *
+ * Slice 12 (#1169o) adds `i32.trunc_sat_f64_s` — saturating f64 → i32
+ * truncation. Used to convert a JS-style f64 array index into the i32
+ * the backend `vec.get` instruction expects. Saturation handles
+ * NaN→0 and out-of-range values gracefully (no trap), matching what
+ * test262's array-indexing patterns expect.
  */
-export type IrUnop = "f64.neg" | "i32.eqz";
+export type IrUnop = "f64.neg" | "i32.eqz" | "i32.trunc_sat_f64_s";
 
 export interface IrInstrBinary extends IrInstrBase {
   readonly kind: "binary";
