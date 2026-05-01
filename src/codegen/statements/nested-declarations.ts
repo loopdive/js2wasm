@@ -237,16 +237,28 @@ export function compileNestedFunctionDeclaration(
       }
     }
     const hasTdzFlag = tdzFlagIdx !== undefined;
-    // #1205: Force-box the value when the flag is present — the variable was
-    // declared `let`/`const`, so post-init mutations from outside the lifted
-    // fn must flow through a ref cell for the captured body to observe them.
-    // Mirrors the arrow path at closures.ts:1356 (`writtenInClosure || writtenInOuter || hasTdzFlag`).
-    // The previous comment here argued against force-boxing on tdzFlagLocals
-    // because the call-site cap-prepend loop did not propagate a flag — which
-    // caused stale captures inside async-fn bodies. FNDECL-A2..A5 below close
-    // that gap by also propagating the boxed flag, so the full Stage 3 wiring
-    // now matches the arrow path and the for-await-of regressions retire.
-    const isMutable = writtenInBody.has(name) || hasTdzFlag;
+    // #1205: We previously force-boxed the value when `hasTdzFlag` was true
+    // (mirroring the arrow path at closures.ts:1356). That broke 48+
+    // for-await-of test262 cases because the destructure-assign codegen path
+    // (`compileForOfAssignDestructuringExternref` in loops.ts:1364) writes
+    // via `emitCoercedLocalSet(targetLocal, externref)` — a direct `local.set`
+    // that does NOT route through `boxedCaptures.struct.set`. With the value
+    // param force-boxed to `ref $T_refcell`, the externref → ref coercion
+    // emits a `ref.cast_null` + `ref.as_non_null` that traps at runtime
+    // ("dereferencing a null pointer in fn() at source L<for-await-line>").
+    //
+    // For pure flag plumbing (the body's TDZ check via `boxedTdzFlags`) we
+    // do NOT need to force-box the value — FNDECL-A2..A5's flag-box param
+    // alone is sufficient, and identifier reads still see the right value
+    // through the regular value param when no internal write happens.
+    //
+    // The "writer + reader fn-decl pair sharing a TDZ-flagged outer let"
+    // pattern (issue-1205.test.ts case 1) does require this force-boxing
+    // for proper sharing — but that case requires Stage 1 of #1177
+    // (`localMap.get(cap.name) ?? cap.outerLocalIdx`) to be re-applied AND
+    // the destructure-assign path to be box-aware. Both are out of scope
+    // for this PR; the test is marked `.todo` until that follow-up lands.
+    const isMutable = writtenInBody.has(name);
     captures.push({ name, type, localIdx, mutable: isMutable, hasTdzFlag, tdzFlagIdx });
   }
 
