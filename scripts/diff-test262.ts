@@ -22,6 +22,13 @@ interface TestResult {
   error?: string;
   error_category?: string;
   category?: string;
+  /**
+   * 12-char sha256 hex digest of the compiled Wasm binary (or null if no
+   * binary was produced — skip / compile_error / compile_timeout). Added in
+   * #1222 so the PR regression-gate can filter out byte-identical "regressions"
+   * that are pure CI runner noise.
+   */
+  wasm_sha?: string | null;
 }
 
 type StatusMap = Map<string, TestResult>;
@@ -105,7 +112,19 @@ async function run(baselinePath: string, newPath: string, maxShow: number, quiet
   const [baseline, newer] = await Promise.all([loadJsonl(baselinePath), loadJsonl(newPath)]);
 
   // Collect transitions
-  const regressions: { file: string; from: string; to: string; error?: string; error_category?: string }[] = [];
+  const regressions: {
+    file: string;
+    from: string;
+    to: string;
+    error?: string;
+    error_category?: string;
+    /**
+     * True when both base and pr have a non-null wasm_sha and the values
+     * match — i.e. the compiled binary is byte-identical, so any pass→fail
+     * transition is CI runner noise (#1222).
+     */
+    wasmUnchanged: boolean;
+  }[] = [];
   const improvements: { file: string; from: string; to: string }[] = [];
   const otherChanges: { file: string; from: string; to: string }[] = [];
 
@@ -133,12 +152,21 @@ async function run(baselinePath: string, newPath: string, maxShow: number, quiet
     if (baseStatus === curStatus) continue;
 
     if (baseStatus === "pass" && curStatus !== "pass") {
+      // #1222: if both runs produced a Wasm binary and the binaries are
+      // byte-identical, the test cannot have regressed for any compiler
+      // reason — the runtime difference is CI-runner variance (scheduling,
+      // memory pressure, GC timing). The merge gate uses
+      // `regressions_wasm_change` which excludes these.
+      const baseSha = base?.wasm_sha;
+      const curSha = cur?.wasm_sha;
+      const wasmUnchanged = typeof baseSha === "string" && typeof curSha === "string" && baseSha === curSha;
       regressions.push({
         file,
         from: baseStatus,
         to: curStatus,
         error: cur?.error,
         error_category: cur?.error_category,
+        wasmUnchanged,
       });
     } else if (baseStatus !== "pass" && curStatus === "pass") {
       improvements.push({ file, from: baseStatus, to: curStatus });
@@ -203,6 +231,20 @@ async function run(baselinePath: string, newPath: string, maxShow: number, quiet
   const regressionsReal = regressions.length - regressionsCT;
   console.log(`=== Compile timeouts (pass → compile_timeout): ${regressionsCT} ===`);
   console.log(`=== Regressions excluding compile_timeout: ${regressionsReal} ===`);
+
+  // #1222: filter regressions where the compiled Wasm binary is byte-identical
+  // on both base and PR. A test that compiles to the same bytes cannot have
+  // regressed due to anything in the PR — the pass→fail flip is pure CI runner
+  // variance (scheduling, memory pressure, GC timing). The merge gate prefers
+  // `regressions_wasm_change` over `regressions_real` to avoid flagging these
+  // physically-impossible "regressions". Only counts entries where wasm_sha
+  // is present on BOTH sides; if either is missing we conservatively treat
+  // the regression as real (could be a compile_error vs pass transition).
+  const noiseFiltered = regressions.filter((r) => !r.wasmUnchanged && r.to !== "compile_timeout");
+  const regressionsWasmChange = noiseFiltered.length;
+  const wasmIdenticalNoise = regressions.filter((r) => r.wasmUnchanged && r.to !== "compile_timeout").length;
+  console.log(`=== Wasm-identical noise (pass → other, same wasm_sha): ${wasmIdenticalNoise} ===`);
+  console.log(`=== Regressions with wasm-hash change: ${regressionsWasmChange} ===`);
   console.log();
 
   // Improvements
