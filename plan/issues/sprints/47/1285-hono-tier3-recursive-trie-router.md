@@ -1,9 +1,9 @@
 ---
 id: 1285
 title: "Hono Tier 3 stress test — recursive TrieRouter with class-typed Node children"
-status: blocked
+status: in-progress
 created: 2026-05-02
-updated: 2026-05-02
+updated: 2026-05-03
 priority: high
 feasibility: medium
 reasoning_effort: medium
@@ -60,4 +60,29 @@ Once #1284 is fixed, this test documents the full recursive trie integration.
 
 ## Blocked by
 
-#1284 — class-typed dict round-trip fix.
+~~#1284 — class-typed dict round-trip fix.~~ Resolved 2026-05-02 (PR #182).
+
+## Resolution (2026-05-03)
+
+`#1284` landed (PR #182): `collectUsedExternImports` now suppresses
+`${ClassName}_new` host-import registration whenever a user
+`ClassDeclaration` / `ClassExpression` of that name appears in source,
+preventing the funcMap aliasing that caused `new Node(42)` to lower to
+`call __extern_set(...)`. With that fix, the recursive TrieRouter
+exercised in this issue compiles and runs end-to-end.
+
+### Tests added
+
+- `tests/stress/hono-tier3.test.ts` — 6 `it` blocks covering:
+  - Tier 3a — static routes at depth 1, 2, 3
+  - Tier 3b — root path match (empty-segment edge case)
+  - Tier 3c — parameterized segments (`:id`, `:name`, `:cid`) at varying depths
+  - Tier 3d — wildcard fallback (`*`) consuming any remainder
+  - Tier 3e — misses return 0 (unknown top-level + over-deep)
+  - Tier 3f — full add+match roundtrip with 11 routes + 3 misses
+- `tests/stress/hono-tier2.test.ts` Tier 2e — unskipped; now runs the
+  smallest reproducer (`addChild` + `getChild` on
+  `#children: { [s: string]: Node }`) as a permanent regression
+  sentinel.
+
+All Hono tier tests (14 / 14) pass: Tier 1 ×3, Tier 2 a–e ×5, Tier 3 ×6.
