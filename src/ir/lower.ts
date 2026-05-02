@@ -54,6 +54,7 @@ import {
   type IrTypeRef,
   type IrValueId,
 } from "./nodes.js";
+import { isSideEffecting } from "./passes/dead-code.js";
 import type { BlockType, FuncTypeDef, Instr, LocalDef, ValType, WasmFunction } from "./types.js";
 
 /**
@@ -1486,9 +1487,26 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
         emitInstrTree(instr, out);
         out.push({ op: "local.set", index: localIdx.get(instr.result)! });
         materialized.add(instr.result);
+        continue;
       }
-      // Intra-block-only: single-use inlines at use site, multi-use uses
-      // the lazy-tee pattern at first reference. Skip emission here.
+      // #1267 — side-effecting instr whose result is unused (e.g. a
+      // method call in expression-statement position: `c.bump();`).
+      // The lazy-emission pattern below only fires at a USE SITE; if the
+      // result has zero uses, the instruction (and its observable side
+      // effect) gets silently dropped. For side-effecting kinds —
+      // `class.call`, `extern.call`, `call`, `closure.call`, etc. (see
+      // dead-code.ts:isSideEffecting) — we eagerly emit the instruction
+      // and follow with a Wasm `drop` so the produced value is removed
+      // from the operand stack. The DCE pass already keeps these instrs
+      // live in the IR; this is the matching emission contract.
+      const useCount = totalUses.get(instr.result) ?? 0;
+      if (useCount === 0 && isSideEffecting(instr)) {
+        emitInstrTree(instr, out);
+        out.push({ op: "drop" });
+      }
+      // Intra-block-only with at least one use: single-use inlines at
+      // use site, multi-use uses the lazy-tee pattern at first
+      // reference. Skip emission here.
     }
 
     const t = block.terminator;
