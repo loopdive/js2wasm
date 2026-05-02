@@ -673,10 +673,30 @@ export function tryExternClassMethodOnAny(
   // keep the historical first-match behavior.
   if (methodName === "slice") return null;
 
+  // (#1283) The dispatch below emits `externref` hints for every arg and
+  // assumes the call's signature is all-externref. When iterating in
+  // insertion order we may otherwise hit an extern class whose method has a
+  // mixed signature — e.g. TypedArray.set is `(externref, externref, f64)`
+  // and would mismatch the externref args we push. Concretely this hit
+  // WeakMap.set on `wm: any`: TypedArray's `set` was registered before
+  // WeakMap's, so first-match picked Uint8ClampedArray_set and produced an
+  // invalid Wasm module ("call[0] expected externref, found f64").
+  //
+  // We filter candidates to all-externref (or void-result) signatures so the
+  // arg coercions are correct. Methods with mixed signatures fall through to
+  // the generic __extern_method_call host-side dispatch, which uses the real
+  // receiver class at runtime.
+  const isAllExternrefSig = (sig: { params: ValType[]; results: ValType[] }): boolean => {
+    for (const p of sig.params) if (p.kind !== "externref") return false;
+    for (const r of sig.results) if (r.kind !== "externref") return false;
+    return true;
+  };
+
   for (const [key, info] of ctx.externClasses) {
     if (key !== info.className) continue;
     const sig = info.methods.get(methodName);
     if (!sig) continue;
+    if (!isAllExternrefSig(sig)) continue;
 
     const importName = `${info.importPrefix}_${methodName}`;
     let funcIdx = ctx.funcMap.get(importName);
