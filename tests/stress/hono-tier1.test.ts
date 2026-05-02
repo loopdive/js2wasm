@@ -142,7 +142,7 @@ describe("#1244 Hono Tier 1 — router math primitives", () => {
       // Returns 1 if route matches request and writes captured params (by
       // index) into out array; 0 otherwise.
       // (Note: the natural typeof-guarded form mishandles substring(1).
-      //  Filed as plan/issues/backlog/1246.md. Omitted here as workaround.)
+      //  Filed as plan/issues/backlog/1248.md. Omitted here as workaround.)
       export function matchRoute(routeParts: any, reqParts: any, outNames: any, outValues: any): number {
         if (routeParts.length !== reqParts.length) return 0;
         var captured: number = 0;
@@ -209,7 +209,7 @@ describe("#1244 Hono Tier 2 — TrieRouter class via compileProject (documented 
     // and `Object.create(null)` and spread-into-existing-object patterns.
     //
     // Activate this test by removing `.skip` once #1247 (typed-array struct
-    // mismatch) and #1246 (typeof-string narrowing breaks substring) land,
+    // mismatch) and #1248 (typeof-string narrowing breaks substring) land,
     // plus a follow-up for class private-field semantics.
   });
 });
