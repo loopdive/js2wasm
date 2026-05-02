@@ -3682,6 +3682,26 @@ assert._isSameValue = isSameValue;
           }
           return jsArr.concat(...args);
         };
+      // Array.prototype.join(sep?) fallback for externref receivers (#1286).
+      // When the receiver is a JS array (e.g., from Object.keys host import),
+      // we can't go through the WasmGC-native compileArrayJoin path because
+      // the externref isn't a WasmGC vec struct. Delegate to the host's own
+      // Array.prototype.join implementation. Accepts the receiver as either
+      // a JS array or a WasmGC vec — converts vec via __vec_len/__vec_get.
+      if (name === "__array_join_any")
+        return (arr: any, sep: any) => {
+          if (arr == null) return "";
+          // JS array: call native .join directly. Pass `undefined` (not the
+          // string "undefined") when no separator was supplied so the spec's
+          // default ',' takes effect.
+          if (Array.isArray(arr)) {
+            return sep === undefined || sep === null ? arr.join() : arr.join(String(sep));
+          }
+          // WasmGC vec: read via exports and join in JS.
+          const exports = callbackState?.getExports();
+          const jsArr = _toJsArray(arr, exports);
+          return sep === undefined || sep === null ? jsArr.join() : jsArr.join(String(sep));
+        };
       // Array.prototype.flat(depth?) — flatten nested arrays (#1136)
       // Converts WasmGC vec to JS array, then calls native flat()
       if (name === "__array_flat")
