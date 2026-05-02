@@ -164,7 +164,7 @@ function computeLiveValues(fn: IrFunction, reachable: ReadonlySet<number>): Set<
  *    is a later pass.
  * - `global.set` — writes observable state.
  */
-function isSideEffecting(i: IrInstr): boolean {
+export function isSideEffecting(i: IrInstr): boolean {
   return (
     i.kind === "raw.wasm" ||
     i.kind === "call" ||
