@@ -335,13 +335,63 @@ function resolvePositionType(
   }
   if (isConcreteLattice(mapped)) return latticeToIr(mapped);
   if (mapped?.kind === "object") {
-    // The lattice carries a shape string but not the concrete field
-    // list, so we can't reconstruct an IrType.object from it alone.
-    // The selector accepts at the kind level; we need an explicit
-    // TypeNode for shape evidence in slice 2.
-    throw new Error(`object position type without explicit annotation — needs TypeNode in slice 2`);
+    // #1231 Phase 1 — the lattice carries a recursive structural shape
+    // (`fields: { name, type }[]`) so we can build an `IrType.object`
+    // directly from flow evidence, without consulting the TS checker.
+    // This is what enables typed structs (e.g. `(field $x f64)`) for
+    // unannotated functions like `function createPoint(x, y) { return {x, y}; }`.
+    const ir = objectIrTypeFromLattice(mapped);
+    if (ir) return ir;
+    throw new Error(`object position type — lattice shape not lowerable to IrType.object`);
   }
   throw new Error(`no concrete type (mapped=${mapped?.kind ?? "missing"})`);
+}
+
+/**
+ * #1231 Phase 1 — walk a `LatticeType` (must be `kind: "object"`) into
+ * an `IrType.object`. Each field's atom is recursively mapped to an
+ * `IrType` (primitives → `IrType.val`, strings → `IrType.string`,
+ * nested objects → recursive call). Returns `null` if any field fails
+ * to lower so the caller can fall back to legacy.
+ *
+ * The resulting `IrType.object` is consumed by the IR's
+ * `ObjectStructRegistry` (in `src/ir/integration.ts`) which dedups by
+ * the legacy `fieldsHashKey` — so a lattice-derived `{x: f64, y: f64}`
+ * produces the same anonymous struct (`__anon_<n>`) the legacy path
+ * would have produced for an explicit `{ x: number, y: number }`
+ * annotation.
+ */
+function objectIrTypeFromLattice(t: LatticeType): IrType | null {
+  if (t.kind !== "object") return null;
+  if (t.fields.length === 0) return null;
+  const fields: { name: string; type: IrType }[] = [];
+  for (const f of t.fields) {
+    const ir = atomToFieldIr(f.type);
+    if (!ir) return null;
+    fields.push({ name: f.name, type: ir });
+  }
+  // Lattice atom field lists are canonicalised at construction time,
+  // but the IrObjectShape contract is "sorted by name" — re-sort here
+  // defensively (cheap; matches `objectIrTypeFromTsType`).
+  fields.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  return { kind: "object", shape: { fields } };
+}
+
+/**
+ * Map a `LatticeAtom` to its `IrType` field-position lowering.
+ * Mirrors `tsTypeToFieldIr` — but driven by flow evidence rather than
+ * the TS checker. Returns `null` for atoms whose IR projection isn't
+ * representable in field position (none today; reserved for forward
+ * compatibility).
+ */
+function atomToFieldIr(a: import("../ir/propagate.js").LatticeAtom): IrType | null {
+  if (a.kind === "f64") return irVal({ kind: "f64" });
+  if (a.kind === "bool") return irVal({ kind: "i32" });
+  if (a.kind === "string") return { kind: "string" };
+  // A LatticeAtom of `kind: "object"` is also a LatticeType, so pass it
+  // through to recurse over the nested field list.
+  if (a.kind === "object") return objectIrTypeFromLattice(a);
+  return null;
 }
 
 /**
