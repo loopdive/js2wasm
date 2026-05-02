@@ -2121,17 +2121,39 @@ function lowerStringMethodCall(
   // emit `ref.null.extern` — the host import shim treats it as undefined.
   // For host-mode f64 args (e.g. slice's end omitted), emit a sentinel
   // that the host knows means "to end" (matches the legacy convention).
+  //
+  // #1248: For `String.slice(start)` (single-arg), the missing `end`
+  // argument MUST default to `s.length`, NOT 0. The host import
+  // `string_slice(s, start, 0)` interprets end=0 literally and returns
+  // an empty string for any non-zero start. The fix is symmetric to the
+  // legacy compiler path in `src/codegen/expressions/calls.ts:4040+` —
+  // when slice is called with only `start`, push `recv.length` as the
+  // implicit `end` arg.
   for (let i = args.length; i < sig.hostArgs.length; i++) {
     const expectedHost = sig.hostArgs[i]!;
     if (useNative) {
-      // Native helpers handle missing args inside the function body via
-      // sentinel values matching the legacy native-helper convention.
-      // For now, throw — Phase 1 only covers fully-specified call sites
-      // for native mode.
+      // #1248 native-mode: slice's missing `end` defaults to `recv.len`.
+      // For other methods we still throw — Phase 1 only covers fully-
+      // specified call sites for native mode.
+      if (methodName === "slice" && i === 1 && expectedHost.kind === "f64") {
+        // emitStringLen returns f64; truncate to i32 for native helpers
+        const f64Len = cx.builder.emitStringLen(recv);
+        const i32Len = cx.builder.emitUnary("i32.trunc_sat_f64_s", f64Len, irVal({ kind: "i32" }));
+        loweredArgs.push(i32Len);
+        continue;
+      }
       throw new Error(
         `ir/from-ast: String.${methodName} optional arg ${i} omitted in nativeStrings mode not in slice 13c (${cx.funcName})`,
       );
     } else {
+      // #1248 host-mode: for `String.slice(start)`, the missing `end`
+      // arg defaults to `recv.length` (as f64). All other missing
+      // optional args fall back to the generic sentinel.
+      if (methodName === "slice" && i === 1 && expectedHost.kind === "f64") {
+        const lenVal = cx.builder.emitStringLen(recv);
+        loweredArgs.push(lenVal);
+        continue;
+      }
       const def = emitDefaultExternArg(cx, expectedHost);
       loweredArgs.push(def);
     }
