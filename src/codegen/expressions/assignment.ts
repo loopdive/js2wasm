@@ -3052,9 +3052,23 @@ function compileElementLogicalAssignment(
 ): ValType | null {
   // Compile object expression
   const arrType = compileExpression(ctx, fctx, target.expression);
-  if (!arrType || (arrType.kind !== "ref" && arrType.kind !== "ref_null")) {
-    reportError(ctx, target, "Logical assignment on non-array element access");
+  if (!arrType) {
+    reportError(ctx, target, "Logical assignment on undefined element access target");
     return null;
+  }
+
+  // #1268 — index-signature dict (`{ [key: string]: T }`) lowers to
+  // externref (host JS object); other non-ref kinds (f64, i32 — rare,
+  // but possible via boxed primitives) likewise route through the host.
+  // Plain `obj[key] = val` already has a `compileExternSetFallback` arm
+  // for these; the parallel `??=` / `||=` / `&&=` arm was missing and
+  // produced a "Logical assignment on non-array element access" error
+  // that callers silently dropped, leaving the LHS uninitialized — the
+  // subsequent read returned NaN. This routes the logical-assignment
+  // case through the same `__extern_get` / `__extern_set` host imports
+  // the plain assignment uses.
+  if (arrType.kind !== "ref" && arrType.kind !== "ref_null") {
+    return compileElementLogicalAssignmentExternref(ctx, fctx, target, rhs, op, arrType);
   }
 
   const typeIdx = (arrType as { typeIdx: number }).typeIdx;
@@ -3162,6 +3176,129 @@ function compileElementLogicalAssignment(
 }
 
 /**
+ * #1268 — `obj[key] ??= rhs` / `obj[key] ||= rhs` / `obj[key] &&= rhs`
+ * where `obj` is an index-signature dict (lowered to externref) or any
+ * other non-ref / non-ref_null target.
+ *
+ * Mirrors `compileExternSetFallback` for the read+write portions and
+ * `emitLogicalAssignmentPattern` for the short-circuit semantics.
+ *
+ * Layout:
+ *   1. Coerce obj to externref (already on stack), save to `__lelm_obj`
+ *   2. Compute key (externref string), save to `__lelm_key`
+ *   3. emitGet := obj_local; key_local; call $__extern_get → externref
+ *   4. emitSet (after RHS pushed): save val to `__lelm_val`;
+ *      obj_local; key_local; val_local; call $__extern_set;
+ *      val_local (return value)
+ *   5. emitLogicalAssignmentPattern handles the if/else dispatch
+ *
+ * Result type is externref — the host import lives in externref world,
+ * and the caller-visible value is whatever the write/read produced.
+ *
+ * Caveat: `??=` semantics in JS treat `null` AND `undefined` as nullish.
+ * `__extern_get` returns `ref.null.extern` for missing keys (which the
+ * `ref.is_null` check captures correctly) and a boxed `undefined` for
+ * keys present with undefined value. The current `emitLogicalAssignment-
+ * Pattern` only checks `ref.is_null` for the `??=` arm, which matches
+ * the legacy global-scope `??=` behaviour. Distinguishing
+ * `undefined`-vs-other-truthy is the same gap that the global path has
+ * (compiled there too) — leave aligned with the existing convention.
+ */
+function compileElementLogicalAssignmentExternref(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  target: ts.ElementAccessExpression,
+  rhs: ts.Expression,
+  op: ts.SyntaxKind,
+  objType: ValType,
+): ValType | null {
+  // Coerce obj on stack to externref (mirrors compileExternSetFallback's prelude).
+  if (objType.kind === "externref") {
+    // already externref
+  } else if (objType.kind === "f64") {
+    const boxIdx = ctx.funcMap.get("__box_number");
+    if (boxIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: boxIdx });
+    } else {
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "ref.null.extern" });
+    }
+  } else if (objType.kind === "i32") {
+    fctx.body.push({ op: "f64.convert_i32_s" });
+    const boxIdx = ctx.funcMap.get("__box_number");
+    if (boxIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: boxIdx });
+    } else {
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "ref.null.extern" });
+    }
+  } else {
+    reportError(ctx, target, "Unsupported element logical-assignment target type");
+    return null;
+  }
+
+  // Save obj to a local so we can read it twice (get + set).
+  const objLocal = allocLocal(fctx, `__lelm_obj_${fctx.locals.length}`, { kind: "externref" });
+  fctx.body.push({ op: "local.set", index: objLocal });
+
+  // Compute key (always externref string for host imports) and save.
+  const keyType = compileExpression(ctx, fctx, target.argumentExpression, { kind: "externref" });
+  if (!keyType) return null;
+  // Coerce key to externref if needed (string literals already are).
+  if (keyType.kind === "f64") {
+    const boxIdx = ctx.funcMap.get("__box_number");
+    if (boxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: boxIdx });
+  } else if (keyType.kind === "i32") {
+    fctx.body.push({ op: "f64.convert_i32_s" });
+    const boxIdx = ctx.funcMap.get("__box_number");
+    if (boxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: boxIdx });
+  } else if (keyType.kind === "ref" || keyType.kind === "ref_null") {
+    fctx.body.push({ op: "extern.convert_any" });
+  }
+  const keyLocal = allocLocal(fctx, `__lelm_key_${fctx.locals.length}`, { kind: "externref" });
+  fctx.body.push({ op: "local.set", index: keyLocal });
+
+  // Ensure host imports are registered.
+  const getIdx = ensureLateImport(
+    ctx,
+    "__extern_get",
+    [{ kind: "externref" }, { kind: "externref" }],
+    [{ kind: "externref" }],
+  );
+  const setIdx = ensureLateImport(
+    ctx,
+    "__extern_set",
+    [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }],
+    [],
+  );
+  flushLateImportShifts(ctx, fctx);
+  if (getIdx === undefined || setIdx === undefined) {
+    reportError(ctx, target, "Could not register __extern_get/__extern_set imports");
+    return null;
+  }
+
+  const emitGet = (): void => {
+    fctx.body.push({ op: "local.get", index: objLocal });
+    fctx.body.push({ op: "local.get", index: keyLocal });
+    fctx.body.push({ op: "call", funcIdx: getIdx });
+  };
+  const emitSet = (): void => {
+    // Stack on entry: <rhs value as externref>
+    // We need to: save it, then call __extern_set(obj, key, val), then
+    // re-push val as the result value of the logical assignment.
+    const valLocal = allocLocal(fctx, `__lelm_val_${fctx.locals.length}`, { kind: "externref" });
+    fctx.body.push({ op: "local.set", index: valLocal });
+    fctx.body.push({ op: "local.get", index: objLocal });
+    fctx.body.push({ op: "local.get", index: keyLocal });
+    fctx.body.push({ op: "local.get", index: valLocal });
+    fctx.body.push({ op: "call", funcIdx: setIdx });
+    fctx.body.push({ op: "local.get", index: valLocal });
+  };
+
+  return emitLogicalAssignmentPattern(ctx, fctx, rhs, op, { kind: "externref" }, emitGet, emitSet);
+}
+
+/**
  * Check if a ValType is a reference type (can be used with ref.is_null).
  * Value types (i32, i64, f32, f64, v128, i16) are never null/undefined.
  */
@@ -3197,8 +3334,28 @@ function emitLogicalAssignmentPattern(
       emitGet();
       return varType;
     }
+    // For externref-typed targets, host imports return JS `undefined` as
+    // a non-null externref (the WebAssembly type system doesn't equate
+    // them). `ref.is_null` alone misses `undefined`-valued slots — see
+    // the parallel pattern in `compileLogicalAssignment` that uses
+    // `__extern_is_undefined` for variable-scope `??=`. Compose the
+    // two checks via `i32.or` so the then-arm fires for both.
     emitGet();
+    const tmpForUndef = varType.kind === "externref" ? allocTempLocal(fctx, varType) : -1;
+    if (varType.kind === "externref") {
+      fctx.body.push({ op: "local.tee", index: tmpForUndef });
+    }
     fctx.body.push({ op: "ref.is_null" });
+    if (varType.kind === "externref") {
+      const undefIdx = ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+      flushLateImportShifts(ctx, fctx);
+      if (undefIdx !== undefined) {
+        fctx.body.push({ op: "local.get", index: tmpForUndef });
+        fctx.body.push({ op: "call", funcIdx: undefIdx });
+        fctx.body.push({ op: "i32.or" } as unknown as Instr);
+      }
+      releaseTempLocal(fctx, tmpForUndef);
+    }
 
     const savedBody = pushBody(fctx);
     const rhsResult = compileExpression(ctx, fctx, rhs, varType);
