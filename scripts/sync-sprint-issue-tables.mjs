@@ -10,7 +10,7 @@ const LEGACY_SPRINT_ROOT = join(ROOT, "plan/sprints");
 const START = "<!-- GENERATED_ISSUE_TABLES_START -->";
 const END = "<!-- GENERATED_ISSUE_TABLES_END -->";
 function isIssueFileName(name) {
-  return /^\d+[a-z]?(?:-.+)?\.md$/i.test(name);
+  return /^\d+[a-z]?(?:[-_].+)?\.md$/i.test(name);
 }
 
 function parseFrontmatter(text) {
@@ -38,6 +38,11 @@ function extractTitle(text, fm) {
 
 function extractSprintNumber(value) {
   const m = String(value || "").match(/(\d+)/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+function sprintFromPath(file) {
+  const m = file.match(/\/sprints\/(\d+)\//);
   return m ? parseInt(m[1], 10) : null;
 }
 
@@ -77,7 +82,7 @@ function loadIssues() {
     if (!isIssueFileName(name)) continue;
     const text = readFileSync(file, "utf8");
     const fm = parseFrontmatter(text);
-    const sprintNumber = extractSprintNumber(fm.sprint);
+    const sprintNumber = sprintFromPath(file);
     if (!Number.isFinite(sprintNumber)) continue;
     issues.push({
       id: String(fm.id || name.replace(/\.md$/, "")),
@@ -115,7 +120,7 @@ function renderSprintSection(sprintNumber, issues) {
     START,
     "## Issue Tables",
     "",
-    "_Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._",
+    "_Generated from issue files. Update issue `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._",
     "",
   ];
 

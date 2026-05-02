@@ -41,8 +41,7 @@ wrap_checklist:
 
 | Issue | Title | Why blocked |
 |---|---|---|
-| #1177 Stage1 | TDZ Stage 1 — re-land capture-index correction | PR #125 closed: fix causes 59 new compile_timeout + 81 real regressions (net=-16). Stage 1 is still unsafe despite Stages 2&3 landing. Needs deep investigation. |
-| #1223 | TDZ async/gen: writer+reader fn-decl sharing via destructure-assign | Blocked on #1177 Stage1 |
+| #1223 | TDZ async/gen: writer+reader fn-decl sharing via destructure-assign | Blocked on #1245 |
 
 ### Ready
 
@@ -52,7 +51,9 @@ wrap_checklist:
 | #1232 | IR Phase 4 Slice 13c — String fixed-signature methods through IR | high | #1238 |
 | #1229 | perf: eval/RegExp LRU cache + peephole rewrite (7 compile_timeouts) | medium | — |
 | #1223 | TDZ async/gen: writer+reader fn-decl sharing via destructure-assign | medium | #1177 |
-| #1244 | npm stress test: compile Hono web framework to Wasm — Tier 1 (router math primitives) lands; Tier 2+ blocked on #1247 (typed `string[]` struct mismatch) + #1248 (typeof-string narrowing) + class private-field semantics | medium | — |
+| #1244 | npm stress test: compile Hono web framework to Wasm | medium | — |
+| #1245 | Investigate #1177 Stage 1: 59 compile_timeouts + 81 regressions in PR#125 | high | — |
+| #1246 | ci: differential test262 — branch vs main HEAD with src-tree-hash caching | high | — |
 
 ### Done
 
@@ -86,7 +87,7 @@ TBD
 <!-- GENERATED_ISSUE_TABLES_START -->
 ## Issue Tables
 
-_Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
+_Generated from issue files. Update issue `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
 
 ### Blocked
 
@@ -102,6 +103,9 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1232 | IR Phase 4 Slice 13c — String fixed-signature methods through IR | high | ready |
 | #1235 | ci: prevent baseline drift false-positive regressions after admin-merges | high | ready |
 | #1238 | IR Phase 4 Slice 13b — pseudo-ExternClassInfo registration for String + Array | high | ready |
+| #1244 | npm stress test: compile Hono web framework to Wasm | high | ready |
+| #1245 | Investigate #1177 Stage 1 regressions — 59 compile_timeouts + 81 real regressions in PR#125 | high | ready |
+| #1246 | ci: differential test262 — compare branch tip vs main HEAD with src-tree-hash caching | high | ready |
 
 ### In Progress
 

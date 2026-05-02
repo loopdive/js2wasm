@@ -46,8 +46,8 @@ clear process, clean planning data, and understandable repository structure.
 | **651** | Empty skip reason for 932 tests | 13 | done | medium |
 | **668** | 'String literal not registered' for empty string (43 CE) | 14 | done | medium |
 | **797b** | #797b -- Object.getOwnPropertyDescriptor compile-time resolution | 0 | done | high |
-| **833** | Consider sloppy mode support for legacy octal escapes and non-strict code |  | ready | low |
-| **889** | Test262 two-phase runner: compile all first, then execute with GC cleanup |  | ready | high |
+| **833** | Consider sloppy mode support for legacy octal escapes and non-strict code | Backlog | ready | low |
+| **889** | Test262 two-phase runner: compile all first, then execute with GC cleanup | Backlog | ready | high |
 | **900** | Move missing-main handling out of runtime execution | 34 | done | medium |
 | **914** | Add a short compiler architecture overview for contributors | 36 | done | high |
 | **916** | Clean contributor-facing repo hygiene and remove misleading clutter | 36 | done | high |
@@ -55,7 +55,7 @@ clear process, clean planning data, and understandable repository structure.
 | **944** | DUPLICATE — see #945 |  | wont-fix | low |
 | **1000** | Normalize issue frontmatter and repopulate historical sprint issue assignments | 45 | ready | high |
 | **1003** | Normalize issue metadata: add ES edition, language feature, and task type to all issue frontmatter | 45 | ready | high |
-| **1009** | Investigate report-page benchmark outliers where Wasm is much slower than JS |  | ready | medium |
+| **1009** | Investigate report-page benchmark outliers where Wasm is much slower than JS | Backlog | ready | medium |
 | **1202** | credibility: Architecture Decision Records — document the 8 core design choices that define js2wasm | 45 | done | high |
 | **1204** | credibility: methodology document — how js2wasm is built by an AI agent team | 46 | done | medium |
 | **1208** | landing: surface ADRs — rename 'How it works' to 'Approach', add Architecture section with ADR HTML renderings | 45 | done | high |

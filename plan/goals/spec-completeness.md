@@ -56,29 +56,29 @@ pass rate goes from "good" to "excellent."
 | **621** | Unsupported call expression (1,692 CE) | 0 | done | high |
 | **653** | Timeout epidemic: 6,715 tests (Temporal + statements) | 0 | done | high |
 | **657** | Yield outside generator residual (411 CE) | 0 | done | medium |
-| **661** | Temporal API via compiled polyfill or minimal implementation |  | ready | medium |
+| **661** | Temporal API via compiled polyfill or minimal implementation | Backlog | ready | medium |
 | **669** | eval() and new Function() support | 0 | done | high |
 | **670** | Proxy trap execution (beyond pass-through) | 14 | done | critical |
-| **671** | with statement support |  | backlog | low |
+| **671** | with statement support | Backlog | backlog | low |
 | **672** | WeakMap, WeakSet, WeakRef support | 15 | done | medium |
-| **674** | SharedArrayBuffer and Atomics |  | ready | low |
+| **674** | SharedArrayBuffer and Atomics | Backlog | ready | low |
 | **690** | Streaming test results with incremental report updates and zero-copy worker IPC | 0 | done | high |
 | **692** | Async pipelined execution: overlap load/compile/run stages | 0 | done | medium |
 | **706** | Residual illegal cast: 248 runtime failures | 26 | done | high |
 | **727** | - Sub-classify assertion failures (11,480 tests return wrong values) | 0 | done | high |
 | **764** | - 'immutable global' assignment error (240 CE) | 18 | done | low |
-| **779** | Assert failures: tests compile and run but produce wrong values (8,674 tests) |  | ready | critical |
+| **779** | Assert failures: tests compile and run but produce wrong values (8,674 tests) | Backlog | ready | critical |
 | **785** | - Null pointer traps in compiled Wasm code (~1,604 tests) | 0 | done | high |
 | **791** | - SyntaxError detection gaps: code compiles when it should not | 0 | done | high |
 | **825** | Null dereference failures (2,295 runtime failures) | 44 | done | high |
 | **826** | Illegal cast failures (1,276 runtime failures) | 43 | done | high |
-| **832** | Upgrade to TypeScript 6.x to support Unicode 16.0.0 identifiers |  | ready | medium |
-| **838** | BigInt64Array / BigUint64Array typed arrays |  | ready | low |
+| **832** | Upgrade to TypeScript 6.x to support Unicode 16.0.0 identifiers | Backlog | ready | medium |
+| **838** | BigInt64Array / BigUint64Array typed arrays | Backlog | ready | low |
 | **858** | Worker/timeout exits and eval-code null deref (182 tests) | 35 | done | medium |
-| **874** | Benchmark: compare all JS-to-Wasm engines on standard performance benchmarks |  | ready | medium |
-| **879** | Dashboard: process health metrics — checklist compliance, merge protocol, hook blocks |  | ready | medium |
-| **892** | Playground crashes: binaryen dependency not resolved by Vite |  | ready | low |
-| **903** | Add typed host import contracts and effect summaries |  | ready | high |
+| **874** | Benchmark: compare all JS-to-Wasm engines on standard performance benchmarks | Backlog | ready | medium |
+| **879** | Dashboard: process health metrics — checklist compliance, merge protocol, hook blocks | Backlog | ready | medium |
+| **892** | Playground crashes: binaryen dependency not resolved by Vite | Backlog | ready | low |
+| **903** | Add typed host import contracts and effect summaries | Backlog | ready | high |
 | **927** | Missing early/parse error detection: tests compile when they should reject (810 FAIL) | 37 | done | high |
 | **936** | Add equivalence tests for Math built-in methods | 37 | done | low |
 | **945** | __vec_get: extern.convert_any fails on integer-typed array elements (780 CE) | 37 | done | high |
@@ -86,7 +86,7 @@ pass rate goes from "good" to "excellent."
 | **988** | FinalizationRegistry constructor unsupported in official-scope tests (23 CE) | 40 | done | low |
 | **1006** | Support eval via JS host import | 42 | done | medium |
 | **1006** | Support eval via JS host import | 45 | ready | medium |
-| **1020** | await-using TDZ tests: null_deref crash in assert_throwsAsync (4 false positives) |  | backlog | medium |
+| **1020** | await-using TDZ tests: null_deref crash in assert_throwsAsync (4 false positives) | Backlog | backlog | medium |
 | **1028** | TypedArray.prototype.toLocaleString null/undefined in element toLocaleString path | 40 | done | medium |
 | **1037** | Symbol.dispose / Symbol.asyncDispose not accessible (30 FAIL) | 42 | done | medium |
 | **1047** | Instance fields leak onto prototype via _wrapForHost struct-field enumeration | 42 | done | high |
@@ -96,9 +96,9 @@ pass rate goes from "good" to "excellent."
 | **1073** | Scope injection for __extern_eval — pass harness environment bag to preserve caller-visible identifiers | 45 | ready | high |
 | **1094** | Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime | 42 | done | high |
 | **1094** | Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime | 45 | ready | high |
-| **1100** | Wasm-native Proxy: meta-object protocol without JS host |  | ready | medium |
-| **1101** | Wasm-native WeakRef and FinalizationRegistry via WasmGC weak references |  | ready | low |
-| **1102** | Wasm-native eval: ahead-of-time compilation strategy for eval() and Function() |  | ready | medium |
+| **1100** | Wasm-native Proxy: meta-object protocol without JS host | Backlog | ready | medium |
+| **1101** | Wasm-native WeakRef and FinalizationRegistry via WasmGC weak references | Backlog | ready | low |
+| **1102** | Wasm-native eval: ahead-of-time compilation strategy for eval() and Function() | Backlog | ready | medium |
 | **1118** | Worker/timeout exits and eval-code null deref (182 tests) | 47 | done | medium |
 | **1136** | Array.prototype.flat() and flatMap() not implemented | 42 | done | medium |
 | **1137** | ES2023 array methods: toReversed, toSorted, toSpliced, with — not implemented | 42 | done | medium |
@@ -112,14 +112,14 @@ pass rate goes from "good" to "excellent."
 | **1148** | Investigate skip:103 regression — Annex B eval-code skip filter | 44 | done | high |
 | **1149** | Fix null_deref:32 — eval-code direct methods with arguments declare | 44 | done | high |
 | **1150** | Fix runtime_error:26 + type_error:7 + oob:5 — async destructuring regressions | 44 | done | high |
-| **1151** | Async function synchronous throws bypass Promise.reject wrapping |  | ready | high |
-| **1154** | test262 worker: Array.prototype poisoning leaks into TypeScript compiler — Array.from fails at compile time (~378 test262 regressions) |  | open | high |
+| **1151** | Async function synchronous throws bypass Promise.reject wrapping | Backlog | ready | high |
+| **1154** | test262 worker: Array.prototype poisoning leaks into TypeScript compiler — Array.from fails at compile time (~378 test262 regressions) | Backlog | ready | high |
 | **1156** | Array.prototype method-as-value called with non-function arg produces 'number N is not a function' (~164 tests) | 44 | done | medium |
 | **1157** | RegExp constructor called with flags='undefinedy' from String.prototype method paths (~288 test262 regressions) | 47 | done | high |
 | **1160** | Array.from codegen error — test262-worker prototype poisoning leak (730 tests) | 44 | done | high |
 | **1161** | Cannot destructure null/undefined in private class method params (~429 dstr tests) | 44 | done | high |
 | **1162** | yield* async — unexpected undefined AST node in compileExpression (~161 tests) | 44 | done | high |
-| **1163** | Static eval inlining — compile eval(\"fixed string\") at compile time (~208 tests) | 44 | done | high |
+| **1163** | Static eval inlining — compile eval(\\\"fixed string\\\") at compile time (~208 tests) | 44 | done | high |
 | **1164** | Dynamic eval via JS host import — compile eval string to ad-hoc Wasm module (~416 tests) | 45 | done | medium |
 
 <!-- AUTOGENERATED:GOAL-ISSUES-END -->

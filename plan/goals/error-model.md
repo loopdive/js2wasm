@@ -70,7 +70,7 @@ makes the error paths spec-compliant.
 | **835** | Unknown extern class: Error types (32 CE) | 27 | done | low |
 | **845** | Miscellaneous compile errors: object literals, RegExp-on-X, for-in/of edge cases (340 CE) | 38 | done | medium |
 | **857** | wasm_compile: 'fn is not a function' in Array callback methods (247 tests) | 30 | done | high |
-| **871** | Playground: default example throws WebAssembly.Exception at runtime |  | ready | critical |
+| **871** | Playground: default example throws WebAssembly.Exception at runtime | Backlog | ready | critical |
 | **896** | Restore direct numeric GC-array codegen in hot loops | 34 | done | high |
 | **898** | Extend compile-time TDZ elimination to loop-local accesses | 34 | done | medium |
 | **899** | Extend compile-time TDZ elimination to provably safe closure captures | 34 | done | medium |
