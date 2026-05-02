@@ -76,7 +76,10 @@ export interface IrIntegrationReport {
  * the AST→IR lowerer consults when lowering `CallExpression`.
  */
 export interface IrTypeOverrideMap {
-  get(name: string): { readonly params: readonly IrType[]; readonly returnType: IrType } | undefined;
+  // Slice 14 (#1228) — `returnType: IrType | null` where `null` means a
+  // void-returning function (zero Wasm result types). Plumbs through to
+  // `from-ast.ts` so the IR builder can be constructed with `[]` results.
+  get(name: string): { readonly params: readonly IrType[]; readonly returnType: IrType | null } | undefined;
 }
 
 export function compileIrPathFunctions(
@@ -95,7 +98,7 @@ export function compileIrPathFunctions(
   // sees the same view, keyed by every selected function's propagated
   // signature. This is how cross-function calls keep their signatures
   // consistent on the IR side.
-  const calleeTypes = new Map<string, { params: readonly IrType[]; returnType: IrType }>();
+  const calleeTypes = new Map<string, { params: readonly IrType[]; returnType: IrType | null }>();
   if (overrides) {
     for (const name of selected.funcs) {
       const o = overrides.get(name);

@@ -120,12 +120,15 @@ describe("#1168 — LatticeType join rules", () => {
 
   it("union.members > 4 widens to dynamic (size cap)", () => {
     // Build a 5-member union by joining 5 distinct object shapes.
-    let t: LatticeType = { kind: "object", shape: "A" };
-    t = _internals.join(t, { kind: "object", shape: "B" });
-    t = _internals.join(t, { kind: "object", shape: "C" });
-    t = _internals.join(t, { kind: "object", shape: "D" });
+    // #1231 — object atoms now carry recursive `fields` (replacing the
+    // old opaque `shape: string` discriminator). Use distinct field-name
+    // sets so each shape compares unequal.
+    let t: LatticeType = { kind: "object", fields: [{ name: "a", type: { kind: "f64" } }] };
+    t = _internals.join(t, { kind: "object", fields: [{ name: "b", type: { kind: "f64" } }] });
+    t = _internals.join(t, { kind: "object", fields: [{ name: "c", type: { kind: "f64" } }] });
+    t = _internals.join(t, { kind: "object", fields: [{ name: "d", type: { kind: "f64" } }] });
     expect(t.kind).toBe("union");
-    t = _internals.join(t, { kind: "object", shape: "E" });
+    t = _internals.join(t, { kind: "object", fields: [{ name: "e", type: { kind: "f64" } }] });
     expect(t.kind).toBe("dynamic");
   });
 
@@ -163,13 +166,24 @@ describe("#1168 — lowerTypeToIrType for unions", () => {
     expect(lowerTypeToIrType({ kind: "bool" })).toEqual(irVal({ kind: "i32" }));
   });
 
-  it("unknown / dynamic / object → null in V1", () => {
+  it("unknown / dynamic → null; object → IrType.object (#1231)", () => {
     expect(lowerTypeToIrType({ kind: "unknown" })).toBeNull();
     expect(lowerTypeToIrType({ kind: "dynamic" })).toBeNull();
-    // #1169a (Slice 1) lowers `LatticeType.string` to the backend-agnostic
-    // `IrType.string` marker, so it's no longer null. Object lowering is
-    // still future work.
-    expect(lowerTypeToIrType({ kind: "object", shape: "Array" })).toBeNull();
+    // #1231 — object atoms now lower to `IrType.object` via the recursive
+    // field-list shape they carry.
+    const ir = lowerTypeToIrType({
+      kind: "object",
+      fields: [{ name: "x", type: { kind: "f64" } }],
+    });
+    expect(ir).not.toBeNull();
+    if (ir) {
+      expect(ir.kind).toBe("object");
+      if (ir.kind === "object") {
+        expect(ir.shape.fields).toHaveLength(1);
+        expect(ir.shape.fields[0]!.name).toBe("x");
+        expect(ir.shape.fields[0]!.type).toEqual({ kind: "val", val: { kind: "f64" } });
+      }
+    }
   });
 
   it("string → IrType.string (slice 1)", () => {
