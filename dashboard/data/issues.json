@@ -208,26 +208,6 @@
       "sprint": ""
     },
     {
-      "id": "1284",
-      "title": "Class-typed values in index-signature dicts lose identity through extern_set/extern_get round-trip",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "npm-library-support",
-      "status": "ready",
-      "sprint": ""
-    },
-    {
-      "id": "1283",
-      "title": "WeakMap host-import dispatch: type-mismatch on set/get/has/delete (carved off from #1242)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": ""
-    },
-    {
       "id": "1282",
       "title": "ESLint Tier 1 stress test — minimal Linter.verify() compilation",
       "priority": "medium",
@@ -261,28 +241,6 @@
       "sprint": ""
     },
     {
-      "id": "1279",
-      "title": "CJS require() call support — static module graph via require() analysis",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [
-        "1277"
-      ],
-      "goal": "npm-library-support",
-      "status": "ready",
-      "sprint": ""
-    },
-    {
-      "id": "1277",
-      "title": "CJS module.exports → Wasm export mapping in compileProject",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "npm-library-support",
-      "status": "ready",
-      "sprint": ""
-    },
-    {
       "id": "1270",
       "title": "struct field inference Phase 3b: eliminate null-checks on (ref null $T) locals via peephole",
       "priority": "medium",
@@ -304,16 +262,6 @@
         "1231"
       ],
       "goal": "performance",
-      "status": "ready",
-      "sprint": ""
-    },
-    {
-      "id": "1268",
-      "title": "index-signature obj[key] ??= value returns NaN instead of assigning",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "npm-library-support",
       "status": "ready",
       "sprint": ""
     },
@@ -356,16 +304,6 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "error-model",
-      "status": "ready",
-      "sprint": ""
-    },
-    {
-      "id": "1243",
-      "title": "for...in / Object.keys enumeration of compiled-object properties (lodash Tier 3)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "npm-library-support",
       "status": "ready",
       "sprint": ""
     },
@@ -1733,6 +1671,48 @@
   ],
   "inprogress": [
     {
+      "id": "1284",
+      "title": "Class-typed values in index-signature dicts lose identity through extern_set/extern_get round-trip",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "in-progress",
+      "sprint": ""
+    },
+    {
+      "id": "1283",
+      "title": "WeakMap host-import dispatch: type-mismatch on set/get/has/delete (carved off from #1242)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "in-progress",
+      "sprint": ""
+    },
+    {
+      "id": "1279",
+      "title": "CJS require() call support — static module graph via require() analysis",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1277"
+      ],
+      "goal": "npm-library-support",
+      "status": "in-progress",
+      "sprint": ""
+    },
+    {
+      "id": "1277",
+      "title": "CJS module.exports → Wasm export mapping in compileProject",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "in-progress",
+      "sprint": ""
+    },
+    {
       "id": "1276",
       "title": "HOF returning closure — function-valued module exports (createMathOperation pattern)",
       "priority": "high",
@@ -1799,6 +1779,16 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "ci-hardening",
+      "status": "in-progress",
+      "sprint": ""
+    },
+    {
+      "id": "1243",
+      "title": "for...in / Object.keys enumeration of compiled-object properties (lodash Tier 3)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
       "status": "in-progress",
       "sprint": ""
     },
@@ -1885,6 +1875,16 @@
         "1267",
         "1268"
       ],
+      "goal": "npm-library-support",
+      "status": "done",
+      "sprint": ""
+    },
+    {
+      "id": "1268",
+      "title": "index-signature obj[key] ??= value returns NaN instead of assigning",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
       "goal": "npm-library-support",
       "status": "done",
       "sprint": ""
