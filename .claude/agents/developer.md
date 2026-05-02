@@ -54,13 +54,13 @@ Message **specific agents only** — no broadcasts unless claiming a shared file
    ```
    Then open the PR:
    `gh pr create --base main --title "fix(#N): <description>" --body "..."`
-5. **Wait for CI**: use a **background loop + Monitor** — do NOT foreground-poll (burns tokens). Run the loop with `run_in_background: true`:
+5. **Wait for CI**: submit a single `Bash` call with `run_in_background: true` — do NOT foreground-poll (burns tokens). Your turn ends immediately; the system notifies you when the job exits.
    ```bash
    until [ -f /workspace/.claude/ci-status/pr-<N>.json ] && \
      [ "$(jq -r '.head_sha' /workspace/.claude/ci-status/pr-<N>.json)" = "<HEAD_SHA>" ]; \
-     do sleep 60; done && echo "CI_READY"
+     do sleep 60; done
    ```
-   Then immediately call the Monitor tool on that background process. The agent blocks on Monitor output (zero token burn) and wakes only when `CI_READY` appears.
+   Do **not** call Monitor after this — that is for streaming multiple events, not a single "done" signal. Do **not** send any messages while waiting. You will receive one notification when the loop exits; wake up and proceed to step 6.
 6. Run `/dev-self-merge <N>` — outputs MERGE or ESCALATE
 7. On MERGE: `gh pr merge <N> --merge --admin`
 8. On ESCALATE: message tech lead with which criterion failed + values
