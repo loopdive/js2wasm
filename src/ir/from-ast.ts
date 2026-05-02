@@ -122,16 +122,24 @@ export interface AstToIrOptions {
   /**
    * If present, overrides the IR return type. Same rationale as
    * `paramTypeOverrides`.
+   *
+   * Slice 14 (#1228) — null = void return (zero Wasm result types). The
+   * IrFunctionBuilder is constructed with `[]` results and the lowerer
+   * accepts bare `return;` and fall-through tails.
    */
-  readonly returnTypeOverride?: IrType;
+  readonly returnTypeOverride?: IrType | null;
   /**
    * Map from callee function name to that callee's IR types (param +
    * return). Consulted when lowering a CallExpression whose callee is a
    * local function. Missing entries cause the lowerer to throw — the
    * selector's call-graph closure should guarantee every call we reach
    * has an entry.
+   *
+   * Slice 14 (#1228) — `returnType: IrType | null`. Null means a void
+   * callee — calls in expression position (`x = f();`) are spec-illegal
+   * for void; calls in statement position (`f();`) are fine.
    */
-  readonly calleeTypes?: ReadonlyMap<string, { params: readonly IrType[]; returnType: IrType }>;
+  readonly calleeTypes?: ReadonlyMap<string, { params: readonly IrType[]; returnType: IrType | null }>;
   /**
    * Slice 4 (#1169d): map from class name to that class's IR shape
    * (fields + methods + constructor signature). Consulted when lowering
@@ -184,10 +192,21 @@ export function lowerFunctionAstToIr(fn: ts.FunctionDeclaration, options: AstToI
   // (`Generator<number>`, `IterableIterator<T>`, etc.). The IR result
   // type is unconditionally `externref`; the source annotation is
   // ignored at the IR layer.
+  //
+  // Slice 14 (#1228) — `void` return: `returnTypeOverride === null` AND
+  // `fn.type?.kind === VoidKeyword` indicates a void-returning function.
+  // The IR builder is constructed with `[]` results; lowerTail accepts
+  // bare `return;` / fall-through tails.
   const isGenerator = !!fn.asteriskToken;
-  const returnType: IrType = isGenerator
+  const isVoidReturn =
+    !isGenerator &&
+    (options.returnTypeOverride === null ||
+      (options.returnTypeOverride === undefined && fn.type?.kind === ts.SyntaxKind.VoidKeyword));
+  const returnType: IrType | null = isGenerator
     ? irVal({ kind: "externref" })
-    : resolveIrType(fn.type, options.returnTypeOverride, `return type of ${name}`);
+    : isVoidReturn
+      ? null
+      : resolveIrType(fn.type, options.returnTypeOverride ?? undefined, `return type of ${name}`);
   const params: { name: string; type: IrType }[] = fn.parameters.map((p, idx) => {
     if (!ts.isIdentifier(p.name)) {
       throw new Error(`ir/from-ast: destructuring params not supported in Phase 1 (${name})`);
@@ -199,7 +218,8 @@ export function lowerFunctionAstToIr(fn: ts.FunctionDeclaration, options: AstToI
     };
   });
 
-  const builder = new IrFunctionBuilder(name, [returnType], options.exported ?? false);
+  // Slice 14 (#1228) — void functions have zero result types; pass `[]`.
+  const builder = new IrFunctionBuilder(name, returnType === null ? [] : [returnType], options.exported ?? false);
 
   // Single scope map for both params and let/const locals. Phase 1 forbids
   // shadowing (enforced by the selector) so there is no nesting to track.
@@ -409,11 +429,31 @@ function lowerTail(stmt: ts.Statement, cx: LowerCtx): void {
       cx.builder.terminate({ kind: "return", values: [generatorObj] });
       return;
     }
+    // Slice 14 (#1228): void function — bare `return;` or `return expr;`
+    // (the value is discarded). Terminate with empty values.
+    if (cx.returnType === null) {
+      if (stmt.expression) {
+        // Lower for side effects but discard the value.
+        lowerExpr(stmt.expression, cx, irVal({ kind: "externref" }));
+      }
+      cx.builder.terminate({ kind: "return", values: [] });
+      return;
+    }
     if (!stmt.expression) {
       throw new Error(`ir/from-ast: Phase 1 return must have an expression in ${cx.funcName}`);
     }
     const v = lowerExpr(stmt.expression, cx, cx.returnType);
     cx.builder.terminate({ kind: "return", values: [v] });
+    return;
+  }
+  // Slice 14 (#1228) — void function tail: any non-return statement that
+  // doesn't terminate the function falls through to an implicit return.
+  // We accept ExpressionStatement (e.g., `f();`) as a tail in void
+  // functions and synthesize the implicit return.
+  if (cx.returnType === null && ts.isExpressionStatement(stmt)) {
+    // Lower the expression for side effects, discard the value.
+    lowerExpr(stmt.expression, cx, irVal({ kind: "externref" }));
+    cx.builder.terminate({ kind: "return", values: [] });
     return;
   }
   if (ts.isBlock(stmt)) {
@@ -545,8 +585,10 @@ interface LowerCtx {
   readonly builder: IrFunctionBuilder;
   readonly scope: Map<string, ScopeBinding>;
   readonly funcName: string;
-  readonly returnType: IrType;
-  readonly calleeTypes?: ReadonlyMap<string, { params: readonly IrType[]; returnType: IrType }>;
+  // Slice 14 (#1228) — `null` means the enclosing function is void.
+  // `lowerTail` checks this to accept bare `return;` / fall-through tails.
+  readonly returnType: IrType | null;
+  readonly calleeTypes?: ReadonlyMap<string, { params: readonly IrType[]; returnType: IrType | null }>;
   /** Slice 4 (#1169d) — class shape registry, keyed by className. */
   readonly classShapes?: ReadonlyMap<string, IrClassShape>;
   /**
@@ -2775,11 +2817,26 @@ function lowerBinary(expr: ts.BinaryExpression, cx: LowerCtx): IrValueId {
       break;
     case ts.SyntaxKind.EqualsEqualsEqualsToken:
     case ts.SyntaxKind.EqualsEqualsToken:
+      // Slice 14 (#1228) — externref operands need ref-equality semantics
+      // that the IR doesn't model (no `ref.eq` between externrefs in
+      // WasmGC). Throw cleanly so the function falls back to legacy
+      // rather than emitting an invalid `i32.eq` on externref operands.
+      if (!isF64 && !isI32) {
+        throw new Error(
+          `ir/from-ast: '${ts.tokenToString(op)}' on ${ltVal.kind} operands not supported in IR (${cx.funcName})`,
+        );
+      }
       binop = isF64 ? "f64.eq" : "i32.eq";
       resultType = irVal({ kind: "i32" });
       break;
     case ts.SyntaxKind.ExclamationEqualsEqualsToken:
     case ts.SyntaxKind.ExclamationEqualsToken:
+      // Slice 14 (#1228) — same fallback rationale as `===`/`==` above.
+      if (!isF64 && !isI32) {
+        throw new Error(
+          `ir/from-ast: '${ts.tokenToString(op)}' on ${ltVal.kind} operands not supported in IR (${cx.funcName})`,
+        );
+      }
       binop = isF64 ? "f64.ne" : "i32.ne";
       resultType = irVal({ kind: "i32" });
       break;

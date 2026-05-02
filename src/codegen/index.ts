@@ -241,6 +241,11 @@ function resolvePositionType(
     if (node.kind === ts.SyntaxKind.NumberKeyword) return irVal({ kind: "f64" });
     if (node.kind === ts.SyntaxKind.BooleanKeyword) return irVal({ kind: "i32" });
     if (node.kind === ts.SyntaxKind.StringKeyword) return { kind: "string" };
+    // Slice 14 (#1228) — AnyKeyword lowers to externref. The IR's externref
+    // val type is the catch-all for host values; operations on `any`-typed
+    // SSA defs must be conservative (no field access, no arithmetic) but
+    // pass-through forwarding (return, parameter passing) is fine.
+    if (node.kind === ts.SyntaxKind.AnyKeyword) return irVal({ kind: "externref" });
     // Slice 6 part 2 (#1181) — array type (T[] or Array<T>) resolves to a
     // vec ref. The legacy `getOrRegisterVecType` produces the same
     // (ref_null $vec_<elem>) struct ref the for-of vec fast path needs,
@@ -744,7 +749,12 @@ export function generateModule(
       //
       // The override map also feeds the `calleeTypes` in the lowerer so
       // direct calls to IR-path callees see the right signature.
-      const overrideMap = new Map<string, { params: IrType[]; returnType: IrType }>();
+      // Slice 14 (#1228) — `returnType: IrType | null` where `null` means
+      // a void-returning function (zero Wasm result types). Plumbs through
+      // `compileIrPathFunctions` to `from-ast.ts` so the IR builder can be
+      // constructed with `[]` results and the lowerer can accept bare
+      // `return;` / fall-through tails.
+      const overrideMap = new Map<string, { params: IrType[]; returnType: IrType | null }>();
       const declByName = new Map<string, ts.FunctionDeclaration>();
       for (const stmt of ast.sourceFile.statements) {
         if (ts.isFunctionDeclaration(stmt) && stmt.name) declByName.set(stmt.name.text, stmt);
@@ -764,9 +774,15 @@ export function generateModule(
           // — `Generator<T>` doesn't resolve as `IrType.object` and
           // would otherwise drop the generator from `safeSelection`.
           const isGenerator = !!fn.asteriskToken;
-          const returnType = isGenerator
+          // Slice 14 (#1228) — VoidKeyword return: bypass resolvePositionType
+          // (it has no representation for void in IrType) and set returnType
+          // to null. The lowerer treats null returnType as "no result".
+          const isVoidReturn = !isGenerator && fn.type?.kind === ts.SyntaxKind.VoidKeyword;
+          const returnType: IrType | null = isGenerator
             ? ({ kind: "val", val: { kind: "externref" } } as IrType)
-            : resolvePositionType(fn.type, entry?.returnType, ctx, classShapes);
+            : isVoidReturn
+              ? null
+              : resolvePositionType(fn.type, entry?.returnType, ctx, classShapes);
           const params: IrType[] = [];
           for (let i = 0; i < fn.parameters.length; i++) {
             const p = fn.parameters[i]!;
