@@ -82,17 +82,23 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1126 | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | high | ready |
-| #1169o | IR Phase 4 Slice 12 — dynamic element access + array literals through IR | high | ready |
-| #1169p | IR Phase 4 Slice 13 — String + Array prototype methods through IR | medium | ready |
 | #1169q | IR Phase 4 Slice 14 — retire legacy codegen: delete expressions.ts, statements.ts, repair passes | high | ready |
-| #1195 | perf: escape-analysis scalarization for non-escaping arrays (eliminate array allocation in array-sum) | high | ready |
 | #1223 | TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up) | medium | ready |
-| #1225 | Nested destructuring from null/undefined: missing TypeError (~244 tests in for-of/dstr, assignment/dstr, class/dstr) | high | ready |
+
+### In Progress
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1118 | Worker/timeout exits and eval-code null deref (182 tests) | medium | in-progress |
+| #1169p | IR Phase 4 Slice 13 — String + Array prototype methods through IR | medium | in-progress |
+| #1195 | perf: escape-analysis scalarization for non-escaping arrays (eliminate array allocation in array-sum) | high | in-progress |
+| #1225 | Nested destructuring from null/undefined: missing TypeError (~244 tests in for-of/dstr, assignment/dstr, class/dstr) | high | in-progress |
 
 ### Review
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #1169o | IR Phase 4 Slice 12 — dynamic element access + array literals through IR | high | review |
 | #1207 | perf(test262): root-cause and fix the 136 compile_timeout tests (~7.6 min wall-clock cost per run) | high | review |
 | #1227 | fix(runner): compiler-pool timeout starts at enqueue time, not dispatch time — causes 156 false compile_timeouts | high | review |
 
@@ -100,6 +106,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #1157 | RegExp constructor called with flags='undefinedy' from String.prototype method paths (~288 test262 regressions) | high | done |
 | #1169n | IR Phase 4 Slice 11 — switch statements + missing binary/unary operators through IR | high | done |
 | #1196 | perf: bounds-check elimination via SSA on monotonic indexed array loops | high | done |
 | #1197 | perf: i32 element specialization for `number[]` arrays under `\| 0` / `& mask` / `>> n` patterns | high | done |

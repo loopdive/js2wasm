@@ -226,6 +226,17 @@ function foldUnary(op: IrUnop, rand: IrConst): IrConst | null {
       if (v === null) return null;
       return { kind: "bool", value: v === 0 };
     }
+    case "i32.trunc_sat_f64_s": {
+      // Slice 12 (#1169o) — saturating f64 → i32. Match Wasm semantics:
+      //   NaN → 0, +∞ → INT32_MAX, -∞ → INT32_MIN, otherwise truncate
+      //   toward zero with saturation at int32 range.
+      if (rand.kind !== "f64") return null;
+      const v = rand.value;
+      if (Number.isNaN(v)) return { kind: "i32", value: 0 };
+      if (v >= 2147483647) return { kind: "i32", value: 2147483647 };
+      if (v <= -2147483648) return { kind: "i32", value: -2147483648 };
+      return { kind: "i32", value: Math.trunc(v) };
+    }
   }
 }
 

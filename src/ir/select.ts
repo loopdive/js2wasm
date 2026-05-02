@@ -58,12 +58,47 @@ import ts from "typescript";
 
 import type { LatticeType, TypeMap } from "./propagate.js";
 
+/**
+ * #1169q telemetry — record why a top-level FunctionDeclaration didn't make
+ * it into the IR claim set. The intent is to drive the legacy retirement:
+ * once the count of unintended fallbacks (excluding deferred features) is
+ * zero against the test262 corpus, the legacy expression / statement
+ * emitters can be retired.
+ */
+export type IrFallbackReason =
+  | "unnamed"
+  | "type-parameters"
+  | "non-export-modifier"
+  | "async-generator"
+  | "return-type-not-resolvable"
+  | "param-type-not-resolvable"
+  | "param-shape-rejected" // optional/rest/initializer/non-identifier/duplicate
+  | "body-shape-rejected"
+  | "external-call" // calls a non-local identifier (parseInt, etc.)
+  | "call-graph-closure" // local caller/callee not claimed
+  | "type-resolution-failure" // overrideMap couldn't be built (set externally)
+  | "deferred-feature"; // permanently excluded (eval, with, import(), Proxy)
+
+export interface IrFallback {
+  readonly name: string;
+  readonly reason: IrFallbackReason;
+}
+
 export interface IrSelection {
   readonly funcs: ReadonlySet<string>;
+  /** Top-level FunctionDeclaration names that did NOT make it into `funcs`,
+   *  paired with the rejection reason. Only populated when
+   *  `IrSelectionOptions.trackFallbacks` is true. */
+  readonly fallbacks?: ReadonlyArray<IrFallback>;
 }
 
 export interface IrSelectionOptions {
   readonly experimentalIR?: boolean;
+  /** When true, the returned selection includes a `fallbacks` array listing
+   *  every top-level FunctionDeclaration that the selector did NOT claim
+   *  along with the reason it was rejected. Off by default — populating
+   *  this list adds a small per-function overhead. */
+  readonly trackFallbacks?: boolean;
 }
 
 const EMPTY: IrSelection = { funcs: new Set<string>() };
@@ -95,16 +130,39 @@ export function planIrCompilation(
   // -------------------------------------------------------------------------
   const individuallyClaimed = new Set<string>();
   const declByName = new Map<string, ts.FunctionDeclaration>();
+  // #1169q telemetry — collect rejection reasons so the dispatcher can
+  // log/throw on legacy fallback. Only populated when trackFallbacks is on.
+  const trackFallbacks = options?.trackFallbacks === true;
+  const fallbackReasons = new Map<string, IrFallbackReason>();
+  // Track unnamed FunctionDeclarations too (rare but possible — `default`
+  // export of an anonymous function, etc.) so callers can see them.
+  let unnamedCount = 0;
   for (const stmt of sourceFile.statements) {
     if (!ts.isFunctionDeclaration(stmt)) continue;
-    if (!stmt.name) continue;
+    if (!stmt.name) {
+      if (trackFallbacks) unnamedCount++;
+      continue;
+    }
     declByName.set(stmt.name.text, stmt);
-    if (isIrClaimable(stmt, typeMap, localClasses)) {
+    const reason = trackFallbacks
+      ? whyNotIrClaimable(stmt, typeMap, localClasses)
+      : isIrClaimable(stmt, typeMap, localClasses)
+        ? null
+        : "param-shape-rejected"; // sentinel — not used when trackFallbacks=false
+    if (reason === null) {
       individuallyClaimed.add(stmt.name.text);
+    } else if (trackFallbacks) {
+      fallbackReasons.set(stmt.name.text, reason);
     }
   }
 
-  if (individuallyClaimed.size === 0) return EMPTY;
+  if (individuallyClaimed.size === 0) {
+    if (!trackFallbacks) return EMPTY;
+    const fallbacks: IrFallback[] = [];
+    for (const [name, reason] of fallbackReasons) fallbacks.push({ name, reason });
+    for (let i = 0; i < unnamedCount; i++) fallbacks.push({ name: `<unnamed:${i}>`, reason: "unnamed" });
+    return { funcs: new Set<string>(), fallbacks };
+  }
 
   // -------------------------------------------------------------------------
   // Step 2: call-graph closure.
@@ -127,7 +185,10 @@ export function planIrCompilation(
   // callees; the call-graph closure only tracks local edges so external
   // calls slipped through — catching them here prevents compile_errors.
   for (const name of [...claimed]) {
-    if (hasExternalCall.has(name)) claimed.delete(name);
+    if (hasExternalCall.has(name)) {
+      claimed.delete(name);
+      if (trackFallbacks) fallbackReasons.set(name, "external-call");
+    }
   }
 
   let changed = true;
@@ -153,17 +214,74 @@ export function planIrCompilation(
       }
       if (!safe) {
         claimed.delete(name);
+        if (trackFallbacks) fallbackReasons.set(name, "call-graph-closure");
         changed = true;
       }
     }
   }
 
-  return { funcs: claimed };
+  if (!trackFallbacks) return { funcs: claimed };
+
+  const fallbacks: IrFallback[] = [];
+  for (const [name, reason] of fallbackReasons) fallbacks.push({ name, reason });
+  for (let i = 0; i < unnamedCount; i++) fallbacks.push({ name: `<unnamed:${i}>`, reason: "unnamed" });
+  return { funcs: claimed, fallbacks };
 }
 
 // ---------------------------------------------------------------------------
 // Individual-claim check
 // ---------------------------------------------------------------------------
+
+/**
+ * Variant of `isIrClaimable` that returns the rejection reason instead of a
+ * boolean. Returns null on accept. Used by `planIrCompilation` when
+ * `trackFallbacks` is enabled so the dispatcher can log/throw with a useful
+ * cause for each legacy fallback. Mirrors `isIrClaimable` exactly — keep the
+ * two in sync.
+ */
+function whyNotIrClaimable(
+  fn: ts.FunctionDeclaration,
+  typeMap: TypeMap | undefined,
+  localClasses: ReadonlySet<string>,
+): IrFallbackReason | null {
+  if (!fn.name) return "unnamed";
+  if (fn.typeParameters && fn.typeParameters.length > 0) return "type-parameters";
+  if (fn.modifiers && fn.modifiers.some((m) => m.kind !== ts.SyntaxKind.ExportKeyword)) return "non-export-modifier";
+
+  const isGenerator = !!fn.asteriskToken;
+  if (isGenerator && fn.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword)) {
+    return "async-generator";
+  }
+
+  const entry = typeMap?.get(fn.name.text);
+
+  if (!isGenerator) {
+    const returnResolved = resolveReturnType(fn, entry?.returnType);
+    if (returnResolved === null) return "return-type-not-resolvable";
+  }
+
+  const scope = new Set<string>();
+  for (let i = 0; i < fn.parameters.length; i++) {
+    const p = fn.parameters[i]!;
+    if (!ts.isIdentifier(p.name)) return "param-shape-rejected";
+    if (p.questionToken) return "param-shape-rejected";
+    if (p.dotDotDotToken) return "param-shape-rejected";
+    if (p.initializer) return "param-shape-rejected";
+    if (scope.has(p.name.text)) return "param-shape-rejected";
+
+    const mapped = entry?.params[i];
+    const paramResolved = resolveParamType(p, mapped);
+    if (paramResolved === null) return "param-type-not-resolvable";
+
+    scope.add(p.name.text);
+  }
+
+  const body = fn.body;
+  if (!body) return "body-shape-rejected";
+  if (!isPhase1StatementList(body.statements, scope, localClasses, isGenerator)) return "body-shape-rejected";
+
+  return null;
+}
 
 function isIrClaimable(
   fn: ts.FunctionDeclaration,
@@ -1069,16 +1187,25 @@ function isPhase1Expr(expr: ts.Expression, scope: ReadonlySet<string>, localClas
     return isPhase1Expr(expr.expression, scope, localClasses);
   }
   // Slice 2 — element access with a literal string key (sugar for
-  // property access on a known shape). Numeric/computed keys are
-  // out of scope and rejected here so the function falls back to
-  // legacy.
+  // property access on a known shape).
+  //
+  // Slice 12 (#1169o) — broaden to accept any Phase-1 argument
+  // expression. The lowerer dispatches by receiver type:
+  //   - String-literal arg + object receiver → existing object-shape
+  //     property path (unchanged).
+  //   - Any other arg + vec receiver         → `vec.get` with
+  //     i32-coerced index.
+  //   - Other combinations                    → throw clean fallback so
+  //     the function reverts to legacy.
   if (ts.isElementAccessExpression(expr)) {
-    const arg = expr.argumentExpression;
-    if (!ts.isStringLiteral(arg) && arg.kind !== ts.SyntaxKind.NoSubstitutionTemplateLiteral) {
-      return false;
-    }
-    return isPhase1Expr(expr.expression, scope, localClasses);
+    return (
+      isPhase1Expr(expr.expression, scope, localClasses) && isPhase1Expr(expr.argumentExpression, scope, localClasses)
+    );
   }
+  // Slice 12 (#1169o) — array literals not yet selector-accepted in
+  // expression position. `f([1, 2, 3])` keeps falling back to legacy
+  // because the call-graph closure drops the caller. A follow-up
+  // slice that adds a `vec.new_fixed` IR instr can flip this on.
   // Slice 11 (#1169n) — `delete <expr>` and `void <expr>`. Both are
   // accepted at the selector level when their operand is a Phase-1
   // expression. Lowering emits:

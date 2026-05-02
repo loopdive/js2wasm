@@ -117,14 +117,41 @@
   ],
   "ready": [
     {
-      "id": "1225",
-      "title": "Nested destructuring from null/undefined: missing TypeError (~244 tests in for-of/dstr, assignment/dstr, class/dstr)",
+      "id": "1233",
+      "title": "IR Phase 4 Slice 13d — Array per-element-type methods through IR",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [
+        "1231"
+      ],
+      "goal": "ir-migration",
+      "status": "ready",
+      "sprint": "backlog"
+    },
+    {
+      "id": "1232",
+      "title": "IR Phase 4 Slice 13c — String fixed-signature methods through IR",
       "priority": "high",
       "feasibility": "medium",
-      "depends_on": [],
-      "goal": "test262-conformance",
+      "depends_on": [
+        "1231"
+      ],
+      "goal": "ir-migration",
       "status": "ready",
-      "sprint": "47"
+      "sprint": "backlog"
+    },
+    {
+      "id": "1231",
+      "title": "IR Phase 4 Slice 13b — pseudo-ExternClassInfo registration for String + Array",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1169o",
+        "1169p"
+      ],
+      "goal": "ir-migration",
+      "status": "ready",
+      "sprint": "backlog"
     },
     {
       "id": "1223",
@@ -159,16 +186,6 @@
       "sprint": "48"
     },
     {
-      "id": "1195",
-      "title": "perf: escape-analysis scalarization for non-escaping arrays (eliminate array allocation in array-sum)",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "performance",
-      "status": "ready",
-      "sprint": "47"
-    },
-    {
       "id": "1172",
       "title": "Codebase modularity audit — reduce coupling, improve layering, harden interfaces",
       "priority": "high",
@@ -187,30 +204,6 @@
         "1169n",
         "1169o",
         "1169p"
-      ],
-      "goal": "ir-migration",
-      "status": "ready",
-      "sprint": "47"
-    },
-    {
-      "id": "1169p",
-      "title": "IR Phase 4 Slice 13 — String + Array prototype methods through IR",
-      "priority": "medium",
-      "feasibility": "hard",
-      "depends_on": [
-        "1169o"
-      ],
-      "goal": "ir-migration",
-      "status": "ready",
-      "sprint": "47"
-    },
-    {
-      "id": "1169o",
-      "title": "IR Phase 4 Slice 12 — dynamic element access + array literals through IR",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [
-        "1169n"
       ],
       "goal": "ir-migration",
       "status": "ready",
@@ -273,16 +266,6 @@
       "depends_on": [],
       "goal": "conformance",
       "status": "ready",
-      "sprint": ""
-    },
-    {
-      "id": "1157",
-      "title": "RegExp constructor called with flags='undefinedy' from String.prototype method paths (~288 test262 regressions)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "open",
       "sprint": ""
     },
     {
@@ -390,16 +373,6 @@
       "goal": "performance",
       "status": "ready",
       "sprint": "45"
-    },
-    {
-      "id": "1118",
-      "title": "Worker/timeout exits and eval-code null deref (182 tests)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": ""
     },
     {
       "id": "1116",
@@ -1494,6 +1467,16 @@
   ],
   "inprogress": [
     {
+      "id": "1225",
+      "title": "Nested destructuring from null/undefined: missing TypeError (~244 tests in for-of/dstr, assignment/dstr, class/dstr)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "test262-conformance",
+      "status": "in-progress",
+      "sprint": "47"
+    },
+    {
       "id": "1206",
       "title": "fix(build-pages): copy benchmark JSONs + frame-nav-sync.js to top-level pages-dist paths (404s on landing page)",
       "priority": "medium",
@@ -1504,6 +1487,28 @@
       "sprint": "45"
     },
     {
+      "id": "1195",
+      "title": "perf: escape-analysis scalarization for non-escaping arrays (eliminate array allocation in array-sum)",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "performance",
+      "status": "in-progress",
+      "sprint": "47"
+    },
+    {
+      "id": "1169p",
+      "title": "IR Phase 4 Slice 13 — String + Array prototype methods through IR",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [
+        "1169o"
+      ],
+      "goal": "ir-migration",
+      "status": "in-progress",
+      "sprint": "47"
+    },
+    {
       "id": "1132",
       "title": "Publish compiler as @loopdive/js2 on npm + JSR",
       "priority": "high",
@@ -1512,6 +1517,16 @@
       "goal": "distribution",
       "status": "in-progress",
       "sprint": "42"
+    },
+    {
+      "id": "1118",
+      "title": "Worker/timeout exits and eval-code null deref (182 tests)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "in-progress",
+      "sprint": "47"
     }
   ],
   "review": [
@@ -1534,6 +1549,18 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "developer-experience",
+      "status": "review",
+      "sprint": "47"
+    },
+    {
+      "id": "1169o",
+      "title": "IR Phase 4 Slice 12 — dynamic element access + array literals through IR",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1169n"
+      ],
+      "goal": "ir-migration",
       "status": "review",
       "sprint": "47"
     }
@@ -2312,6 +2339,16 @@
       "goal": "spec-completeness",
       "status": "done",
       "sprint": "44"
+    },
+    {
+      "id": "1157",
+      "title": "RegExp constructor called with flags='undefinedy' from String.prototype method paths (~288 test262 regressions)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "47"
     },
     {
       "id": "1156",
