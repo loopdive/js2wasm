@@ -919,6 +919,9 @@ function bindInputModelPersistence(model: monaco.editor.ITextModel): void {
     runBtn.disabled = false;
     benchBtn.disabled = true;
     downloadWasmBtn.disabled = true;
+    for (const f of files) {
+      if (f.folder === "output") f.model.setValue("");
+    }
   });
 }
 
