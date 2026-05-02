@@ -99,7 +99,7 @@ pass rate goes from "good" to "excellent."
 | **1100** | Wasm-native Proxy: meta-object protocol without JS host |  | ready | medium |
 | **1101** | Wasm-native WeakRef and FinalizationRegistry via WasmGC weak references |  | ready | low |
 | **1102** | Wasm-native eval: ahead-of-time compilation strategy for eval() and Function() |  | ready | medium |
-| **1118** | Worker/timeout exits and eval-code null deref (182 tests) | 47 | in-progress | medium |
+| **1118** | Worker/timeout exits and eval-code null deref (182 tests) | 47 | done | medium |
 | **1136** | Array.prototype.flat() and flatMap() not implemented | 42 | done | medium |
 | **1137** | ES2023 array methods: toReversed, toSorted, toSpliced, with — not implemented | 42 | done | medium |
 | **1138** | Destructuring: unresolvable defaults throw ReferenceError instead of being undefined | 42 | done | high |

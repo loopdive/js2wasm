@@ -88,25 +88,32 @@ TBD
 
 _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
 
+### Blocked
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1223 | TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up) | medium | blocked |
+
 ### Ready
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
-| #1126 | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | high | ready |
-| #1223 | TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up) | medium | ready |
-| #1231 | perf: struct field type inference — eliminate boxing in object properties | high | ready |
+| #1229 | perf: eval(literal) and new RegExp(literal) re-compile every iteration in 65k-loop tests | medium | ready |
+| #1232 | IR Phase 4 Slice 13c — String fixed-signature methods through IR | high | ready |
+| #1235 | ci: prevent baseline drift false-positive regressions after admin-merges | high | ready |
+| #1238 | IR Phase 4 Slice 13b — pseudo-ExternClassInfo registration for String + Array | high | ready |
 
 ### In Progress
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
-| #1118 | Worker/timeout exits and eval-code null deref (182 tests) | medium | in-progress |
-| #1228 | IR selector widening: accept void return + any params | high | in-progress |
+| #1231 | perf: struct field type inference — eliminate boxing in object properties | high | in-progress |
 
 ### Done
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #1118 | Worker/timeout exits and eval-code null deref (182 tests) | medium | done |
 | #1157 | RegExp constructor called with flags='undefinedy' from String.prototype method paths (~288 test262 regressions) | high | done |
 | #1169n | IR Phase 4 Slice 11 — switch statements + missing binary/unary operators through IR | high | done |
 | #1169o | IR Phase 4 Slice 12 — dynamic element access + array literals through IR | high | done |
@@ -123,6 +130,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1225 | Nested destructuring from null/undefined: missing TypeError (~244 tests in for-of/dstr, assignment/dstr, class/dstr) | high | done |
 | #1226 | class/elements: static async private method produces invalid Wasm — call missing argument (~104 tests) | high | done |
 | #1227 | fix(runner): compiler-pool timeout starts at enqueue time, not dispatch time — causes 156 false compile_timeouts | high | done |
+| #1228 | IR selector widening: accept void return + any params | high | done |
 | #1234 | Array.prototype.{unshift,reverse,forEach,…} on non-Array receivers iterate [0, length) instead of defined props | medium | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->

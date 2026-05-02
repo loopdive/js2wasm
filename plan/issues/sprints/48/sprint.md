@@ -64,3 +64,22 @@ Recommended dispatch (after S47 drains):
 - **Dev** → #1233 (Array IR methods, after #1238 lands in S47)
 - **Dev** → #1038 (Function.bind, medium effort)
 - **Dev** → #1199 or #991/#993 (linear-memory or CT cluster)
+
+<!-- GENERATED_ISSUE_TABLES_START -->
+## Issue Tables
+
+_Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
+
+### Ready
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1126 | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | high | ready |
+| #1199 | perf: linear-memory backing for typed numeric arrays (`Array<number>` with i32-only ops → `i32.load`/`i32.store`) | medium | ready |
+| #1200 | perf: loop-invariant code motion in optimizer pass (hoist `arr.length` etc. out of `for` conditions) | medium | ready |
+| #1233 | IR Phase 4 Slice 13d — Array per-element-type methods through IR | medium | ready |
+| #1236 | Premature i32 specialization for `let s = 0` accumulators silently saturates on overflow | high | ready |
+| #1242 | WeakMap / WeakSet backed by strong references (lodash memoize / cloneDeep) | high | ready |
+| #1243 | for...in / Object.keys enumeration of compiled-object properties (lodash Tier 3) | high | ready |
+
+<!-- GENERATED_ISSUE_TABLES_END -->
