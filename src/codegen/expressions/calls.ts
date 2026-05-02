@@ -4023,9 +4023,31 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       const importName = `string_${method}`;
       const funcIdx = ctx.funcMap.get(importName);
       if (funcIdx !== undefined) {
-        compileExpression(ctx, fctx, propAccess.expression);
-        const paramTypes = getFuncParamTypes(ctx, funcIdx);
+        // #1248: substring/slice with a single argument default the missing
+        // `end` to `s.length`, NOT 0. Without this, the generic padding loop
+        // below pushes f64.const 0, and the host import calls
+        // `s.substring(start, 0)` — which JS spec swaps to `substring(0, start)`,
+        // returning the wrong prefix instead of the suffix from `start`.
+        // Save the receiver into a temp local so we can re-compute its length
+        // when padding the missing `end` arg.
         const args = expr.arguments;
+        const paramTypes = getFuncParamTypes(ctx, funcIdx);
+        const needsLengthDefault =
+          (method === "substring" || method === "slice") &&
+          args.length === 1 &&
+          paramTypes !== undefined &&
+          paramTypes.length === 3;
+        let savedReceiverLocal: number | undefined;
+        if (needsLengthDefault) {
+          // Ensure wasm:js-string.length is registered so we can compute s.length below.
+          addStringImports(ctx);
+          // Compile receiver, save to temp, leave on stack for the call.
+          compileExpression(ctx, fctx, propAccess.expression);
+          savedReceiverLocal = allocLocal(fctx, `__substr_recv_${fctx.locals.length}`, { kind: "externref" });
+          fctx.body.push({ op: "local.tee", index: savedReceiverLocal });
+        } else {
+          compileExpression(ctx, fctx, propAccess.expression);
+        }
         // Cap at declared param count (excluding self) to avoid pushing extra values
         const userParamCount = paramTypes ? paramTypes.length - 1 : args.length;
         for (let ai = 0; ai < args.length; ai++) {
@@ -4051,7 +4073,18 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         if (paramTypes && args.length + 1 < paramTypes.length) {
           for (let pi = args.length + 1; pi < paramTypes.length; pi++) {
             const pt = paramTypes[pi]!;
-            if (pt.kind === "externref") fctx.body.push({ op: "ref.null.extern" });
+            if (needsLengthDefault && pi === 2 && savedReceiverLocal !== undefined && pt.kind === "f64") {
+              // #1248: For substring/slice missing-end, push s.length instead of 0.
+              const lenIdx = ctx.jsStringImports.get("length");
+              if (lenIdx !== undefined) {
+                fctx.body.push({ op: "local.get", index: savedReceiverLocal });
+                fctx.body.push({ op: "call", funcIdx: lenIdx });
+                fctx.body.push({ op: "f64.convert_i32_u" } as Instr);
+              } else {
+                // Fallback if length import is unavailable for some reason
+                fctx.body.push({ op: "f64.const", value: 0x7fffffff });
+              }
+            } else if (pt.kind === "externref") fctx.body.push({ op: "ref.null.extern" });
             else if (pt.kind === "f64") fctx.body.push({ op: "f64.const", value: 0 });
             else if (pt.kind === "i32") fctx.body.push({ op: "i32.const", value: 0 });
           }
