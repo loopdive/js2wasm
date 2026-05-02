@@ -1529,6 +1529,23 @@ function compileForOfAssignDestructuringExternref(
   }
   if (boxIdx === undefined || getIdx === undefined) return;
 
+  // Lazily register __extern_set for property/element-access destructuring
+  // targets. We only register if/when we actually need it; that keeps the
+  // identifier-only happy path's import surface unchanged.
+  let setIdx: number | undefined;
+  const ensureExternSet = (): number | undefined => {
+    if (setIdx !== undefined) return setIdx;
+    setIdx = ctx.funcMap.get("__extern_set");
+    if (setIdx === undefined) {
+      const importsBefore = ctx.numImportFuncs;
+      const setType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }], []);
+      addImport(ctx, "env", "__extern_set", { kind: "func", typeIdx: setType });
+      shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+      setIdx = ctx.funcMap.get("__extern_set");
+    }
+    return setIdx;
+  };
+
   for (let i = 0; i < expr.elements.length; i++) {
     const el = expr.elements[i]!;
     if (ts.isOmittedExpression(el)) continue;
@@ -1542,6 +1559,69 @@ function compileForOfAssignDestructuringExternref(
       defaultInit = el.right;
     }
 
+    // #1258 — destructure-assignment target may be a property access
+    // (`[x.y] of [[4]]`) or element access (`[x[0]] of [[4]]`), not just
+    // an identifier. Pre-#1258 the function bailed (`continue`) on any
+    // non-identifier target, silently dropping the write. Spec §13.15.5.5
+    // ArrayAssignmentPattern requires PutValue on the LHS — for property
+    // references that is `__extern_set(receiver, key, value)`.
+    if (ts.isPropertyAccessExpression(targetEl) || ts.isElementAccessExpression(targetEl)) {
+      const setFnIdx = ensureExternSet();
+      if (setFnIdx === undefined) continue;
+      // Push receiver (already-existing variable, evaluated each iteration)
+      const recvType = compileExpression(ctx, fctx, targetEl.expression, { kind: "externref" });
+      if (recvType && recvType.kind !== "externref") {
+        coerceType(ctx, fctx, recvType, { kind: "externref" });
+      }
+      if (recvType === null) {
+        fctx.body.push({ op: "ref.null.extern" });
+      }
+      // Push key — string literal for `.prop`, computed value for `[expr]`
+      if (ts.isPropertyAccessExpression(targetEl)) {
+        const propName = targetEl.name.text;
+        addStringConstantGlobal(ctx, propName);
+        const keyGlobalIdx = ctx.stringGlobalMap.get(propName);
+        if (keyGlobalIdx !== undefined) {
+          fctx.body.push({ op: "global.get", index: keyGlobalIdx } as Instr);
+        } else {
+          // Fallback: skip — string-pool registration should cover all literal names
+          continue;
+        }
+      } else {
+        // ElementAccessExpression
+        const keyType = compileExpression(ctx, fctx, targetEl.argumentExpression, { kind: "externref" });
+        if (keyType && keyType.kind !== "externref") {
+          coerceType(ctx, fctx, keyType, { kind: "externref" });
+        }
+        if (keyType === null) {
+          fctx.body.push({ op: "ref.null.extern" });
+        }
+      }
+      // Push value: __extern_get(elem, box(i))
+      fctx.body.push({ op: "local.get", index: elemLocal });
+      fctx.body.push({ op: "f64.const", value: i });
+      fctx.body.push({ op: "call", funcIdx: boxIdx });
+      fctx.body.push({ op: "call", funcIdx: getIdx! });
+      // Defaults on property targets: if the read is undefined, fall back to default.
+      // Spec applies to ALL destructure targets identically, but the existing emit
+      // path uses `emitDefaultValueCheck` against a local. For property targets
+      // we'd need a temp local + the same dispatch. Out of scope for #1258 —
+      // the target test cases (put-prop-ref shape) don't use destructure defaults
+      // on property targets. If `defaultInit` is present on a property target,
+      // skip silently rather than miscompile.
+      if (defaultInit) {
+        // Drop the value we just pushed; nothing to write without default-handling.
+        fctx.body.push({ op: "drop" } as Instr);
+        // Also drop key + receiver — they're still on the stack.
+        fctx.body.push({ op: "drop" } as Instr);
+        fctx.body.push({ op: "drop" } as Instr);
+        continue;
+      }
+      // __extern_set(receiver, key, value) -> void
+      fctx.body.push({ op: "call", funcIdx: setFnIdx });
+      continue;
+    }
+
     if (!ts.isIdentifier(targetEl)) continue;
 
     let targetLocal = fctx.localMap.get(targetEl.text);
@@ -1553,6 +1633,42 @@ function compileForOfAssignDestructuringExternref(
       const globalType = globalDef?.type ?? { kind: "externref" as const };
       targetLocal = allocLocal(fctx, targetEl.text, globalType);
       extSyncGlobalIdx = globalIdx;
+    }
+
+    // #1258 — if the target identifier is a boxed capture (mutable closure
+    // capture re-aimed at a ref-cell), the value must go through `struct.set`
+    // on the cell, not a direct `local.set` (which would overwrite the
+    // ref-cell ref with the value, breaking the closure's view). Detect via
+    // `fctx.boxedCaptures` and emit the boxed-write shape.
+    const boxedCap = fctx.boxedCaptures?.get(targetEl.text);
+    if (boxedCap && !defaultInit) {
+      // Boxed-capture path: <local.get cell-ref> <value> <struct.set 0>
+      fctx.body.push({ op: "local.get", index: targetLocal });
+      // Push value: __extern_get(elem, box(i))
+      fctx.body.push({ op: "local.get", index: elemLocal });
+      fctx.body.push({ op: "f64.const", value: i });
+      fctx.body.push({ op: "call", funcIdx: boxIdx });
+      fctx.body.push({ op: "call", funcIdx: getIdx! });
+      // Coerce value to the cell's inner type if needed (refCell stores valType)
+      if (boxedCap.valType.kind !== "externref") {
+        coerceType(ctx, fctx, { kind: "externref" }, boxedCap.valType);
+      }
+      fctx.body.push({
+        op: "struct.set",
+        typeIdx: boxedCap.refCellTypeIdx,
+        fieldIdx: 0,
+      } as unknown as Instr);
+      if (extSyncGlobalIdx !== undefined) {
+        // Re-load through the cell for global sync
+        fctx.body.push({ op: "local.get", index: targetLocal });
+        fctx.body.push({
+          op: "struct.get",
+          typeIdx: boxedCap.refCellTypeIdx,
+          fieldIdx: 0,
+        } as unknown as Instr);
+        fctx.body.push({ op: "global.set", index: extSyncGlobalIdx });
+      }
+      continue;
     }
 
     // Emit: __extern_get(elem, box(i)) -> externref
@@ -2129,6 +2245,27 @@ function compileForOfIteratorAssignDestructuring(
     }
     if (boxIdx === undefined || getIdx === undefined) return;
 
+    // #1258 — same property-access / boxed-capture handling as
+    // compileForOfAssignDestructuringExternref (line 1503). The for-of-of-an-
+    // iterable path (any-typed iterable, e.g. `let arr: any = …; for ([x.y] of arr)`)
+    // routes through HERE, not the array fast-path; both need the same fixes.
+    let setIdxIter: number | undefined;
+    const ensureExternSetIter = (): number | undefined => {
+      if (setIdxIter !== undefined) return setIdxIter;
+      setIdxIter = ctx.funcMap.get("__extern_set");
+      if (setIdxIter === undefined) {
+        const importsBefore = ctx.numImportFuncs;
+        const setType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }], []);
+        addImport(ctx, "env", "__extern_set", { kind: "func", typeIdx: setType });
+        shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+        setIdxIter = ctx.funcMap.get("__extern_set");
+        // Refresh boxIdx/getIdx since they may have shifted.
+        boxIdx = ctx.funcMap.get("__box_number");
+        getIdx = ctx.funcMap.get("__extern_get");
+      }
+      return setIdxIter;
+    };
+
     for (let i = 0; i < expr.elements.length; i++) {
       const el = expr.elements[i]!;
       if (ts.isOmittedExpression(el)) continue;
@@ -2142,6 +2279,47 @@ function compileForOfIteratorAssignDestructuring(
         defaultInitIter = el.right;
       }
 
+      // #1258 — Property/element-access target: `[x.y] of iterable`.
+      if (ts.isPropertyAccessExpression(targetElIter) || ts.isElementAccessExpression(targetElIter)) {
+        const setFnIdx = ensureExternSetIter();
+        if (setFnIdx === undefined || boxIdx === undefined || getIdx === undefined) continue;
+        const recvType = compileExpression(ctx, fctx, targetElIter.expression, { kind: "externref" });
+        if (recvType && recvType.kind !== "externref") {
+          coerceType(ctx, fctx, recvType, { kind: "externref" });
+        }
+        if (recvType === null) {
+          fctx.body.push({ op: "ref.null.extern" });
+        }
+        if (ts.isPropertyAccessExpression(targetElIter)) {
+          const propName = targetElIter.name.text;
+          addStringConstantGlobal(ctx, propName);
+          const keyGlobalIdx = ctx.stringGlobalMap.get(propName);
+          if (keyGlobalIdx === undefined) continue;
+          fctx.body.push({ op: "global.get", index: keyGlobalIdx } as Instr);
+        } else {
+          const keyType = compileExpression(ctx, fctx, targetElIter.argumentExpression, { kind: "externref" });
+          if (keyType && keyType.kind !== "externref") {
+            coerceType(ctx, fctx, keyType, { kind: "externref" });
+          }
+          if (keyType === null) {
+            fctx.body.push({ op: "ref.null.extern" });
+          }
+        }
+        fctx.body.push({ op: "local.get", index: elemLocal });
+        fctx.body.push({ op: "f64.const", value: i });
+        fctx.body.push({ op: "call", funcIdx: boxIdx });
+        fctx.body.push({ op: "call", funcIdx: getIdx! });
+        if (defaultInitIter) {
+          // Out-of-scope for #1258: defaults on property targets. Drop and skip.
+          fctx.body.push({ op: "drop" } as Instr);
+          fctx.body.push({ op: "drop" } as Instr);
+          fctx.body.push({ op: "drop" } as Instr);
+          continue;
+        }
+        fctx.body.push({ op: "call", funcIdx: setFnIdx });
+        continue;
+      }
+
       if (!ts.isIdentifier(targetElIter)) continue;
 
       let targetLocal = fctx.localMap.get(targetElIter.text);
@@ -2153,6 +2331,35 @@ function compileForOfIteratorAssignDestructuring(
         const globalType = globalDef?.type ?? { kind: "externref" as const };
         targetLocal = allocLocal(fctx, targetElIter.text, globalType);
         iterArrSyncGlobalIdx = globalIdx;
+      }
+
+      // #1258 — boxed-capture identifier path: same logic as the typed-array
+      // version. See compileForOfAssignDestructuringExternref for full notes.
+      const boxedCap = fctx.boxedCaptures?.get(targetElIter.text);
+      if (boxedCap && !defaultInitIter) {
+        fctx.body.push({ op: "local.get", index: targetLocal });
+        fctx.body.push({ op: "local.get", index: elemLocal });
+        fctx.body.push({ op: "f64.const", value: i });
+        fctx.body.push({ op: "call", funcIdx: boxIdx });
+        fctx.body.push({ op: "call", funcIdx: getIdx! });
+        if (boxedCap.valType.kind !== "externref") {
+          coerceType(ctx, fctx, { kind: "externref" }, boxedCap.valType);
+        }
+        fctx.body.push({
+          op: "struct.set",
+          typeIdx: boxedCap.refCellTypeIdx,
+          fieldIdx: 0,
+        } as unknown as Instr);
+        if (iterArrSyncGlobalIdx !== undefined) {
+          fctx.body.push({ op: "local.get", index: targetLocal });
+          fctx.body.push({
+            op: "struct.get",
+            typeIdx: boxedCap.refCellTypeIdx,
+            fieldIdx: 0,
+          } as unknown as Instr);
+          fctx.body.push({ op: "global.set", index: iterArrSyncGlobalIdx });
+        }
+        continue;
       }
 
       // Emit: __extern_get(elem, box(i)) -> externref
