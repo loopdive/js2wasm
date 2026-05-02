@@ -111,7 +111,7 @@ pass rate goes from "good" to "excellent."
 | **1164** | Dynamic eval via JS host import — compile eval string to ad-hoc Wasm module (~416 tests) | 45 | done | medium |
 | **1165** | Track Wasm JIT interface proposal (func.new) — native runtime codegen | Backlog | ready | medium |
 | **1177** | TDZ propagation through closure captures — fix ReferenceError on pre-declaration capture | 45 | done | high |
-| **1229** | perf: eval(literal) and new RegExp(literal) re-compile every iteration in 65k-loop tests | 47 | ready | medium |
+| **1229** | perf: eval(literal) and new RegExp(literal) re-compile every iteration in 65k-loop tests | 47 | done | medium |
 | **1240** | perf: per-iteration eval compile budget for `comments/S7.4_A6.js` (still ~25s with #1229 cache) | Backlog | ready | low |
 | **1242** | WeakMap / WeakSet backed by strong references (lodash memoize / cloneDeep) | 48 | ready | high |
 

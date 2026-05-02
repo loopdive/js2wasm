@@ -56,7 +56,7 @@ eliminating the externref roundtrip.
 | **1200** | perf: loop-invariant code motion in optimizer pass (hoist `arr.length` etc. out of `for` conditions) | 48 | ready | medium |
 | **1209** | labs/benchmarks: js2wasm hosted lane fails — ESM resolver error in run-node-wasm-program.mjs | 46 | done | medium |
 | **1210** | labs/benchmarks: js2wasm string-hash Wasmtime lane hits 20s timeout — WasmGC i16-array GC pressure | 46 | done | high |
-| **1231** | perf: struct field type inference — eliminate boxing in object properties | 47 | in-progress | high |
+| **1231** | perf: struct field type inference — eliminate boxing in object properties | 47 | done | high |
 | **1238** | IR Phase 4 Slice 13b — pseudo-ExternClassInfo registration for String + Array | 47 | done | high |
 | **1261** | eval tiering: classify eval sites into 5 tiers at compile time | Backlog | backlog | high |
 | **1262** | eval tier 2: compile eval(\\\"static string\\\") as regular code at compile time |  | wont-fix | medium |
