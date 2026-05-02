@@ -283,6 +283,16 @@ export interface CodegenContext {
   lastKnownNode: ts.Node | null;
   /** Registry of external declared classes */
   externClasses: Map<string, ExternClassInfo>;
+  /** #1238 — pseudo-extern-class registry for built-ins like String / Array
+   *  that don't have host-import-backed constructors / methods. These exist
+   *  purely as metadata for the IR's method-dispatch lookup
+   *  (`resolveMethodDispatchTarget`). They are NOT consumed by
+   *  `compileNewExpression`, `collectUsedExternImports`, the `__new_<name>`
+   *  interceptor, or the `mod.externClasses` populator — keeping them out
+   *  of `ctx.externClasses` ensures legacy code paths for `new Array(...)`
+   *  / `new String(...)` are unchanged. Downstream slices (#1232, #1233)
+   *  consult this map via `getPseudoExternClassInfo`. */
+  pseudoExternClasses: Map<string, ExternClassInfo>;
   /** Optional parameter info per function */
   funcOptionalParams: Map<string, OptionalParamInfo[]>;
   /** Map from anonymous ts.Type → generated struct name */
