@@ -32,6 +32,20 @@ on:
     workflows: ["Test262 Sharded"]
     types: [completed]
   workflow_dispatch:
+  # #1235 — also fire on every push to main as a safety net. Three
+  # consecutive PRs (#142, #143, #144) all saw 22–28 "real" (wasm_change)
+  # regressions caused by baselines drift after admin-merges. The
+  # workflow_run trigger ABOVE depends on `Test262 Sharded` actually
+  # firing (and its actor being a non-bot user); admin-merges sometimes
+  # don't satisfy both conditions, leaving the JSONL stale across multiple
+  # subsequent PR runs. The push trigger below fires unconditionally on
+  # main and routes through the workflow_dispatch logic in
+  # "Resolve source CI run" — finds the most-recent main `Test262 Sharded`
+  # run with an unexpired `test262-merged-report` artifact and refreshes
+  # from THAT. `[skip ci]` commits are filtered out to avoid loops on the
+  # bot's own commits (this workflow itself commits with `[skip ci]`).
+  push:
+    branches: [main]
 
 permissions:
   contents: write
@@ -46,13 +60,24 @@ concurrency:
 
 jobs:
   refresh:
-    # Only fire for pushes to main from a real actor (not the bot itself,
-    # which would loop). workflow_dispatch always passes.
+    # Three eligible event paths:
+    # 1. `workflow_dispatch` — always passes (manual trigger).
+    # 2. `workflow_run` after `Test262 Sharded` push to main from a real
+    #    actor (the immediate, freshest path: artifact is from THIS run).
+    # 3. `push` to main from a real actor — fires regardless of whether
+    #    `Test262 Sharded` fired or completed. `[skip ci]` commits are
+    #    filtered via head_commit.message to break loops with the bot's
+    #    own commits. Routes through the workflow_dispatch logic to find
+    #    the latest available artifact.
     if: |
       github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.event == 'push' &&
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.event == 'push' &&
        github.event.workflow_run.head_branch == 'main' &&
-       github.event.workflow_run.actor.login != 'github-actions[bot]')
+       github.event.workflow_run.actor.login != 'github-actions[bot]') ||
+      (github.event_name == 'push' &&
+       github.actor != 'github-actions[bot]' &&
+       !contains(github.event.head_commit.message, '[skip ci]'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -79,11 +104,12 @@ jobs:
             RUN_ID="${{ github.event.workflow_run.id }}"
             echo "Source: triggering workflow_run id=$RUN_ID"
           else
-            # Manual dispatch — pick the most recent main sharded run that
-            # uploaded an unexpired `test262-merged-report` artifact. The
-            # overall run may show "failure" because regression-gate flagged
-            # regressions; the merged JSONL artifact is still produced and
-            # uploaded by `merge-report` (which uses `if: always()`).
+            # Manual dispatch OR push (#1235 safety-net path) — pick the most
+            # recent main sharded run that uploaded an unexpired
+            # `test262-merged-report` artifact. The overall run may show
+            # "failure" because regression-gate flagged regressions; the
+            # merged JSONL artifact is still produced and uploaded by
+            # `merge-report` (which uses `if: always()`).
             RUN_ID=""
             while IFS= read -r candidate; do
               [ -z "$candidate" ] && continue
@@ -101,6 +127,14 @@ jobs:
               --json databaseId \
               -q '.[].databaseId')
             if [ -z "$RUN_ID" ]; then
+              # On push events this can happen when the merge didn't trigger
+              # `Test262 Sharded` (e.g. plan-only changes). That's expected;
+              # exit 0 so we don't fail noisily.
+              if [ "${{ github.event_name }}" = "push" ]; then
+                echo "No recent main sharded run has an unexpired test262-merged-report artifact — nothing to refresh from."
+                echo "skip=1" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
               echo "No recent main sharded run has an unexpired test262-merged-report artifact — abort."
               exit 1
             fi
@@ -109,6 +143,7 @@ jobs:
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
 
       - name: Download merged report artifact
+        if: steps.resolve_run.outputs.skip != '1'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -120,6 +155,7 @@ jobs:
           ls -la merged-reports/
 
       - name: Verify report sanity
+        if: steps.resolve_run.outputs.skip != '1'
         id: sanity
         run: |
           set -euo pipefail
@@ -136,12 +172,14 @@ jobs:
           echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
 
       - name: Replace committed JSONL baseline
+        if: steps.resolve_run.outputs.skip != '1'
         run: |
           set -euo pipefail
           mkdir -p benchmarks/results
           cp merged-reports/test262-results-merged.jsonl benchmarks/results/test262-current.jsonl
 
       - name: Commit and push refreshed JSONL
+        if: steps.resolve_run.outputs.skip != '1'
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"

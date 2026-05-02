@@ -227,6 +227,13 @@ The foundational design choices behind `js2wasm` — why WasmGC instead of linea
 - [Architecture Notes](./CLAUDE.md)
 - [Contributing](./CONTRIBUTING.md)
 
+## Acknowledgments
+
+We are grateful to the following people for fruitful technical discussions that shaped key design decisions in this project:
+
+- **Chris Fallin** (Cranelift tech lead) — discussions on type inference, IR design, and the performance implications of missing type information at object boundaries.
+- **Luke Wagner** (WebAssembly co-designer, Mozilla / Fastly) — discussions on WasmGC type system design, component model integration, and the long-term direction of WasmGC as a compilation target for typed languages.
+
 ## Trademark Disclaimer
 
 JavaScript is a trademark or registered trademark of Oracle in the United States and other countries. This project is independent from Oracle and is not endorsed by, sponsored by, or affiliated with Oracle.

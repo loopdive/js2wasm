@@ -2853,7 +2853,7 @@
   {
     "name": "sprint 46",
     "sprintNumber": 46,
-    "status": "active",
+    "status": "ready",
     "date": "2026-04-30 → TBD",
     "baseline": "25,830 / 43,168 = 59.8% (inherited from S45 close)",
     "result": "",
@@ -2937,7 +2937,29 @@
     "issueCount": 0,
     "issueIds": [
       "1118",
-      "1126",
+      "1157",
+      "1169n",
+      "1169o",
+      "1169p",
+      "1169q",
+      "1195",
+      "1207",
+      "1222",
+      "1223",
+      "1224",
+      "1225",
+      "1226",
+      "1227",
+      "1228",
+      "1229",
+      "1231",
+      "1232",
+      "1234",
+      "1235",
+      "1238"
+    ],
+    "completedIssueIds": [
+      "1118",
       "1157",
       "1169n",
       "1169o",
@@ -2953,23 +2975,30 @@
       "1228",
       "1234"
     ],
-    "completedIssueIds": [
-      "1157",
-      "1169n",
-      "1169o",
-      "1169p",
-      "1169q",
-      "1195",
-      "1207",
-      "1222",
-      "1224",
-      "1225",
-      "1226",
-      "1227",
-      "1234"
-    ],
     "explicitCarryOver": false,
     "isPlanning": false,
+    "isClosed": false
+  },
+  {
+    "name": "sprint 48",
+    "sprintNumber": 48,
+    "status": "planning",
+    "date": "TBD (follows S47)",
+    "baseline": "",
+    "result": "",
+    "issueCount": 0,
+    "issueIds": [
+      "1126",
+      "1199",
+      "1200",
+      "1233",
+      "1236",
+      "1242",
+      "1243"
+    ],
+    "completedIssueIds": [],
+    "explicitCarryOver": false,
+    "isPlanning": true,
     "isClosed": false
   }
 ]
