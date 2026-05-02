@@ -1917,7 +1917,10 @@ function lowerMethodCall(expr: ts.CallExpression, cx: LowerCtx): IrValueId {
   if (recvType.kind === "string") {
     const r = lowerStringMethodCall(methodName, recv, expr.arguments, cx);
     if (r !== null) return r;
-    throw new Error(`ir/from-ast: String.${methodName}(...) not in slice 13c (${cx.funcName})`);
+    // Method not in slice 13c table — fall through to the recvType.kind !== "class"
+    // check below, which throws the clean "not in slice 4" error and routes this
+    // function back to the legacy compiler path. Do NOT throw here — a premature
+    // throw here gets caught at the wrong layer and corrupts the claim state.
   }
 
   // Slice 10 (#1169i) — extern-class method call. The legacy host imports
