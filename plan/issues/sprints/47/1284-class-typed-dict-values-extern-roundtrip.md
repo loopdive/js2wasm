@@ -1,7 +1,7 @@
 ---
 id: 1284
 title: "Class-typed values in index-signature dicts lose identity through extern_set/extern_get round-trip"
-status: ready
+status: in-progress
 created: 2026-05-02
 updated: 2026-05-02
 priority: high
@@ -161,3 +161,108 @@ instrumentation around `funcMap.set` / `funcMap.get` / `shiftLateImportIndices`
 to trace the exact compile order with Probe N, then patch whichever invariant
 is violated. The smallest repro is in `tests/issue-1284.test.ts` (committed in
 this branch) and the failing wasm is at `/tmp/probe-1284-N.wasm`.
+
+## Resolution (2026-05-02, senior-dev-1284)
+
+### Actual root cause
+
+The dev-1243 investigation correctly localised the bug to a function-index
+mismatch but mis-attributed it to `shiftLateImportIndices`. The shift code
+itself is correct. The real bug is **upstream**: an extern host import
+named `${ClassName}_new` is registered for a user-defined class that
+shadows an extern (DOM) class of the same name. `Node` was the trigger
+in the repro because the DOM `lib.d.ts` declares `Node`, registered in
+`ctx.externClasses`.
+
+`collectUsedExternImports` (src/codegen/index.ts) walks the source AST,
+sees `new Node(0)`, asks the TS checker for the type, gets the symbol
+name `"Node"`, looks up `ctx.externClasses.get("Node")` (which returns
+the DOM Node info), and registers `Node_new` as a host import via
+`addImport(ctx, "env", "Node_new", ...)`. `addImport` writes
+`ctx.funcMap["Node_new"] = numImportFuncs` (the new import slot).
+
+Later, `collectClassDeclaration` runs for the user's `class Node`,
+overwriting `ctx.funcMap["Node_new"]` with the defined-function index
+(`numImportFuncs + mod.functions.length`). The earlier import is now
+**orphaned** — it still occupies a real Wasm import slot in
+`mod.imports`, but `funcMap` no longer points at it.
+
+When `Node_addChild` is later compiled, its body uses `__extern_set`,
+which is added as a late import. `addImport` writes
+`funcMap["__extern_set"] = numImportFuncs` — this happens to be the
+exact index the user-class registration wrote into
+`funcMap["Node_new"]` a moment ago (because the orphan extern import
+sat between class-method registration and the late-import addition).
+Now `funcMap["Node_new"]` and `funcMap["__extern_set"]` both equal the
+**same** index.
+
+`shiftLateImportIndices` runs next. It builds `importNames` from
+`ctx.mod.imports` — which still contains the orphan `Node_new` import
+(line 6450 in index.ts added it earlier). It then walks `funcMap` and
+**skips** any name whose name appears in `importNames`. So when it sees
+`funcMap["Node_new"] = K`, it sees `"Node_new" ∈ importNames` and skips
+the shift. `funcMap["Node_new"]` is left pointing at the
+`__extern_set` slot.
+
+When `compileNewExpression` later emits `new Node(42)` from `test()`,
+`funcMap.get("Node_new")` returns the `__extern_set` index. The signature
+lookup at `getFuncParamTypes(ctx, funcIdx)` reads
+`(externref × 3) → ()`, so the argument `42` is compiled as
+`__box_number(42)` (externref) and padded with two `__get_undefined`
+calls. The emitted call therefore invokes `__extern_set(box(42), undef,
+undef)`, returns nothing, and the subsequent `local.set $0` traps on a
+manufactured null reference — exactly matching the failing disassembly.
+
+### Why the late-import shift correctly handles the non-collision case
+
+In the absence of a name collision, every import added via `addImport`
+has a name distinct from any defined function. The `importNames` skip
+list correctly identifies imports vs defined functions. The shift only
+mis-handles the case where an extern import with the same name as a
+user class was registered before the user-class registration overwrote
+the same `funcMap` entry — at that point, the funcMap entry no longer
+agrees with `importNames`, and the shift code's invariant breaks.
+
+### The fix
+
+`collectUsedExternImports` is now aware of user-defined classes. A
+single AST walk before the visit phase collects every name appearing on
+a `class` declaration / expression. Then:
+
+1. `new ClassName()` skips extern import registration if `ClassName` is
+   user-defined.
+2. `resolveExtern(className, ...)` returns `null` for user-defined
+   classes, suppressing extern import registration on property accesses,
+   property assignments, and method calls against shadowed names.
+
+Result: no orphan `${ClassName}_new` import is ever added when the
+user defines a class with that name. `funcMap` stays consistent.
+
+### Files changed
+
+- `src/codegen/index.ts` — `collectUsedExternImports` AST pre-scan +
+  guards (29 added lines).
+
+### Test results
+
+- `tests/issue-1284.test.ts` — 6/6 passing (was 5/6 failing).
+- Class-related test sweep (13 files, 59 tests) — **+5 tests now pass**
+  on top of the 6 from issue-1284. Likely other pre-existing latent
+  failures from the same name-collision bug.
+- No regressions in broader test sweep covering classes, inheritance,
+  externref, DOM containment, generators, closures, prototypes.
+
+### Implementation notes for future maintainers
+
+The fundamental invariant violated was: **`funcMap[name]` must always
+agree with the `(import vs defined)` classification used by
+`shiftLateImportIndices`.** Two different mechanisms were updating
+`funcMap[name]` for the same key (`addImport` and class registration),
+and only one of them is consistent with the imports list.
+
+A more conservative fix would be to also patch `addImport` to refuse
+to overwrite an existing `funcMap` entry, or to remove the orphan from
+`mod.imports` when class registration takes over. Both have wider
+blast radius (could break legitimate re-registration). The pre-scan
+approach prevents the orphan from being created in the first place,
+which is the cleanest invariant to maintain.
