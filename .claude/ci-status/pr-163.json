@@ -1,0 +1,19 @@
+{
+  "pr": 163,
+  "conclusion": "failure",
+  "head_branch": "issue-1251-baseline-validate-fix",
+  "head_sha": "958621527d4f339663f2c8ca40c98c04a9bcbdb1",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25251188279",
+  "timestamp": "2026-05-02T12:04:37Z",
+  "pass": 26087,
+  "fail": 13876,
+  "compile_error": 1719,
+  "snapshot_delta": 10,
+  "net_per_test": 11,
+  "regressions": 50,
+  "regressions_real": 23,
+  "regressions_wasm_change": 23,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 27,
+  "improvements": 61
+}

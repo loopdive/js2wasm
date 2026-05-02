@@ -75,7 +75,7 @@ WASI HTTP enables serverless edge functions.
 | **1179** | Improve js2wasm `array-sum` hot-runtime perf — currently ~9× slower than Node and behind Javy | 45 | done | high |
 | **1181** | IR Phase 4 Slice 6 part 2 — AST→IR bridge for vec for-of (#1169e follow-up) | 45 | done | high |
 | **1187** | test-runtime: add JS-string → native-string coercion helper for dual-run testing in nativeStrings mode | 46 | done | medium |
-| **1244** | npm stress test: compile Hono web framework to Wasm | 47 | ready | high |
+| **1244** | npm stress test: compile Hono web framework to Wasm | 47 | done | high |
 | **1254** | Reference platform scenario: capability-safe DOM wrapper with explicit subtree authority | Backlog | ready | high |
 | **1255** | Reference platform scenario: run a Node-oriented example on Wasmtime via Edge.js | Backlog | ready | high |
 

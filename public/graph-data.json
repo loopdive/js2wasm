@@ -17104,8 +17104,8 @@
       "id": "1229",
       "title": "perf: eval(literal) and new RegExp(literal) re-compile every iteration in 65k-loop tests",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "",
       "depends_on": [],
       "files": [],
@@ -17130,8 +17130,8 @@
       "id": "1231",
       "title": "perf: struct field type inference — eliminate boxing in object properties",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "",
       "depends_on": [],
       "files": [],
@@ -17183,8 +17183,8 @@
       "id": "1235",
       "title": "ci: prevent baseline drift false-positive regressions after admin-merges",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "",
       "depends_on": [],
       "files": [],
@@ -17290,8 +17290,8 @@
       "id": "1244",
       "title": "npm stress test: compile Hono web framework to Wasm",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "",
       "depends_on": [],
       "files": [],
@@ -17314,8 +17314,8 @@
       "id": "1246",
       "title": "ci: differential test262 — compare branch tip vs main HEAD with src-tree-hash caching",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "",
       "depends_on": [],
       "files": [],
@@ -17324,7 +17324,31 @@
     },
     {
       "id": "1247",
+      "title": "compiler: typed `string[]` local with `path.split('/')` initializer triggers struct-type mismatch",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1247",
       "title": "compiler: typed string[] local with path.split('/') initializer triggers struct-type mismatch",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1248",
+      "title": "compiler: typeof x === 'string' guard breaks String.prototype.substring(start) — returns single char",
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
@@ -17338,8 +17362,8 @@
       "id": "1248",
       "title": "compiler: typeof x === 'string' guard breaks String.prototype.substring(start) — returns single char",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "",
       "depends_on": [],
       "files": [],
@@ -17375,7 +17399,7 @@
       "title": "baseline-validate: TS checker non-determinism causes 19/50 false failures on main JSONL",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "",
       "depends_on": [],
       "files": [],
@@ -17461,7 +17485,7 @@
       "title": "compileForOfAssignDestructuringExternref must route writes through boxedCaptures.struct.set",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "",
       "depends_on": [],
       "files": [],
@@ -17576,6 +17600,42 @@
       "files": [],
       "goal": "performance",
       "cluster": "performance"
+    },
+    {
+      "id": "1267",
+      "title": "optimizer: method calls in expression-statement position silently dropped when return value unused",
+      "priority": "high",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "correctness",
+      "cluster": "correctness"
+    },
+    {
+      "id": "1267",
+      "title": "optimizer: method calls in expression-statement position silently dropped when return value unused",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "correctness",
+      "cluster": "correctness"
+    },
+    {
+      "id": "1268",
+      "title": "index-signature obj[key] ??= value returns NaN instead of assigning",
+      "priority": "medium",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
     }
   ],
   "links": [
@@ -19083,7 +19143,9 @@
       "issues": [
         "1143",
         "1145",
-        "1215"
+        "1215",
+        "1267",
+        "1267"
       ],
       "track": "supporting track"
     },
@@ -19421,9 +19483,12 @@
         "1108",
         "1243",
         "1247",
+        "1247",
+        "1248",
         "1248",
         "1249",
-        "1250"
+        "1250",
+        "1268"
       ],
       "track": "supporting track"
     },
@@ -22362,6 +22427,14 @@
       "issue": "1215"
     },
     {
+      "goal": "correctness",
+      "issue": "1267"
+    },
+    {
+      "goal": "correctness",
+      "issue": "1267"
+    },
+    {
       "goal": "crash-free",
       "issue": "107"
     },
@@ -23363,6 +23436,14 @@
     },
     {
       "goal": "npm-library-support",
+      "issue": "1247"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1248"
+    },
+    {
+      "goal": "npm-library-support",
       "issue": "1248"
     },
     {
@@ -23372,6 +23453,10 @@
     {
       "goal": "npm-library-support",
       "issue": "1250"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1268"
     },
     {
       "goal": "observability",
@@ -26437,6 +26522,14 @@
     },
     {
       "goal": "compilable",
+      "issue": "1267"
+    },
+    {
+      "goal": "compilable",
+      "issue": "1267"
+    },
+    {
+      "goal": "compilable",
       "issue": "107"
     },
     {
@@ -27213,6 +27306,14 @@
     },
     {
       "goal": "core-semantics",
+      "issue": "1247"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1248"
+    },
+    {
+      "goal": "core-semantics",
       "issue": "1248"
     },
     {
@@ -27222,6 +27323,10 @@
     {
       "goal": "core-semantics",
       "issue": "1250"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1268"
     },
     {
       "goal": "platform",
@@ -27345,6 +27450,14 @@
     },
     {
       "goal": "platform",
+      "issue": "1247"
+    },
+    {
+      "goal": "platform",
+      "issue": "1248"
+    },
+    {
+      "goal": "platform",
       "issue": "1248"
     },
     {
@@ -27354,6 +27467,10 @@
     {
       "goal": "platform",
       "issue": "1250"
+    },
+    {
+      "goal": "platform",
+      "issue": "1268"
     },
     {
       "goal": "core-semantics",

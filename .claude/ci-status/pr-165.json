@@ -1,0 +1,19 @@
+{
+  "pr": 165,
+  "conclusion": "failure",
+  "head_branch": "issue-1258-forof-dstr-boxed",
+  "head_sha": "4b8c0a3d7e462803104c53053fde458348fecf52",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25251380475",
+  "timestamp": "2026-05-02T12:15:27Z",
+  "pass": 26070,
+  "fail": 13881,
+  "compile_error": 1723,
+  "snapshot_delta": -7,
+  "net_per_test": -6,
+  "regressions": 68,
+  "regressions_real": 29,
+  "regressions_wasm_change": 29,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 39,
+  "improvements": 62
+}
