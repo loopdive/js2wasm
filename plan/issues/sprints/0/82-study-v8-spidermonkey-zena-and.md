@@ -1,5 +1,6 @@
 ---
 id: 82
+sprint: 0
 title: "Issue 82: Study V8, SpiderMonkey, Zena, and AssemblyScript implementation strategies"
 status: done
 created: 2026-03-08

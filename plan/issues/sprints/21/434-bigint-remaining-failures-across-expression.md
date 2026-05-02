@@ -1,5 +1,6 @@
 ---
 id: 434
+sprint: 21
 title: "BigInt remaining failures across expression operators (27 fail)"
 status: done
 created: 2026-03-17

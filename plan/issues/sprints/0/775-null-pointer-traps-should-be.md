@@ -1,5 +1,6 @@
 ---
 id: 775
+sprint: 0
 title: "- Null pointer traps should be catchable TypeError (1,604 tests)"
 status: done
 created: 2026-03-22

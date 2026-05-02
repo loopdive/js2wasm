@@ -1,5 +1,6 @@
 ---
 id: 1045
+sprint: 45
 title: "DOM globals as extern classes (DOM_HOST_GLOBALS, queueMicrotask, requestAnimationFrame)"
 status: ready
 created: 2026-04-11

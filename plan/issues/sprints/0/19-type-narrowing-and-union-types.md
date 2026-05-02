@@ -1,5 +1,6 @@
 ---
 id: 19
+sprint: 0
 title: "Issue 19: Type Narrowing and Union Types"
 status: done
 created: 2026-02-28

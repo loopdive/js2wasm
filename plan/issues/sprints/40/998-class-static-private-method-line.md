@@ -1,5 +1,6 @@
 ---
 id: 998
+sprint: 40
 title: "Class static-private method line-terminator variants still emit argless call/return_call in constructors (121 CE)"
 status: done
 created: 2026-04-07

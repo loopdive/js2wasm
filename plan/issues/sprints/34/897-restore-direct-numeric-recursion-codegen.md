@@ -1,5 +1,6 @@
 ---
 id: 897
+sprint: 34
 title: "Restore direct numeric recursion codegen for fib hot path"
 status: done
 created: 2026-04-02

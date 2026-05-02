@@ -1,5 +1,6 @@
 ---
 id: 298
+sprint: 0
 title: "Issue #298: Runtime failures -- function statement edge cases"
 status: done
 created: 2026-03-11

@@ -1,5 +1,6 @@
 ---
 id: 37
+sprint: 0
 title: "Issue #37: Getter/Setter Properties on User-Defined Classes"
 status: done
 created: 2026-03-01

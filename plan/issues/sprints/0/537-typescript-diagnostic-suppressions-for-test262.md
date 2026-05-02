@@ -1,5 +1,6 @@
 ---
 id: 537
+sprint: 0
 title: "TypeScript diagnostic suppressions for test262 (62 CE)"
 status: done
 created: 2026-03-18

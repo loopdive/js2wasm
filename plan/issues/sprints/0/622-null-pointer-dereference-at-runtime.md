@@ -1,5 +1,6 @@
 ---
 id: 622
+sprint: 0
 title: "Null pointer dereference at runtime (707 FAIL)"
 status: done
 created: 2026-03-19

@@ -1,5 +1,6 @@
 ---
 id: 1141
+sprint: 42
 title: "Object.defineProperties: descriptor shape not validated per ECMA-262 §10.1"
 status: done
 created: 2026-04-20

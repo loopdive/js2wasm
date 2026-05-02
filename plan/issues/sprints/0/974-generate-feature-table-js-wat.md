@@ -1,5 +1,6 @@
 ---
 id: 974
+sprint: 0
 title: "Generate feature table JS/WAT examples from a TypeScript script"
 status: done
 created: 2026-04-06

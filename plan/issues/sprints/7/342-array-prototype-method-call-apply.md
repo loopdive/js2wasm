@@ -1,5 +1,6 @@
 ---
 id: 342
+sprint: 7
 title: "- Array.prototype.method.call/apply patterns"
 status: done
 created: 2026-03-13

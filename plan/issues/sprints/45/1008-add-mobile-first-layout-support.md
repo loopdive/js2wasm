@@ -1,5 +1,6 @@
 ---
 id: 1008
+sprint: 45
 title: "Add mobile-first layout support to the playground"
 status: ready
 created: 2026-04-09

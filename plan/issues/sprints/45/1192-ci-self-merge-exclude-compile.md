@@ -1,5 +1,6 @@
 ---
 id: 1192
+sprint: 45
 title: "ci(self-merge): exclude compile_timeout transitions from regression count (runner noise)"
 status: done
 created: 2026-04-27

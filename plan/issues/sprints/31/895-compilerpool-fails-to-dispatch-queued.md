@@ -1,5 +1,6 @@
 ---
 id: 895
+sprint: 31
 title: "CompilerPool fails to dispatch queued jobs when first worker becomes ready"
 status: done
 created: 2026-04-01

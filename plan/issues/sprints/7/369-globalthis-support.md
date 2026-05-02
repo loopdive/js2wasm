@@ -1,5 +1,6 @@
 ---
 id: 369
+sprint: 7
 title: "- globalThis support"
 status: done
 created: 2026-03-13

@@ -1,5 +1,6 @@
 ---
 id: 1248
+sprint: 47
 title: "compiler: typeof x === 'string' guard breaks String.prototype.substring(start) — returns single char"
 status: done
 created: 2026-05-02

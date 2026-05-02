@@ -1,5 +1,6 @@
 ---
 id: 856
+sprint: 32
 title: "Expected TypeError but got wrong error type (71 tests)"
 status: done
 created: 2026-03-28

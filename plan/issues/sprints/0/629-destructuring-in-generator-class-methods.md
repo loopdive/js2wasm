@@ -1,5 +1,6 @@
 ---
 id: 629
+sprint: 0
 title: "Destructuring in generator/class methods fails silently (2,444 FAIL)"
 status: done
 created: 2026-03-19

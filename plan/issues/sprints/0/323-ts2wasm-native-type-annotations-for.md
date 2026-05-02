@@ -1,5 +1,6 @@
 ---
 id: 323
+sprint: 0
 title: "[ts2wasm] Native type annotations for performance optimization"
 status: done
 created: 2026-03-12

@@ -1,5 +1,6 @@
 ---
 id: 770
+sprint: 22
 title: "- propertyHelper.js verifyProperty not implemented (~1,219 tests)"
 status: done
 created: 2026-03-22

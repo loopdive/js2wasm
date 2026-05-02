@@ -1,5 +1,6 @@
 ---
 id: 319
+sprint: 0
 title: "[ts2wasm] Codegen: Inline single-use function type signatures in WAT output"
 status: done
 created: 2026-03-12

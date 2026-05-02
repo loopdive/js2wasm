@@ -1,5 +1,6 @@
 ---
 id: 1169n
+sprint: 47
 title: "IR Phase 4 Slice 11 — switch statements + missing binary/unary operators through IR"
 status: done
 created: 2026-05-01

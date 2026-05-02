@@ -1,5 +1,6 @@
 ---
 id: 312
+sprint: 0
 title: "Issue #312: Test262 category expansion -- built-ins/Number methods"
 status: done
 created: 2026-03-11

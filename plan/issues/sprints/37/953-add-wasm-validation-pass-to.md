@@ -1,5 +1,6 @@
 ---
 id: 953
+sprint: 37
 title: "Add Wasm validation pass to compilation tests to ensure valid Wasm output"
 status: done
 created: 2026-04-04

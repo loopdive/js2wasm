@@ -1,5 +1,6 @@
 ---
 id: 1085
+sprint: 41
 title: "codegen: bodyUsesArguments recursive walker blows stack under tight CI stack budget when called from recursive nested-declarations compile path"
 status: done
 created: 2026-04-11

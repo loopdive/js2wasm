@@ -1,5 +1,6 @@
 ---
 id: 205
+sprint: 2
 title: "String.prototype.indexOf type coercion errors"
 status: done
 created: 2026-03-11

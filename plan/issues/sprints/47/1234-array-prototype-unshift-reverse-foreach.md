@@ -1,5 +1,6 @@
 ---
 id: 1234
+sprint: 47
 title: "Array.prototype.{unshift,reverse,forEach,…} on non-Array receivers iterate [0, length) instead of defined props"
 status: done
 created: 2026-05-01

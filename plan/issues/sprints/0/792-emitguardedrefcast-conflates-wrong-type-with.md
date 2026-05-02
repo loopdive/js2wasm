@@ -1,5 +1,6 @@
 ---
 id: 792
+sprint: 0
 title: "- emitGuardedRefCast conflates 'wrong type' with 'null' (net-zero from #789)"
 status: done
 created: 2026-03-26

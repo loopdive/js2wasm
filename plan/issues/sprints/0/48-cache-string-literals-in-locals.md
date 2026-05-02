@@ -1,5 +1,6 @@
 ---
 id: 48
+sprint: 0
 title: "Issue 48: Cache string literals in locals"
 status: done
 created: 2026-03-02

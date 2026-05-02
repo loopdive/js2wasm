@@ -1,5 +1,6 @@
 ---
 id: 830
+sprint: 40
 title: "DisposableStack extern class missing (39 failures)"
 status: done
 created: 2026-03-28

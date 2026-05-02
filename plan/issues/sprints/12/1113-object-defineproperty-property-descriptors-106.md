@@ -1,5 +1,6 @@
 ---
 id: 1113
+sprint: 12
 title: "Object.defineProperty / property descriptors (106 tests)"
 status: done
 created: 2026-03-19

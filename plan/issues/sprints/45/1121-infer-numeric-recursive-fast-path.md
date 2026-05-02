@@ -1,5 +1,6 @@
 ---
 id: 1121
+sprint: 45
 title: "Infer numeric recursive fast path without JSDoc hints on exported entrypoints"
 status: done
 created: 2026-04-15

@@ -1,5 +1,6 @@
 ---
 id: 877
+sprint: 31
 title: "Agile criteria — Definition of Ready, Definition of Done, velocity tracking"
 status: done
 created: 2026-03-30

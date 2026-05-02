@@ -1,5 +1,6 @@
 ---
 id: 394
+sprint: 0
 title: "Destructuring produces wrong return values"
 status: done
 created: 2026-03-16

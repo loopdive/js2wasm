@@ -1,5 +1,6 @@
 ---
 id: 303
+sprint: 0
 title: "Issue #303: Runtime failures -- parseInt edge cases"
 status: done
 created: 2026-03-11

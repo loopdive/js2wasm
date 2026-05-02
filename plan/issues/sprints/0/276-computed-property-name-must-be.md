@@ -1,5 +1,6 @@
 ---
 id: 276
+sprint: 0
 title: "Issue #276: Computed property name must be of assignable type"
 status: done
 created: 2026-03-11

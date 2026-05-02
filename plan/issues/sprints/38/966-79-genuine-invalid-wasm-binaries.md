@@ -1,5 +1,6 @@
 ---
 id: 966
+sprint: 38
 title: "79 genuine invalid Wasm binaries from static private fields + Promise arity"
 status: done
 created: 2026-04-05

@@ -1,5 +1,6 @@
 ---
 id: 28
+sprint: 0
 title: "Issue 28: Multi-file module compilation"
 status: done
 created: 2026-02-28

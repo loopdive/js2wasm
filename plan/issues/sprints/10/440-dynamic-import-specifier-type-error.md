@@ -1,5 +1,6 @@
 ---
 id: 440
+sprint: 10
 title: "Dynamic import specifier type error (16 CE)"
 status: done
 created: 2026-03-17

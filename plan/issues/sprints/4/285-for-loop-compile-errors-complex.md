@@ -1,5 +1,6 @@
 ---
 id: 285
+sprint: 4
 title: "Issue #285: For-loop compile errors -- complex heads and function declarations"
 status: done
 created: 2026-03-11

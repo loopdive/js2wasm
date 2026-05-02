@@ -1,5 +1,6 @@
 ---
 id: 96
+sprint: 0
 title: "Issue 96: Test262 coverage — built-ins/JSON"
 status: done
 created: 2026-03-09

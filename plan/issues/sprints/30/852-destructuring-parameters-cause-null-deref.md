@@ -1,5 +1,6 @@
 ---
 id: 852
+sprint: 30
 title: "Destructuring parameters cause null_deref and illegal_cast (1,525 tests)"
 status: done
 created: 2026-03-28

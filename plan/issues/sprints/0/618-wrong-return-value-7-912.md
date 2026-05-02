@@ -1,5 +1,6 @@
 ---
 id: 618
+sprint: 0
 title: "Wrong return value: 7,912 tests return 0 instead of expected result"
 status: done
 created: 2026-03-19

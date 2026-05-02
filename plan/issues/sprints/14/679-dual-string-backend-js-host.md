@@ -1,5 +1,6 @@
 ---
 id: 679
+sprint: 14
 title: "Dual string backend: js-host mode vs standalone mode"
 status: done
 created: 2026-03-20

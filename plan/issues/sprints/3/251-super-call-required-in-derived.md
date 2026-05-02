@@ -1,5 +1,6 @@
 ---
 id: 251
+sprint: 3
 title: "Issue #251: super() call required in derived class constructors"
 status: done
 created: 2026-03-11

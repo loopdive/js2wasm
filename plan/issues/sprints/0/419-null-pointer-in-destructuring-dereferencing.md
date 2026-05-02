@@ -1,5 +1,6 @@
 ---
 id: 419
+sprint: 0
 title: "Null pointer in destructuring -- dereferencing null struct during pattern matching"
 status: done
 created: 2026-03-17

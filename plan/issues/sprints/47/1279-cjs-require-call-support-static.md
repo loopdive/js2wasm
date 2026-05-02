@@ -1,5 +1,6 @@
 ---
 id: 1279
+sprint: 47
 title: "CJS require() call support — static module graph via require() analysis"
 status: in-progress
 created: 2026-05-02

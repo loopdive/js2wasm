@@ -1,5 +1,6 @@
 ---
 id: 1174
+sprint: 45
 title: "js2wasm emits `string_constants` host import on `--target wasi` builds (object-ops benchmark crash)"
 status: done
 created: 2026-04-27

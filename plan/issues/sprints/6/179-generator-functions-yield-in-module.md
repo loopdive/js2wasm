@@ -1,5 +1,6 @@
 ---
 id: 179
+sprint: 6
 title: "Generator functions: yield in module mode errors"
 status: done
 created: 2026-03-11

@@ -1,5 +1,6 @@
 ---
 id: 370
+sprint: 0
 title: "- WeakMap and WeakSet (skip filter narrowing)"
 status: done
 created: 2026-03-13

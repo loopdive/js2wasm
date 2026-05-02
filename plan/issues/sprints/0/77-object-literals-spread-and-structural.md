@@ -1,5 +1,6 @@
 ---
 id: 77
+sprint: 0
 title: "Issue 77: Object literals, spread, and structural typing"
 status: done
 created: 2026-03-08

@@ -1,5 +1,6 @@
 ---
 id: 76
+sprint: 0
 title: "Issue 76: Rope/cons-string for O(1) concatenation"
 status: done
 created: 2026-03-08

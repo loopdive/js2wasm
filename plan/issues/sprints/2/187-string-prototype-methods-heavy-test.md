@@ -1,5 +1,6 @@
 ---
 id: 187
+sprint: 2
 title: "String prototype methods: heavy test skipping due to include filters"
 status: done
 created: 2026-03-11

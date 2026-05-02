@@ -1,5 +1,6 @@
 ---
 id: 1063
+sprint: 41
 title: "createMathOperation closure ref — lodash math ops (inliner shared-instr + externref callee)"
 status: done
 created: 2026-04-11

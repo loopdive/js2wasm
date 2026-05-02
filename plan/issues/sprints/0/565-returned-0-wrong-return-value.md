@@ -1,5 +1,6 @@
 ---
 id: 565
+sprint: 0
 title: "returned 0: wrong return value (4,259 FAIL)"
 status: done
 created: 2026-03-19

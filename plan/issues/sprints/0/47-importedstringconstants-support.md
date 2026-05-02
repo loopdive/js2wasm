@@ -1,5 +1,6 @@
 ---
 id: 47
+sprint: 0
 title: "Issue 47: importedStringConstants support"
 status: done
 created: 2026-03-02

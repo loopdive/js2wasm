@@ -1,5 +1,6 @@
 ---
 id: 220
+sprint: 2
 title: "- ClassDeclaration compile errors in all statement positions"
 status: done
 created: 2026-03-11

@@ -1,5 +1,6 @@
 ---
 id: 954
+sprint: 38
 title: "Eliminate duplicate local declarations (57% of modules, 3,366 extra locals)"
 status: done
 created: 2026-04-04

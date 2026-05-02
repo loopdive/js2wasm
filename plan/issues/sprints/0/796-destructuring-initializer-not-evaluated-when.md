@@ -1,5 +1,6 @@
 ---
 id: 796
+sprint: 0
 title: "- Destructuring initializer not evaluated when value is not undefined (121 fail)"
 status: done
 created: 2026-03-26

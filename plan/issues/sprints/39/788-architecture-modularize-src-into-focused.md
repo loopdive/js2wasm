@@ -1,5 +1,6 @@
 ---
 id: 788
+sprint: 39
 title: "Architecture: modularize src/ into focused subfolder structure"
 status: done
 created: 2026-03-25

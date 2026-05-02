@@ -1,5 +1,6 @@
 ---
 id: 99
+sprint: 0
 title: "Issue 99: Externref arithmetic, comparison, and control flow"
 status: done
 created: 2026-03-09

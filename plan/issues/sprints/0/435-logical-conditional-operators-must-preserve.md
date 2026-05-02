@@ -1,5 +1,6 @@
 ---
 id: 435
+sprint: 0
 title: "Logical/conditional operators must preserve object identity (16 fail)"
 status: done
 created: 2026-03-17

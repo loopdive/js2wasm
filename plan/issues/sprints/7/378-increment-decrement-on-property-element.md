@@ -1,5 +1,6 @@
 ---
 id: 378
+sprint: 7
 title: "- Increment/decrement on property/element access"
 status: done
 created: 2026-03-13

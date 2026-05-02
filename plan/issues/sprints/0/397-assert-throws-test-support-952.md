@@ -1,5 +1,6 @@
 ---
 id: 397
+sprint: 0
 title: "- assert.throws test support (952 SKIP)"
 status: done
 created: 2026-03-16

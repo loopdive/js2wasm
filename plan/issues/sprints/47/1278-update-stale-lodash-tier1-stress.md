@@ -1,5 +1,6 @@
 ---
 id: 1278
+sprint: 47
 title: "Update stale lodash-tier1 stress test — resolver fixed, clamp/add behavior changed"
 status: ready
 created: 2026-05-02

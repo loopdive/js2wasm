@@ -1,5 +1,6 @@
 ---
 id: 457
+sprint: 10
 title: "WeakMap/WeakSet via host imports"
 status: done
 created: 2026-03-17

@@ -1,5 +1,6 @@
 ---
 id: 1286
+sprint: 47
 title: "Object.keys(any-typed obj).join() throws illegal cast — externref→string-array coerce missing"
 status: ready
 created: 2026-05-02

@@ -1,5 +1,6 @@
 ---
 id: 130
+sprint: 0
 title: "Issue 130: Usage-based shape inference + call/apply inlining"
 status: done
 created: 2026-03-11

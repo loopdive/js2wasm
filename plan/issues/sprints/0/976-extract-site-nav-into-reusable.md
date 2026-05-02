@@ -1,5 +1,6 @@
 ---
 id: 976
+sprint: 0
 title: "Extract site nav into reusable web component, share between landing page and dashboard"
 status: done
 created: 2026-04-06

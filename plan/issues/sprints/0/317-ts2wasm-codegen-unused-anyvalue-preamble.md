@@ -1,5 +1,6 @@
 ---
 id: 317
+sprint: 0
 title: "[ts2wasm] Codegen: Unused `$AnyValue` preamble type + duplicate export for `main`"
 status: done
 created: 2026-03-12

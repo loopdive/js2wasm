@@ -1,5 +1,6 @@
 ---
 id: 591
+sprint: 0
 title: "Split expressions.ts (24,427 lines) into focused modules"
 status: done
 created: 2026-03-19

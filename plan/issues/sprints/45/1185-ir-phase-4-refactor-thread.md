@@ -1,5 +1,6 @@
 ---
 id: 1185
+sprint: 45
 title: "IR Phase 4 — refactor: thread `IrLowerResolver` through `LowerCtx` (retire per-feature shortcuts)"
 status: done
 created: 2026-04-27

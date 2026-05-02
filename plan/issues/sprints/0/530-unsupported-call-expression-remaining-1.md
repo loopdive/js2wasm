@@ -1,5 +1,6 @@
 ---
 id: 530
+sprint: 0
 title: "Unsupported call expression — remaining 1,745 CE"
 status: done
 created: 2026-03-18

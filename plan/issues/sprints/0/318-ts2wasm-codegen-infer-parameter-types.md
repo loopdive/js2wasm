@@ -1,5 +1,6 @@
 ---
 id: 318
+sprint: 0
 title: "[ts2wasm] Codegen: Infer parameter types from call-site arguments for untyped functions"
 status: done
 created: 2026-03-12

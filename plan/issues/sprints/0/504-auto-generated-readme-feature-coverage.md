@@ -1,5 +1,6 @@
 ---
 id: 504
+sprint: 0
 title: "Auto-generated README feature coverage + benchmark tables"
 status: done
 created: 2026-03-18

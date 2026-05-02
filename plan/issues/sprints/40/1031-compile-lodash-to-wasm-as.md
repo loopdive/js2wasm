@@ -1,5 +1,6 @@
 ---
 id: 1031
+sprint: 40
 title: "Compile lodash to Wasm as a real-world stress test; harvest error patterns"
 status: done
 created: 2026-04-11

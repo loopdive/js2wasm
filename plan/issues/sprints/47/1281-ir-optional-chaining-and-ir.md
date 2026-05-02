@@ -1,5 +1,6 @@
 ---
 id: 1281
+sprint: 47
 title: "IR: optional chaining `?.` and `?.()` — IR path support"
 status: ready
 created: 2026-05-02

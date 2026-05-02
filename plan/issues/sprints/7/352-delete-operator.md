@@ -1,5 +1,6 @@
 ---
 id: 352
+sprint: 7
 title: "- Delete operator"
 status: done
 created: 2026-03-13

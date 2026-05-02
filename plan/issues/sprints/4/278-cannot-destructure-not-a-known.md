@@ -1,5 +1,6 @@
 ---
 id: 278
+sprint: 4
 title: "Issue #278: Cannot destructure -- not a known struct type"
 status: done
 created: 2026-03-11

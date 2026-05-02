@@ -1,5 +1,6 @@
 ---
 id: 387
+sprint: 0
 title: "Unsupported call expression (2356 CE)"
 status: done
 created: 2026-03-16

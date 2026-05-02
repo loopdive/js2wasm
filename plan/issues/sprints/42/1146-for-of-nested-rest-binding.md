@@ -1,5 +1,6 @@
 ---
 id: 1146
+sprint: 42
 title: "for-of: nested rest binding patterns not decoded (825 ary-rest-rest cluster)"
 status: done
 created: 2026-04-20

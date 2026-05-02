@@ -1,5 +1,6 @@
 ---
 id: 392
+sprint: 0
 title: "- Unknown field access on class structs (18 CE)"
 status: done
 created: 2026-03-16

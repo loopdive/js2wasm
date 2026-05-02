@@ -1,5 +1,6 @@
 ---
 id: 1064
+sprint: 40
 title: "DataView bridge: subview metadata so bounds errors propagate"
 status: done
 created: 2026-04-11

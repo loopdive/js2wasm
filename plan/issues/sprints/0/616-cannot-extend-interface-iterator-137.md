@@ -1,5 +1,6 @@
 ---
 id: 616
+sprint: 0
 title: "Cannot extend interface 'Iterator' (137 CE)"
 status: done
 created: 2026-03-19

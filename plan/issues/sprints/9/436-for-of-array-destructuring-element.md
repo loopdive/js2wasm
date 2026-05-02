@@ -1,5 +1,6 @@
 ---
 id: 436
+sprint: 9
 title: "for-of array destructuring: element is not a ref type (42 CE)"
 status: done
 created: 2026-03-17

@@ -1,5 +1,6 @@
 ---
 id: 112
+sprint: 1
 title: "Issue 112: Number static methods and constants (ES2015)"
 status: done
 created: 2026-03-10

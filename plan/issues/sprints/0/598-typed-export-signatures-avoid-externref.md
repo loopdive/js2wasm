@@ -1,5 +1,6 @@
 ---
 id: 598
+sprint: 0
 title: "Typed export signatures: avoid externref at module boundary"
 status: done
 created: 2026-03-19

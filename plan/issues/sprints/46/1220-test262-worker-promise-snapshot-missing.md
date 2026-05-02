@@ -1,5 +1,6 @@
 ---
 id: 1220
+sprint: 46
 title: "test262-worker: Promise snapshot missing + prototype poisoning leaks across fork tests (+29 conformance)"
 status: done
 created: 2026-05-01

@@ -1,5 +1,6 @@
 ---
 id: 1268
+sprint: 47
 title: "index-signature obj[key] ??= value returns NaN instead of assigning"
 status: done
 created: 2026-05-02

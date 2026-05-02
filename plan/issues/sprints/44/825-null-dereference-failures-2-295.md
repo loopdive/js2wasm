@@ -1,5 +1,6 @@
 ---
 id: 825
+sprint: 44
 title: "Null dereference failures (2,295 runtime failures)"
 status: done
 created: 2026-03-28

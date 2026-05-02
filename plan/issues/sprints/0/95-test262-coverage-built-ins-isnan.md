@@ -1,5 +1,6 @@
 ---
 id: 95
+sprint: 0
 title: "Issue 95: Test262 coverage — built-ins/isNaN + isFinite"
 status: done
 created: 2026-03-09

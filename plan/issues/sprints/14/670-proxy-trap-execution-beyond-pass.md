@@ -1,5 +1,6 @@
 ---
 id: 670
+sprint: 14
 title: "Proxy trap execution (beyond pass-through)"
 status: done
 created: 2026-03-20

@@ -1,5 +1,6 @@
 ---
 id: 1212
+sprint: 46
 title: "fix: Promise resolve/reject edge cases regress after #1211 any-boxing fix"
 status: done
 created: 2026-04-30

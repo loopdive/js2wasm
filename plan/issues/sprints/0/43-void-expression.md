@@ -1,5 +1,6 @@
 ---
 id: 43
+sprint: 0
 title: "Issue 43: void Expression"
 status: done
 created: 2026-03-01

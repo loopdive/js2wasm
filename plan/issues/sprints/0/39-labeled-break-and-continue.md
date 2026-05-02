@@ -1,5 +1,6 @@
 ---
 id: 39
+sprint: 0
 title: "Issue 39: Labeled Break and Continue"
 status: done
 created: 2026-03-01

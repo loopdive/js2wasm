@@ -1,5 +1,6 @@
 ---
 id: 404
+sprint: 0
 title: "Compound assignment on unresolvable property type"
 status: done
 created: 2026-03-16

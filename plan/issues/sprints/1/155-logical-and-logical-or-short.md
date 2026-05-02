@@ -1,5 +1,6 @@
 ---
 id: 155
+sprint: 1
 title: "Logical-and/logical-or short-circuit returns wrong value"
 status: done
 created: 2026-03-11

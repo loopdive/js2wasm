@@ -1,5 +1,6 @@
 ---
 id: 262
+sprint: 0
 title: "Issue #262: Argument type assignability -- allowJs flexibility for test262"
 status: done
 created: 2026-03-11

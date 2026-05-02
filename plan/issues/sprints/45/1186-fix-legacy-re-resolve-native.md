@@ -1,5 +1,6 @@
 ---
 id: 1186
+sprint: 45
 title: "fix(legacy): re-resolve native-string helpers post-shift in compileForOfString (stale __str_charAt funcIdx)"
 status: done
 created: 2026-04-27

@@ -1,5 +1,6 @@
 ---
 id: 81
+sprint: 0
 title: "Issue 81: npm package resolution and tree-shaking"
 status: done
 created: 2026-03-08

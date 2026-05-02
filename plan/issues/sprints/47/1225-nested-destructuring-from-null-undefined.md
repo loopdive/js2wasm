@@ -1,5 +1,6 @@
 ---
 id: 1225
+sprint: 47
 title: "Nested destructuring from null/undefined: missing TypeError (~244 tests in for-of/dstr, assignment/dstr, class/dstr)"
 status: done
 created: 2026-05-01

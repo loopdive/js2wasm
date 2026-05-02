@@ -1,5 +1,6 @@
 ---
 id: 311
+sprint: 0
 title: "Issue #311: Test262 category expansion -- built-ins/String/prototype new methods"
 status: done
 created: 2026-03-11

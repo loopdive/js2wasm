@@ -1,5 +1,6 @@
 ---
 id: 1236
+sprint: 48
 title: "Premature i32 specialization for `let s = 0` accumulators silently saturates on overflow"
 status: ready
 created: 2026-05-01

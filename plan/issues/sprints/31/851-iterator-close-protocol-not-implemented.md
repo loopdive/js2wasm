@@ -1,5 +1,6 @@
 ---
 id: 851
+sprint: 31
 title: "Iterator close protocol not implemented (147 tests)"
 status: done
 created: 2026-03-28

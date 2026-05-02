@@ -1,5 +1,6 @@
 ---
 id: 939
+sprint: 37
 title: "Add Math.LOG2E and Math.LOG10E constant tests to equivalence suite"
 status: done
 created: 2026-04-03

@@ -1,5 +1,6 @@
 ---
 id: 1096
+sprint: 45
 title: "Isolate environment adapters — remove top-level await and browser/Node probing from core modules"
 status: done
 created: 2026-04-12

@@ -1,5 +1,6 @@
 ---
 id: 1269
+sprint: 48
 title: "struct field inference Phase 3: consumer-side specialization — emit struct.get without unboxing"
 status: ready
 created: 2026-05-02

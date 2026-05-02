@@ -1,5 +1,6 @@
 ---
 id: 1285
+sprint: 47
 title: "Hono Tier 3 stress test — recursive TrieRouter with class-typed Node children"
 status: blocked
 created: 2026-05-02

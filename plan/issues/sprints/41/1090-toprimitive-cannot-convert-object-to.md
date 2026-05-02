@@ -1,5 +1,6 @@
 ---
 id: 1090
+sprint: 41
 title: "ToPrimitive 'Cannot convert object to primitive value' — 161 FAIL"
 status: done
 created: 2026-04-12

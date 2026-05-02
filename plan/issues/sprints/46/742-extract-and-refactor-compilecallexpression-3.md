@@ -1,5 +1,6 @@
 ---
 id: 742
+sprint: 46
 title: "Extract and refactor compileCallExpression (3,350 lines)"
 status: blocked
 created: 2026-03-17

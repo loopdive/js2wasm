@@ -1,5 +1,6 @@
 ---
 id: 989
+sprint: 39
 title: "Enrich invalid Wasm binary CEs with byte offset, WAT slice, and source-mapped location"
 status: done
 created: 2026-04-07

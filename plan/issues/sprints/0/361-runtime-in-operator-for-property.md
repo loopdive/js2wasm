@@ -1,5 +1,6 @@
 ---
 id: 361
+sprint: 0
 title: "Runtime `in` operator for property checks"
 status: done
 created: 2026-03-13

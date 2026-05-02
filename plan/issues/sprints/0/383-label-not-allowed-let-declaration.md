@@ -1,5 +1,6 @@
 ---
 id: 383
+sprint: 0
 title: "- Label not allowed / let declaration errors"
 status: done
 created: 2026-03-13
