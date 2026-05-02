@@ -2458,6 +2458,16 @@ export async function runTest262File(
       fileName: "test.ts",
       sourceMap: true,
       emitWat: false,
+      // #1251: align with the sharded runner — both `scripts/compiler-fork-worker.mjs`
+      // (the production path that records the committed JSONL) and `tests/test262-vitest.test.ts`
+      // FIXTURE multi-compile pass `skipSemanticDiagnostics: true`. Without this flag,
+      // `runTest262File` ran TypeScript type-checking on the wrapped test source while
+      // the JSONL recorded results from a skipSemanticDiagnostics=true sharded run, so
+      // tests with TS type-incompatible code (Argument of type 'X' is not assignable …)
+      // would pass in the sharded run but fail in `validate-test262-baseline`, producing
+      // 6–19 false-positive `compile_error` failures per validator run depending on the
+      // sample. Aligning the flag eliminates the entire TS-checker non-determinism cluster.
+      skipSemanticDiagnostics: true,
     });
     compileMs = performance.now() - compileStart;
 
