@@ -5096,15 +5096,25 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             fctx.body.push({ op: "local.get", index: currentLocalIdx });
           } else {
             // Create a ref cell, store the current value, keep ref on stack.
-            // #1177 Stage 1: prefer fctx.localMap when set — in transitively-
-            // capturing contexts the outer-fctx-resident `cap.outerLocalIdx`
-            // may point at a stale slot (e.g. `__self_cast`) while the
-            // current fctx has the correct local in `localMap`. The earlier
-            // attempt at this fix caused regressions because it ran without
-            // the TDZ-flag boxing in compileArrowAsClosure (Stage 3); with
-            // that infra in place, reading the right local is now safe and
-            // is what makes the closure observe post-init values correctly.
-            const sourceLocalIdx = fctx.localMap.get(cap.name) ?? cap.outerLocalIdx;
+            // #1177 Stage 1 (refined for #1245): prefer fctx.localMap when
+            // its current entry has a TYPE THAT MATCHES `cap.valType`. In
+            // transitively-capturing contexts the outer-fctx-resident
+            // `cap.outerLocalIdx` may point at a stale slot (e.g.
+            // `__self_cast`) while the current fctx has the correct local
+            // in `localMap`. However, an unguarded substitution surfaces
+            // pre-existing destructure-assign / async-gen-yield-star bugs
+            // where the localMap entry has been re-aimed at a *different*
+            // typed slot (e.g. a boxed ref cell) — that produced 81 real
+            // regressions in PR#125. Gate on type-match: if localMap entry
+            // is a non-matching type, fall back to `cap.outerLocalIdx`.
+            const candidateIdx = fctx.localMap.get(cap.name);
+            let sourceLocalIdx = cap.outerLocalIdx;
+            if (candidateIdx !== undefined) {
+              const candidateType = getLocalType(fctx, candidateIdx);
+              if (candidateType && cap.valType && valTypesMatch(candidateType, cap.valType)) {
+                sourceLocalIdx = candidateIdx;
+              }
+            }
             fctx.body.push({ op: "local.get", index: sourceLocalIdx });
             fctx.body.push({ op: "struct.new", typeIdx: refCellTypeIdx });
             // Also box the outer local so subsequent reads/writes go through the ref cell
@@ -5131,14 +5141,25 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             }
           }
         } else {
-          // #1177 Stage 1: prefer fctx.localMap when set. See comment in
-          // the mutable branch above for rationale — same pattern, applied
-          // to the non-mutable capture path. Both `local.get` and the
-          // `getLocalType` call below use the same source index.
-          const sourceLocalIdx = fctx.localMap.get(cap.name) ?? cap.outerLocalIdx;
+          // #1177 Stage 1 (refined for #1245): prefer fctx.localMap when
+          // its current entry has a type matching the expected capture
+          // param type. See comment in the mutable branch above. The
+          // unguarded form caused 81 regressions in async-gen / for-await
+          // patterns where localMap had been re-aimed at a differently-
+          // typed slot.
+          const expectedCapType = captureParamTypes?.[capIdx];
+          const candidateIdx = fctx.localMap.get(cap.name);
+          let sourceLocalIdx = cap.outerLocalIdx;
+          if (candidateIdx !== undefined) {
+            const candidateType = getLocalType(fctx, candidateIdx);
+            if (candidateType && expectedCapType && valTypesMatch(candidateType, expectedCapType)) {
+              sourceLocalIdx = candidateIdx;
+            } else if (candidateType && !expectedCapType) {
+              sourceLocalIdx = candidateIdx;
+            }
+          }
           fctx.body.push({ op: "local.get", index: sourceLocalIdx });
           // Coerce capture value to expected param type if they differ
-          const expectedCapType = captureParamTypes?.[capIdx];
           if (expectedCapType) {
             const actualType = getLocalType(fctx, sourceLocalIdx);
             if (actualType && !valTypesMatch(actualType, expectedCapType)) {

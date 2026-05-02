@@ -2745,12 +2745,18 @@ export function emitFuncRefAsClosure(
           const currentLocalIdx = fctx.localMap.get(cap.name)!;
           fctx.body.push({ op: "local.get", index: currentLocalIdx });
         } else {
-          // #1177 Stage 1: prefer fctx.localMap when set — same rationale as
-          // the calls.ts site. Transitively-capturing contexts have the
-          // correct local in localMap; cap.outerLocalIdx may point at a
-          // stale outer-fctx slot. Safe now that compileArrowAsClosure's
-          // TDZ-flag boxing (Stage 3) is in place.
-          const sourceLocalIdx = fctx.localMap.get(cap.name) ?? cap.outerLocalIdx;
+          // #1177 Stage 1 (refined for #1245): prefer fctx.localMap only
+          // when the candidate slot's TYPE MATCHES `cap.valType`. The
+          // unguarded substitution caused 81 regressions in PR#125 where
+          // localMap had been re-aimed at a boxed/different-type slot.
+          const candidateIdx = fctx.localMap.get(cap.name);
+          let sourceLocalIdx = cap.outerLocalIdx;
+          if (candidateIdx !== undefined) {
+            const candidateType = getLocalType(fctx, candidateIdx);
+            if (candidateType && cap.valType && valTypesMatch(candidateType, cap.valType)) {
+              sourceLocalIdx = candidateIdx;
+            }
+          }
           fctx.body.push({ op: "local.get", index: sourceLocalIdx });
           fctx.body.push({ op: "struct.new", typeIdx: refCellTypeIdx });
           const boxedLocalIdx = allocLocal(fctx, `__boxed_${cap.name}`, {
@@ -2763,8 +2769,16 @@ export function emitFuncRefAsClosure(
           fctx.boxedCaptures.set(cap.name, { refCellTypeIdx, valType: cap.valType });
         }
       } else {
-        // #1177 Stage 1: same localMap-first lookup as the mutable branch.
-        const sourceLocalIdx = fctx.localMap.get(cap.name) ?? cap.outerLocalIdx;
+        // #1177 Stage 1 (refined for #1245): same type-guarded localMap
+        // preference as the mutable branch above.
+        const candidateIdx = fctx.localMap.get(cap.name);
+        let sourceLocalIdx = cap.outerLocalIdx;
+        if (candidateIdx !== undefined && cap.valType) {
+          const candidateType = getLocalType(fctx, candidateIdx);
+          if (candidateType && valTypesMatch(candidateType, cap.valType)) {
+            sourceLocalIdx = candidateIdx;
+          }
+        }
         fctx.body.push({ op: "local.get", index: sourceLocalIdx });
       }
     }
