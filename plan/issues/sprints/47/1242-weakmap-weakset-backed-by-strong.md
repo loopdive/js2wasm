@@ -1,7 +1,7 @@
 ---
 id: 1242
 title: "WeakMap / WeakSet backed by strong references (lodash memoize / cloneDeep)"
-status: ready
+status: in-progress
 created: 2026-05-02
 updated: 2026-05-02
 priority: high
@@ -11,8 +11,37 @@ task_type: feature
 area: codegen, runtime
 language_feature: WeakMap, WeakSet
 goal: spec-completeness
-related: [1101, 1103]
+related: [1101, 1103, 1283]
 ---
+
+## Implementation note (2026-05-02, dev-1245)
+
+Split scope per tech-lead direction.
+
+**WeakSet works on main today** — all documented patterns pass:
+  - `new WeakSet()` + `add`/`has`/`delete` round-trip ✓
+  - `add()` returns the WeakSet (chainable) ✓
+  - Multiple objects coexist correctly ✓
+  - New instance is empty ✓
+
+**WeakMap FAILS** with wasm validation errors at instantiation for
+every documented `set/get/has/delete` pattern:
+  - `wm.set(k, 42); wm.get(k)` → "call[0] expected externref, found f64"
+  - `wm.set(k, v); wm.has(k)` → "call[2] expected f64, found externref"
+  - cycle-detection (`seen.set(a, a); seen.has(a) ? 1 : 0`) → similar
+  - memoize-style → similar
+
+Tech lead approved a partial PR landing only the WeakSet portion as
+test-only. The WeakMap host-import dispatch needs a proper
+investigation pass (not a rushed end-of-sprint fix). Filed as #1283
+in sprint 48 with the four exact error patterns as repros.
+
+This PR therefore covers WeakSet only via `tests/issue-1242.test.ts`
+(5/5 pass). #1283 will land WeakMap once the type-mismatch wiring is
+properly investigated and fixed.
+
+---
+
 # #1242 — WeakMap / WeakSet backed by strong references
 
 ## Problem
