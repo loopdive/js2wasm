@@ -3462,6 +3462,82 @@ function compileArrayConcatExtern(
 }
 
 /**
+ * #1286: probe-compile the receiver expression and determine whether its actual
+ * runtime type is `externref` (i.e., a JS value, not a WasmGC vec struct).
+ * Used by `compileArrayJoin` to decide whether to dispatch to the WasmGC-native
+ * path or to the host-import fallback. Always rolls back the probe so the
+ * caller still sees an empty body to recompile into.
+ */
+function probeReceiverIsExternref(ctx: CodegenContext, fctx: FunctionContext, expr: ts.Expression): boolean {
+  // Fast path: identifier whose Wasm type we already know
+  if (ts.isIdentifier(expr)) {
+    const localIdx = fctx.localMap.get(expr.text);
+    if (localIdx !== undefined) {
+      const t = getLocalType(fctx, localIdx);
+      if (t) return t.kind === "externref";
+    } else {
+      const gIdx = ctx.moduleGlobals.get(expr.text);
+      if (gIdx !== undefined) {
+        const globalDef = ctx.mod.globals[localGlobalIdx(ctx, gIdx)];
+        if (globalDef?.type) return globalDef.type.kind === "externref";
+      }
+    }
+  }
+  // Slow path: probe-compile and roll back
+  const savedLen = fctx.body.length;
+  const probeResult = compileExpression(ctx, fctx, expr);
+  fctx.body.length = savedLen;
+  return probeResult?.kind === "externref";
+}
+
+/**
+ * #1286: arr.join(sep?) fallback for externref receivers (e.g., the result of
+ * `Object.keys(any)` via the `__object_keys` host import, which returns a real
+ * JS array). The native `compileArrayJoin` path expects a WasmGC vec struct;
+ * trying to extract one from an externref via `ref.cast` traps with "illegal
+ * cast". Instead, delegate to the host's `Array.prototype.join` via the
+ * `__array_join_any` import, which handles JS arrays and WasmGC vecs.
+ */
+function compileArrayJoinExtern(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  propAccess: ts.PropertyAccessExpression,
+  callExpr: ts.CallExpression,
+): ValType | null {
+  const joinAnyIdx = ensureLateImport(
+    ctx,
+    "__array_join_any",
+    [{ kind: "externref" }, { kind: "externref" }],
+    [{ kind: "externref" }],
+  );
+  flushLateImportShifts(ctx, fctx);
+  if (joinAnyIdx === undefined) return null;
+
+  // Compile receiver, coerce to externref if needed.
+  const recvType = compileExpression(ctx, fctx, propAccess.expression);
+  if (recvType && recvType.kind !== "externref") {
+    fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+  }
+
+  // Separator argument. Pass `undefined` (ref.null.extern) when no argument was
+  // given so the runtime falls back to the spec's default `,` separator —
+  // explicit `undefined` matches Array.prototype.join semantics.
+  if (callExpr.arguments.length >= 1) {
+    const argType = compileExpression(ctx, fctx, callExpr.arguments[0]!, { kind: "externref" });
+    if (argType === null) {
+      fctx.body.push({ op: "ref.null.extern" } as unknown as Instr);
+    } else if (argType.kind !== "externref") {
+      fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+    }
+  } else {
+    fctx.body.push({ op: "ref.null.extern" } as unknown as Instr);
+  }
+
+  fctx.body.push({ op: "call", funcIdx: joinAnyIdx });
+  return { kind: "externref" };
+}
+
+/**
  * arr.join(sep?) -> convert elements to strings and concatenate.
  * Receiver is a vec struct.
  */
@@ -3474,6 +3550,16 @@ function compileArrayJoin(
   arrTypeIdx: number,
   elemType: ValType,
 ): ValType | null {
+  // #1286: When the receiver evaluates to externref at runtime (e.g.,
+  // `Object.keys(any).join(...)` where Object.keys is dispatched through
+  // the __object_keys host import, or any JS array reached via
+  // `__extern_get`), the WasmGC-native path below would emit a `local.tee`
+  // into a vec-typed local and trap with "illegal cast". Probe the receiver
+  // first; if it's externref, delegate to the host's Array.prototype.join.
+  if (probeReceiverIsExternref(ctx, fctx, propAccess.expression)) {
+    return compileArrayJoinExtern(ctx, fctx, propAccess, callExpr);
+  }
+
   const concatIdx = ctx.jsStringImports.get("concat");
   const toStrIdx = ctx.funcMap.get("number_toString");
   if (concatIdx === undefined) {
