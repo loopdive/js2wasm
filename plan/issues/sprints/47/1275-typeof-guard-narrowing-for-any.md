@@ -1,7 +1,7 @@
 ---
 id: 1275
 title: "typeof-guard narrowing for any-typed parameters (untyped JS functions)"
-status: ready
+status: done
 created: 2026-05-02
 updated: 2026-05-02
 priority: high
@@ -13,6 +13,14 @@ language_feature: typeof, type-narrowing, any
 goal: npm-library-support
 related: [1031, 1107]
 ---
+## Implementation note (2026-05-02, dev-1245)
+
+Patterns already work on main — issue title's "fails to narrow" claim was stale. PR#170
+added regression tests only (test-only, no src changes). All acceptance criteria met.
+
+Known follow-up: `typeof closureRef == "function"` returns "object" when closure passed as
+externref — `__typeof_function` helper limitation, ties into #1276.
+
 # #1275 — typeof-guard narrowing for `any`-typed parameters
 
 ## Problem
