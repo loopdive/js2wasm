@@ -30,11 +30,7 @@ wrap_checklist:
 
 ### In Progress
 
-| Issue | Title | Priority | Agent | PR |
-|---|---|---|---|---|
-| #1225 | Nested dstr from null/undefined: missing TypeError (~244 tests) | high | dev-1225 | #130 |
-| #1169o | IR Phase 4 Slice 12 — dynamic element access + array literals | high | dev-1169n | #132 |
-| #1157 | RegExp flags='undefinedy' from String.prototype paths (~288 tests) | high | dev-1224 | pending |
+_(none)_
 
 ### Blocked
 
@@ -47,17 +43,18 @@ wrap_checklist:
 
 | Issue | Title | Priority | Blocked by |
 |---|---|---|---|
-| #1169o | IR Phase 4 Slice 12 — dynamic element access + array literals | high | — |
-| #1169p | IR Phase 4 Slice 13 — String + Array prototype methods | medium | #1169o |
-| #1169q | IR Phase 4 Slice 14 — retire legacy codegen | high | #1169n, #1169o, #1169p |
-| #1195 | perf: escape-analysis scalarization for non-escaping arrays | high | — |
 | #1223 | TDZ async/gen: writer+reader fn-decl sharing via destructure-assign | medium | #1177 |
 
 ### Done
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #1225 | Nested dstr from null/undefined: missing TypeError — fixed in PR #130 (net +32, ~244 tests) | high | done |
+| #1169q | IR Phase 4 Slice 14 — telemetry landed (PR #141); deletion deferred (0% claim on untyped corpus — selector needs any/void widening first) | high | done |
 | #1222 | ci: wasm-hash noise filter — exclude byte-identical regressions from PR gate | high | done |
+| #1169o | IR Phase 4 Slice 12 — dynamic element access + array literals (PR #132) | high | done |
+| #1118 | obj-literal methods: callable closure refs + struct-dedup by signature (PR #140) | high | done |
+| #1169p | IR Phase 4 Slice 13 — arr.length on vec receivers through IR (PR #138) | medium | done |
 | #1169n | IR Phase 4 Slice 11 — switch + missing binary/unary operators | high | done |
 | #1207 | perf(test262): root-cause 156 compile_timeouts — all queue-wait noise (#1227 fixes) | high | done |
 | #1224 | class/dstr defaults: investigation done, 2 root causes found, tests added | high | done |
