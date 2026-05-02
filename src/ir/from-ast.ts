@@ -1287,6 +1287,22 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, cx: LowerCtx): I
     return cx.builder.emitExternProp(className, propName, recv, irVal(prop.type));
   }
 
+  // Slice 13 (#1169p) — vec-shaped receiver (`number[]`, `string[]`, …):
+  // support `.length` (the only structural property a vec carries).
+  // Other Array prototype properties are non-existent in TS so this
+  // branch only fires for `.length`. Method dispatch (`arr.push(...)`,
+  // `arr.map(...)`, etc.) is handled in `lowerMethodCall`.
+  const recvVal = asVal(recvType);
+  if (recvVal && (recvVal.kind === "ref" || recvVal.kind === "ref_null")) {
+    const vec = cx.resolver?.resolveVec?.(recvVal);
+    if (vec) {
+      if (propName === "length") {
+        return cx.builder.emitVecLen(recv);
+      }
+      throw new Error(`ir/from-ast: .${propName} on vec not in slice 13 (${cx.funcName})`);
+    }
+  }
+
   throw new Error(
     `ir/from-ast: property access .${propName} on ${describeIrType(recvType)} is not in slice 2 (${cx.funcName})`,
   );

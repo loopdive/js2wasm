@@ -16,6 +16,7 @@ import {
 } from "../expressions/assignment.js";
 import { emitCoercedLocalSet } from "../expressions/helpers.js";
 import { shiftLateImportIndices } from "../expressions/late-imports.js";
+import { emitExternrefDestructureGuard } from "../destructuring-params.js";
 import {
   addIteratorImports,
   ensureI32Condition,
@@ -1132,6 +1133,12 @@ function compileForOfAssignDestructuring(
   if (ts.isObjectLiteralExpression(expr)) {
     // for ({a, b} of arr) — elem is a struct ref, extract fields
     if (elemType.kind !== "ref" && elemType.kind !== "ref_null") {
+      // Externref nested elements may be null/undefined (e.g. `for ([{x}] of [[null]])`).
+      // Per ECMA-262 §13.15.5.5 RequireObjectCoercible, destructuring null/undefined
+      // through a non-empty object pattern must throw TypeError (#1225).
+      if (elemType.kind === "externref" && expr.properties.length > 0) {
+        emitExternrefDestructureGuard(ctx, fctx, elemLocal);
+      }
       // Primitives (bool, number, string) are object-coercible in JS.
       // Empty destructuring `for ({} of [val])` is a no-op — just iterate.
       // Non-empty patterns: properties don't exist on primitives, so use defaults.
@@ -1226,6 +1233,12 @@ function compileForOfAssignDestructuring(
     if (elemType.kind !== "ref" && elemType.kind !== "ref_null") {
       // Externref elements: use __extern_get to extract indexed properties
       if (elemType.kind === "externref") {
+        // Per ECMA-262 §13.15.5.2 / §8.4.2 GetIterator(null/undefined) throws
+        // TypeError. Required for nested patterns like `for ([[x]] of [[null]])`
+        // (#1225). Skip for empty `[] of …` patterns to match existing behavior.
+        if (expr.elements.length > 0) {
+          emitExternrefDestructureGuard(ctx, fctx, elemLocal);
+        }
         compileForOfAssignDestructuringExternref(ctx, fctx, expr, elemLocal);
       }
       return;

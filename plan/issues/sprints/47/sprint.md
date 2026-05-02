@@ -30,11 +30,7 @@ wrap_checklist:
 
 ### In Progress
 
-| Issue | Title | Priority | Agent | PR |
-|---|---|---|---|---|
-| #1225 | Nested dstr from null/undefined: missing TypeError (~244 tests) | high | dev-1225 | #130 |
-| #1169o | IR Phase 4 Slice 12 — dynamic element access + array literals | high | dev-1169n | #132 |
-| #1195 | perf: escape-analysis scalarization for non-escaping arrays | high | dev-1224 | pending |
+_(none)_
 
 ### Blocked
 
@@ -47,21 +43,23 @@ wrap_checklist:
 
 | Issue | Title | Priority | Blocked by |
 |---|---|---|---|
-| #1169o | IR Phase 4 Slice 12 — dynamic element access + array literals | high | — |
-| #1169p | IR Phase 4 Slice 13 — String + Array prototype methods | medium | #1169o |
-| #1169q | IR Phase 4 Slice 14 — retire legacy codegen | high | #1169n, #1169o, #1169p |
-| #1195 | perf: escape-analysis scalarization for non-escaping arrays | high | — |
 | #1223 | TDZ async/gen: writer+reader fn-decl sharing via destructure-assign | medium | #1177 |
 
 ### Done
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #1225 | Nested dstr from null/undefined: missing TypeError — fixed in PR #130 (net +32, ~244 tests) | high | done |
+| #1169q | IR Phase 4 Slice 14 — telemetry landed (PR #141); deletion deferred (0% claim on untyped corpus — selector needs any/void widening first) | high | done |
 | #1222 | ci: wasm-hash noise filter — exclude byte-identical regressions from PR gate | high | done |
+| #1169o | IR Phase 4 Slice 12 — dynamic element access + array literals (PR #132) | high | done |
+| #1118 | obj-literal methods: callable closure refs + struct-dedup by signature (PR #140) | high | done |
+| #1169p | IR Phase 4 Slice 13 — arr.length on vec receivers through IR (PR #138) | medium | done |
 | #1169n | IR Phase 4 Slice 11 — switch + missing binary/unary operators | high | done |
 | #1207 | perf(test262): root-cause 156 compile_timeouts — all queue-wait noise (#1227 fixes) | high | done |
 | #1224 | class/dstr defaults: investigation done, 2 root causes found, tests added | high | done |
 | #1226 | class/elements: static async private method — tests added (bug already fixed) | high | done |
+| #1195 | perf: array-reduce-fusion — eliminate temp array in fill+reduce shape | high | done |
 | #1227 | fix(runner): pool timer fires at dispatch, not enqueue — 156 false CTs fixed | high | done |
 | #1196 | perf: bounds-check elimination (landed in S46) | high | done |
 | #1197 | perf: i32 element specialization (landed in S46) | high | done |
@@ -84,17 +82,23 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1126 | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | high | ready |
-| #1169o | IR Phase 4 Slice 12 — dynamic element access + array literals through IR | high | ready |
-| #1169p | IR Phase 4 Slice 13 — String + Array prototype methods through IR | medium | ready |
 | #1169q | IR Phase 4 Slice 14 — retire legacy codegen: delete expressions.ts, statements.ts, repair passes | high | ready |
-| #1195 | perf: escape-analysis scalarization for non-escaping arrays (eliminate array allocation in array-sum) | high | ready |
 | #1223 | TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up) | medium | ready |
-| #1225 | Nested destructuring from null/undefined: missing TypeError (~244 tests in for-of/dstr, assignment/dstr, class/dstr) | high | ready |
+
+### In Progress
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1118 | Worker/timeout exits and eval-code null deref (182 tests) | medium | in-progress |
+| #1169p | IR Phase 4 Slice 13 — String + Array prototype methods through IR | medium | in-progress |
+| #1195 | perf: escape-analysis scalarization for non-escaping arrays (eliminate array allocation in array-sum) | high | in-progress |
+| #1225 | Nested destructuring from null/undefined: missing TypeError (~244 tests in for-of/dstr, assignment/dstr, class/dstr) | high | in-progress |
 
 ### Review
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #1169o | IR Phase 4 Slice 12 — dynamic element access + array literals through IR | high | review |
 | #1207 | perf(test262): root-cause and fix the 136 compile_timeout tests (~7.6 min wall-clock cost per run) | high | review |
 | #1227 | fix(runner): compiler-pool timeout starts at enqueue time, not dispatch time — causes 156 false compile_timeouts | high | review |
 
@@ -102,6 +106,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #1157 | RegExp constructor called with flags='undefinedy' from String.prototype method paths (~288 test262 regressions) | high | done |
 | #1169n | IR Phase 4 Slice 11 — switch statements + missing binary/unary operators through IR | high | done |
 | #1196 | perf: bounds-check elimination via SSA on monotonic indexed array loops | high | done |
 | #1197 | perf: i32 element specialization for `number[]` arrays under `\| 0` / `& mask` / `>> n` patterns | high | done |

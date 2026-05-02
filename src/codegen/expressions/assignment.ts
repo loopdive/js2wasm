@@ -31,7 +31,13 @@ import type { InnerResult } from "../shared.js";
 import { coerceType, compileExpression, valTypesMatch } from "../shared.js";
 import { compileStringLiteral, emitBoolToString } from "../string-ops.js";
 import { findExternInfoForMember, patchStructNewForDynamicField } from "./extern.js";
-import { emitCoercedLocalSet, emitThrowString, getFuncParamTypes, updateLocalType } from "./helpers.js";
+import {
+  emitCoercedLocalSet,
+  emitThrowString,
+  getFuncParamTypes,
+  updateLocalType,
+  widenLocalToNullable,
+} from "./helpers.js";
 import {
   ensureLateImport,
   flushLateImportShifts,
@@ -1519,13 +1525,87 @@ function emitArrayDestructureFromLocal(
   const srcDef = ctx.mod.types[srcTypeIdx];
   if (!srcDef || srcDef.kind !== "struct") return;
 
-  const arrTypeIdx = getArrTypeIdxFromVec(ctx, srcTypeIdx);
-  const arrDef = ctx.mod.types[arrTypeIdx];
-  if (!arrDef || arrDef.kind !== "array") return;
+  // Detect vec vs tuple struct shape (#1225). Tuple fields are named _0, _1, ...
+  const isVecStruct =
+    srcDef.fields.length === 2 && srcDef.fields[0]?.name === "length" && srcDef.fields[1]?.name === "data";
+  const isTupleStruct =
+    !isVecStruct &&
+    srcDef.fields.length > 0 &&
+    srcDef.fields.every((f: { name?: string }, idx: number) => f.name === `_${idx}`);
 
-  const elemType = arrDef.element;
+  // For ref/ref_null sources we want to emit a null guard. The compiler may
+  // declare the local as non-nullable `ref T` even though the value at runtime
+  // can be null (e.g. struct fields holding nested tuple refs that may be
+  // ref.null T). Widen the local so `ref.is_null` is valid (#1225).
+  const needsNullGuard = (srcType.kind === "ref" || srcType.kind === "ref_null") && pattern.elements.length > 0;
+  if (needsNullGuard) {
+    widenLocalToNullable(fctx, srcLocal);
+  }
 
-  // Null guard for ref_null types
+  // For unsupported struct shapes, still emit the null/undefined guard so we
+  // throw the spec-required TypeError (#1225). Without this, nested patterns
+  // like `[[ _ ]] = [null]` would silently drop the destructuring.
+  if (!isVecStruct && !isTupleStruct) {
+    if (needsNullGuard) {
+      const throwInstrs = buildDestructureNullThrow(ctx, fctx);
+      fctx.body.push({ op: "local.get", index: srcLocal });
+      fctx.body.push({ op: "ref.is_null" } as Instr);
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: throwInstrs,
+        else: [],
+      });
+    }
+    return;
+  }
+
+  let arrTypeIdx = -1;
+  let arrDef: { kind: string; element: ValType } | undefined;
+  if (isVecStruct) {
+    arrTypeIdx = getArrTypeIdxFromVec(ctx, srcTypeIdx);
+    const ad = ctx.mod.types[arrTypeIdx];
+    if (!ad || ad.kind !== "array") {
+      // Unexpected: vec struct without proper array data field.
+      // Fall back to emitting null guard only.
+      if (needsNullGuard) {
+        const throwInstrs = buildDestructureNullThrow(ctx, fctx);
+        fctx.body.push({ op: "local.get", index: srcLocal });
+        fctx.body.push({ op: "ref.is_null" } as Instr);
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "empty" },
+          then: throwInstrs,
+          else: [],
+        });
+      }
+      return;
+    }
+    arrDef = ad as { kind: string; element: ValType };
+  }
+
+  // Helper: get element type at index i
+  const getElemType = (i: number): ValType => {
+    if (isVecStruct) return arrDef!.element;
+    // Tuple
+    const field = srcDef.fields[i];
+    return field ? field.type : { kind: "f64" };
+  };
+  // Helper: emit instructions to load element i onto the stack
+  const emitElemGet = (i: number): void => {
+    fctx.body.push({ op: "local.get", index: srcLocal });
+    if (isVecStruct) {
+      fctx.body.push({ op: "struct.get", typeIdx: srcTypeIdx, fieldIdx: 1 });
+      fctx.body.push({ op: "i32.const", value: i });
+      emitBoundsCheckedArrayGet(fctx, arrTypeIdx, arrDef!.element);
+    } else {
+      // Tuple: direct struct.get on field index i
+      fctx.body.push({ op: "struct.get", typeIdx: srcTypeIdx, fieldIdx: i });
+    }
+  };
+
+  // Build the destructuring body in a separate buffer so we can wrap it in a
+  // null guard for ref_null sources.
   const savedBodyADFL = fctx.body;
   const adflInstrs: Instr[] = [];
   fctx.body = adflInstrs;
@@ -1534,27 +1614,44 @@ function emitArrayDestructureFromLocal(
     const element = pattern.elements[i]!;
     if (ts.isOmittedExpression(element)) continue;
 
+    // Tuple OOB: pattern targets element beyond tuple's fields → no-op for
+    // identifier targets (would normally read undefined; we rely on the local
+    // staying at its prior value).
+    if (isTupleStruct && i >= srcDef.fields.length) continue;
+
+    const elemType = getElemType(i);
+
     if (ts.isIdentifier(element)) {
       let localIdx = fctx.localMap.get(element.text);
       if (localIdx === undefined) {
         localIdx = allocLocal(fctx, element.text, elemType);
       }
-      fctx.body.push({ op: "local.get", index: srcLocal });
-      fctx.body.push({ op: "struct.get", typeIdx: srcTypeIdx, fieldIdx: 1 });
-      fctx.body.push({ op: "i32.const", value: i });
-      emitBoundsCheckedArrayGet(fctx, arrTypeIdx, elemType);
+      emitElemGet(i);
       const localType = getLocalType(fctx, localIdx);
       if (localType && !valTypesMatch(elemType, localType)) {
         coerceType(ctx, fctx, elemType, localType);
       }
       emitCoercedLocalSet(ctx, fctx, localIdx, elemType);
+    } else if (ts.isObjectLiteralExpression(element)) {
+      // Nested object pattern: [{ a, b }] = arr (#1225)
+      const tmpElem = allocLocal(fctx, `__arr_nested_${fctx.locals.length}`, elemType);
+      emitElemGet(i);
+      fctx.body.push({ op: "local.set", index: tmpElem });
+      emitObjectDestructureFromLocal(ctx, fctx, element, tmpElem, elemType);
+    } else if (ts.isArrayLiteralExpression(element)) {
+      // Nested array pattern: [[a, b]] = arr (#1225)
+      const tmpElem = allocLocal(fctx, `__arr_nested_${fctx.locals.length}`, elemType);
+      emitElemGet(i);
+      fctx.body.push({ op: "local.set", index: tmpElem });
+      emitArrayDestructureFromLocal(ctx, fctx, element, tmpElem, elemType);
     }
+    // else: unsupported nested target — skip (existing behavior)
   }
 
-  // Close null guard — throw TypeError if null/undefined (#730).
+  // Close null guard — throw TypeError if null/undefined (#730, #1225).
   // Skip for empty `[] = val` nested patterns (#225).
   fctx.body = savedBodyADFL;
-  if (srcType.kind === "ref_null" && pattern.elements.length > 0) {
+  if (needsNullGuard) {
     const throwInstrs = buildDestructureNullThrow(ctx, fctx);
     fctx.body.push({ op: "local.get", index: srcLocal });
     fctx.body.push({ op: "ref.is_null" } as Instr);
