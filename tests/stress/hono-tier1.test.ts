@@ -200,16 +200,9 @@ describe("#1244 Hono Tier 1 — router math primitives", () => {
 });
 
 /**
- * Tier 2 attempts to compile Hono's actual `TrieRouter` class through
- * `compileProject`. It documents exactly what fails today.
+ * Tier 2 — moved to a dedicated `tests/stress/hono-tier2.test.ts` file
+ * once the prerequisite issues (private fields #1249, side-effecting
+ * method calls #1267, index-signature `??=` #1268) landed. See
+ * `tests/stress/hono-tier2.test.ts` for the active TrieRouter
+ * integration tests.
  */
-describe("#1244 Hono Tier 2 — TrieRouter class via compileProject (documented gaps)", () => {
-  it.skip("compileProject on hono trie-router/router.js — TODO: compile + instantiate (gap-blocked)", () => {
-    // Blocked by: private class fields (#methods, #children, #patterns, #order, #params)
-    // and `Object.create(null)` and spread-into-existing-object patterns.
-    //
-    // Activate this test by removing `.skip` once #1247 (typed-array struct
-    // mismatch) and #1248 (typeof-string narrowing breaks substring) land,
-    // plus a follow-up for class private-field semantics.
-  });
-});
