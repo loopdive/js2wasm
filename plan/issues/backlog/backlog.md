@@ -216,7 +216,7 @@ Filed from the residual `compile_timeout` cluster analysis after PR #131 (#1227 
 
 | # | Priority | Issue | Impact | Status |
 |---|----------|-------|--------|--------|
-| [1228](1228.md) | Medium | `Array.prototype.{unshift,reverse,forEach,…}` on non-Array receivers iterate `[0, length)` instead of defined props | **2 CT** (+ 1 outlier) | Ready |
+| [1234](1234.md) | Medium | `Array.prototype.{unshift,reverse,forEach,…}` on non-Array receivers iterate `[0, length)` instead of defined props | **2 CT** (+ 1 outlier) | Ready |
 | [1229](1229.md) | Medium | `eval(literal)` / `new RegExp(literal)` re-compile every iteration in 65k-loop tests | **7 CT** | Ready |
 | [1230](1230.md) | Low | Investigate post-dispatch fork starvation in CompilerPool (73 phantom timeouts) | **73 CT** | Ready |
 
