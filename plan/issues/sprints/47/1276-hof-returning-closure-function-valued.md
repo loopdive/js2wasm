@@ -1,7 +1,7 @@
 ---
 id: 1276
 title: "HOF returning closure — function-valued module exports (createMathOperation pattern)"
-status: ready
+status: in-progress
 created: 2026-05-02
 updated: 2026-05-02
 priority: high
@@ -13,6 +13,57 @@ language_feature: closures, HOF, module-exports
 goal: npm-library-support
 related: [1031, 1107]
 ---
+
+## Implementation note (2026-05-02, dev-1245)
+
+Smoke-testing on origin/main shows the basic HOF-returning-closure
+pattern **works for INTERNAL-WASM use** (the issue's primary use case
+when called from another exported function in the same compilation
+unit):
+
+```
+createMathOp(fn) → add(3, 4)  ✓ returns 7
+HOF with captured defaultValue ✓
+Two HOF-created functions side by side ✓
+Realistic _createMathOperation with NaN handling ✓
+```
+
+What does NOT work and is the **remaining real bug**:
+
+1. `export default add` — exports `add` as an externref Wasm GLOBAL,
+   not a callable function. JS `instance.exports.default(3, 4)`
+   fails with "is not a function".
+   - Existing handling at `declarations.ts:2731-2750` and
+     `index.ts:922-937` exports the variable as a Wasm `global`
+     (ESM semantics for non-function values). Closures need a
+     trampoline-export path: emit a Wasm function `default` that
+     reads the global, struct.get the funcref field, and call_ref
+     through it.
+
+2. Chained calls without intermediate binding: `makeAdd()(3, 4)`
+   returns 0 instead of 7. Same root cause as curried HOFs (closure-
+   of-closure call chain with no binding). The lodash usage pattern
+   does NOT hit this — `var add = createMathOperation(...); add(3,4)`
+   uses an intermediate binding.
+
+This PR addresses the basic-HOF case with regression tests
+(criterion 3) — same approach as #1250 and #1275 where the spec
+title was partially stale. The trampoline-export-of-closure for
+acceptance criterion 2 is a deeper compiler feature requiring its
+own focused effort and is tracked as a follow-up.
+
+Tests added (`tests/issue-1276.test.ts`):
+  - createMathOp basic add(3, 4) → 7
+  - HOF captures both operator and defaultValue
+  - two HOF-created functions side by side (no cross-pollution)
+  - realistic _createMathOperation with NaN handling
+
+Out of scope (filed as follow-ups):
+  - Trampoline-export of closure for `export default <closure-var>`
+  - Chained call `makeAdd()(3, 4)` without intermediate binding
+
+---
+
 # #1276 — HOF returning closure: function-valued module exports
 
 ## Problem
