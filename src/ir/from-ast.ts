@@ -1250,6 +1250,34 @@ function staticTypeOfFor(t: IrType): string | null {
 }
 
 /**
+ * Optional-chaining gate (#1281). Returns true when the TypeScript type
+ * could carry `null`, `undefined`, `void`, `unknown`, or `any` — i.e.
+ * cases where the IR's eager-evaluation primitives (no short-circuit
+ * `if/else` for property access) cannot safely evaluate the receiver.
+ * Returns false when the type checker has narrowed the union to
+ * non-nullish, in which case `?.` is redundant safety syntax and the
+ * IR can lower it as a regular access.
+ *
+ * `any` is treated as nullable to be safe — the source could carry
+ * a null value at runtime and we have no static guarantee otherwise.
+ */
+function isPossiblyNullable(type: ts.Type, checker: ts.TypeChecker): boolean {
+  if (type.flags & (ts.TypeFlags.Null | ts.TypeFlags.Undefined | ts.TypeFlags.Void)) return true;
+  if (type.flags & ts.TypeFlags.Any) return true;
+  if (type.flags & ts.TypeFlags.Unknown) return true;
+  if (type.isUnion()) {
+    for (const t of type.types) {
+      if (isPossiblyNullable(t, checker)) return true;
+    }
+  }
+  // Non-strict-null-checks setups treat undefined as a member of every
+  // type. `getNonNullableType` strips the implicit nullish portion;
+  // when the result differs from the input, the input was nullable.
+  const nn = checker.getNonNullableType(type);
+  return nn !== type;
+}
+
+/**
  * Lower a property access expression.
  *
  * Slice 1 (#1169a) handles `<string>.length` (the only `.length` form
@@ -1266,11 +1294,19 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, cx: LowerCtx): I
   if (!ts.isIdentifier(expr.name)) {
     throw new Error(`ir/from-ast: computed property access not in slice 2 (${cx.funcName})`);
   }
-  // Slice 11 (#1169n) — optional chaining (`obj?.prop`) is accepted
-  // by the selector but the lowerer doesn't yet emit the null-guard.
-  // Throw cleanly so the function falls back to legacy.
+  // Optional chaining (`obj?.prop`, #1281). For receivers whose TypeScript
+  // type is provably non-null (e.g. `obj: { x: number }` after narrowing),
+  // `?.` is redundant safety syntax and we can emit the regular access.
+  // For genuinely nullable receivers (`T | null | undefined`) the IR has
+  // no short-circuit primitive yet — throw so the function falls back to
+  // legacy, where `compileOptionalPropertyAccess` already emits the
+  // null-guarded `if/else` block.
   if (expr.questionDotToken) {
-    throw new Error(`ir/from-ast: optional chaining (?.) not in slice 11 (${cx.funcName})`);
+    const recvTsType = cx.checker.getTypeAtLocation(expr.expression);
+    if (isPossiblyNullable(recvTsType, cx.checker)) {
+      throw new Error(`ir/from-ast: optional chaining (?.) on nullable receiver not in slice 11 (${cx.funcName})`);
+    }
+    // fall through — treat the access as a regular `.prop` lookup
   }
   const propName = expr.name.text;
 
@@ -1521,11 +1557,19 @@ function phase1PropertyName(name: ts.PropertyName): string | null {
  * ignored — both are bugs.
  */
 function lowerCall(expr: ts.CallExpression, cx: LowerCtx): IrValueId {
-  // Slice 11 (#1169n) — optional call (`fn?.()` / `obj?.method()`).
-  // The lowerer doesn't yet emit the null-guard branch; throw clean
-  // fallback so the function reverts to legacy.
+  // Optional call (`fn?.()` / `obj?.method()`, #1281). Same approach as
+  // optional property access: when the callee's TypeScript type is provably
+  // non-null, `?.()` is redundant safety syntax and we lower it like a
+  // regular call. Genuinely nullable callees still throw to the legacy
+  // path, where `compileOptionalCallExpression` emits the null-guarded
+  // `if/else` block.
   if (expr.questionDotToken) {
-    throw new Error(`ir/from-ast: optional call (?.()) not in slice 11 (${cx.funcName})`);
+    const calleeNode = ts.isPropertyAccessExpression(expr.expression) ? expr.expression.expression : expr.expression;
+    const calleeTsType = cx.checker.getTypeAtLocation(calleeNode);
+    if (isPossiblyNullable(calleeTsType, cx.checker)) {
+      throw new Error(`ir/from-ast: optional call (?.()) on nullable callee not in slice 11 (${cx.funcName})`);
+    }
+    // fall through — treat as a regular call
   }
   // Slice 4 (#1169d): method call — `<recv>.<methodName>(args)`. The
   // receiver must lower to an IrType.class; the method must exist on

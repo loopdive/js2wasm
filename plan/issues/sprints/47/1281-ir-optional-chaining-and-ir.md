@@ -1,7 +1,7 @@
 ---
 id: 1281
 title: "IR: optional chaining `?.` and `?.()` — IR path support"
-status: ready
+status: in-progress
 created: 2026-05-02
 updated: 2026-05-02
 priority: medium
@@ -68,3 +68,51 @@ Chained `a?.b?.c` = nested optional chains — each level adds one null-check + 
 2. `obj?.method(42)` — no-op if obj is null/undefined, calls method otherwise
 3. `tests/issue-1281.test.ts` covers property, method, and chained forms
 4. No regression in property-access tests
+
+## Resolution
+
+The IR's eager-evaluation primitives (no short-circuit `if/else` for property
+access — `emitSelect` evaluates both branches) make a full IR-side null-guarded
+optional chain a substantial addition: it'd require basic-block branching in the
+lowerer or a dedicated `null-safe-get` IR instruction.
+
+This commit takes the pragmatic narrow-but-real win: when the receiver/callee's
+TypeScript type is provably non-nullable (the common case in well-typed code
+where `?.` is used as defensive habit), the IR strips the `?.` and lowers it
+like a regular `.` access. Genuinely nullable receivers (`T | null | undefined`,
+`any`, `unknown`) still throw to the legacy path, where the existing
+`compileOptionalPropertyAccess` / `compileOptionalCallExpression` helpers emit
+the null-guarded `if/else` block that the issue's "Approach" section sketches.
+
+The nullability gate uses `getNonNullableType` plus explicit checks for
+`Null | Undefined | Void | Any | Unknown` and union-member traversal, so
+`a?.b?.c` where the inner `a?.b` types as `T | undefined` (TypeScript adds
+`undefined` to every `?.` result type) correctly falls through to legacy.
+
+Implemented in `src/ir/from-ast.ts`:
+- `lowerPropertyAccess`: gates `?.` on receiver nullability via
+  `isPossiblyNullable`. Non-nullable receivers fall through to the regular
+  property-access lowering. Nullable receivers throw clean fallback.
+- `lowerCall`: same gate for `?.()` — checks the callee's TS type. Non-null
+  callees lower as regular calls; nullable callees throw clean fallback.
+- New helper `isPossiblyNullable(type, checker)` near `staticTypeOfFor`.
+
+## Out of scope (follow-up)
+
+Full short-circuit IR support for nullable receivers — chained `a?.b?.c`
+where the inner `?.b` adds `undefined` to the type — needs structured IR
+control flow (basic-block branching in the lowerer or a `null-safe-get`
+instruction). The legacy fallback covers single-level nullable cases today;
+a separate issue should track full IR support if profile data shows enough
+hot functions are still falling back to legacy because of `?.`.
+
+## Test Results
+
+- `tests/issue-1281.test.ts`: 8/8 pass — covers non-null typed `?.prop`,
+  `?.method()`, class-instance `?.method`, mixed non-null arithmetic,
+  null any-typed receiver fallback, real any-typed receiver fallback, and
+  the regular `.prop` regression guard.
+- `tests/issue-1169n.test.ts` (slice 11 IR regression guard): passes.
+- `tests/issue-1169o.test.ts` (IR fallback warnings): passes.
+- `tests/issue-1169p.test.ts` (IR slice tests): passes.
+- `tests/issue-1169q.test.ts` (IR fallback telemetry): 10/10 pass.
