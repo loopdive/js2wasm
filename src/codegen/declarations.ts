@@ -2718,7 +2718,15 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
           opKind === ts.SyntaxKind.CaretEqualsToken ||
           opKind === ts.SyntaxKind.LessThanLessThanEqualsToken ||
           opKind === ts.SyntaxKind.GreaterThanGreaterThanEqualsToken ||
-          opKind === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken;
+          opKind === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken ||
+          // #1268 — logical-assignment operators (??=, ||=, &&=) are also
+          // assignment ops with side effects; without these, top-level
+          // statements like `d["x"] ??= 42` were silently dropped from
+          // `__module_init`, leaving the LHS uninitialised and reads
+          // returning NaN/undefined.
+          opKind === ts.SyntaxKind.QuestionQuestionEqualsToken ||
+          opKind === ts.SyntaxKind.BarBarEqualsToken ||
+          opKind === ts.SyntaxKind.AmpersandAmpersandEqualsToken;
         if (!isAssignOp) continue;
         const targetName = getAssignmentRootIdentifier(expr.left);
         if (targetName && ctx.moduleGlobals.has(targetName)) {

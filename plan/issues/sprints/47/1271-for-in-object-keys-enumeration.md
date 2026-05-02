@@ -1,7 +1,7 @@
 ---
 id: 1271
 title: "for...in / Object.keys enumeration over compiled objects"
-status: ready
+status: in-progress
 created: 2026-05-02
 updated: 2026-05-02
 priority: high
@@ -13,6 +13,52 @@ language_feature: for-in, Object.keys, enumeration
 goal: npm-library-support
 related: [1244]
 ---
+
+## Implementation note (2026-05-02, dev-1245)
+
+The issue's "throws a compile error or silently skips all keys" claim is
+**stale**. Smoke-testing on origin/main shows all four documented
+patterns work:
+
+```
+for-in over object literal:    OK
+for-in over any-typed object:  OK
+Object.keys(o).length:          OK
+for-in body sees right keys:    OK
+```
+
+The compiler already implements the issue's proposed approach:
+- `compileForInStatement` (loops.ts:3020) emits `__for_in_keys` /
+  `__for_in_len` / `__for_in_get` host imports.
+- `emitStructFieldNamesExport` (index.ts:1199) generates a
+  `__struct_field_names` Wasm export with comma-separated field names
+  per struct type.
+- The runtime's `__for_in_keys` (runtime.ts:3100) calls
+  `_getStructFieldNames` which dispatches through that export.
+- `Object.keys` is compile-time inlined for known struct shapes
+  (object-ops.ts:2051).
+
+**Required for it to work**: the JS host must call
+`imports.setExports(instance.exports)` after instantiation so the
+runtime can dispatch through `__struct_field_names`. This is documented
+in the runtime contract (`buildImports.setExports`) but easy to miss.
+My initial repro returned 0 because I forgot the `setExports` call;
+once added, the for-in returned correct keys.
+
+This PR adds 8 regression tests (`tests/issue-1271.test.ts`):
+- for-in over object literal (typed)
+- for-in over any-typed object
+- Object.keys length
+- for-in body sees correct key strings
+- for-in over empty object (zero iterations)
+- for-in with break (early termination)
+- Object.keys returns string array of correct length
+- nested object: for-in only iterates top-level keys
+
+Treats #1271 as test-only fix — same approach as #1250, #1275, #1276.
+
+---
+
 # #1271 — `for...in` / `Object.keys` enumeration over compiled objects
 
 ## Problem
