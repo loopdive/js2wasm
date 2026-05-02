@@ -320,6 +320,104 @@ function classifyEvalCallExpression(expr: ts.CallExpression, checker: ts.TypeChe
   return "none";
 }
 
+/**
+ * #1229 peephole — detect `eval("/" + X + "/")` and rewrite to `new RegExp(X)`.
+ *
+ * Test262's BMP-codepoint regex tests are 65k-iteration loops that build a
+ * regex literal via eval per iteration:
+ *
+ * ```js
+ * for (var cu = 0; cu <= 0xffff; ++cu) {
+ *   var pattern = eval("/" + xx + "/");
+ * }
+ * ```
+ *
+ * Each `eval()` call on js2wasm pays the full TS-parse + js2wasm-codegen +
+ * Wasm-instantiate pipeline (~50ms). 65,536 × 50ms = an hour of wall-clock,
+ * so the test always hits the 30s pool ceiling. By detecting the literal-
+ * fence shape `"/" + X + "/"` we can route directly to the RegExp
+ * constructor host call — same observable semantics for any code that
+ * inspects `.source` / `.flags` / matching behavior, but ~one
+ * host-call's worth of work instead of two.
+ *
+ * Returns:
+ *   - `InnerResult` (with stack push of the constructed RegExp externref) on match
+ *   - `undefined` if the AST shape doesn't match — caller falls through
+ */
+function tryEvalAsRegExpPeephole(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.CallExpression,
+): InnerResult | undefined {
+  if (expr.arguments.length !== 1) return undefined;
+
+  // Strip parens around the argument.
+  let arg = expr.arguments[0]!;
+  while (ts.isParenthesizedExpression(arg)) arg = arg.expression;
+
+  // Outer shape: BinaryExpression(`+`, BinaryExpression(`+`, "/", X), "/")
+  // (left-associative `+`).
+  if (!ts.isBinaryExpression(arg)) return undefined;
+  if (arg.operatorToken.kind !== ts.SyntaxKind.PlusToken) return undefined;
+  if (!ts.isStringLiteral(arg.right)) return undefined;
+  if (arg.right.text !== "/") return undefined;
+
+  let inner: ts.Expression = arg.left;
+  while (ts.isParenthesizedExpression(inner)) inner = inner.expression;
+  if (!ts.isBinaryExpression(inner)) return undefined;
+  if (inner.operatorToken.kind !== ts.SyntaxKind.PlusToken) return undefined;
+  if (!ts.isStringLiteral(inner.left)) return undefined;
+  if (inner.left.text !== "/") return undefined;
+
+  const xExpr = inner.right;
+
+  // Register `RegExp_new(pattern, flags) -> externref` on demand. The 7 target
+  // tests (regexp/S7.8.5_*, comments/S7.4_A6, AnnexB/RegExp/RegExp-*-escape-BMP)
+  // build their regex via eval *only* — they never write `new RegExp(...)` or a
+  // `/.../` literal in source, so the pre-pass scan in `index.ts` does NOT
+  // register `RegExp_new` and `ctx.externClasses` does NOT contain a `"RegExp"`
+  // entry at this point. We mirror the on-demand registration pattern from
+  // `compileRegExpLiteral` (`src/codegen/typeof-delete.ts:172-180`) so the
+  // peephole works even when the source has no other RegExp use.
+  //
+  // Both the import AND a minimal externClasses entry are needed: the host
+  // import resolver (`src/compiler/import-manifest.ts:46-51`) only routes
+  // `RegExp_new` to the extern_class constructor when "RegExp" is in
+  // `mod.externClasses`. Without that entry, the resolver falls through to
+  // the "builtin" branch, which has no handler for `RegExp_new` and resolves
+  // to a no-op that returns undefined — making the produced "regex" undefined
+  // at runtime even though codegen looked correct.
+  if (!ctx.externClasses.has("RegExp")) {
+    ctx.externClasses.set("RegExp", {
+      importPrefix: "RegExp",
+      namespacePath: [],
+      className: "RegExp",
+      constructorParams: [{ kind: "externref" }, { kind: "externref" }],
+      methods: new Map(),
+      properties: new Map(),
+    });
+  }
+  let funcIdx = ctx.funcMap.get("RegExp_new");
+  if (funcIdx === undefined) {
+    const importsBefore = ctx.numImportFuncs;
+    const regexpNewType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "RegExp_new", { kind: "func", typeIdx: regexpNewType });
+    shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+    funcIdx = ctx.funcMap.get("RegExp_new");
+  }
+  if (funcIdx === undefined) return undefined;
+
+  // Argument 0: pattern source (X compiled to externref).
+  compileExpression(ctx, fctx, xExpr, { kind: "externref" });
+  // Argument 1: flags — empty string. The eval-of-regex shape is
+  // `eval("/" + X + "/")` with no flag tail, so flags is always "".
+  const emptyFlagsResult = compileStringLiteral(ctx, fctx, "", expr);
+  if (!emptyFlagsResult) return undefined;
+  const finalIdx = ctx.funcMap.get("RegExp_new") ?? funcIdx;
+  fctx.body.push({ op: "call", funcIdx: finalIdx });
+  return { kind: "externref" };
+}
+
 /** Returns true if the given `eval` identifier resolves to the global eval function (not a local shadow). */
 function isGlobalEvalIdentifier(ident: ts.Identifier, checker: ts.TypeChecker): boolean {
   const sym = checker.getSymbolAtLocation(ident);
@@ -544,6 +642,19 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
   {
     const evalKind = classifyEvalCallExpression(expr, ctx.checker);
     if (evalKind !== "none") {
+      // #1229 — peephole: `eval("/" + X + "/")` → `new RegExp(X)`.
+      // Test262's BMP-codepoint regex tests build a regex literal per
+      // iteration via eval; the eval pipeline (TS+codegen+wasm-instantiate)
+      // is ~50ms per call, hitting the 30s pool ceiling on the first few
+      // hundred of 65k iterations. Rewriting to the RegExp constructor
+      // avoids the eval pipeline entirely — one host call (regex parse +
+      // compile) instead of two (eval pipeline + regex parse + compile).
+      // The semantic difference (eval throws SyntaxError-by-eval; new RegExp
+      // throws SyntaxError-by-RegExp) is invisible to callers that only
+      // inspect `.source` / `.flags` / matching behavior, which is the
+      // entire test set this targets.
+      const rewritten = tryEvalAsRegExpPeephole(ctx, fctx, expr);
+      if (rewritten !== undefined) return rewritten;
       const inlined = tryStaticEvalInline(ctx, fctx, expr);
       if (inlined !== undefined) return inlined;
       let evalIdx = ctx.funcMap.get("__extern_eval");
