@@ -268,36 +268,6 @@
       "sprint": ""
     },
     {
-      "id": "1250",
-      "title": "logical assignment operators: ||=, &&=, ??= (ES2021)",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "npm-library-support",
-      "status": "ready",
-      "sprint": ""
-    },
-    {
-      "id": "1249",
-      "title": "class private fields and methods (#name syntax) — PrivateIdentifier codegen",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "npm-library-support",
-      "status": "ready",
-      "sprint": ""
-    },
-    {
-      "id": "1248",
-      "title": "compiler: typeof x === 'string' guard breaks String.prototype.substring(start) — returns single char",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "npm-library-support",
-      "status": "ready",
-      "sprint": ""
-    },
-    {
       "id": "1247",
       "title": "compiler: typed string[] local with path.split('/') initializer triggers struct-type mismatch",
       "priority": "medium",
@@ -1790,12 +1760,42 @@
       "sprint": ""
     },
     {
+      "id": "1250",
+      "title": "logical assignment operators: ||=, &&=, ??= (ES2021)",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "done",
+      "sprint": ""
+    },
+    {
+      "id": "1249",
+      "title": "class private fields and methods (#name syntax) — PrivateIdentifier codegen",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "done",
+      "sprint": ""
+    },
+    {
+      "id": "1248",
+      "title": "compiler: typeof x === 'string' guard breaks String.prototype.substring(start) — returns single char",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "done",
+      "sprint": ""
+    },
+    {
       "id": "1245",
       "title": "Investigate #1177 Stage 1 regressions — 59 compile_timeouts + 81 real regressions in PR#125",
       "priority": "high",
       "feasibility": "hard",
       "depends_on": [],
-      "goal": "test-infrastructure",
+      "goal": "test262-conformance",
       "status": "done",
       "sprint": "47"
     },
