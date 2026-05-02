@@ -17267,7 +17267,7 @@
       "title": "WeakMap / WeakSet backed by strong references (lodash memoize / cloneDeep)",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "",
       "depends_on": [],
       "files": [],
@@ -17485,7 +17485,7 @@
       "title": "compileForOfAssignDestructuringExternref must route writes through boxedCaptures.struct.set",
       "priority": "high",
       "status": "ready",
-      "raw_status": "in-progress",
+      "raw_status": "review",
       "sprint": "",
       "depends_on": [],
       "files": [],
@@ -17498,7 +17498,7 @@
       "title": "async-gen yield-star sync-fallback leaks unboxed ref-cell into iter capture",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "",
       "depends_on": [],
       "files": [],
@@ -17511,7 +17511,7 @@
       "title": "Destructuring of null/undefined must throw TypeError per §13.15.5.5",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "review",
       "sprint": "",
       "depends_on": [],
       "files": [],
@@ -17631,6 +17631,261 @@
       "priority": "medium",
       "status": "backlog",
       "raw_status": "backlog",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1268",
+      "title": "index-signature obj[key] ??= value returns NaN instead of assigning",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1269",
+      "title": "struct field inference Phase 3: consumer-side specialization — emit struct.get without unboxing",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "",
+      "depends_on": [
+        "1231"
+      ],
+      "files": [],
+      "goal": "performance",
+      "cluster": "performance"
+    },
+    {
+      "id": "1270",
+      "title": "struct field inference Phase 3b: eliminate null-checks on (ref null $T) locals via peephole",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "",
+      "depends_on": [
+        "1231",
+        "1269"
+      ],
+      "files": [],
+      "goal": "performance",
+      "cluster": "performance"
+    },
+    {
+      "id": "1271",
+      "title": "for...in / Object.keys enumeration over compiled objects",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1272",
+      "title": "Symbol as object key — Symbol.for(), well-known Symbols as property keys",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1273",
+      "title": "instanceof across compilation boundaries",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1274",
+      "title": "Hono Tier 2 stress test: route registration + basic dispatch via TrieRouter",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "",
+      "depends_on": [
+        "1267",
+        "1268"
+      ],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1275",
+      "title": "typeof-guard narrowing for any-typed parameters (untyped JS functions)",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1276",
+      "title": "HOF returning closure — function-valued module exports (createMathOperation pattern)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1277",
+      "title": "CJS module.exports → Wasm export mapping in compileProject",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1278",
+      "title": "Update stale lodash-tier1 stress test — resolver fixed, clamp/add behavior changed",
+      "priority": "low",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1278",
+      "title": "Update stale lodash-tier1 stress test — resolver fixed, clamp/add behavior changed",
+      "priority": "low",
+      "status": "ready",
+      "raw_status": "review",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1279",
+      "title": "CJS require() call support — static module graph via require() analysis",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "",
+      "depends_on": [
+        "1277"
+      ],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1280",
+      "title": "IR selector: claim while/for-loop bodies with typed numeric state",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "performance, npm-library-support",
+      "cluster": "performance, npm-library-support"
+    },
+    {
+      "id": "1281",
+      "title": "IR: optional chaining `?.` and `?.()` — IR path support",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1282",
+      "title": "ESLint Tier 1 stress test — minimal Linter.verify() compilation",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "",
+      "depends_on": [
+        "1277",
+        "1279"
+      ],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1283",
+      "title": "WeakMap host-import dispatch: type-mismatch on set/get/has/delete (carved off from #1242)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1284",
+      "title": "Class-typed values in index-signature dicts lose identity through extern_set/extern_get round-trip",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1285",
+      "title": "Hono Tier 3 stress test — recursive TrieRouter with class-typed Node children",
+      "priority": "high",
+      "status": "blocked",
+      "raw_status": "blocked",
+      "sprint": "",
+      "depends_on": [
+        "1284"
+      ],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1286",
+      "title": "Object.keys(any-typed obj).join() throws illegal cast — externref→string-array coerce missing",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
       "sprint": "",
       "depends_on": [],
       "files": [],
@@ -18408,6 +18663,22 @@
       "target": "1232"
     },
     {
+      "source": "1267",
+      "target": "1274"
+    },
+    {
+      "source": "1268",
+      "target": "1274"
+    },
+    {
+      "source": "1277",
+      "target": "1279"
+    },
+    {
+      "source": "1284",
+      "target": "1285"
+    },
+    {
       "source": "1124",
       "target": "1126"
     },
@@ -18418,6 +18689,26 @@
     {
       "source": "1238",
       "target": "1233"
+    },
+    {
+      "source": "1231",
+      "target": "1269"
+    },
+    {
+      "source": "1231",
+      "target": "1270"
+    },
+    {
+      "source": "1269",
+      "target": "1270"
+    },
+    {
+      "source": "1277",
+      "target": "1282"
+    },
+    {
+      "source": "1279",
+      "target": "1282"
     },
     {
       "source": "321",
@@ -19488,7 +19779,23 @@
         "1248",
         "1249",
         "1250",
-        "1268"
+        "1268",
+        "1268",
+        "1271",
+        "1272",
+        "1273",
+        "1274",
+        "1275",
+        "1276",
+        "1277",
+        "1278",
+        "1278",
+        "1279",
+        "1281",
+        "1282",
+        "1284",
+        "1285",
+        "1286"
       ],
       "track": "supporting track"
     },
@@ -19555,7 +19862,9 @@
         "1262",
         "1263",
         "1264",
-        "1266"
+        "1266",
+        "1269",
+        "1270"
       ],
       "track": "parallel — does not block conformance goals."
     },
@@ -19785,7 +20094,8 @@
         "1177",
         "1229",
         "1240",
-        "1242"
+        "1242",
+        "1283"
       ]
     },
     {
@@ -23459,6 +23769,70 @@
       "issue": "1268"
     },
     {
+      "goal": "npm-library-support",
+      "issue": "1268"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1271"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1272"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1273"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1274"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1275"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1276"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1277"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1278"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1278"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1279"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1281"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1282"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1284"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1285"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1286"
+    },
+    {
       "goal": "observability",
       "issue": "880"
     },
@@ -23637,6 +24011,14 @@
     {
       "goal": "performance",
       "issue": "1266"
+    },
+    {
+      "goal": "performance",
+      "issue": "1269"
+    },
+    {
+      "goal": "performance",
+      "issue": "1270"
     },
     {
       "goal": "platform",
@@ -24405,6 +24787,10 @@
     {
       "goal": "spec-completeness",
       "issue": "1242"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1283"
     },
     {
       "goal": "standalone-mode",
@@ -27329,6 +27715,70 @@
       "issue": "1268"
     },
     {
+      "goal": "core-semantics",
+      "issue": "1268"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1271"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1272"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1273"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1274"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1275"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1276"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1277"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1278"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1278"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1279"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1281"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1282"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1284"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1285"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1286"
+    },
+    {
       "goal": "platform",
       "issue": "111"
     },
@@ -27471,6 +27921,70 @@
     {
       "goal": "platform",
       "issue": "1268"
+    },
+    {
+      "goal": "platform",
+      "issue": "1268"
+    },
+    {
+      "goal": "platform",
+      "issue": "1271"
+    },
+    {
+      "goal": "platform",
+      "issue": "1272"
+    },
+    {
+      "goal": "platform",
+      "issue": "1273"
+    },
+    {
+      "goal": "platform",
+      "issue": "1274"
+    },
+    {
+      "goal": "platform",
+      "issue": "1275"
+    },
+    {
+      "goal": "platform",
+      "issue": "1276"
+    },
+    {
+      "goal": "platform",
+      "issue": "1277"
+    },
+    {
+      "goal": "platform",
+      "issue": "1278"
+    },
+    {
+      "goal": "platform",
+      "issue": "1278"
+    },
+    {
+      "goal": "platform",
+      "issue": "1279"
+    },
+    {
+      "goal": "platform",
+      "issue": "1281"
+    },
+    {
+      "goal": "platform",
+      "issue": "1282"
+    },
+    {
+      "goal": "platform",
+      "issue": "1284"
+    },
+    {
+      "goal": "platform",
+      "issue": "1285"
+    },
+    {
+      "goal": "platform",
+      "issue": "1286"
     },
     {
       "goal": "core-semantics",
@@ -27639,6 +28153,14 @@
     {
       "goal": "core-semantics",
       "issue": "1266"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1269"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1270"
     },
     {
       "goal": "standalone-mode",
@@ -28409,6 +28931,10 @@
       "issue": "1242"
     },
     {
+      "goal": "async-model",
+      "issue": "1283"
+    },
+    {
       "goal": "symbol-protocol",
       "issue": "10"
     },
@@ -28785,6 +29311,10 @@
       "issue": "1242"
     },
     {
+      "goal": "symbol-protocol",
+      "issue": "1283"
+    },
+    {
       "goal": "builtin-methods",
       "issue": "10"
     },
@@ -29161,6 +29691,10 @@
       "issue": "1242"
     },
     {
+      "goal": "builtin-methods",
+      "issue": "1283"
+    },
+    {
       "goal": "property-model",
       "issue": "10"
     },
@@ -29535,6 +30069,10 @@
     {
       "goal": "property-model",
       "issue": "1242"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1283"
     },
     {
       "goal": "iterator-protocol",
