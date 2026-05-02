@@ -133,13 +133,22 @@ export const LATTICE_UNION_MAX_MEMBERS = 4;
 export const LATTICE_OBJECT_SHAPE_MAX_DEPTH = 3;
 
 /**
- * Phase 1 of #1231 is gated behind an env flag — when unset, object
- * literals and property accesses still infer to `dynamic` (the original
- * behaviour) so unannotated functions stay on the legacy boxed path.
- * Re-evaluated on every call so vitest can flip the flag per-test.
+ * #1231 Phase 2 — object-shape inference is **enabled by default** as of
+ * this graduation. The env var stays as an emergency opt-out: setting
+ * `JS2WASM_IR_OBJECT_SHAPES=0` reverts to the legacy boxed-externref
+ * path so a regression can be hot-fixed without redeploying the
+ * compiler. `JS2WASM_IR_OBJECT_SHAPES=1` (or unset) keeps the new
+ * behaviour. Re-evaluated on every call so vitest can flip the flag
+ * per-test.
+ *
+ * History: Phase 1 (PR #143) shipped behind the gate as opt-IN.
+ * Phase 2 (this PR) graduates the gate after local equivalence /
+ * IR / object-tests showed identical pass/fail counts with the flag
+ * on vs. off — i.e. no observable regressions. CI's test262 sharded
+ * run is the authoritative arbiter for conformance numbers.
  */
 function objectShapesEnabled(): boolean {
-  return process.env.JS2WASM_IR_OBJECT_SHAPES === "1";
+  return process.env.JS2WASM_IR_OBJECT_SHAPES !== "0";
 }
 
 export interface TypeMapEntry {
@@ -445,6 +454,15 @@ function inferExpr(
   }
   if (ts.isNumericLiteral(expr)) return F64;
   if (expr.kind === ts.SyntaxKind.TrueKeyword || expr.kind === ts.SyntaxKind.FalseKeyword) return BOOL;
+  // #1231 Phase 2 — string-typed argument literals (e.g.
+  // `createUser("Alice", 30)`) seed the callee's param atom as STRING
+  // so the typed-shape lattice can build mixed-type structs like
+  // `{name: string, age: f64}`. Without this, the literal infers to
+  // DYNAMIC and the receiving param widens too. Template literals
+  // without substitutions (`\`hello\``) tokenise as
+  // NoSubstitutionTemplateLiteral and are equivalent to a string
+  // literal at this layer.
+  if (ts.isStringLiteral(expr) || expr.kind === ts.SyntaxKind.NoSubstitutionTemplateLiteral) return STRING;
   if (ts.isIdentifier(expr)) {
     return scope.get(expr.text) ?? DYNAMIC;
   }
