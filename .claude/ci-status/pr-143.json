@@ -1,0 +1,19 @@
+{
+  "pr": 143,
+  "conclusion": "failure",
+  "head_branch": "issue-1231-struct-field-inference",
+  "head_sha": "f96f9863d38eb4b11d776f889cec334b2810e3a5",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25240611484",
+  "timestamp": "2026-05-02T01:46:11Z",
+  "pass": 26051,
+  "fail": 13874,
+  "compile_error": 1748,
+  "snapshot_delta": -8,
+  "net_per_test": -11,
+  "regressions": 71,
+  "regressions_real": 27,
+  "regressions_wasm_change": 27,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 44,
+  "improvements": 60
+}
