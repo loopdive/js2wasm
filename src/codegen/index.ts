@@ -771,10 +771,20 @@ export function generateModule(
         } catch (e) {
           // Selector claimed a function whose types can't be resolved —
           // skip the IR path for this one. Fall through to legacy.
-          reportErrorNoNode(
-            ctx,
-            `IR path: could not resolve types for ${name}: ${e instanceof Error ? e.message : String(e)}`,
-          );
+          //
+          // Slice 12 (#1169o) — emit as severity "warning" not "error".
+          // The legacy path has already produced a working `body` for this
+          // function; the type-resolution failure here just means we
+          // couldn't BUILD the IR override map for it. The resulting Wasm
+          // is identical to a non-experimentalIR build, so test262
+          // shouldn't classify the test as compile_error. (Same rationale
+          // as the post-compileIrPathFunctions site below.)
+          ctx.errors.push({
+            message: `IR path: could not resolve types for ${name}: ${e instanceof Error ? e.message : String(e)}`,
+            line: 0,
+            column: 0,
+            severity: "warning",
+          });
         }
       }
       // Only request IR compilation for functions we successfully built
