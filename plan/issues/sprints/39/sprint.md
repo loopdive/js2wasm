@@ -161,7 +161,7 @@ Skip:    1,313
 <!-- GENERATED_ISSUE_TABLES_START -->
 ## Issue Tables
 
-_Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
+_Generated from issue files. Update issue `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
 
 ### Done
 

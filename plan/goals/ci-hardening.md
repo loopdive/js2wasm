@@ -44,34 +44,46 @@ and hide real ones.
 | **967** | Array.prototype.some/every/map not resolving after #799 prototype chain (30 tests) | 38 | done | high |
 | **982** | Extract performance benchmark chart into a reusable web component | 40 | done | medium |
 | **1001** | Preallocate counted number[] push loops into dense WasmGC arrays | 42 | done | medium |
-| **1001** | Preallocate counted number[] push loops into dense WasmGC arrays | 45 | ready | medium |
 | **1005** | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | 42 | done | medium |
-| **1005** | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | 45 | ready | medium |
 | **1026** | String.prototype / Number.prototype / Boolean.prototype globals access | 40 | done | medium |
 | **1063** | createMathOperation closure ref — lodash math ops (inliner shared-instr + externref callee) | 41 | done | high |
 | **1064** | DataView bridge: subview metadata so bounds errors propagate | 40 | done | medium |
 | **1065** | Register `Array` as declared global so `x.constructor === Array` compares real refs | 40 | done | medium |
 | **1067** | Dependency graph as a web component adopting the landing page color scheme | 42 | done | medium |
-| **1067** | Dependency graph as a web component adopting the landing page color scheme | 45 | ready | medium |
 | **1076** | CI: split merge job into merge-report + regression-gate so push-to-main always refreshes baseline | 45 | done | critical |
-| **1077** | CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy | 42 | done | high |
 | **1077** | CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy | 45 | done | high |
 | **1078** | CI: emergency baseline-refresh workflow_dispatch — discoverable and unconditional promotion | 45 | done | medium |
 | **1079** | CI: baseline age stamp + SHA on landing page — make drift observable before crisis | 45 | done | medium |
 | **1080** | [umbrella] Fix CI baseline-drift regression gate — main is not self-healing | 45 | done | critical |
 | **1081** | Index test262 runs by commit hash — enable merge-base comparisons without re-running | Backlog | ready | critical |
 | **1082** | ci-status-feed delta is absolute snapshot not per-test regression — lies to dev-self-merge gate | 40 | done | critical |
-| **1083** | codegen: extras-forward call sites recompile trailing args after emitSetExtrasArgv — double codegen + duplicate module registrations | Backlog | ready | low |
 | **1083** | codegen: extras-forward call sites recompile trailing args after emitSetExtrasArgv — double codegen + duplicate module registrations |  | wont-fix | low |
 | **1084** | compileCount bypass in compiler-fork-worker.mjs — RECREATE never fires when errors dominate a chunk | 40 | done | critical |
 | **1106** | CI baseline-refresh bot wipes plan/ and .claude/memory/ on every run | 42 | done | high |
 | **1117** | Expected TypeError but got wrong error type (136 tests) | 42 | done | medium |
+| **1167a** | IR Phase 3a — hygiene passes: constant-fold, dead-code, simplify-cfg | 44 | done | high |
+| **1169b** | IR Phase 4 Slice 2 — object literals and property access through IR path | 45 | done | high |
+| **1169c** | IR Phase 4 Slice 3 — closures (captures, ref cells, transitive captures) through the IR path | 45 | done | high |
 | **1170** | Move test262 baselines out of Git LFS — eliminate LFS dependency from CI | 45 | done | high |
 | **1171** | Fix test262 timeout non-determinism — raise testTimeout to 30s, bust CI cache on config change | 45 | done | high |
+| **1182** | IR Phase 4 Slice 6 part 3 — host iterator protocol through the IR (`iter.*` instrs, Map/Set/generator iteration) | 45 | done | medium |
+| **1188** | Setup js2.loopdive.com custom domain for GitHub Pages | 46 | done | medium |
 | **1189** | ci(test262): residual cross-PR regression overlap (~95%) from runner-load CT noise — not cache staleness | 46 | wont-fix | medium |
 | **1190** | research: eliminate CI test262 baseline drift (umbrella for #1189, #1191, #1192) | 46 | done | high |
 | **1191** | ci(test262): committed baseline (test262-current.jsonl) is 1634 tests behind reality — refresh + automate | 45 | done | medium |
 | **1192** | ci(self-merge): exclude compile_timeout transitions from regression count (runner noise) | 45 | done | medium |
+| **1207** | perf(test262): root-cause and fix the 136 compile_timeout tests (~7.6 min wall-clock cost per run) | 47 | done | high |
+| **1213** | ci: refresh-benchmarks workflow fails on every PR — looks for sidebar baseline at gitignored path | 46 | done | medium |
+| **1214** | ci: playground benchmark baseline doesn't survive on CI runners — wasm/js timing 4x off committed numbers | 46 | done | medium |
+| **1216** | ci: auto-commit playground benchmark baseline on push-to-main (architectural follow-up to #1214) | 47 | done | medium |
+| **1217** | ci(test262): smoke-canary — re-run main HEAD twice with fresh cache, fail if flip rate > 0 | 46 | done | medium |
+| **1221** | test262-worker: outer catches misclassify WebAssembly.Exception as compile_error — fix harness to reclassify as fail (~256 flaky tests) | 46 | done | high |
+| **1222** | ci: wasm-hash noise filter — exclude byte-identical regressions from PR gate | 47 | done | high |
+| **1234** | Array.prototype.{unshift,reverse,forEach,…} on non-Array receivers iterate [0, length) instead of defined props | 47 | done | medium |
+| **1235** | ci: prevent baseline drift false-positive regressions after admin-merges | 47 | ready | high |
+| **1239** | object literals with GetAccessor/SetAccessor — route to __defineProperty_accessor + force-externref var tagging | Backlog | ready | medium |
+| **1246** | ci: differential test262 — compare branch tip vs main HEAD with src-tree-hash caching | 47 | ready | high |
+| **1251** | baseline-validate: TS checker non-determinism causes 19/50 false failures on main JSONL | 47 | ready | medium |
 
 <!-- AUTOGENERATED:GOAL-ISSUES-END -->
 

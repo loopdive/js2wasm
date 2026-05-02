@@ -100,12 +100,15 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1229 | perf: eval(literal) and new RegExp(literal) re-compile every iteration in 65k-loop tests | medium | ready |
-| #1232 | IR Phase 4 Slice 13c — String fixed-signature methods through IR | high | ready |
 | #1235 | ci: prevent baseline drift false-positive regressions after admin-merges | high | ready |
-| #1238 | IR Phase 4 Slice 13b — pseudo-ExternClassInfo registration for String + Array | high | ready |
 | #1244 | npm stress test: compile Hono web framework to Wasm | high | ready |
-| #1245 | Investigate #1177 Stage 1 regressions — 59 compile_timeouts + 81 real regressions in PR#125 | high | ready |
 | #1246 | ci: differential test262 — compare branch tip vs main HEAD with src-tree-hash caching | high | ready |
+| #1247 | compiler: typed string[] local with path.split('/') initializer triggers struct-type mismatch | medium | ready |
+| #1248 | compiler: typeof x === 'string' guard breaks String.prototype.substring(start) — returns single char | medium | ready |
+| #1251 | baseline-validate: TS checker non-determinism causes 19/50 false failures on main JSONL | medium | ready |
+| #1258 | compileForOfAssignDestructuringExternref must route writes through boxedCaptures.struct.set | high | ready |
+| #1259 | async-gen yield-star sync-fallback leaks unboxed ref-cell into iter capture | high | ready |
+| #1260 | Destructuring of null/undefined must throw TypeError per §13.15.5.5 | high | ready |
 
 ### In Progress
 
@@ -135,6 +138,11 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | #1226 | class/elements: static async private method produces invalid Wasm — call missing argument (~104 tests) | high | done |
 | #1227 | fix(runner): compiler-pool timeout starts at enqueue time, not dispatch time — causes 156 false compile_timeouts | high | done |
 | #1228 | IR selector widening: accept void return + any params | high | done |
+| #1232 | IR Phase 4 Slice 13c — String fixed-signature methods through IR | high | done |
 | #1234 | Array.prototype.{unshift,reverse,forEach,…} on non-Array receivers iterate [0, length) instead of defined props | medium | done |
+| #1238 | IR Phase 4 Slice 13b — pseudo-ExternClassInfo registration for String + Array | high | done |
+| #1245 | Investigate #1177 Stage 1 regressions — 59 compile_timeouts + 81 real regressions in PR#125 | high | done |
+| #1249 | class private fields and methods (#name syntax) — PrivateIdentifier codegen | medium | done |
+| #1250 | logical assignment operators: \|\|=, &&=, ??= (ES2021) | medium | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->

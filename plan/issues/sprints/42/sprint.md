@@ -302,7 +302,7 @@ At the end of Sprint 42:
 <!-- GENERATED_ISSUE_TABLES_START -->
 ## Issue Tables
 
-_Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
+_Generated from issue files. Update issue `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
 
 ### In Progress
 
@@ -314,14 +314,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
-| #907 | Replace __init_done runtime guards with start/init entry semantics | high | done |
 | #990 | Remaining early-error gaps after detectEarlyErrors(): reserved words, module grammar, using, ASI | high | done |
-| #991 | Iterator helper generator-reentrancy tests hit 30s compiler timeout | high | done |
-| #992 | Iterator.prototype.take limit-less-than-total hits 30s compiler timeout | medium | done |
-| #993 | Legacy try-statement tests S12.14_A9/A11/A12_T3 hit 30s compiler timeout | high | done |
-| #994 | Class static-private-getter test hits 30s compiler timeout | medium | done |
-| #995 | String.prototype.localeCompare 15.5.4.9_CE hits 30s compiler timeout | low | done |
-| #996 | Array.prototype.toSorted comparefn-not-a-function hits 30s compiler timeout | low | done |
 | #1001 | Preallocate counted number[] push loops into dense WasmGC arrays | medium | done |
 | #1005 | Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js | medium | done |
 | #1006 | Support eval via JS host import | medium | done |
@@ -334,7 +327,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1067 | Dependency graph as a web component adopting the landing page color scheme | medium | done |
 | #1071 | codegen: for-of requires an array expression — blocks iteration over Map/Set/iterator in bundled JS | high | done |
 | #1073 | Scope injection for __extern_eval — pass harness environment bag to preserve caller-visible identifiers | high | done |
-| #1077 | CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy | high | done |
 | #1088 | test262: assertion location diagnostic misses verifyProperty/verifyEqualTo — 273 tests report 'found 0 asserts in source' | medium | done |
 | #1094 | Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime | high | done |
 | #1097 | Remove stale import-helper generator path in compiler/output.ts | low | done |

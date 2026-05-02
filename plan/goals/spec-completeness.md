@@ -85,42 +85,35 @@ pass rate goes from "good" to "excellent."
 | **965** | Prototype chain null access on static methods (71 tests) and broken Array methods (28 tests) | 38 | done | high |
 | **988** | FinalizationRegistry constructor unsupported in official-scope tests (23 CE) | 40 | done | low |
 | **1006** | Support eval via JS host import | 42 | done | medium |
-| **1006** | Support eval via JS host import | 45 | ready | medium |
-| **1020** | await-using TDZ tests: null_deref crash in assert_throwsAsync (4 false positives) | Backlog | backlog | medium |
+| **1020** | await-using TDZ tests: null_deref crash in assert_throwsAsync (4 false positives) | Backlog | ready | medium |
 | **1028** | TypedArray.prototype.toLocaleString null/undefined in element toLocaleString path | 40 | done | medium |
 | **1037** | Symbol.dispose / Symbol.asyncDispose not accessible (30 FAIL) | 42 | done | medium |
 | **1047** | Instance fields leak onto prototype via _wrapForHost struct-field enumeration | 42 | done | high |
 | **1050** | annexB: Extension not observed when variable binding would produce early error | 40 | done | medium |
 | **1054** | Derived class indirect-eval supercall does not throw SyntaxError | 40 | done | medium |
 | **1073** | Scope injection for __extern_eval — pass harness environment bag to preserve caller-visible identifiers | 42 | done | high |
-| **1073** | Scope injection for __extern_eval — pass harness environment bag to preserve caller-visible identifiers | 45 | ready | high |
 | **1094** | Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime | 42 | done | high |
-| **1094** | Shrink runtime.ts host boundary — compile-away JS semantics currently in sidecar runtime | 45 | ready | high |
 | **1100** | Wasm-native Proxy: meta-object protocol without JS host | Backlog | ready | medium |
 | **1101** | Wasm-native WeakRef and FinalizationRegistry via WasmGC weak references | Backlog | ready | low |
 | **1102** | Wasm-native eval: ahead-of-time compilation strategy for eval() and Function() | Backlog | ready | medium |
 | **1118** | Worker/timeout exits and eval-code null deref (182 tests) | 47 | done | medium |
-| **1136** | Array.prototype.flat() and flatMap() not implemented | 42 | done | medium |
-| **1137** | ES2023 array methods: toReversed, toSorted, toSpliced, with — not implemented | 42 | done | medium |
-| **1138** | Destructuring: unresolvable defaults throw ReferenceError instead of being undefined | 42 | done | high |
-| **1139** | Destructuring: TypeError not thrown on null/undefined source (RequireObjectCoercible) | 42 | done | high |
+| **1123** | Verify landing page claims and code examples against current compiler behavior | 42 | done | high |
+| **1125** | Add ComponentizeJS-based StarlingMonkey benchmark setup with Wizer and Weval | 45 | done | high |
+| **1135** | `__make_iterable` breaks Wasm-to-Wasm vec→externref destructuring after setExports | 45 | done | high |
 | **1140** | Array methods .call() with array-like receiver not supported | 42 | done | medium |
-| **1141** | Object.defineProperties: descriptor shape not validated per ECMA-262 §10.1 | 42 | done | medium |
-| **1142** | Class method .call()/.apply() missing brand-check on thisArg | 42 | done | medium |
 | **1144** | Static class elements: this.#priv access inside static methods uses wrong receiver | 42 | done | medium |
-| **1146** | for-of: nested rest binding patterns not decoded (825 ary-rest-rest cluster) | 42 | done | medium |
 | **1148** | Investigate skip:103 regression — Annex B eval-code skip filter | 44 | done | high |
 | **1149** | Fix null_deref:32 — eval-code direct methods with arguments declare | 44 | done | high |
-| **1150** | Fix runtime_error:26 + type_error:7 + oob:5 — async destructuring regressions | 44 | done | high |
-| **1151** | Async function synchronous throws bypass Promise.reject wrapping | Backlog | ready | high |
-| **1154** | test262 worker: Array.prototype poisoning leaks into TypeScript compiler — Array.from fails at compile time (~378 test262 regressions) | Backlog | ready | high |
-| **1156** | Array.prototype method-as-value called with non-function arg produces 'number N is not a function' (~164 tests) | 44 | done | medium |
 | **1157** | RegExp constructor called with flags='undefinedy' from String.prototype method paths (~288 test262 regressions) | 47 | done | high |
 | **1160** | Array.from codegen error — test262-worker prototype poisoning leak (730 tests) | 44 | done | high |
-| **1161** | Cannot destructure null/undefined in private class method params (~429 dstr tests) | 44 | done | high |
 | **1162** | yield* async — unexpected undefined AST node in compileExpression (~161 tests) | 44 | done | high |
-| **1163** | Static eval inlining — compile eval(\\\"fixed string\\\") at compile time (~208 tests) | 44 | done | high |
+| **1163** | Static eval inlining — compile eval(\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\"fixed string\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\") at compile time (~208 tests) | 44 | done | high |
 | **1164** | Dynamic eval via JS host import — compile eval string to ad-hoc Wasm module (~416 tests) | 45 | done | medium |
+| **1165** | Track Wasm JIT interface proposal (func.new) — native runtime codegen | Backlog | ready | medium |
+| **1177** | TDZ propagation through closure captures — fix ReferenceError on pre-declaration capture | 45 | done | high |
+| **1229** | perf: eval(literal) and new RegExp(literal) re-compile every iteration in 65k-loop tests | 47 | ready | medium |
+| **1240** | perf: per-iteration eval compile budget for `comments/S7.4_A6.js` (still ~25s with #1229 cache) | Backlog | ready | low |
+| **1242** | WeakMap / WeakSet backed by strong references (lodash memoize / cloneDeep) | 48 | ready | high |
 
 <!-- AUTOGENERATED:GOAL-ISSUES-END -->
 

@@ -229,7 +229,7 @@ middle-end optimization pipeline. IR path is currently gated behind `isPhase1Exp
 <!-- GENERATED_ISSUE_TABLES_START -->
 ## Issue Tables
 
-_Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
+_Generated from issue files. Update issue `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
 
 ### Ready
 
@@ -253,7 +253,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1160 | Array.from codegen error — test262-worker prototype poisoning leak (730 tests) | high | done |
 | #1161 | Cannot destructure null/undefined in private class method params (~429 dstr tests) | high | done |
 | #1162 | yield* async — unexpected undefined AST node in compileExpression (~161 tests) | high | done |
-| #1163 | Static eval inlining — compile eval(\"fixed string\") at compile time (~208 tests) | high | done |
+| #1163 | Static eval inlining — compile eval(\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\"fixed string\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\") at compile time (~208 tests) | high | done |
 | #1167a | IR Phase 3a — hygiene passes: constant-fold, dead-code, simplify-cfg | high | done |
 | #1167b | IR Phase 3b — inline-small: inline direct IR calls before lowering | medium | done |
 | #1167c | IR Phase 3c — monomorphize + tagged-unions (blocked on frontend widening) | high | done |
