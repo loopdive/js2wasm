@@ -100,12 +100,8 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
-| #1243 | for...in / Object.keys enumeration of compiled-object properties (lodash Tier 3) | high | ready |
-| #1268 | index-signature obj[key] ??= value returns NaN instead of assigning | medium | ready |
 | #1278 | Update stale lodash-tier1 stress test — resolver fixed, clamp/add behavior changed | low | ready |
-| #1279 | CJS require() call support — static module graph via require() analysis | high | ready |
-| #1283 | WeakMap host-import dispatch: type-mismatch on set/get/has/delete (carved off from #1242) | high | ready |
-| #1284 | Class-typed values in index-signature dicts lose identity through extern_set/extern_get round-trip | high | ready |
+| #1281 | IR: optional chaining `?.` and `?.()` — IR path support | medium | ready |
 | #1286 | Object.keys(any-typed obj).join() throws illegal cast — externref→string-array coerce missing | medium | ready |
 
 ### In Progress
@@ -113,6 +109,7 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1242 | WeakMap / WeakSet backed by strong references (lodash memoize / cloneDeep) | high | in-progress |
+| #1243 | for...in / Object.keys enumeration of compiled-object properties (lodash Tier 3) | high | in-progress |
 | #1251 | baseline-validate: TS checker non-determinism causes 19/50 false failures on main JSONL | medium | in-progress |
 | #1259 | async-gen yield-star sync-fallback leaks unboxed ref-cell into iter capture | high | in-progress |
 | #1267 | optimizer: method calls in expression-statement position silently dropped when return value unused | high | in-progress |
@@ -120,6 +117,10 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | #1272 | Symbol as object key — Symbol.for(), well-known Symbols as property keys | medium | in-progress |
 | #1273 | instanceof across compilation boundaries | medium | in-progress |
 | #1276 | HOF returning closure — function-valued module exports (createMathOperation pattern) | high | in-progress |
+| #1277 | CJS module.exports → Wasm export mapping in compileProject | medium | in-progress |
+| #1279 | CJS require() call support — static module graph via require() analysis | high | in-progress |
+| #1283 | WeakMap host-import dispatch: type-mismatch on set/get/has/delete (carved off from #1242) | high | in-progress |
+| #1284 | Class-typed values in index-signature dicts lose identity through extern_set/extern_get round-trip | high | in-progress |
 
 ### Review
 
@@ -164,6 +165,7 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | #1248 | compiler: typeof x === 'string' guard breaks String.prototype.substring(start) — returns single char | medium | done |
 | #1249 | class private fields and methods (#name syntax) — PrivateIdentifier codegen | medium | done |
 | #1250 | logical assignment operators: \|\|=, &&=, ??= (ES2021) | medium | done |
+| #1268 | index-signature obj[key] ??= value returns NaN instead of assigning | medium | done |
 | #1274 | Hono Tier 2 stress test: route registration + basic dispatch via TrieRouter | high | done |
 | #1275 | typeof-guard narrowing for any-typed parameters (untyped JS functions) | high | done |
 

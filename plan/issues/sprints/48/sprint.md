@@ -82,9 +82,7 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | #1241 | Untitled |  | ready |
 | #1269 | struct field inference Phase 3: consumer-side specialization — emit struct.get without unboxing | medium | ready |
 | #1270 | struct field inference Phase 3b: eliminate null-checks on (ref null $T) locals via peephole | medium | ready |
-| #1277 | CJS module.exports → Wasm export mapping in compileProject | medium | ready |
 | #1280 | IR selector: claim while/for-loop bodies with typed numeric state | medium | ready |
-| #1281 | IR: optional chaining `?.` and `?.()` — IR path support | medium | ready |
 | #1282 | ESLint Tier 1 stress test — minimal Linter.verify() compilation | medium | ready |
 
 <!-- GENERATED_ISSUE_TABLES_END -->
