@@ -20,8 +20,6 @@ on:
       - "src/**"
       - "scripts/validate-test262-baseline.ts"
       - ".github/workflows/test262-baseline-validate.yml"
-  push:
-    branches: [main]
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
