@@ -5676,7 +5676,7 @@ function externMethod(
  * are available for extern class method dispatch even when lib file scanning fails
  * (e.g., bundled/browser environments where readLibFile returns empty strings).
  */
-function registerBuiltinExternClasses(ctx: CodegenContext): void {
+export function registerBuiltinExternClasses(ctx: CodegenContext): void {
   // Set methods — all take (self: externref, ...args: externref) → externref
   if (!ctx.externClasses.has("Set")) {
     const methods = new Map<string, { params: ValType[]; results: ValType[]; requiredParams: number }>();
@@ -5872,12 +5872,160 @@ function registerBuiltinExternClasses(ctx: CodegenContext): void {
     });
   }
 
+  // #1238 — synthetic ExternClassInfo for String and Array.
+  //
+  // String and Array are JS built-ins, not declared classes (`declare class
+  // String { ... }` doesn't appear in user source — they're skipped by
+  // `BUILTIN_SKIP` in `collectExternFromDeclareVar`). To let the IR's
+  // `lowerMethodCall` / `lowerPropertyAccess` dispatch through the existing
+  // extern-class registry path (instead of growing more hardcoded special
+  // cases), we register pseudo-`ExternClassInfo` entries here. The
+  // method/property metadata mirrors the legacy `STRING_METHODS` table
+  // (`src/codegen/index.ts:3058`) and the array prototype-method dispatch
+  // in `src/codegen/array-methods.ts`.
+  //
+  // **Scope of this slice (#1238)**: registry-only. The lookup helper
+  // `resolveMethodDispatchTarget` (exported below) reads receiver IrTypes
+  // and returns a className for the registry — but the actual receiver-
+  // type widening (string → IrType.extern, vec → IrType.extern) and
+  // dispatch routing through `extern.call` / `extern.prop` are deferred
+  // to #1232 (String) and #1233 (Array). The registry exists today so
+  // those follow-up slices can land without re-implementing the
+  // synthetic table.
+  //
+  // **MLIR seam alignment** (per #1231 Phase 2 design note): the registry
+  // itself is a static table (this function is the entry point — no IR
+  // node mutations, no ambient maps). Only the lookup will be TypeMap-
+  // keyed when 1232/1233 wire it up via `resolveMethodDispatchTarget`.
+  if (!ctx.externClasses.has("String")) {
+    const methods = new Map<string, { params: ValType[]; results: ValType[]; requiredParams: number }>();
+    // Mirror STRING_METHODS in src/codegen/index.ts:3058. The extern-class
+    // method-signature shape is `[receiver, ...args] -> [result]`, so we
+    // prepend an externref self-param to each signature. We restrict to
+    // the methods listed in the #1238 spec (slice/charAt/charCodeAt/
+    // indexOf/includes/toUpperCase/toLowerCase/trim) plus `length` as a
+    // property — additional STRING_METHODS entries can be added as the
+    // dispatch routing in #1232 covers them.
+    const SELF: ValType = { kind: "externref" };
+    const methodEntry = (
+      params: readonly ValType[],
+      result: ValType,
+    ): {
+      params: ValType[];
+      results: ValType[];
+      requiredParams: number;
+    } => ({
+      params: [SELF, ...params],
+      results: [result],
+      requiredParams: 1 + params.length,
+    });
+    methods.set("slice", methodEntry([{ kind: "f64" }, { kind: "f64" }], { kind: "externref" }));
+    methods.set("charAt", methodEntry([{ kind: "f64" }], { kind: "externref" }));
+    methods.set("charCodeAt", methodEntry([{ kind: "f64" }], { kind: "f64" }));
+    methods.set("indexOf", methodEntry([{ kind: "externref" }, { kind: "externref" }], { kind: "f64" }));
+    methods.set("includes", methodEntry([{ kind: "externref" }], { kind: "i32" }));
+    methods.set("toUpperCase", methodEntry([], { kind: "externref" }));
+    methods.set("toLowerCase", methodEntry([], { kind: "externref" }));
+    methods.set("trim", methodEntry([], { kind: "externref" }));
+
+    // String.length is f64-typed in JS engine semantics (Number, not
+    // i32). Read-only — `(str).length = N` is a no-op in JS, but we
+    // mark `readonly: true` so any future write attempts cleanly fall
+    // back to legacy.
+    const properties = new Map<string, { type: ValType; readonly: boolean }>();
+    properties.set("length", { type: { kind: "f64" }, readonly: true });
+
+    ctx.externClasses.set("String", {
+      importPrefix: "string", // matches the legacy `string_<method>` host imports
+      namespacePath: [],
+      className: "String",
+      constructorParams: [{ kind: "externref" }], // new String(value) — accepts any
+      methods,
+      properties,
+    });
+  }
+
+  if (!ctx.externClasses.has("Array")) {
+    const methods = new Map<string, { params: ValType[]; results: ValType[]; requiredParams: number }>();
+    // Array methods are parametric in the element type — the registry
+    // here uses externref for value-shaped receivers and args, which is
+    // correct for the JS-host fast path. The vec-specialised lowerings
+    // (#1233) will inspect the actual vec element type at dispatch time
+    // and route to the typed `vec.*` ops; this entry is the fallback
+    // metadata the IR uses to recognise the method exists.
+    const SELF: ValType = { kind: "externref" };
+    const methodEntry = (
+      params: readonly ValType[],
+      result: ValType | null,
+    ): { params: ValType[]; results: ValType[]; requiredParams: number } => ({
+      params: [SELF, ...params],
+      results: result === null ? [] : [result],
+      requiredParams: 1 + params.length,
+    });
+    methods.set("push", methodEntry([{ kind: "externref" }], { kind: "f64" })); // returns new length
+    methods.set("pop", methodEntry([], { kind: "externref" }));
+    methods.set("indexOf", methodEntry([{ kind: "externref" }, { kind: "externref" }], { kind: "f64" }));
+    methods.set("includes", methodEntry([{ kind: "externref" }], { kind: "i32" }));
+    methods.set("slice", methodEntry([{ kind: "f64" }, { kind: "f64" }], { kind: "externref" }));
+    methods.set("join", methodEntry([{ kind: "externref" }], { kind: "externref" }));
+
+    // Array.length — like String.length, f64-typed in JS engine
+    // semantics. **Not** readonly (JS allows `arr.length = 0` to truncate),
+    // but #1238 marks it read-only for now; the writable arm is a future
+    // enhancement covered by #1233 if needed.
+    const properties = new Map<string, { type: ValType; readonly: boolean }>();
+    properties.set("length", { type: { kind: "f64" }, readonly: true });
+
+    ctx.externClasses.set("Array", {
+      importPrefix: "array",
+      namespacePath: [],
+      className: "Array",
+      constructorParams: [{ kind: "f64" }], // new Array(length)
+      methods,
+      properties,
+    });
+  }
+
   // Set Object as terminal parent for any extern class that has no parent
   for (const [className] of ctx.externClasses) {
     if (className !== "Object" && !ctx.externClassParent.has(className)) {
       ctx.externClassParent.set(className, "Object");
     }
   }
+}
+
+/**
+ * #1238 — TypeMap-keyed receiver-type → extern className lookup. Given an
+ * `IrType` resolved from the propagator's `TypeMap`, return the className
+ * of the matching synthetic extern class (or `null` if no match).
+ *
+ * This is the **MLIR-seam-friendly** dispatch helper: callers route
+ * receiver IrTypes here instead of pattern-matching `atom.kind ===
+ * "string"` inline. A future MLIR optimizer producing the same `IrType`
+ * shape would hit the same lookup, unchanged.
+ *
+ * Returns:
+ *   - `"String"` for `IrType.string` and `IrType.val<externref>`
+ *     (the externref arm covers post-#1169i extern-tagged strings)
+ *   - `"Array"` for `IrType.val<ref|ref_null>` whose typeIdx points at
+ *     a registered vec type (callers must check via their vec resolver)
+ *   - `null` for anything else (including primitives, classes, objects)
+ *
+ * Note: the array path is only metadata. Confirming the receiver IS a
+ * vec (vs. a generic ref) requires the lowerer's vec resolver — this
+ * helper just identifies the target className so the lowerer can pick
+ * which extern entry to consult.
+ */
+export function resolveMethodDispatchTarget(t: import("../ir/nodes.js").IrType): "String" | "Array" | null {
+  if (t.kind === "string") return "String";
+  if (t.kind === "val") {
+    const v = t.val;
+    if (v.kind === "ref" || v.kind === "ref_null") {
+      // Caller verifies via vec resolver — we just signal the candidate.
+      return "Array";
+    }
+  }
+  return null;
 }
 
 // ── Extern class collection ──────────────────────────────────────────
