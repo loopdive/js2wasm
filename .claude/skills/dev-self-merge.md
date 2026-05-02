@@ -7,6 +7,31 @@ description: Algorithmic gate for self-merging a PR. Reads CI JSON, applies 4 ha
 
 Run this after `.claude/ci-status/pr-<N>.json` exists with a SHA matching your branch HEAD.
 
+## Step 0 — fast-path for non-test262 PRs
+
+If `.claude/ci-status/pr-<N>.json` does not exist, check whether Test262 was
+required for this PR:
+
+```bash
+gh pr view <N> --json files --jq '[.files[].path | select(startswith("src/"))] | length'
+```
+
+If the result is **0** (no `src/**` changes), Test262 Sharded was not required.
+Check basic CI instead:
+
+```bash
+gh pr view <N> --json statusCheckRollup \
+  --jq '[.statusCheckRollup[] | select(.conclusion != null)] |
+        { total: length,
+          failed: [.[] | select(.conclusion == "FAILURE" or .conclusion == "failure")] | length }'
+```
+
+- If `failed == 0` and `total > 0`: output **MERGE** and skip to Step 5.
+- If `failed > 0`: output **ESCALATE — basic CI failed. Check which checks failed before merging.**
+- If `total == 0` (no checks at all): output **MERGE** — workflow-only, no CI gates apply.
+
+If `src/**` changes exist but no status file: CI is still in-flight. Wait.
+
 ## Step 1 — read the feed
 
 ```bash

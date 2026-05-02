@@ -49,7 +49,7 @@ these methods. Getting them right requires both correct return values
 | **597** | Type-specialized arithmetic: skip AnyValue for known types | 0 | done | medium |
 | **613** | Property 'index' does not exist on string[] (206 CE) | 0 | done | high |
 | **654** | Missing property diagnostics (1,116 CE) | 0 | done | high |
-| **684** | Any-typed variable inference from usage patterns |  | ready | high |
+| **684** | Any-typed variable inference from usage patterns | Backlog | ready | high |
 | **763** | - RegExp runtime method gaps (exec, match, replace, split) | 37 | done | medium |
 | **955** | Peephole: eliminate ref.test + ref.cast redundant type checks (8,642 pairs, 36% of modules) | 38 | done | high |
 | **1110** | Wrapper object constructors: new Number/String/Boolean (648 tests) | 14 | done | medium |

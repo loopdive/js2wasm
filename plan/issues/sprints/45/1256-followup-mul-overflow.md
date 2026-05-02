@@ -1,24 +1,24 @@
 ---
-id: 1179-followup
+id: 1256
 title: "i32 fast path for `*` is not spec-faithful when true product exceeds 2^53"
-sprint: 45
 status: done
-pr: 69
-merged: 2026-04-27
+created: 2026-04-27
+updated: 2026-04-27
+completed: 2026-04-27
 priority: medium
 feasibility: easy
 reasoning_effort: medium
 task_type: correctness
 area: codegen
 language_feature: bitwise-coercion
-goal: spec-conformance
+goal: core-semantics
 parent: 1179
-created: 2026-04-27
+pr: 69
+merged: 2026-04-27
 created_by: senior-dev-1179
 implemented_by: senior-dev-1179
 implemented_at: 2026-04-27
 ---
-
 ## Implementation (2026-04-27)
 
 Implemented Option B from the recommendation list. Changes in `src/codegen/binary-ops.ts`:
@@ -35,13 +35,13 @@ Implemented Option B from the recommendation list. Changes in `src/codegen/binar
 1. `(0x7FFFFFFF * 0x7FFFFFFF) | 0` returns the spec value `0`, not `Math.imul`'s `1`.
 2. LCG-style `(seed * 1103515245 + 12345) | 0` matches the spec for seeds spanning the i32 range (including `0x40000000`, `0x7fffffff`, `-0x80000000`).
 3. `(0x7FFFFFFF * 17) | 0` returns the spec value via the i32 path (small-literal multiplier guard fires).
-4. WAT-shape: array-sum hot loop still emits `i32.mul / i32.xor / i32.and` and does NOT contain the `f64.const 4294967296` ToInt32 dance for the bitwise body — proves the original #1179 optimization still fires.
+4. WAT-shape: array-sum hot loop still emits `i32.mul / i32.xor / i32.and` and does NOT contain the `f64.const 4294967296` ToInt32 dance for the bitwise body — proves the original #1256 optimization still fires.
 5. WAT-shape: bare-local `(a * b) | 0` DOES emit `f64.mul` and the ToInt32 dance — proves the safety fallback works.
 6. Nested chain `((a*b) ^ (i*17)) & 0xFFFF` — when ANY sub-tree contains an unsafe `*`, the whole chain falls back to f64. Behavioural test against JS oracle for several large-input cases.
 
 ### Performance check
 
-V8 WasmGC, 1M-element array-sum, 5 runs after warm: 15-42 ms range, identical distribution to post-#1179 baseline. The i32 fast path still fires for the common `i * 17` shape.
+V8 WasmGC, 1M-element array-sum, 5 runs after warm: 15-42 ms range, identical distribution to post-#1256 baseline. The i32 fast path still fires for the common `i * 17` shape.
 
 ### What's NOT covered (deferred)
 
@@ -50,11 +50,11 @@ V8 WasmGC, 1M-element array-sum, 5 runs after warm: 15-42 ms range, identical di
 
 ---
 
-# Follow-up to #1179 — i32-multiplication fast path is not spec-faithful
+# Follow-up to #1256 — i32-multiplication fast path is not spec-faithful
 
 ## Problem
 
-PR #62 (#1179) generalised the i32 fast path in `src/codegen/binary-ops.ts` so that any arithmetic op nested inside a bitwise / `| 0` context stays in i32. The predicate accepts `+`, `-`, AND `*`:
+PR #62 (#1256) generalised the i32 fast path in `src/codegen/binary-ops.ts` so that any arithmetic op nested inside a bitwise / `| 0` context stays in i32. The predicate accepts `+`, `-`, AND `*`:
 
 ```ts
 if (k === ts.SyntaxKind.PlusToken || k === ts.SyntaxKind.MinusToken || k === ts.SyntaxKind.AsteriskToken) {
@@ -128,7 +128,7 @@ Option C (broader, more work): add range tracking — track i32 SSA values' min/
 
 ## Key files
 
-- `src/codegen/binary-ops.ts` — `isI32PureExpr` predicate (around line 1016 post-#1179)
+- `src/codegen/binary-ops.ts` — `isI32PureExpr` predicate (around line 1016 post-#1256)
 - `tests/issue-1179.test.ts` — existing tests; add corner-case coverage here or in new file
 - `tests/issue-1179-followup.test.ts` — new (this issue)
 
@@ -139,6 +139,6 @@ Option C (broader, more work): add range tracking — track i32 SSA values' min/
 
 ## Refs
 
-- Parent: #1179 (PR #62)
+- Parent: #1256 (PR #62)
 - ECMA-262 §6.1.6.1.4 Number::multiply, §7.1.6 ToInt32
 - V8 has TurboFan range analysis that may already use i32.mul-like semantics here, so observable divergence may be V8 version-dependent.

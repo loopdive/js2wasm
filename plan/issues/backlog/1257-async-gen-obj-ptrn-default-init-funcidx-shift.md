@@ -1,15 +1,13 @@
 ---
-id: 1133
+id: 1257
 title: "async-gen + obj-ptrn default-init throws: funcIdx shift misses detached thenInstrs"
 status: backlog
+created: 2026-04-19
 priority: medium
 feasibility: hard
 reasoning_effort: high
-created: 2026-04-19
-goal: test262-conformance
-depends_on: []
+goal: error-model
 ---
-
 ## Problem
 
 `shiftLateImportIndices` walks a fixed set of Instr[] arrays (ctx.mod.functions, fctx.body, fctx.savedBodies, funcStack, parentBodiesStack, pendingInitBody). But any codegen pattern that swaps out a body, gathers instructions into a detached local array, and THEN triggers a late-import addition will silently corrupt funcIdx values inside that detached array — the shift can't reach arrays the compiler doesn't hold a reference to.

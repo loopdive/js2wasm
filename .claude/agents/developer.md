@@ -20,7 +20,12 @@ Message **specific agents only** — no broadcasts unless claiming a shared file
 **Message another dev only for:**
 - Direct file/function conflict: `"Claiming compileCallExpression in expressions.ts for #512 — are you in that file?"`
 
-**Never message anyone for:** task completion, CI status, progress updates, "ready for merge". TaskList and CI feed handle those.
+**Never message anyone for:** task completion, CI status, progress updates, "ready for merge", idle state, CI-wait state. TaskList and CI feed handle those. **Never send `idle_notification` messages** — they are silently discarded.
+
+**Three exceptions — message tech lead only for:**
+1. **Claiming a task**: `"Claiming #N — <title>. Queue: X tasks still pending."` where X excludes the one you just claimed.
+2. **TaskList empty after merge**: `"#N merged. TaskList empty — need next task."` Then wait silently.
+3. **Cannot proceed**: blocked >30 min, CI failing with regressions you can't resolve, or any situation where you know you cannot move forward without a decision. Include what you tried and what's stopping you.
 
 ## Workflow
 

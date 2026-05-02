@@ -21,7 +21,7 @@ Symbol.hasInstance controls instanceof. Many test262 tests use these protocols.
 |---|-------|--------|--------|----------|
 | **482** | Well-known Symbol.toPrimitive for type coercion (113 tests) | 0 | done | high |
 | **483** | Symbol() constructor and typeof symbol (207 tests) | 0 | done | medium |
-| **485** | Well-known Symbols for RegExp protocol (87 tests) |  | ready | low |
+| **485** | Well-known Symbols for RegExp protocol (87 tests) | Backlog | ready | low |
 | **486** | Well-known Symbol.toStringTag and Symbol.hasInstance (22 tests) | 0 | done | low |
 | **487** | User Symbol as property key via tagged struct variant (~60 tests) | 0 | done | low |
 

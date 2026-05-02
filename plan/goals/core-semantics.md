@@ -146,17 +146,17 @@ missing return values, incorrect type coercion, wrong control flow, broken scope
 | **737** | - Undefined-handling edge cases (276 tests) | 24 | done | medium |
 | **771** | - Arguments object incomplete (~617 tests) | 0 | done | high |
 | **781** | - TypeError (null/undefined access) in language constructs (~2,841 tests) | 0 | done | high |
-| **786** | - Multi-assertion failures: returned N > 2 (~1,183 tests) |  | ready | medium |
+| **786** | - Multi-assertion failures: returned N > 2 (~1,183 tests) | Backlog | ready | medium |
 | **787** | - Wrong values in assert.sameValue and other first-assertion failures (~3,517 tests) | 0 | done | high |
 | **794** | - BindingElement null guard over-triggering in destructuring (537 fail) | 0 | done | high |
 | **796** | - Destructuring initializer not evaluated when value is not undefined (121 fail) | 0 | done | medium |
 | **801** | - Array literal type mismatch in nested destructuring defaults (537 fail) | 0 | done | high |
-| **805** | Extract assignment/destructuring from expressions.ts → assignments.ts |  | ready | medium |
+| **805** | Extract assignment/destructuring from expressions.ts → assignments.ts | Backlog | ready | medium |
 | **817** | let/const in loop and try/catch bodies leak into outer scope | 25 | done | high |
-| **821** | BindingElement null guard over-triggering |  | ready | critical |
+| **821** | BindingElement null guard over-triggering | Backlog | ready | critical |
 | **822** | Wasm type mismatch compile errors (907 CE) | 31 | done | high |
 | **823** | Destructuring initializer not evaluated | 25 | done | high |
-| **846** | assert.throws not thrown: built-in methods accept invalid arguments silently (2,799 tests) |  | ready | critical |
+| **846** | assert.throws not thrown: built-in methods accept invalid arguments silently (2,799 tests) | Backlog | ready | critical |
 | **847** | for-await-of / for-of destructuring produces wrong values (660 tests) | 30 | done | high |
 | **852** | Destructuring parameters cause null_deref and illegal_cast (1,525 tests) | 30 | done | critical |
 | **911** | Split statements.ts into control-flow, variables, destructuring, loops, and functions modules | 39 | done | high |

@@ -1,15 +1,14 @@
 ---
 id: 1115
-renumbered_from: 512
 title: "Fix illegal cast when closures are passed as callable parameters"
-sprint: 21
 status: done
+created: 2026-03-18
+updated: 2026-04-14
+completed: 2026-03-18
 priority: high
 goal: crash-free
-created: 2026-03-18
-completed: 2026-03-18
+renumbered_from: 512
 ---
-
 # Issue #1115: Fix "RuntimeError: illegal cast" for closures passed as callable parameters
 
 ## Problem

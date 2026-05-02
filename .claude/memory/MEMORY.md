@@ -42,12 +42,14 @@
 - [feedback_diary_and_sprints_before_compact.md](feedback_diary_and_sprints_before_compact.md) — Update plan/diary.md and plan/issues/sprints/N/sprint.md (+ retrospective) BEFORE /compact — never discard learnings with the conversation
 - [feedback_tasklist_sync_unreliable.md](feedback_tasklist_sync_unreliable.md) — TaskList sync per-agent is unreliable; when devs report mismatched task IDs, fall back to SendMessage as authoritative dispatch
 - [feedback_sendmessage_discipline.md](feedback_sendmessage_discipline.md) — SendMessage = blockers/decisions/completions only; status/idle/ack → TaskUpdate or silence
+- [feedback_dev_silence_protocol.md](feedback_dev_silence_protocol.md) — No idle_notification messages ever; devs silent during CI-wait; TL keeps queue full, devs escalate only
 
 ### Dispatch
 - [feedback_dispatch_status.md](feedback_dispatch_status.md) — Update issue status to in-progress when dispatching an agent
 
 ### Issue management
 - [feedback_issue_completion.md](feedback_issue_completion.md) — Completion procedure: move, frontmatter, summary, log, unblock
+- [feedback_unblock_on_completion.md](feedback_unblock_on_completion.md) — After marking done: grep depends_on for completed ID, flip blocked/backlog→ready
 - [feedback_document_findings.md](feedback_document_findings.md) — Document agent findings in issue files before closing
 - [feedback_update_backlog.md](feedback_update_backlog.md) — Always update backlog.md when creating/completing issues
 - [feedback_po_boundary.md](feedback_po_boundary.md) — PO only writes to plan/

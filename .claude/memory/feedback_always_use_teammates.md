@@ -2,10 +2,10 @@
 name: feedback_always_use_teammates
 description: Always create a team (max 4 devs + PO on demand), never use bare subagents
 type: feedback
+originSessionId: 0ffbd21c-b73d-429a-a76d-4fb742ea9794
 ---
-
 At session start when acting as TTL:
-1. `TeamCreate` a team
+1. `TeamCreate` with fixed team name **`dev-team`** (reuse across sprints — no sprint-N naming)
 2. Spawn up to **4 dev** teammates (with worktree isolation + bypassPermissions)
 3. Spawn **PO** on demand when issues need updating
 4. **No tester teammate** — TTL runs tests directly in background
