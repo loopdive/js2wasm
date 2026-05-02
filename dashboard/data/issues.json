@@ -1,16 +1,6 @@
 {
   "backlog": [
     {
-      "id": "1268",
-      "title": "index-signature obj[key] ??= value returns NaN instead of assigning",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "npm-library-support",
-      "status": "backlog",
-      "sprint": ""
-    },
-    {
       "id": "1266",
       "title": "compiler flag --no-eval-scope-write: TypeError instead of shadow scope deopt",
       "priority": "medium",
@@ -111,6 +101,18 @@
   ],
   "blocked": [
     {
+      "id": "1285",
+      "title": "Hono Tier 3 stress test — recursive TrieRouter with class-typed Node children",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1284"
+      ],
+      "goal": "npm-library-support",
+      "status": "blocked",
+      "sprint": ""
+    },
+    {
       "id": "1223",
       "title": "TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up)",
       "priority": "medium",
@@ -196,22 +198,122 @@
   ],
   "ready": [
     {
-      "id": "1260",
-      "title": "Destructuring of null/undefined must throw TypeError per §13.15.5.5",
-      "priority": "high",
-      "feasibility": "medium",
+      "id": "1286",
+      "title": "Object.keys(any-typed obj).join() throws illegal cast — externref→string-array coerce missing",
+      "priority": "medium",
+      "feasibility": "easy",
       "depends_on": [],
-      "goal": "test-infrastructure",
+      "goal": "npm-library-support",
       "status": "ready",
       "sprint": ""
     },
     {
-      "id": "1259",
-      "title": "async-gen yield-star sync-fallback leaks unboxed ref-cell into iter capture",
+      "id": "1284",
+      "title": "Class-typed values in index-signature dicts lose identity through extern_set/extern_get round-trip",
       "priority": "high",
-      "feasibility": "hard",
+      "feasibility": "medium",
       "depends_on": [],
-      "goal": "async-model",
+      "goal": "npm-library-support",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "1283",
+      "title": "WeakMap host-import dispatch: type-mismatch on set/get/has/delete (carved off from #1242)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "1282",
+      "title": "ESLint Tier 1 stress test — minimal Linter.verify() compilation",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [
+        "1277",
+        "1279"
+      ],
+      "goal": "npm-library-support",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "1281",
+      "title": "IR: optional chaining `?.` and `?.()` — IR path support",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "1280",
+      "title": "IR selector: claim while/for-loop bodies with typed numeric state",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "performance, npm-library-support",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "1279",
+      "title": "CJS require() call support — static module graph via require() analysis",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1277"
+      ],
+      "goal": "npm-library-support",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "1277",
+      "title": "CJS module.exports → Wasm export mapping in compileProject",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "1270",
+      "title": "struct field inference Phase 3b: eliminate null-checks on (ref null $T) locals via peephole",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [
+        "1231",
+        "1269"
+      ],
+      "goal": "performance",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "1269",
+      "title": "struct field inference Phase 3: consumer-side specialization — emit struct.get without unboxing",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [
+        "1231"
+      ],
+      "goal": "performance",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "1268",
+      "title": "index-signature obj[key] ??= value returns NaN instead of assigning",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
       "status": "ready",
       "sprint": ""
     },
@@ -264,16 +366,6 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "npm-library-support",
-      "status": "ready",
-      "sprint": ""
-    },
-    {
-      "id": "1242",
-      "title": "WeakMap / WeakSet backed by strong references (lodash memoize / cloneDeep)",
-      "priority": "high",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "spec-completeness",
       "status": "ready",
       "sprint": ""
     },
@@ -1641,6 +1733,46 @@
   ],
   "inprogress": [
     {
+      "id": "1276",
+      "title": "HOF returning closure — function-valued module exports (createMathOperation pattern)",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "in-progress",
+      "sprint": ""
+    },
+    {
+      "id": "1273",
+      "title": "instanceof across compilation boundaries",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "in-progress",
+      "sprint": ""
+    },
+    {
+      "id": "1272",
+      "title": "Symbol as object key — Symbol.for(), well-known Symbols as property keys",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "in-progress",
+      "sprint": ""
+    },
+    {
+      "id": "1271",
+      "title": "for...in / Object.keys enumeration over compiled objects",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "in-progress",
+      "sprint": ""
+    },
+    {
       "id": "1267",
       "title": "optimizer: method calls in expression-statement position silently dropped when return value unused",
       "priority": "high",
@@ -1651,12 +1783,12 @@
       "sprint": ""
     },
     {
-      "id": "1258",
-      "title": "compileForOfAssignDestructuringExternref must route writes through boxedCaptures.struct.set",
+      "id": "1259",
+      "title": "async-gen yield-star sync-fallback leaks unboxed ref-cell into iter capture",
       "priority": "high",
-      "feasibility": "medium",
+      "feasibility": "hard",
       "depends_on": [],
-      "goal": "test-infrastructure",
+      "goal": "async-model",
       "status": "in-progress",
       "sprint": ""
     },
@@ -1667,6 +1799,16 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "ci-hardening",
+      "status": "in-progress",
+      "sprint": ""
+    },
+    {
+      "id": "1242",
+      "title": "WeakMap / WeakSet backed by strong references (lodash memoize / cloneDeep)",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "spec-completeness",
       "status": "in-progress",
       "sprint": ""
     },
@@ -1691,8 +1833,62 @@
       "sprint": ""
     }
   ],
-  "review": [],
+  "review": [
+    {
+      "id": "1278",
+      "title": "Update stale lodash-tier1 stress test — resolver fixed, clamp/add behavior changed",
+      "priority": "low",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "review",
+      "sprint": ""
+    },
+    {
+      "id": "1260",
+      "title": "Destructuring of null/undefined must throw TypeError per §13.15.5.5",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "test-infrastructure",
+      "status": "review",
+      "sprint": ""
+    },
+    {
+      "id": "1258",
+      "title": "compileForOfAssignDestructuringExternref must route writes through boxedCaptures.struct.set",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "test-infrastructure",
+      "status": "review",
+      "sprint": ""
+    }
+  ],
   "done": [
+    {
+      "id": "1275",
+      "title": "typeof-guard narrowing for any-typed parameters (untyped JS functions)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "done",
+      "sprint": ""
+    },
+    {
+      "id": "1274",
+      "title": "Hono Tier 2 stress test: route registration + basic dispatch via TrieRouter",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1267",
+        "1268"
+      ],
+      "goal": "npm-library-support",
+      "status": "done",
+      "sprint": ""
+    },
     {
       "id": "1262",
       "title": "eval tier 2: compile eval(\\\\\\\"static string\\\\\\\") as regular code at compile time",
