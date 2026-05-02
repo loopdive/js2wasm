@@ -33,6 +33,9 @@ wrap_checklist:
 | Issue | Title | Priority | Agent |
 |---|---|---|---|
 | #1234 | Array.prototype getter/setter fallback in object literals (PR #144, investigating 28 regressions) | medium | dev-1222 |
+| #1231 | perf: struct field type inference Phase 2 — gate graduation, test coverage, WAT snapshot guard | high | dev-1231 |
+| #1235 | ci: baseline drift fix — workflow_run trigger on refresh-committed-baseline.yml | high | dev-1118 |
+| #1229 | perf: eval/RegExp LRU cache + peephole rewrite (7 compile_timeouts) | medium | queued |
 
 ### Blocked
 
@@ -45,6 +48,9 @@ wrap_checklist:
 
 | Issue | Title | Priority | Blocked by |
 |---|---|---|---|
+| #1238 | IR Phase 4 Slice 13b — pseudo-ExternClassInfo registration for String + Array | high | — (1169o/p done) |
+| #1232 | IR Phase 4 Slice 13c — String fixed-signature methods through IR | high | #1238 |
+| #1229 | perf: eval/RegExp LRU cache + peephole rewrite (7 compile_timeouts) | medium | — |
 | #1223 | TDZ async/gen: writer+reader fn-decl sharing via destructure-assign | medium | #1177 |
 
 ### Done
@@ -52,7 +58,7 @@ wrap_checklist:
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1228 | IR selector widening: void return + any params — PR #142 merged (admin, drift-proven by #143 cross-check) | high | done |
-| #1231 | perf: struct field type inference Phase 1 — PR #143 merged; TypeMap seam documented; env-gated JS2WASM_IR_OBJECT_SHAPES=1 | high | done |
+| #1231 Phase 1 | perf: struct field type inference Phase 1 — PR #143 merged; TypeMap seam documented; env-gated JS2WASM_IR_OBJECT_SHAPES=1 | high | done |
 | #1225 | Nested dstr from null/undefined: missing TypeError — fixed in PR #130 (net +32, ~244 tests) | high | done |
 | #1169q | IR Phase 4 Slice 14 — telemetry landed (PR #141); deletion deferred (0% claim on untyped corpus — selector needs any/void widening first) | high | done |
 | #1222 | ci: wasm-hash noise filter — exclude byte-identical regressions from PR gate | high | done |

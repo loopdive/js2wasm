@@ -1,15 +1,26 @@
 ---
 id: 46
-status: active
+status: closed
+closed: 2026-05-02
 created: 2026-04-27
 groomed: 2026-04-30
 started: 2026-04-30
 wrap_checklist:
-  status_closed: false
+  status_closed: true
   retro_written: false
   diary_updated: true
   end_tag_pushed: false
   begin_tag_pushed: false
+carry_overs:
+  - id: 742
+    status: blocked
+    note: compileCallExpression refactor — blocked, moved to backlog
+  - id: 1166
+    status: blocked
+    note: closed-world integer specialization — blocked, moved to backlog
+  - id: 1169
+    status: ready
+    note: IR Phase 4 umbrella tracker — ongoing through S47+
 ---
 
 # Sprint 46

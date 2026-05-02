@@ -45,6 +45,19 @@
   ],
   "blocked": [
     {
+      "id": "1223",
+      "title": "TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up)",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [
+        "1177",
+        "1205"
+      ],
+      "goal": "test262-conformance",
+      "status": "blocked",
+      "sprint": "47"
+    },
+    {
       "id": "1166",
       "title": "Closed-world integer specialization from literal call sites",
       "priority": "high",
@@ -117,6 +130,16 @@
   ],
   "ready": [
     {
+      "id": "1234",
+      "title": "Array.prototype.{unshift,reverse,forEach,…} on non-Array receivers iterate [0, length) instead of defined props",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "test262-conformance",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
       "id": "1233",
       "title": "IR Phase 4 Slice 13d — Array per-element-type methods through IR",
       "priority": "medium",
@@ -141,25 +164,22 @@
       "sprint": "backlog"
     },
     {
-      "id": "1231",
-      "title": "IR Phase 4 Slice 13b — pseudo-ExternClassInfo registration for String + Array",
-      "priority": "high",
+      "id": "1230",
+      "title": "investigate post-dispatch fork starvation in test262 CompilerPool (73 phantom timeouts)",
+      "priority": "low",
       "feasibility": "medium",
-      "depends_on": [
-        "1169o",
-        "1169p"
-      ],
-      "goal": "ir-migration",
+      "depends_on": [],
+      "goal": "ci-stability",
       "status": "ready",
-      "sprint": "backlog"
+      "sprint": ""
     },
     {
-      "id": "1223",
-      "title": "playground: horizontal swipe on overflowing tab bar drags tab instead of scrolling (mobile)",
+      "id": "1229",
+      "title": "perf: eval(literal) and new RegExp(literal) re-compile every iteration in 65k-loop tests",
       "priority": "medium",
-      "feasibility": "easy",
+      "feasibility": "medium",
       "depends_on": [],
-      "goal": "playground-ux",
+      "goal": "test262-conformance",
       "status": "ready",
       "sprint": ""
     },
@@ -194,20 +214,6 @@
       "goal": "maintainability",
       "status": "ready",
       "sprint": "45"
-    },
-    {
-      "id": "1169q",
-      "title": "IR Phase 4 Slice 14 — retire legacy codegen: delete expressions.ts, statements.ts, repair passes",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [
-        "1169n",
-        "1169o",
-        "1169p"
-      ],
-      "goal": "ir-migration",
-      "status": "ready",
-      "sprint": "47"
     },
     {
       "id": "1169",
@@ -1467,16 +1473,6 @@
   ],
   "inprogress": [
     {
-      "id": "1225",
-      "title": "Nested destructuring from null/undefined: missing TypeError (~244 tests in for-of/dstr, assignment/dstr, class/dstr)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "test262-conformance",
-      "status": "in-progress",
-      "sprint": "47"
-    },
-    {
       "id": "1206",
       "title": "fix(build-pages): copy benchmark JSONs + frame-nav-sync.js to top-level pages-dist paths (404s on landing page)",
       "priority": "medium",
@@ -1487,28 +1483,6 @@
       "sprint": "45"
     },
     {
-      "id": "1195",
-      "title": "perf: escape-analysis scalarization for non-escaping arrays (eliminate array allocation in array-sum)",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "performance",
-      "status": "in-progress",
-      "sprint": "47"
-    },
-    {
-      "id": "1169p",
-      "title": "IR Phase 4 Slice 13 — String + Array prototype methods through IR",
-      "priority": "medium",
-      "feasibility": "hard",
-      "depends_on": [
-        "1169o"
-      ],
-      "goal": "ir-migration",
-      "status": "in-progress",
-      "sprint": "47"
-    },
-    {
       "id": "1132",
       "title": "Publish compiler as @loopdive/js2 on npm + JSR",
       "priority": "high",
@@ -1517,19 +1491,34 @@
       "goal": "distribution",
       "status": "in-progress",
       "sprint": "42"
-    },
-    {
-      "id": "1118",
-      "title": "Worker/timeout exits and eval-code null deref (182 tests)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "in-progress",
-      "sprint": "47"
     }
   ],
-  "review": [
+  "review": [],
+  "done": [
+    {
+      "id": "1231",
+      "title": "perf: struct field type inference — eliminate boxing in object properties",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1169n",
+        "1169o",
+        "1169p"
+      ],
+      "goal": "performance",
+      "status": "done",
+      "sprint": "47"
+    },
+    {
+      "id": "1228",
+      "title": "IR selector widening: accept void return + any params",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ir-migration",
+      "status": "done",
+      "sprint": "47"
+    },
     {
       "id": "1227",
       "title": "fix(runner): compiler-pool timeout starts at enqueue time, not dispatch time — causes 156 false compile_timeouts",
@@ -1539,36 +1528,22 @@
         "1207"
       ],
       "goal": "ci-stability",
-      "status": "review",
+      "status": "done",
       "sprint": "47"
     },
-    {
-      "id": "1207",
-      "title": "perf(test262): root-cause and fix the 136 compile_timeout tests (~7.6 min wall-clock cost per run)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "developer-experience",
-      "status": "review",
-      "sprint": "47"
-    },
-    {
-      "id": "1169o",
-      "title": "IR Phase 4 Slice 12 — dynamic element access + array literals through IR",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [
-        "1169n"
-      ],
-      "goal": "ir-migration",
-      "status": "review",
-      "sprint": "47"
-    }
-  ],
-  "done": [
     {
       "id": "1226",
       "title": "class/elements: static async private method produces invalid Wasm — call missing argument (~104 tests)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "test262-conformance",
+      "status": "done",
+      "sprint": "47"
+    },
+    {
+      "id": "1225",
+      "title": "Nested destructuring from null/undefined: missing TypeError (~244 tests in for-of/dstr, assignment/dstr, class/dstr)",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
@@ -1743,6 +1718,16 @@
       "sprint": "45"
     },
     {
+      "id": "1207",
+      "title": "perf(test262): root-cause and fix the 136 compile_timeout tests (~7.6 min wall-clock cost per run)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "developer-experience",
+      "status": "done",
+      "sprint": "47"
+    },
+    {
       "id": "1205",
       "title": "Extend TDZ flag boxing to async functions / generators (#1177-followup) — async-fn closure capture path needs Stage 2/3 wiring",
       "priority": "high",
@@ -1827,6 +1812,16 @@
       "goal": "performance",
       "status": "done",
       "sprint": "46"
+    },
+    {
+      "id": "1195",
+      "title": "perf: escape-analysis scalarization for non-escaping arrays (eliminate array allocation in array-sum)",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "performance",
+      "status": "done",
+      "sprint": "47"
     },
     {
       "id": "1193",
@@ -2065,6 +2060,44 @@
       "goal": "ci-hardening",
       "status": "done",
       "sprint": "45"
+    },
+    {
+      "id": "1169q",
+      "title": "IR Phase 4 Slice 14 — retire legacy codegen: delete expressions.ts, statements.ts, repair passes",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1169n",
+        "1169o",
+        "1169p"
+      ],
+      "goal": "ir-migration",
+      "status": "done",
+      "sprint": "47"
+    },
+    {
+      "id": "1169p",
+      "title": "IR Phase 4 Slice 13 — String + Array prototype methods through IR",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [
+        "1169o"
+      ],
+      "goal": "ir-migration",
+      "status": "done",
+      "sprint": "47"
+    },
+    {
+      "id": "1169o",
+      "title": "IR Phase 4 Slice 12 — dynamic element access + array literals through IR",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1169n"
+      ],
+      "goal": "ir-migration",
+      "status": "done",
+      "sprint": "47"
     },
     {
       "id": "1169n",
@@ -2615,6 +2648,16 @@
       "goal": "conformance",
       "status": "done",
       "sprint": "44"
+    },
+    {
+      "id": "1118",
+      "title": "Worker/timeout exits and eval-code null deref (182 tests)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "47"
     },
     {
       "id": "1117",
