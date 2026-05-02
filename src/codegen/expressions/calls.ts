@@ -5123,10 +5123,41 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           // Mutable capture: wrap in a ref cell so writes propagate back
           const refCellTypeIdx = getOrRegisterRefCellType(ctx, cap.valType);
           // Check if this local is already boxed (from a previous call to the same or another closure)
-          if (fctx.boxedCaptures?.has(cap.name)) {
+          //
+          // #1259: detect double-wrap. `boxedCaptures` is per-fctx and may not
+          // be populated even when `localMap[cap.name]` already points at a
+          // ref-cell ref (e.g., when the boxing happened in a sibling lifted
+          // scope whose `boxedCaptures` was discarded, or when #1177 Stage 1
+          // re-aims `localMap` to a boxed local from an outer fctx). Without
+          // the type-check guard below, the `else` branch struct.news the
+          // boxed-ref-cell-ref as if it were the value type — producing a
+          // double-wrapped `ref __ref_cell_(ref __ref_cell_T)` that the lifted
+          // body unwraps as `T` and traps with "dereferencing a null pointer"
+          // on first use. Probe the candidate slot's type: if it's already
+          // `ref __ref_cell_T`, treat as already-boxed and pass the ref
+          // through directly.
+          const candidateLocalIdx = fctx.localMap.get(cap.name);
+          const candidateLocalType =
+            candidateLocalIdx !== undefined ? getLocalType(fctx, candidateLocalIdx) : undefined;
+          const candidateIsRefCell =
+            candidateLocalType !== undefined &&
+            (candidateLocalType.kind === "ref" || candidateLocalType.kind === "ref_null") &&
+            (candidateLocalType as { typeIdx: number }).typeIdx === refCellTypeIdx;
+          if (fctx.boxedCaptures?.has(cap.name) || candidateIsRefCell) {
             // Already a ref cell — pass the ref cell reference directly
-            const currentLocalIdx = fctx.localMap.get(cap.name)!;
+            const currentLocalIdx = fctx.localMap.get(cap.name) ?? cap.outerLocalIdx;
             fctx.body.push({ op: "local.get", index: currentLocalIdx });
+            // Backfill boxedCaptures so subsequent reads/writes through the
+            // helper paths (#1258 box-aware destructure-assign etc.) detect
+            // the boxed state correctly. Without this, the same-fctx call
+            // chain may revisit the cap and double-wrap on the next call.
+            if (!fctx.boxedCaptures) fctx.boxedCaptures = new Map();
+            if (!fctx.boxedCaptures.has(cap.name)) {
+              fctx.boxedCaptures.set(cap.name, {
+                refCellTypeIdx,
+                valType: cap.valType,
+              });
+            }
           } else {
             // Create a ref cell, store the current value, keep ref on stack.
             // (Note: #1177 originally proposed `localMap.get(cap.name) ?? cap.outerLocalIdx`

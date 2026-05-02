@@ -1,7 +1,7 @@
 ---
 id: 1259
 title: "async-gen yield-star sync-fallback leaks unboxed ref-cell into iter capture"
-status: ready
+status: in-progress
 created: 2026-05-02
 updated: 2026-05-02
 priority: high
@@ -14,6 +14,45 @@ goal: async-model
 related: [1177, 1245, 1205]
 depends_on: []
 test262_fail: 50
+---
+
+## Implementation note (2026-05-02, dev-1245)
+
+The 50 failing async-gen-yield-star tests described in the issue body are
+**latent on main today** — the bug only manifests when #1177 Stage 1 (the
+`localMap.get(cap.name) ?? cap.outerLocalIdx` substitution) is applied.
+On main today, all 50/56 async-gen-yield-star tests pass because the
+cap-prepend reads from `cap.outerLocalIdx` (the stale-slot path) which
+points at the original value local — never a boxed ref-cell-ref — so
+the double-wrap doesn't fire.
+
+This PR therefore implements Option B (type-check guard) as a **defensive
+precondition** for the eventual #1177 Stage 1 re-attempt:
+
+- Probe `localMap.get(cap.name)`'s type before entering the fresh-box
+  branch.
+- If the candidate slot is already a `ref __ref_cell_T` matching the
+  expected value type, treat as already-boxed and pass the ref through
+  directly (skip the redundant `struct.new`).
+- Backfill `boxedCaptures[cap.name]` so subsequent reads/writes through
+  helper paths (e.g. #1258 box-aware destructure-assign) detect the
+  boxed state correctly.
+
+Expected CI impact today: **net 0** (the path isn't reached on main).
+Expected CI impact when Stage 1 re-lands: removes the ~50 async-gen
+yield-star regressions from the count.
+
+Tests added (`tests/issue-1259.test.ts`):
+
+- normal mutable capture round-trip (sanity)
+- two consecutive calls share the same ref cell (no double-wrap on second call)
+- multiple mutable captures across nested calls (no cross-pollution)
+- mutating capture across many invocations aggregates correctly
+
+The "arrow-wraps-fn-decl with mutable capture" test that exposes the
+Stage-1 underlying bug is documented as a comment but not asserted —
+that's #1177 Stage 1's job, not #1259's.
+
 ---
 
 # #1259 — `yield*` async sync-fallback unboxes a ref-cell as the original value type
