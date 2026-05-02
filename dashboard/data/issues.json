@@ -1,6 +1,16 @@
 {
   "backlog": [
     {
+      "id": "1268",
+      "title": "index-signature obj[key] ??= value returns NaN instead of assigning",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "backlog",
+      "sprint": ""
+    },
+    {
       "id": "1266",
       "title": "compiler flag --no-eval-scope-write: TypeError instead of shadow scope deopt",
       "priority": "medium",
@@ -206,16 +216,6 @@
       "sprint": ""
     },
     {
-      "id": "1258",
-      "title": "compileForOfAssignDestructuringExternref must route writes through boxedCaptures.struct.set",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "test-infrastructure",
-      "status": "ready",
-      "sprint": ""
-    },
-    {
       "id": "1255",
       "title": "Reference platform scenario: run a Node-oriented example on Wasmtime via Edge.js",
       "priority": "high",
@@ -254,56 +254,6 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "error-model",
-      "status": "ready",
-      "sprint": ""
-    },
-    {
-      "id": "1251",
-      "title": "baseline-validate: TS checker non-determinism causes 19/50 false failures on main JSONL",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "ci-hardening",
-      "status": "ready",
-      "sprint": ""
-    },
-    {
-      "id": "1248",
-      "title": "compiler: typeof x === 'string' guard breaks String.prototype.substring(start) — returns single char",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "npm-library-support",
-      "status": "ready",
-      "sprint": ""
-    },
-    {
-      "id": "1247",
-      "title": "compiler: typed string[] local with path.split('/') initializer triggers struct-type mismatch",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "npm-library-support",
-      "status": "ready",
-      "sprint": ""
-    },
-    {
-      "id": "1246",
-      "title": "ci: differential test262 — compare branch tip vs main HEAD with src-tree-hash caching",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "ci-hardening",
-      "status": "ready",
-      "sprint": ""
-    },
-    {
-      "id": "1244",
-      "title": "npm stress test: compile Hono web framework to Wasm",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "platform",
       "status": "ready",
       "sprint": ""
     },
@@ -368,16 +318,6 @@
       "sprint": ""
     },
     {
-      "id": "1235",
-      "title": "ci: prevent baseline drift false-positive regressions after admin-merges",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "ci-hardening",
-      "status": "ready",
-      "sprint": ""
-    },
-    {
       "id": "1233",
       "title": "IR Phase 4 Slice 13d — Array per-element-type methods through IR",
       "priority": "medium",
@@ -396,16 +336,6 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "contributor-readiness",
-      "status": "ready",
-      "sprint": ""
-    },
-    {
-      "id": "1229",
-      "title": "perf: eval(literal) and new RegExp(literal) re-compile every iteration in 65k-loop tests",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
       "status": "ready",
       "sprint": ""
     },
@@ -1711,16 +1641,32 @@
   ],
   "inprogress": [
     {
-      "id": "1231",
-      "title": "perf: struct field type inference — eliminate boxing in object properties",
+      "id": "1267",
+      "title": "optimizer: method calls in expression-statement position silently dropped when return value unused",
       "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [
-        "1169n",
-        "1169o",
-        "1169p"
-      ],
-      "goal": "performance",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "correctness",
+      "status": "in-progress",
+      "sprint": ""
+    },
+    {
+      "id": "1258",
+      "title": "compileForOfAssignDestructuringExternref must route writes through boxedCaptures.struct.set",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "test-infrastructure",
+      "status": "in-progress",
+      "sprint": ""
+    },
+    {
+      "id": "1251",
+      "title": "baseline-validate: TS checker non-determinism causes 19/50 false failures on main JSONL",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ci-hardening",
       "status": "in-progress",
       "sprint": ""
     },
@@ -1790,6 +1736,36 @@
       "sprint": ""
     },
     {
+      "id": "1248",
+      "title": "compiler: typeof x === 'string' guard breaks String.prototype.substring(start) — returns single char",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "done",
+      "sprint": ""
+    },
+    {
+      "id": "1247",
+      "title": "compiler: typed string[] local with path.split('/') initializer triggers struct-type mismatch",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "done",
+      "sprint": ""
+    },
+    {
+      "id": "1246",
+      "title": "ci: differential test262 — compare branch tip vs main HEAD with src-tree-hash caching",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ci-hardening",
+      "status": "done",
+      "sprint": ""
+    },
+    {
       "id": "1245",
       "title": "Investigate #1177 Stage 1 regressions — 59 compile_timeouts + 81 real regressions in PR#125",
       "priority": "high",
@@ -1798,6 +1774,16 @@
       "goal": "test262-conformance",
       "status": "done",
       "sprint": "47"
+    },
+    {
+      "id": "1244",
+      "title": "npm stress test: compile Hono web framework to Wasm",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "platform",
+      "status": "done",
+      "sprint": ""
     },
     {
       "id": "1238",
@@ -1823,6 +1809,16 @@
       "sprint": ""
     },
     {
+      "id": "1235",
+      "title": "ci: prevent baseline drift false-positive regressions after admin-merges",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ci-hardening",
+      "status": "done",
+      "sprint": ""
+    },
+    {
       "id": "1234",
       "title": "Array.prototype.{unshift,reverse,forEach,…} on non-Array receivers iterate [0, length) instead of defined props",
       "priority": "medium",
@@ -1841,6 +1837,30 @@
         "1238"
       ],
       "goal": "standalone-mode",
+      "status": "done",
+      "sprint": ""
+    },
+    {
+      "id": "1231",
+      "title": "perf: struct field type inference — eliminate boxing in object properties",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1169n",
+        "1169o",
+        "1169p"
+      ],
+      "goal": "performance",
+      "status": "done",
+      "sprint": ""
+    },
+    {
+      "id": "1229",
+      "title": "perf: eval(literal) and new RegExp(literal) re-compile every iteration in 65k-loop tests",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
       "status": "done",
       "sprint": ""
     },
