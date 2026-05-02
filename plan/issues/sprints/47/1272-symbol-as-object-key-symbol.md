@@ -1,7 +1,7 @@
 ---
 id: 1272
 title: "Symbol as object key — Symbol.for(), well-known Symbols as property keys"
-status: ready
+status: in-progress
 created: 2026-05-02
 updated: 2026-05-02
 priority: medium
@@ -13,6 +13,32 @@ language_feature: Symbol, property-access
 goal: npm-library-support
 related: [1244]
 ---
+
+## Implementation note (2026-05-02, dev-1245)
+
+Same stale-issue pattern as #1250, #1271, #1275, #1276 — the
+documented acceptance criteria already pass on origin/main:
+
+```
+Symbol.for(k); o[k] = 42; o[k]   → 42  ✓
+Symbol.for("x") === Symbol.for("x") → true ✓
+Symbol() !== Symbol()             → true ✓
+Symbol.for("x") !== Symbol.for("y") → true ✓
+Multiple Symbol keys on same obj  ✓
+Reassign through same Symbol key  ✓
+```
+
+PR is therefore test-only. Adds `tests/issue-1272.test.ts` with 6
+regression tests covering all three acceptance criteria + edge cases:
+1. `Symbol.for(k); o[k] = 42; o[k]` round-trip
+2. `Symbol.for("x") === Symbol.for("x")` identity
+3. `Symbol() !== Symbol()` uniqueness
+4. `Symbol.for("x") !== Symbol.for("y")` (different keys)
+5. Multiple Symbol keys on the same object
+6. Reassignment through the same Symbol key
+
+---
+
 # #1272 — Symbol as object key
 
 ## Problem
