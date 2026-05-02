@@ -1798,6 +1798,12 @@ export function compileArrayMethodCall(
   if (!arrInfo) return undefined;
 
   let { vecTypeIdx, arrTypeIdx, elemType } = arrInfo;
+  // #1286: tracks whether the probe found the receiver to be externref at
+  // runtime (e.g., the result of `Object.keys(any)`, which goes through the
+  // `__object_keys` host import). The `case "join":` dispatch below routes
+  // through `compileArrayJoinExtern` whenever this is set so the WasmGC-
+  // native loop doesn't try to extract a vec struct from a JS array.
+  let receiverIsExternref = false;
 
   // The receiver's actual Wasm type may differ from the TS type — e.g.
   // `[0, true].lastIndexOf(...)` infers i32 elements during construction,
@@ -1839,7 +1845,21 @@ export function compileArrayMethodCall(
         (probeResult as any).typeIdx !== undefined
       ) {
         actualType = probeResult;
+      } else if (probeResult && probeResult.kind === "externref") {
+        // Capture externref-shaped receivers too — `Object.keys(any).join(...)` and
+        // similar host-import-returning calls hit this branch (#1286). The
+        // existing struct-vec dispatch below ignores this case (it only updates
+        // vecTypeIdx for known ref types), but `case "join":` consults this flag
+        // to route through the host-import fallback.
+        actualType = probeResult;
+        receiverIsExternref = true;
       }
+    }
+    // Catch the fast-path case too: an identifier whose declared local/global
+    // type is externref (e.g., a parameter typed `any`). The slow-path probe
+    // above only runs when the fast-path lookup is ambiguous.
+    if (actualType && actualType.kind === "externref") {
+      receiverIsExternref = true;
     }
     if (
       actualType &&
@@ -1908,7 +1928,13 @@ export function compileArrayMethodCall(
       result = compileArrayConcat(ctx, fctx, methodAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType);
       break;
     case "join":
-      result = compileArrayJoin(ctx, fctx, methodAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType);
+      // #1286: when the probe found the receiver to be externref at runtime,
+      // route through the host-import fallback. The WasmGC-native path expects
+      // a vec struct; trying to extract one from a JS array via ref.cast
+      // would trap with "illegal cast".
+      result = receiverIsExternref
+        ? compileArrayJoinExtern(ctx, fctx, methodAccess, callExpr)
+        : compileArrayJoin(ctx, fctx, methodAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType);
       break;
     case "splice":
       result = compileArraySplice(ctx, fctx, methodAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType);
@@ -3462,35 +3488,6 @@ function compileArrayConcatExtern(
 }
 
 /**
- * #1286: probe-compile the receiver expression and determine whether its actual
- * runtime type is `externref` (i.e., a JS value, not a WasmGC vec struct).
- * Used by `compileArrayJoin` to decide whether to dispatch to the WasmGC-native
- * path or to the host-import fallback. Always rolls back the probe so the
- * caller still sees an empty body to recompile into.
- */
-function probeReceiverIsExternref(ctx: CodegenContext, fctx: FunctionContext, expr: ts.Expression): boolean {
-  // Fast path: identifier whose Wasm type we already know
-  if (ts.isIdentifier(expr)) {
-    const localIdx = fctx.localMap.get(expr.text);
-    if (localIdx !== undefined) {
-      const t = getLocalType(fctx, localIdx);
-      if (t) return t.kind === "externref";
-    } else {
-      const gIdx = ctx.moduleGlobals.get(expr.text);
-      if (gIdx !== undefined) {
-        const globalDef = ctx.mod.globals[localGlobalIdx(ctx, gIdx)];
-        if (globalDef?.type) return globalDef.type.kind === "externref";
-      }
-    }
-  }
-  // Slow path: probe-compile and roll back
-  const savedLen = fctx.body.length;
-  const probeResult = compileExpression(ctx, fctx, expr);
-  fctx.body.length = savedLen;
-  return probeResult?.kind === "externref";
-}
-
-/**
  * #1286: arr.join(sep?) fallback for externref receivers (e.g., the result of
  * `Object.keys(any)` via the `__object_keys` host import, which returns a real
  * JS array). The native `compileArrayJoin` path expects a WasmGC vec struct;
@@ -3550,16 +3547,10 @@ function compileArrayJoin(
   arrTypeIdx: number,
   elemType: ValType,
 ): ValType | null {
-  // #1286: When the receiver evaluates to externref at runtime (e.g.,
-  // `Object.keys(any).join(...)` where Object.keys is dispatched through
-  // the __object_keys host import, or any JS array reached via
-  // `__extern_get`), the WasmGC-native path below would emit a `local.tee`
-  // into a vec-typed local and trap with "illegal cast". Probe the receiver
-  // first; if it's externref, delegate to the host's Array.prototype.join.
-  if (probeReceiverIsExternref(ctx, fctx, propAccess.expression)) {
-    return compileArrayJoinExtern(ctx, fctx, propAccess, callExpr);
-  }
-
+  // #1286: dispatch to compileArrayJoinExtern when the receiver evaluates to
+  // externref at runtime is handled in compileArrayMethodCall via the
+  // `receiverIsExternref` flag set by the probe. By the time we get here, the
+  // receiver is known to be a vec struct.
   const concatIdx = ctx.jsStringImports.get("concat");
   const toStrIdx = ctx.funcMap.get("number_toString");
   if (concatIdx === undefined) {
