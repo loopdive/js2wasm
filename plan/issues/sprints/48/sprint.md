@@ -68,7 +68,7 @@ Recommended dispatch (after S47 drains):
 <!-- GENERATED_ISSUE_TABLES_START -->
 ## Issue Tables
 
-_Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
+_Generated from issue files. Update issue `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
 
 ### Ready
 
@@ -79,6 +79,7 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1200 | perf: loop-invariant code motion in optimizer pass (hoist `arr.length` etc. out of `for` conditions) | medium | ready |
 | #1233 | IR Phase 4 Slice 13d — Array per-element-type methods through IR | medium | ready |
 | #1236 | Premature i32 specialization for `let s = 0` accumulators silently saturates on overflow | high | ready |
+| #1241 | Untitled |  | ready |
 | #1242 | WeakMap / WeakSet backed by strong references (lodash memoize / cloneDeep) | high | ready |
 | #1243 | for...in / Object.keys enumeration of compiled-object properties (lodash Tier 3) | high | ready |
 

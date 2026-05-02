@@ -326,7 +326,7 @@ Follow-up issues filed: **#1060, #1061, #1062, #1063** (all ready, all reference
 <!-- GENERATED_ISSUE_TABLES_START -->
 ## Issue Tables
 
-_Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
+_Generated from issue files. Update issue `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
 
 ### Done
 
@@ -357,7 +357,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1015 | Support fixture/includes tests in unified compilation mode (172 CE) | medium | done |
 | #1021 | Destructuring: use __extern_is_undefined instead of ref.is_null for defaults (~2,000+ FAIL) | critical | done |
 | #1022 | Array built-in method 'object is not a function' (640 FAIL) | critical | done |
-| #1025 | BindingElement array-pattern default guards still use ref.is_null | high | done |
 | #1026 | String.prototype / Number.prototype / Boolean.prototype globals access | medium | done |
 | #1027 | Missing __make_getter_callback late-import in PR #43 accessor paths | high | done |
 | #1028 | TypedArray.prototype.toLocaleString null/undefined in element toLocaleString path | medium | done |
