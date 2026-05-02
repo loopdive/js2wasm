@@ -54,13 +54,15 @@ Message **specific agents only** — no broadcasts unless claiming a shared file
    ```
    Then open the PR:
    `gh pr create --base main --title "fix(#N): <description>" --body "..."`
-5. **Wait for CI**: submit a single `Bash` call with `run_in_background: true` — do NOT foreground-poll (burns tokens). Your turn ends immediately; the system notifies you when the job exits.
+5. **Wait for CI — IMMEDIATELY after `gh pr create` returns, before doing anything else:**
+   Submit exactly this as a single `Bash` call with `run_in_background: true`:
    ```bash
    until [ -f /workspace/.claude/ci-status/pr-<N>.json ] && \
      [ "$(jq -r '.head_sha' /workspace/.claude/ci-status/pr-<N>.json)" = "<HEAD_SHA>" ]; \
      do sleep 60; done
    ```
-   Do **not** call Monitor after this — that is for streaming multiple events, not a single "done" signal. Do **not** send any messages while waiting. You will receive one notification when the loop exits; wake up and proceed to step 6.
+   Replace `<N>` with the PR number and `<HEAD_SHA>` with the full commit SHA from `gh pr view`.
+   Your turn ends the moment you submit this call. **Do NOT send any messages. Do NOT send idle_notifications. Do NOT do anything else.** The system notifies you when the loop exits; that is your signal to proceed to step 6.
 6. Run `/dev-self-merge <N>` — outputs MERGE or ESCALATE
 7. On MERGE: `gh pr merge <N> --merge --admin`
 8. On ESCALATE: message tech lead with which criterion failed + values

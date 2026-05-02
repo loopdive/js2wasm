@@ -1,9 +1,10 @@
 ---
 id: 1274
 title: "Hono Tier 2 stress test: route registration + basic dispatch via TrieRouter"
-status: ready
+status: done
 created: 2026-05-02
 updated: 2026-05-02
+merged_in: PR#175
 priority: high
 feasibility: medium
 reasoning_effort: medium
