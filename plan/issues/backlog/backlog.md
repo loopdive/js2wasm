@@ -210,6 +210,18 @@ Filed by `harvester-post-sprint-40-merge` from post-Sprint-40 test262 baseline (
 
 ---
 
+## Harvest 2026-05-01 (post #1227 dispatch-time-timer fix) — compile_timeout follow-ups
+
+Filed from the residual `compile_timeout` cluster analysis after PR #131 (#1227 / PR #134). The dispatch-time-timer fix dropped the baseline from 156 → 86 false `compile_timeout`; a per-test isolation probe revealed 73 of those 86 finish in <1 s in isolation (still pool-contention noise) and 9 are genuine runtime hangs in 3 clean clusters. See [`plan/notes/test262-timeout-clusters.md`](../../notes/test262-timeout-clusters.md) for raw data.
+
+| # | Priority | Issue | Impact | Status |
+|---|----------|-------|--------|--------|
+| [1228](1228.md) | Medium | `Array.prototype.{unshift,reverse,forEach,…}` on non-Array receivers iterate `[0, length)` instead of defined props | **2 CT** (+ 1 outlier) | Ready |
+| [1229](1229.md) | Medium | `eval(literal)` / `new RegExp(literal)` re-compile every iteration in 65k-loop tests | **7 CT** | Ready |
+| [1230](1230.md) | Low | Investigate post-dispatch fork starvation in CompilerPool (73 phantom timeouts) | **73 CT** | Ready |
+
+---
+
 ## Completed (760+ total)
 
 See `plan/log/issues-log.md` for the full completion log.
