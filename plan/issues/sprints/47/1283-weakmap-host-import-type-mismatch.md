@@ -1,7 +1,7 @@
 ---
 id: 1283
 title: "WeakMap host-import dispatch: type-mismatch on set/get/has/delete (carved off from #1242)"
-status: ready
+status: in-progress
 created: 2026-05-02
 updated: 2026-05-02
 priority: high
@@ -131,3 +131,44 @@ Possibilities:
 - #1244 — Hono stress test that also surfaces lodash-shaped WeakMap
   use.
 - #1101, #1103 — Stronger Wasm-native variants.
+
+## Resolution
+
+**Root cause:** `tryExternClassMethodOnAny` in
+`src/codegen/expressions/calls-closures.ts` iterated `ctx.externClasses`
+in insertion order and bound the first extern class that registered a
+method by the same name. The dispatch loop then emits `externref` hints
+for every argument and assumes the matched signature is fully
+externref-typed. For an `any`-typed receiver calling `.set`, this
+routinely picked `Uint8ClampedArray_set` (signature
+`(externref, externref, f64)`) before `WeakMap_set`
+(`(externref, externref, externref) → externref`), so the externref-
+hinted args mismatched the registered f64 param and the wasm module
+failed validation at instantiation with errors like
+`"call[0] expected externref, found f64 @+340"`.
+
+**Fix:** filter candidates inside `tryExternClassMethodOnAny` to only
+extern-class methods whose signature is fully externref-typed (params
+all `externref`, results all `externref` or empty). Mixed-type
+signatures (TypedArray.set's `f64` offset, etc.) are skipped and fall
+through to the generic `__extern_method_call` host-side dispatch, which
+uses the real receiver class at runtime.
+
+**Tests:** `tests/issue-1283.test.ts` covers all four CASE A–D
+patterns plus delete, fresh-WeakMap.has, multi-key independence, and
+WeakSet/Map regression guards. All 9 cases pass.
+
+## Test Results
+
+- `tests/issue-1283.test.ts`: 9/9 pass
+- `tests/issue-1242.test.ts` (WeakSet regression): 5/5 pass
+- `tests/issue-1062.test.ts` (`.slice` ambiguity): 2/2 pass
+- `tests/equivalence/weakmap-weakset.test.ts`: 11/11 pass
+- `tests/equivalence/map-set-basic.test.ts`: passes
+- `tests/equivalence/ir-slice10-typed-array.test.ts`: 5/5 pass
+- `tests/equivalence/ir-slice10-map-set.test.ts`: 5/5 pass
+
+The fix also incidentally improves `Map.has` and `Uint8Array.set` on
+`any`-typed receivers, which previously hit the same first-match
+mismatch (e.g. `m.has(1)` was being routed to a wrong f64 param
+signature on origin/main).
