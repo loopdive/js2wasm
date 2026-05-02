@@ -51,7 +51,7 @@ on:
       compiler_pool_size:
         description: "Compiler workers per shard runner"
         required: false
-        default: "4"
+        default: "2"
         type: string
       force_baseline_refresh:
         description: "Force promote merged report to baseline regardless of regressions. Requires confirm_force=YES."
@@ -86,7 +86,7 @@ jobs:
         chunk: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
 
     env:
-      COMPILER_POOL_SIZE: ${{ inputs.compiler_pool_size || '4' }}
+      COMPILER_POOL_SIZE: ${{ inputs.compiler_pool_size || '2' }}
       TEST262_INCLUDE_PROPOSALS: ${{ github.event_name != 'workflow_dispatch' && '1' || (inputs.include_proposals && '1' || '0') }}
       RUN_TIMESTAMP: ${{ github.run_id }}-chunk${{ matrix.chunk }}
 
