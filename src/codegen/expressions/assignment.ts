@@ -491,20 +491,31 @@ function compileDestructuringAssignment(
   // patterns the bindings stay at their defaults (mimics JS behaviour for
   // destructuring primitives — the properties simply do not exist). (#379)
   if (!typeName || !ctx.structMap.has(typeName) || !ctx.structFields.get(typeName)) {
-    // Null/undefined check — throw TypeError (#783).
-    // In JS, `{...} = null` and `{...} = undefined` always throw TypeError.
+    // Null/undefined check — throw TypeError (#783, #1260).
+    // In JS, `{...} = null` and `{...} = undefined` always throw TypeError per
+    // §13.15.5.5 RequireObjectCoercible. Use emitExternrefAssignDestructureGuard
+    // which checks BOTH ref.is_null (catches null) AND __extern_is_undefined
+    // (catches the JS undefined sentinel). The bare ref.is_null check missed
+    // undefined-encoded externrefs (#1260).
     // Skip for empty `{} = val` patterns (#225) — only fire on real property accesses.
     if ((resultType.kind === "externref" || resultType.kind === "ref_null") && target.properties.length > 0) {
-      const throwInstrs = buildDestructureNullThrow(ctx, fctx);
       const tmpNullChk = allocLocal(fctx, `__destruct_null_chk_${fctx.locals.length}`, resultType);
-      fctx.body.push({ op: "local.tee", index: tmpNullChk });
-      fctx.body.push({ op: "ref.is_null" } as Instr);
-      fctx.body.push({
-        op: "if",
-        blockType: { kind: "empty" },
-        then: throwInstrs,
-        else: [],
-      });
+      fctx.body.push({ op: "local.set", index: tmpNullChk });
+      if (resultType.kind === "externref") {
+        emitExternrefAssignDestructureGuard(ctx, fctx, tmpNullChk);
+      } else {
+        // ref_null source: only ref.is_null is meaningful (no undefined sentinel
+        // for typed-struct refs).
+        const throwInstrs = buildDestructureNullThrow(ctx, fctx);
+        fctx.body.push({ op: "local.get", index: tmpNullChk });
+        fctx.body.push({ op: "ref.is_null" } as Instr);
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "empty" },
+          then: throwInstrs,
+          else: [],
+        });
+      }
       // Restore value on stack
       fctx.body.push({ op: "local.get", index: tmpNullChk });
     }
@@ -1407,6 +1418,15 @@ function emitObjectDestructureFromLocal(
   const fields = ctx.structFields.get(structName);
   if (!fields) return;
 
+  // The compiler may declare the local as non-nullable `ref T` even though
+  // the value at runtime can be null (e.g. `[{x}] = [null]` element-extracts
+  // a ref_null whose runtime value is null but whose static type is `ref T`).
+  // Widen the local so `ref.is_null` is valid below (#1260, mirrors #1225).
+  const needsNullGuard = pattern.properties.length > 0;
+  if (needsNullGuard) {
+    widenLocalToNullable(fctx, srcLocal);
+  }
+
   // Null guard for ref_null types
   const savedBodyODFL = fctx.body;
   const odflInstrs: Instr[] = [];
@@ -1486,10 +1506,11 @@ function emitObjectDestructureFromLocal(
     }
   }
 
-  // Close null guard — throw TypeError if null/undefined (#730).
+  // Close null guard — throw TypeError if null/undefined (#730, #1260).
   // Skip for empty `{} = val` nested patterns (#225).
+  // Apply to both ref and ref_null sources (we widened above, so ref.is_null is valid).
   fctx.body = savedBodyODFL;
-  if (srcType.kind === "ref_null" && pattern.properties.length > 0) {
+  if (needsNullGuard) {
     const throwInstrs = buildDestructureNullThrow(ctx, fctx);
     fctx.body.push({ op: "local.get", index: srcLocal });
     fctx.body.push({ op: "ref.is_null" } as Instr);

@@ -1,7 +1,7 @@
 ---
 id: 1260
 title: "Destructuring of null/undefined must throw TypeError per §13.15.5.5"
-status: ready
+status: review
 created: 2026-05-02
 updated: 2026-05-02
 priority: high
@@ -118,3 +118,60 @@ What's missing:
 - #1177 — TDZ propagation (Stage 1 blocked on this)
 - #1225 — emitExternrefDestructureGuard (top-level loop element)
 - #1245 — Investigation finding
+
+## Implementation summary
+
+Patched `src/codegen/expressions/assignment.ts` with two targeted fixes:
+
+1. **`emitObjectDestructureFromLocal`** — when the source struct of an
+   object destructure is statically `ref T` (non-nullable) but the runtime
+   value can be null (e.g. `[{x}] = [null]`: `[null]` is typed `null[]`,
+   element-extracted as ref but the runtime value is null), the previous
+   guard at line 1492 was gated on `srcType.kind === "ref_null"` and
+   silently skipped for `ref`. struct.get on the null reference produced
+   a Wasm null_deref instead of the spec-required TypeError. Fix: widen
+   the source local to nullable via `widenLocalToNullable` and always emit
+   the `ref.is_null` → throw guard for non-empty patterns. Mirrors the
+   pre-existing widening in `emitArrayDestructureFromLocal` (#1225).
+
+2. **`compileDestructuringAssignment` no-struct fallback** — when the RHS
+   of `({...} = expr)` is externref / `ref_null` and no struct type can
+   be resolved, the previous fallback only checked `ref.is_null`,
+   silently allowing JS-undefined sentinels through (per §13.15.5.5
+   RequireObjectCoercible, both null AND undefined must throw). Fix:
+   route externref through `emitExternrefAssignDestructureGuard` which
+   emits both `ref.is_null` AND `__extern_is_undefined` checks.
+
+`tests/issue-1260.test.ts` covers 7 cases:
+- `[{x}] = [null]` (typed-array path, was null_deref → now TypeError)
+- `[{x}] = [null]` with `any[]` (externref path)
+- `[[a]] = [null]` (regression sanity — already worked)
+- `[[_]] = [,]` (sparse hole = undefined → TypeError)
+- `({x: [x]} = {x: undefined})` (object source, undefined property)
+- Regression sanity: non-null `[a, b] = [10, 20]`
+- Regression sanity: nested `[{x: a}, {y: b}] = [{x:1}, {y:2}]`
+
+The test262 case `array-elem-nested-obj-null.js` (assignment-expression
+form) now passes — previously failed with `dereferencing a null pointer`
+instead of TypeError.
+
+## Out-of-scope (deferred follow-ups)
+
+Identified during investigation but left for separate issues (the
+ref/ref_null encoding cannot distinguish JS null from undefined in
+struct fields, requiring runtime infrastructure changes):
+
+- **`emitNestedBindingDefault` ref/ref_null path** (destructuring.ts:215)
+  — when a function param has shape `{w: {x,y,z} = D}` and is called with
+  `{w: null}`, the default branch fires on `ref.is_null` (treating both
+  null and undefined as triggers). Per spec, default fires only on
+  undefined; null should throw TypeError. Affects ~5 test262 cases:
+  - `expressions/class/dstr/gen-meth-obj-ptrn-prop-obj-value-null.js`
+  - `expressions/object/dstr/gen-meth-obj-ptrn-prop-obj-value-null.js`
+  - `expressions/object/dstr/async-gen-meth-obj-ptrn-prop-obj-value-null.js`
+  - `statements/class/dstr/gen-meth-obj-ptrn-prop-obj-value-null.js`
+
+- **For-of typed-struct path with nested array/object property targets**
+  (loops.ts:1181-1230) — `for ({x: [x]} of [{x: undefined}])` doesn't
+  dispatch on nested array/object property initializers; only handles
+  identifier targets. Affects ~2 for-of test262 cases.
