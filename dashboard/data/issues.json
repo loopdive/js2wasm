@@ -117,6 +117,16 @@
   ],
   "ready": [
     {
+      "id": "1239",
+      "title": "object literals with GetAccessor/SetAccessor — route to __defineProperty_accessor + force-externref var tagging",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "test262-conformance",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
       "id": "1233",
       "title": "IR Phase 4 Slice 13d — Array per-element-type methods through IR",
       "priority": "medium",
@@ -1513,7 +1523,8 @@
       "sprint": "47"
     }
   ],
-  "review": [
+  "review": [],
+  "done": [
     {
       "id": "1234",
       "title": "Array.prototype.{unshift,reverse,forEach,…} on non-Array receivers iterate [0, length) instead of defined props",
@@ -1521,11 +1532,9 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "test262-conformance",
-      "status": "review",
+      "status": "done",
       "sprint": "47"
-    }
-  ],
-  "done": [
+    },
     {
       "id": "1227",
       "title": "fix(runner): compiler-pool timeout starts at enqueue time, not dispatch time — causes 156 false compile_timeouts",

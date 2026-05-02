@@ -96,12 +96,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1118 | Worker/timeout exits and eval-code null deref (182 tests) | medium | in-progress |
 | #1228 | IR selector widening: accept void return + any params | high | in-progress |
 
-### Review
-
-| Issue | Title | Priority | Status |
-|---|---|---|---|
-| #1234 | Array.prototype.{unshift,reverse,forEach,…} on non-Array receivers iterate [0, length) instead of defined props | medium | review |
-
 ### Done
 
 | Issue | Title | Priority | Status |
@@ -122,5 +116,6 @@ _Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun 
 | #1225 | Nested destructuring from null/undefined: missing TypeError (~244 tests in for-of/dstr, assignment/dstr, class/dstr) | high | done |
 | #1226 | class/elements: static async private method produces invalid Wasm — call missing argument (~104 tests) | high | done |
 | #1227 | fix(runner): compiler-pool timeout starts at enqueue time, not dispatch time — causes 156 false compile_timeouts | high | done |
+| #1234 | Array.prototype.{unshift,reverse,forEach,…} on non-Array receivers iterate [0, length) instead of defined props | medium | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->

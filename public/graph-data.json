@@ -17588,14 +17588,26 @@
       "id": "1234",
       "title": "Array.prototype.{unshift,reverse,forEach,…} on non-Array receivers iterate [0, length) instead of defined props",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "review",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "47",
       "depends_on": [],
       "files": [],
       "goal": "test262-conformance",
       "cluster": "test262-conformance",
       "test262_fail": 2
+    },
+    {
+      "id": "1239",
+      "title": "object literals with GetAccessor/SetAccessor — route to __defineProperty_accessor + force-externref var tagging",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "test262-conformance",
+      "cluster": "test262-conformance"
     },
     {
       "id": "backlog",
