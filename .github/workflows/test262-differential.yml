@@ -1,0 +1,528 @@
+name: Test262 Differential
+
+# #1246 — branch tip vs. main HEAD comparison with src-tree-hash caching.
+#
+# Why this exists:
+#   The legacy `test262-sharded.yml` regression-gate compared branch results
+#   against the rolling `js2wasm-baselines` JSONL snapshot. That snapshot is
+#   always behind main HEAD by up to one sharded-run duration (~10 min). PRs
+#   pushed during that window saw drift-induced "regressions" that weren't
+#   actually caused by their source changes — see PR#142, #143, #151.
+#
+# Solution:
+#   Run BOTH branch tip AND main HEAD through test262 in the same workflow,
+#   then diff. Cache main HEAD results keyed on `git rev-parse origin/main:src`
+#   (the src/ tree content hash). After a `--merge` PR merge, the new main
+#   commit's src/ tree equals the just-merged branch tip's src/ tree, so the
+#   cache populated from the branch's main-shard run is reused for the next
+#   PR's gate check.
+#
+# Performance:
+#   - cache hit  → main shards skipped → total walltime ≈ 10 min (branch only)
+#   - cache miss → branch + main shards run in parallel → total ≈ 10 min
+#
+# Coexistence with `test262-sharded.yml`:
+#   This workflow is the new authoritative gate. The legacy regression-gate
+#   in `test262-sharded.yml` is left in place during the bake-in period
+#   (≥3 PRs) and removed in a follow-up PR. The legacy workflow's
+#   `promote-baseline` step continues to publish to `js2wasm-baselines` for
+#   the landing-page dashboard history (acceptance criterion 5).
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/test262-differential.yml"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "tsconfig.json"
+      - "scripts/tsconfig.json"
+      - "vitest.config.ts"
+      - "src/**"
+      - "scripts/build-test262-report.mjs"
+      - "scripts/compiler-fork-worker.mjs"
+      - "scripts/compiler-pool.ts"
+      - "scripts/diff-test262.ts"
+      - "scripts/generate-editions.ts"
+      - "scripts/test262-worker.mjs"
+      - "tests/test262-chunk*.test.ts"
+      - "tests/test262-runner.ts"
+      - "tests/test262-scope-classification.test.ts"
+      - "tests/test262-shared.ts"
+  workflow_dispatch:
+    inputs:
+      include_proposals:
+        description: "Include proposal tests"
+        required: false
+        default: true
+        type: boolean
+      compiler_pool_size:
+        description: "Compiler workers per shard runner"
+        required: false
+        default: "4"
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+concurrency:
+  group: test262-differential-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # -------------------------------------------------------------------------
+  # 1. Compute the main src/ tree hash and probe the cache for prior results.
+  # -------------------------------------------------------------------------
+  check-main-cache:
+    name: probe main cache
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      main_tree: ${{ steps.tree.outputs.sha }}
+      main_sha: ${{ steps.tree.outputs.commit }}
+      cache_hit: ${{ steps.restore.outputs.cache-hit }}
+    steps:
+      - name: Checkout (PR branch + base)
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          submodules: false
+
+      - name: Compute main src/ tree hash
+        id: tree
+        run: |
+          # The cache key is the content hash of main's src/ directory,
+          # NOT the commit SHA. This is what makes the cache content-
+          # addressable: after a normal --merge merge, main's src/ tree
+          # equals the just-merged branch tip's src/ tree, so the same
+          # cache entry serves both. Workflow-side commits (e.g.
+          # `chore: refresh baseline [skip ci]`) don't change src/ and
+          # don't bust the cache.
+          git fetch origin main:refs/remotes/origin/main --depth=1
+          MAIN_TREE=$(git rev-parse origin/main:src)
+          MAIN_SHA=$(git rev-parse origin/main)
+          echo "sha=${MAIN_TREE}" >> "$GITHUB_OUTPUT"
+          echo "commit=${MAIN_SHA}" >> "$GITHUB_OUTPUT"
+          echo "main src/ tree: ${MAIN_TREE} (commit ${MAIN_SHA})"
+
+      - name: Probe cache for main results
+        id: restore
+        uses: actions/cache/restore@v4
+        with:
+          # Lookup-only: we don't restore here — the compare job restores
+          # under the same key once it knows the cache hit/miss state.
+          # `lookup-only: true` only returns the boolean cache-hit,
+          # avoiding wasted bandwidth fetching ~2MB of artifacts in this
+          # gating job.
+          key: test262-main-results-${{ steps.tree.outputs.sha }}
+          path: cached-main-results/
+          lookup-only: true
+
+      - name: Report cache status
+        run: |
+          if [ "${{ steps.restore.outputs.cache-hit }}" = "true" ]; then
+            echo "::notice::Main results cache HIT for src/ tree ${{ steps.tree.outputs.sha }} — main shards will be skipped."
+          else
+            echo "::notice::Main results cache MISS for src/ tree ${{ steps.tree.outputs.sha }} — main shards will run in parallel with branch."
+          fi
+
+  # -------------------------------------------------------------------------
+  # 2. Branch shard matrix — always runs. 16-shard breakdown identical to
+  #    test262-sharded.yml's `test262-shard` job.
+  # -------------------------------------------------------------------------
+  test262-branch-shard:
+    name: branch shard ${{ matrix.chunk }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        chunk: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+    env:
+      COMPILER_POOL_SIZE: ${{ inputs.compiler_pool_size || '4' }}
+      TEST262_INCLUDE_PROPOSALS: ${{ github.event_name != 'workflow_dispatch' && '1' || (inputs.include_proposals && '1' || '0') }}
+      RUN_TIMESTAMP: ${{ github.run_id }}-branch-chunk${{ matrix.chunk }}
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          fetch-depth: 1
+          # github.sha at PR_event time is the merge commit. We want the
+          # branch HEAD itself so the comparison reflects exactly what the
+          # PR author pushed.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 25
+
+      - name: Setup pnpm via Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.30.2 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Cache test262 incremental cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            .test262-cache
+            benchmarks/results/test262-cache.json
+          key: test262-cache-v2-${{ hashFiles('src/**/*.ts', 'scripts/test262-worker.mjs', 'scripts/compiler-fork-worker.mjs', 'vitest.config.ts') }}-chunk-${{ matrix.chunk }}
+          restore-keys: |
+            test262-cache-v2-${{ hashFiles('src/**/*.ts', 'scripts/test262-worker.mjs', 'scripts/compiler-fork-worker.mjs', 'vitest.config.ts') }}-
+
+      - name: Build compiler bundles
+        run: |
+          pnpm run build:compiler-bundle
+          ./node_modules/.bin/esbuild src/runtime.ts --bundle --platform=node --format=esm \
+            --outfile=scripts/runtime-bundle.mjs --external:typescript --external:binaryen
+
+      - name: Run shard
+        run: |
+          mkdir -p vitest-blob
+          set +e
+          node node_modules/vitest/dist/cli.js run tests/test262-chunk${{ matrix.chunk }}.test.ts \
+            --reporter=blob \
+            --outputFile=vitest-blob/blob-${{ matrix.chunk }}.json
+          exit_code=$?
+          set -e
+          if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 1 ]; then
+            echo "Vitest exited with unexpected code $exit_code"
+            exit "$exit_code"
+          fi
+
+      - name: Upload branch shard artifacts
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: test262-diff-branch-shard-${{ matrix.chunk }}
+          path: |
+            benchmarks/results/test262-results-${{ env.RUN_TIMESTAMP }}.jsonl
+          if-no-files-found: warn
+
+  # -------------------------------------------------------------------------
+  # 3. Main shard matrix — runs ONLY on cache miss. Identical to the branch
+  #    matrix except it checks out origin/main and uploads to a different
+  #    artifact prefix.
+  # -------------------------------------------------------------------------
+  test262-main-shard:
+    name: main shard ${{ matrix.chunk }}
+    needs: check-main-cache
+    if: needs.check-main-cache.outputs.cache_hit != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        chunk: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+    env:
+      COMPILER_POOL_SIZE: ${{ inputs.compiler_pool_size || '4' }}
+      TEST262_INCLUDE_PROPOSALS: ${{ github.event_name != 'workflow_dispatch' && '1' || (inputs.include_proposals && '1' || '0') }}
+      RUN_TIMESTAMP: ${{ github.run_id }}-main-chunk${{ matrix.chunk }}
+
+    steps:
+      - name: Checkout main HEAD
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          fetch-depth: 1
+          ref: ${{ needs.check-main-cache.outputs.main_sha }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 25
+
+      - name: Setup pnpm via Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.30.2 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Cache test262 incremental cache (main)
+        uses: actions/cache@v5
+        with:
+          path: |
+            .test262-cache
+            benchmarks/results/test262-cache.json
+          # Separate cache namespace from the branch cache so main and
+          # branch don't fight over the same key when their src/ trees
+          # differ. After merge they'll converge naturally.
+          key: test262-cache-v2-main-${{ hashFiles('src/**/*.ts', 'scripts/test262-worker.mjs', 'scripts/compiler-fork-worker.mjs', 'vitest.config.ts') }}-chunk-${{ matrix.chunk }}
+          restore-keys: |
+            test262-cache-v2-main-${{ hashFiles('src/**/*.ts', 'scripts/test262-worker.mjs', 'scripts/compiler-fork-worker.mjs', 'vitest.config.ts') }}-
+
+      - name: Build compiler bundles
+        run: |
+          pnpm run build:compiler-bundle
+          ./node_modules/.bin/esbuild src/runtime.ts --bundle --platform=node --format=esm \
+            --outfile=scripts/runtime-bundle.mjs --external:typescript --external:binaryen
+
+      - name: Run shard
+        run: |
+          mkdir -p vitest-blob
+          set +e
+          node node_modules/vitest/dist/cli.js run tests/test262-chunk${{ matrix.chunk }}.test.ts \
+            --reporter=blob \
+            --outputFile=vitest-blob/blob-${{ matrix.chunk }}.json
+          exit_code=$?
+          set -e
+          if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 1 ]; then
+            echo "Vitest exited with unexpected code $exit_code"
+            exit "$exit_code"
+          fi
+
+      - name: Upload main shard artifacts
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: test262-diff-main-shard-${{ matrix.chunk }}
+          path: |
+            benchmarks/results/test262-results-${{ env.RUN_TIMESTAMP }}.jsonl
+          if-no-files-found: warn
+
+  # -------------------------------------------------------------------------
+  # 4. Merge branch shards into a single JSONL.
+  # -------------------------------------------------------------------------
+  merge-branch:
+    name: merge branch shards
+    needs: test262-branch-shard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 25
+
+      - name: Setup pnpm via Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.30.2 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download branch shard artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: shard-artifacts
+          pattern: test262-diff-branch-shard-*
+          merge-multiple: false
+
+      - name: Merge branch JSONL results
+        run: |
+          mkdir -p branch-merged
+          find shard-artifacts -name 'test262-results-*.jsonl' -print0 | sort -z | xargs -0 cat > branch-merged/test262-results-merged.jsonl
+          test -s branch-merged/test262-results-merged.jsonl
+
+      - name: Build merged branch report
+        run: |
+          node scripts/build-test262-report.mjs \
+            --input branch-merged/test262-results-merged.jsonl \
+            --output branch-merged/test262-report-merged.json \
+            --baseline-sha "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --baseline-generated-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            ${{ github.event_name != 'workflow_dispatch' && '--include-proposals' || (inputs.include_proposals && '--include-proposals' || '') }}
+
+      - name: Upload merged branch report
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: test262-diff-branch-merged
+          path: branch-merged/**
+          if-no-files-found: warn
+
+  # -------------------------------------------------------------------------
+  # 5. Merge main shards into a single JSONL — only when shards ran (cache
+  #    miss). Stores the merged result into the actions cache keyed by
+  #    `test262-main-results-${main_tree}` for future PRs to reuse.
+  # -------------------------------------------------------------------------
+  merge-main:
+    name: merge main shards (and cache)
+    needs: [check-main-cache, test262-main-shard]
+    if: needs.check-main-cache.outputs.cache_hit != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 25
+
+      - name: Setup pnpm via Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.30.2 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download main shard artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: shard-artifacts
+          pattern: test262-diff-main-shard-*
+          merge-multiple: false
+
+      - name: Merge main JSONL results
+        run: |
+          mkdir -p cached-main-results
+          find shard-artifacts -name 'test262-results-*.jsonl' -print0 | sort -z | xargs -0 cat > cached-main-results/test262-results-merged.jsonl
+          test -s cached-main-results/test262-results-merged.jsonl
+
+      - name: Build merged main report
+        run: |
+          node scripts/build-test262-report.mjs \
+            --input cached-main-results/test262-results-merged.jsonl \
+            --output cached-main-results/test262-report-merged.json \
+            --baseline-sha "${{ needs.check-main-cache.outputs.main_sha }}" \
+            --baseline-generated-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            ${{ github.event_name != 'workflow_dispatch' && '--include-proposals' || (inputs.include_proposals && '--include-proposals' || '') }}
+
+      - name: Save main results to cache (keyed by src/ tree hash)
+        # actions/cache@v4 save uses the same key we probed earlier in
+        # `check-main-cache`. Idempotent: if another concurrent workflow
+        # populated the cache while we were running, the save is a no-op.
+        uses: actions/cache/save@v4
+        with:
+          key: test262-main-results-${{ needs.check-main-cache.outputs.main_tree }}
+          path: cached-main-results/
+
+      - name: Upload merged main report (artifact backup)
+        # Belt-and-braces — even if the cache save fails or evicts, the
+        # `compare` job downloads via this artifact path.
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: test262-diff-main-merged
+          path: cached-main-results/**
+          if-no-files-found: warn
+
+  # -------------------------------------------------------------------------
+  # 6. Compare branch vs. main directly. The cache is the source of truth on
+  #    cache hit; the artifact (uploaded by `merge-main`) is the source on
+  #    cache miss. Either way, the inputs to `diff-test262.ts` are the live
+  #    main HEAD results — no rolling baseline drift.
+  # -------------------------------------------------------------------------
+  compare:
+    name: differential gate (branch vs main)
+    needs: [check-main-cache, merge-branch, merge-main]
+    # `merge-main` is skipped on cache hit; we still need this job to run.
+    # `if: always() && ...needs success/skipped` covers both.
+    if: always() && needs.merge-branch.result == 'success' && (needs.merge-main.result == 'success' || needs.merge-main.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 25
+
+      - name: Setup pnpm via Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.30.2 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download merged branch report
+        uses: actions/download-artifact@v7
+        with:
+          name: test262-diff-branch-merged
+          path: branch-merged
+
+      - name: Restore main results from cache (cache hit path)
+        if: needs.check-main-cache.outputs.cache_hit == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          key: test262-main-results-${{ needs.check-main-cache.outputs.main_tree }}
+          path: cached-main-results/
+          fail-on-cache-miss: true
+
+      - name: Download merged main report (cache miss path)
+        if: needs.check-main-cache.outputs.cache_hit != 'true'
+        uses: actions/download-artifact@v7
+        with:
+          name: test262-diff-main-merged
+          path: cached-main-results
+
+      - name: Diff branch vs. main
+        id: diff
+        run: |
+          MAIN_JSONL="cached-main-results/test262-results-merged.jsonl"
+          MAIN_META="cached-main-results/test262-report-merged.json"
+          BRANCH_JSONL="branch-merged/test262-results-merged.jsonl"
+          test -s "$MAIN_JSONL" || { echo "missing $MAIN_JSONL"; exit 2; }
+          test -s "$BRANCH_JSONL" || { echo "missing $BRANCH_JSONL"; exit 2; }
+          mkdir -p diff-out
+          set +e
+          npx tsx scripts/diff-test262.ts "$MAIN_JSONL" "$BRANCH_JSONL" --quiet --baseline-meta "$MAIN_META" \
+            > diff-out/test262-regressions.txt
+          exit_code=$?
+          set -e
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 1 ]; then
+            echo "Unexpected diff-test262 exit code $exit_code"
+            exit "$exit_code"
+          fi
+          if [ "$exit_code" -eq 1 ]; then
+            echo "regressions=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "regressions=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload diff report
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: test262-diff-regressions-report
+          path: diff-out/test262-regressions.txt
+          if-no-files-found: warn
+
+      - name: Annotate cache-hit/miss in summary
+        run: |
+          {
+            echo "## Differential test262 (#1246)"
+            echo ""
+            if [ "${{ needs.check-main-cache.outputs.cache_hit }}" = "true" ]; then
+              echo "- **main results: cache HIT** for src/ tree \`${{ needs.check-main-cache.outputs.main_tree }}\` — main shards skipped."
+            else
+              echo "- **main results: cache MISS** for src/ tree \`${{ needs.check-main-cache.outputs.main_tree }}\` — main shards ran in parallel with branch."
+            fi
+            echo "- main HEAD commit: \`${{ needs.check-main-cache.outputs.main_sha }}\`"
+            echo "- branch tip commit: \`${{ github.event.pull_request.head.sha || github.sha }}\`"
+            echo ""
+            echo "<details><summary>diff output</summary>"
+            echo ""
+            echo '```'
+            cat diff-out/test262-regressions.txt 2>/dev/null || echo "(no diff output)"
+            echo '```'
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail on regressions
+        if: steps.diff.outputs.regressions == 'true'
+        run: |
+          echo "test262 regressions detected vs. main HEAD (no drift — direct comparison)"
+          cat diff-out/test262-regressions.txt
+          exit 1
