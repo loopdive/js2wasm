@@ -2,7 +2,7 @@
 /**
  * Logical operator compilation: &&, ||, ??, and mapped arguments helpers.
  */
-import ts from "typescript";
+import { ts } from "../../ts-api.js";
 import type { Instr, ValType } from "../../ir/types.js";
 import { pushBody } from "../context/bodies.js";
 import { reportError } from "../context/errors.js";

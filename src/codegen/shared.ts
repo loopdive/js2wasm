@@ -19,7 +19,7 @@
  * from this file.
  */
 
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 import type { ValType } from "../ir/types.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
 

@@ -2,7 +2,7 @@
 /**
  * Host built-in compilation: console, Date, Math, and WASI output.
  */
-import ts from "typescript";
+import { ts } from "../../ts-api.js";
 import { isBooleanType, isNumberType, isStringType } from "../../checker/type-mapper.js";
 import type { Instr, ValType } from "../../ir/types.js";
 import { allocLocal, allocTempLocal, releaseTempLocal } from "../context/locals.js";

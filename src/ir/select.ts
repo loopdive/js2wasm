@@ -54,7 +54,7 @@
 //     before the IR runs (allocated by `collectClassDeclaration`). The
 //     `localClasses` set drives that exemption.
 
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 
 import type { LatticeType, TypeMap } from "./propagate.js";
 

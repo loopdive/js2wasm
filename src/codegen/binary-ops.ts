@@ -4,7 +4,7 @@
  * Handles binary expression compilation including numeric, i32, i64,
  * bitwise, modulo, boolean, and any-typed binary operations.
  */
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 import {
   isBigIntType,
   isBooleanType,

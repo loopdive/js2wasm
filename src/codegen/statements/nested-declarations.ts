@@ -4,7 +4,7 @@
  * Handles function declarations within other functions, class declarations,
  * function hoisting, default parameter handling, and the arguments object.
  */
-import ts from "typescript";
+import { ts } from "../../ts-api.js";
 import { isVoidType, unwrapPromiseType } from "../../checker/type-mapper.js";
 import { bodyUsesArguments } from "../helpers/body-uses-arguments.js";
 import type { Instr, ValType } from "../../ir/types.js";

@@ -5,7 +5,7 @@
  *
  * Extracted from codegen/index.ts (#1013).
  */
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 import {
   isBigIntType,
   isBooleanType,

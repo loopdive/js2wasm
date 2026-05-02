@@ -2,7 +2,7 @@
 /**
  * Control flow statement lowering: return, if, switch, break, continue, labeled.
  */
-import ts from "typescript";
+import { ts } from "../../ts-api.js";
 import { isStringType } from "../../checker/type-mapper.js";
 import type { Instr, ValType } from "../../ir/types.js";
 import { popBody, pushBody } from "../context/bodies.js";

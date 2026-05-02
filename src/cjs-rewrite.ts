@@ -14,7 +14,7 @@
 // destructuring, `require(...).foo` chained access) is left untouched so we don't
 // silently change semantics.
 
-import ts from "typescript";
+import { ts } from "./ts-api.js";
 
 /** A single require() call rewrite plan. */
 interface RequireRewrite {

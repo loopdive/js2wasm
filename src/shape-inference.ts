@@ -11,7 +11,7 @@
  * These variables are inferred to have array-like shape and can be compiled
  * as WasmGC vec structs instead of externref/AnyValue.
  */
-import ts from "typescript";
+import { ts } from "./ts-api.js";
 
 export interface InferredShape {
   /** Named fields set on the variable (e.g. "length") with inferred types */

@@ -54,7 +54,7 @@
  *   - Read loop reads `arr.length` more than once or after the loop
  *   - Index variables shadow outer scopes in surprising ways
  */
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 import type { CodegenContext } from "./context/types.js";
 
 /**

@@ -7,7 +7,7 @@
  * bounds-checked array access, and related utilities.
  */
 
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 import { isExternalDeclaredClass, isIteratorResultType, isStringType } from "../checker/type-mapper.js";
 import type { FieldDef, Instr, ValType } from "../ir/types.js";
 import { emitBoundsCheckedArrayGet } from "./array-methods.js";

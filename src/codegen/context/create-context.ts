@@ -5,7 +5,7 @@
  * This module constructs a fresh CodegenContext and performs the minimal
  * upfront registry bootstrap that generateModule/generateMultiModule rely on.
  */
-import ts from "typescript";
+import { ts } from "../../ts-api.js";
 import type { WasmModule } from "../../ir/types.js";
 import { getOrRegisterVecType, registerNativeStringTypes } from "../registry/types.js";
 import type { CodegenContext, CodegenOptions } from "./types.js";

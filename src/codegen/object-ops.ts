@@ -5,7 +5,7 @@
  *
  * Extracted from expressions.ts (#688 step 6).
  */
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 import { isVoidType } from "../checker/type-mapper.js";
 import type { Instr, ValType, WasmFunction } from "../ir/types.js";
 import { collectReferencedIdentifiers, collectWrittenIdentifiers, compileArrowAsCallback } from "./closures.js";

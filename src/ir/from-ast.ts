@@ -35,7 +35,7 @@
 //     call's return type comes from `callReturnTypes` (same TypeMap),
 //     with arg types validated against the propagated callee param types.
 
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 
 import { evaluateConstantCondition } from "../codegen/statements/control-flow.js";
 import { IrFunctionBuilder } from "./builder.js";

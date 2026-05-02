@@ -86,7 +86,7 @@
 //   to parameter identifiers for simplicity. Locals used inside Phase-1
 //   functions are already constrained by the selector's shape check.
 
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 
 // ---------------------------------------------------------------------------
 // Public shapes

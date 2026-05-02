@@ -4,7 +4,7 @@
  *
  * Extracted from codegen/index.ts (#1013).
  */
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 import { isVoidType, unwrapPromiseType } from "../checker/type-mapper.js";
 import type { Instr, ValType, WasmFunction } from "../ir/types.js";
 import { popBody, pushBody } from "./context/bodies.js";
