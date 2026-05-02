@@ -29,6 +29,7 @@ export function createCodegenContext(
     errors: [],
     lastKnownNode: null,
     externClasses: new Map(),
+    pseudoExternClasses: new Map(),
     funcOptionalParams: new Map(),
     anonTypeMap: new Map(),
     anonTypeCounter: 0,

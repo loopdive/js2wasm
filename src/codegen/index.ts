@@ -5884,20 +5884,32 @@ export function registerBuiltinExternClasses(ctx: CodegenContext): void {
   // (`src/codegen/index.ts:3058`) and the array prototype-method dispatch
   // in `src/codegen/array-methods.ts`.
   //
-  // **Scope of this slice (#1238)**: registry-only. The lookup helper
-  // `resolveMethodDispatchTarget` (exported below) reads receiver IrTypes
-  // and returns a className for the registry — but the actual receiver-
-  // type widening (string → IrType.extern, vec → IrType.extern) and
-  // dispatch routing through `extern.call` / `extern.prop` are deferred
-  // to #1232 (String) and #1233 (Array). The registry exists today so
-  // those follow-up slices can land without re-implementing the
-  // synthetic table.
+  // **Why a separate `pseudoExternClasses` map?**
+  // Putting String/Array directly into `ctx.externClasses` broke `new
+  // Array(...)` / `new String(...)` because:
+  //   - `collectUsedExternImports` (line ~6297) registers `${prefix}_new`
+  //     for any `new ClassName()` whose className is in `ctx.externClasses`.
+  //     With "Array" in the map, `new Array(10)` registered an `array_new`
+  //     host import.
+  //   - `compileNewExpression` (in `src/codegen/expressions/new-super.ts`,
+  //     ~line 2193) dispatches via the externInfo branch BEFORE the inline
+  //     `if (className === "Array")` vec-creation special case. So `new
+  //     Array(10)` emitted `call $array_new` instead of the inline vec.
+  //   - At runtime, `runtime.ts` couldn't find an `Array` constructor in
+  //     its `builtinCtors` map (Number/String/Map/Set/RegExp/... but no
+  //     Array — Array is a TypedArray-style built-in), throwing "No
+  //     dependency provided for extern class 'Array'".
+  // PR#149 caught this in CI as 152 wasm_compile regressions. Splitting
+  // pseudo entries into a separate map keeps `ctx.externClasses` shaped
+  // exactly as before — every existing consumer is unchanged. The pseudo
+  // map is queried only by the new IR-side `resolveMethodDispatchTarget`
+  // helper, which downstream slices (#1232, #1233) will route through.
   //
   // **MLIR seam alignment** (per #1231 Phase 2 design note): the registry
   // itself is a static table (this function is the entry point — no IR
   // node mutations, no ambient maps). Only the lookup will be TypeMap-
   // keyed when 1232/1233 wire it up via `resolveMethodDispatchTarget`.
-  if (!ctx.externClasses.has("String")) {
+  if (!ctx.pseudoExternClasses.has("String")) {
     const methods = new Map<string, { params: ValType[]; results: ValType[]; requiredParams: number }>();
     // Mirror STRING_METHODS in src/codegen/index.ts:3058. The extern-class
     // method-signature shape is `[receiver, ...args] -> [result]`, so we
@@ -5935,7 +5947,7 @@ export function registerBuiltinExternClasses(ctx: CodegenContext): void {
     const properties = new Map<string, { type: ValType; readonly: boolean }>();
     properties.set("length", { type: { kind: "f64" }, readonly: true });
 
-    ctx.externClasses.set("String", {
+    ctx.pseudoExternClasses.set("String", {
       importPrefix: "string", // matches the legacy `string_<method>` host imports
       namespacePath: [],
       className: "String",
@@ -5945,7 +5957,7 @@ export function registerBuiltinExternClasses(ctx: CodegenContext): void {
     });
   }
 
-  if (!ctx.externClasses.has("Array")) {
+  if (!ctx.pseudoExternClasses.has("Array")) {
     const methods = new Map<string, { params: ValType[]; results: ValType[]; requiredParams: number }>();
     // Array methods are parametric in the element type — the registry
     // here uses externref for value-shaped receivers and args, which is
@@ -5976,7 +5988,7 @@ export function registerBuiltinExternClasses(ctx: CodegenContext): void {
     const properties = new Map<string, { type: ValType; readonly: boolean }>();
     properties.set("length", { type: { kind: "f64" }, readonly: true });
 
-    ctx.externClasses.set("Array", {
+    ctx.pseudoExternClasses.set("Array", {
       importPrefix: "array",
       namespacePath: [],
       className: "Array",
@@ -5992,6 +6004,25 @@ export function registerBuiltinExternClasses(ctx: CodegenContext): void {
       ctx.externClassParent.set(className, "Object");
     }
   }
+}
+
+/**
+ * #1238 — Look up a pseudo-extern-class entry by className. Returns
+ * `undefined` when the className isn't registered as a pseudo-extern
+ * class (i.e., it's either a real extern class — query
+ * `ctx.externClasses` for those — or unknown).
+ *
+ * This is the canonical accessor for the synthetic String/Array
+ * registry. Existing consumers of `ctx.externClasses` are intentionally
+ * NOT updated to consult this map: the legacy `new ClassName()` /
+ * extern-method dispatch paths must keep their existing behaviour for
+ * String / Array (they're handled via inline special cases or
+ * `__new_<name>` / `string_<method>` lowercase imports). The pseudo
+ * registry is the IR-only seam, queried by #1232 (String dispatch) and
+ * #1233 (Array dispatch).
+ */
+export function getPseudoExternClassInfo(ctx: CodegenContext, className: string): ExternClassInfo | undefined {
+  return ctx.pseudoExternClasses.get(className);
 }
 
 /**
@@ -6014,7 +6045,8 @@ export function registerBuiltinExternClasses(ctx: CodegenContext): void {
  * Note: the array path is only metadata. Confirming the receiver IS a
  * vec (vs. a generic ref) requires the lowerer's vec resolver — this
  * helper just identifies the target className so the lowerer can pick
- * which extern entry to consult.
+ * which extern entry to consult. Callers should pair this with
+ * `getPseudoExternClassInfo(ctx, target)` to get the method metadata.
  */
 export function resolveMethodDispatchTarget(t: import("../ir/nodes.js").IrType): "String" | "Array" | null {
   if (t.kind === "string") return "String";

@@ -4,14 +4,20 @@
 // String + Array.
 //
 // Phase scope: registry-only. The synthetic `ExternClassInfo` entries
-// for `String` and `Array` are populated in `ctx.externClasses` so that
-// downstream slices (#1232 String dispatch, #1233 Array dispatch) can
-// route receiver-method calls through the existing extern-class
-// dispatch path without re-implementing the metadata table.
+// for `String` and `Array` are populated in `ctx.pseudoExternClasses`
+// (a separate map from `ctx.externClasses` to avoid breaking the
+// legacy `new Array(...)` / `new String(...)` dispatch — see PR#149
+// post-mortem in the file-level comment of `src/codegen/index.ts`'s
+// `registerBuiltinExternClasses`). Downstream slices (#1232 String
+// dispatch, #1233 Array dispatch) consult the pseudo registry via
+// `getPseudoExternClassInfo` for method/property metadata.
 //
 // What this file verifies:
-//   1. `ctx.externClasses.has("String")` and `.has("Array")` are true
-//      after compilation runs (acceptance criterion 1).
+//   1. `ctx.pseudoExternClasses.has("String")` and `.has("Array")` are
+//      true after compilation runs, and `ctx.externClasses.has(...)`
+//      for those names is FALSE (the original criterion #1 framing was
+//      "registry exists" — the separate-map approach satisfies that
+//      while keeping legacy `new Array(...)` paths intact).
 //   2. The synthetic entries carry the correct method/property
 //      metadata (slice/charAt/indexOf/etc. for String;
 //      push/pop/indexOf/etc. for Array).
@@ -38,6 +44,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   createCodegenContext,
+  getPseudoExternClassInfo,
   registerBuiltinExternClasses,
   resolveMethodDispatchTarget,
 } from "../src/codegen/index.js";
@@ -87,10 +94,15 @@ describe("#1238 — pseudo-ExternClassInfo registration", () => {
     return ctx;
   }
 
-  it("ctx.externClasses.has('String') after registration (acceptance 1)", () => {
+  it("ctx.pseudoExternClasses.has('String') after registration (acceptance 1)", () => {
     const ctx = makeContextWithBuiltinExterns();
-    expect(ctx.externClasses.has("String")).toBe(true);
-    const info = ctx.externClasses.get("String")!;
+    // String is registered in the pseudo map (NOT the regular extern
+    // classes map — see PR#149 post-mortem in registerBuiltinExternClasses
+    // for why). The legacy `new String(...)` path stays unchanged because
+    // ctx.externClasses doesn't contain "String".
+    expect(ctx.pseudoExternClasses.has("String")).toBe(true);
+    expect(ctx.externClasses.has("String")).toBe(false);
+    const info = getPseudoExternClassInfo(ctx, "String")!;
     expect(info.className).toBe("String");
     expect(info.importPrefix).toBe("string");
     // Methods from the spec: slice/charAt/charCodeAt/indexOf/includes/
@@ -112,10 +124,16 @@ describe("#1238 — pseudo-ExternClassInfo registration", () => {
     expect(slice.requiredParams).toBe(3); // 1 self + 2 args
   });
 
-  it("ctx.externClasses.has('Array') after registration (acceptance 1)", () => {
+  it("ctx.pseudoExternClasses.has('Array') after registration (acceptance 1)", () => {
     const ctx = makeContextWithBuiltinExterns();
-    expect(ctx.externClasses.has("Array")).toBe(true);
-    const info = ctx.externClasses.get("Array")!;
+    expect(ctx.pseudoExternClasses.has("Array")).toBe(true);
+    // Crucial — Array MUST NOT be in ctx.externClasses, otherwise
+    // `new Array(10)` would dispatch through the extern-class branch in
+    // compileNewExpression and try to call a non-existent `array_new`
+    // host import. PR#149 caught this exact regression in CI (152
+    // wasm_compile failures); this test guards against re-introduction.
+    expect(ctx.externClasses.has("Array")).toBe(false);
+    const info = getPseudoExternClassInfo(ctx, "Array")!;
     expect(info.className).toBe("Array");
     // Methods from spec: push/pop/indexOf/includes/slice/join
     for (const m of ["push", "pop", "indexOf", "includes", "slice", "join"]) {
@@ -140,6 +158,60 @@ describe("#1238 — pseudo-ExternClassInfo registration", () => {
     `;
     const r = await compileAndInstantiate(source, false);
     expect((r.exports.add as (a: number, b: number) => number)(2, 3)).toBe(5);
+  });
+
+  // ── PR#149 regression guards ──
+  // These guard against re-introducing the bug where putting String/Array
+  // into ctx.externClasses caused compileNewExpression to dispatch
+  // `new Array(...)` / `new String(...)` through the extern-class
+  // branch (registering nonexistent `array_new` / `string_new` host
+  // imports). The 152 wasm_compile regressions in CI all surfaced from
+  // this single mis-registration.
+
+  it("PR#149 regression — `new Array(10)` does NOT register `array_new` host import", () => {
+    const source = `
+      export function f(): number[] { const a = new Array(10); return a; }
+    `;
+    const r = compile(source);
+    expect(r.success, `compile errors: ${r.errors.map((e) => e.message).join(", ")}`).toBe(true);
+    // The legacy compileNewExpression special-cases `className === "Array"`
+    // and emits inline vec creation. After my fix, no `array_new` import
+    // should be emitted.
+    const arrayNewImports = r.imports.filter((d) => d.name === "array_new");
+    expect(
+      arrayNewImports.length,
+      `unexpected array_new import: ${arrayNewImports.map((d) => d.name).join(", ")}`,
+    ).toBe(0);
+    // For sanity: also confirm no `extern_class action="new" className="Array"` intent.
+    const arrayCtorIntents = r.imports.filter(
+      (d) => d.intent.type === "extern_class" && (d.intent as { className: string }).className === "Array",
+    );
+    expect(arrayCtorIntents.length).toBe(0);
+  });
+
+  it("PR#149 regression — `new String('x')` does NOT register `string_new` host import", () => {
+    const source = `
+      export function f(): string { const s = new String("x"); return s as unknown as string; }
+    `;
+    const r = compile(source);
+    expect(r.success, `compile errors: ${r.errors.map((e) => e.message).join(", ")}`).toBe(true);
+    // The legacy `new String(x)` path uses `__new_String`, not
+    // `string_new`. No `string_new` host import should appear.
+    const stringNewImports = r.imports.filter((d) => d.name === "string_new");
+    expect(stringNewImports.length).toBe(0);
+  });
+
+  it("PR#149 regression — `new Array(10)` runs and produces an array of length 10 (round-trip)", async () => {
+    const source = `
+      export function makeArr(): number {
+        const a = new Array(10);
+        return a.length;
+      }
+    `;
+    const legacy = await compileAndInstantiate(source, false);
+    const ir = await compileAndInstantiate(source, true);
+    expect((legacy.exports.makeArr as () => number)()).toBe(10);
+    expect((ir.exports.makeArr as () => number)()).toBe(10);
   });
 
   it("compiles a string method call (legacy path unchanged)", async () => {
