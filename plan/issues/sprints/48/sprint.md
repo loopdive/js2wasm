@@ -1,6 +1,6 @@
 ---
 id: 48
-status: planned
+status: planning
 created: 2026-05-02
 wrap_checklist:
   status_closed: false
@@ -21,6 +21,7 @@ wrap_checklist:
 2. **int32/uint32 inference** — land #1126 (JS number flow specialization, max-effort senior work)
 3. **Conformance** — Function.prototype.bind (#1038, 70 FAIL), iterator CT cluster (#991, #993)
 4. **Standalone readiness** — #1094 shrink runtime.ts host boundary (leads to #1099 standalone demo)
+5. **lodash Tier 3 unblocking** — `for...in`/`Object.keys` over compiled objects (#1243) + WeakMap/WeakSet as strong-ref (#1242)
 
 ## Sprint issues
 
@@ -37,6 +38,8 @@ wrap_checklist:
 | #1094 | Shrink runtime.ts host boundary — compile-away JS semantics | high | — |
 | #1199 | perf: linear-memory backing for typed numeric arrays | high | — |
 | #1200 | perf: loop-invariant code motion (hoist arr.length out of for conditions) | medium | — |
+| #1243 | for...in / Object.keys enumeration of compiled-object properties (lodash Tier 3) | high | — |
+| #1242 | WeakMap / WeakSet backed by strong references (lodash memoize / cloneDeep) | high | — |
 
 ### Carry from S47 (if not landed)
 
