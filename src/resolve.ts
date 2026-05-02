@@ -2,6 +2,7 @@
 import * as path from "path";
 import ts from "typescript";
 import type { CompileOptions } from "./index.js";
+import { rewriteCjsRequire } from "./cjs-rewrite.js";
 import { getDefaultEnvironment } from "./env.js";
 
 // Filesystem access goes through the environment adapter (#1096).
@@ -373,6 +374,11 @@ export function resolveAllImports(entryFile: string, resolver: ModuleResolver): 
       onStack.delete(filePath);
       return;
     }
+
+    // Rewrite CJS `const X = require('Y')` to ESM `import X from 'Y'` so the
+    // dependency-walk below picks up CommonJS modules' transitive deps the same
+    // way it picks up ESM ones (#1279).
+    content = rewriteCjsRequire(content);
 
     // Parse to find import specifiers
     const sf = ts.createSourceFile(
