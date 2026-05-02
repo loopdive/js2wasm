@@ -21,7 +21,7 @@
  * built-in coerceType layer handles i32 → f64 promotion at the few read sites
  * that consume the value in a non-i32 context (#1126's existing pattern).
  */
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 
 /**
  * Return true if `expr` provably produces a 32-bit signed integer at runtime,

@@ -35,7 +35,15 @@ export default defineConfig({
       fileName: (_format, entry) => `${entry}.js`,
     },
     rollupOptions: {
-      external: ["typescript", "binaryen", ...nodeBuiltins],
+      external: [
+        "typescript",
+        "binaryen",
+        // #1288: TS7 native-preview is opt-in via JS2WASM_TS7=1; mark all its
+        // subpaths as external so the lib build doesn't try to bundle them
+        // when ts-api.ts conditionally requires them.
+        /^@typescript\/native-preview(\/.*)?$/,
+        ...nodeBuiltins,
+      ],
       output: {
         preserveModules: false,
         inlineDynamicImports: false,

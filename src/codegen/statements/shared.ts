@@ -3,7 +3,7 @@
  * Shared utilities used across all statement sub-modules.
  * No dependencies on other statement sub-modules or on statements.ts itself.
  */
-import ts from "typescript";
+import { ts } from "../../ts-api.js";
 import type { Instr } from "../../ir/types.js";
 import type { FunctionContext } from "../context/types.js";
 

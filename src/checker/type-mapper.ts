@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 import type { ValType } from "../ir/types.js";
 
 /** Types with built-in wasm GC handling that should NOT be treated as extern classes */

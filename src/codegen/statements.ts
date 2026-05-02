@@ -14,7 +14,7 @@
  *   - statements/nested-declarations.ts — nested functions/classes, arguments object
  *   - statements/shared.ts         — utilities shared across all sub-modules
  */
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 import { reportError, reportErrorNoNode } from "./context/errors.js";
 import { attachSourcePos, getSourcePos } from "./context/source-pos.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";

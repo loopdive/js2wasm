@@ -6,7 +6,7 @@
  * modules do not need to import the monolithic `codegen/index.ts` file just
  * to reference context/state shapes.
  */
-import ts from "typescript";
+import { ts } from "../../ts-api.js";
 import type { FieldDef, Instr, LocalDef, SourcePos, ValType, WasmModule } from "../../ir/types.js";
 
 export interface CodegenError {

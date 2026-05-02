@@ -63,7 +63,7 @@
  * This shim is a direct polyfill of that flow against the JS Wasm API.
  */
 
-import ts from "typescript";
+import { ts } from "./ts-api.js";
 
 import { compileSource } from "./compiler.js";
 import { buildImports, buildStringConstants, jsString } from "./runtime.js";

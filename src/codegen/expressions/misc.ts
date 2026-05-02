@@ -3,7 +3,7 @@
  * Miscellaneous expression compilation: conditionals, generators/yield,
  * struct name resolution, and static analysis helpers.
  */
-import ts from "typescript";
+import { ts } from "../../ts-api.js";
 import { isStringType } from "../../checker/type-mapper.js";
 import type { Instr, ValType } from "../../ir/types.js";
 import { pushBody } from "../context/bodies.js";

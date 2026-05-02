@@ -3,10 +3,19 @@
 import { createRequire } from "node:module";
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
-import { buildDefaultDefines } from "./compiler/define-substitution.js";
-import { compile } from "./index.js";
 
 const args = process.argv.slice(2);
+
+// `--ts7` swaps the parser/checker frontend to `@typescript/native-preview`
+// (TS7 Go-port preview, #1288). The decision is made by `src/ts-api.ts` at
+// module-load time, so the env var MUST be set before any compiler imports
+// resolve. We use a dynamic import below for that reason.
+if (args.includes("--ts7")) {
+  process.env.JS2WASM_TS7 = "1";
+}
+
+const { compile } = await import("./index.js");
+const { buildDefaultDefines } = await import("./compiler/define-substitution.js");
 
 if (args.includes("--version") || args.includes("-v")) {
   const require = createRequire(import.meta.url);
@@ -37,6 +46,9 @@ Options:
                     'production' sets process.env.NODE_ENV="production" and
                     typeof process / typeof window to "undefined".
                     'development' sets process.env.NODE_ENV="development".
+  --ts7             Use @typescript/native-preview (TypeScript 7 Go-port) as
+                    the parser/checker frontend (preview; full migration
+                    tracked in #1029). Equivalent to JS2WASM_TS7=1.
   -v, --version     Print version and exit
   -h, --help        Show this help
 
@@ -110,6 +122,9 @@ for (let i = 0; i < args.length; i++) {
       process.exit(1);
     }
     Object.assign(defines, buildDefaultDefines(m));
+  } else if (arg === "--ts7") {
+    // Already handled above (env var was set before dynamic import).
+    // No-op here so the unknown-option fallback below doesn't trigger.
   } else if (!arg.startsWith("-")) {
     inputPath = arg;
   } else {

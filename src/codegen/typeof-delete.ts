@@ -3,7 +3,7 @@
  * typeof, delete, instanceof, and RegExp literal compilation.
  * Extracted from expressions.ts (issue #688 step 5).
  */
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 import { isBooleanType, isStringType, isSymbolType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
 import { reportError } from "./context/errors.js";

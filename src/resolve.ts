@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 import * as path from "path";
-import ts from "typescript";
+import { ts } from "./ts-api.js";
 import type { CompileOptions } from "./index.js";
 import { rewriteCjsRequire } from "./cjs-rewrite.js";
 import { getDefaultEnvironment } from "./env.js";

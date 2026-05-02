@@ -6,7 +6,7 @@
  * This module imports compileExpression and compileArrowAsClosure from
  * shared.ts (NOT expressions.ts) to avoid circular dependencies.
  */
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 import { isStringType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
 import { reportError } from "./context/errors.js";

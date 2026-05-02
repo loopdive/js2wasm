@@ -2,7 +2,7 @@
 /**
  * new/super/class expression compilation.
  */
-import ts from "typescript";
+import { ts } from "../../ts-api.js";
 import type { FieldDef, Instr, ValType } from "../../ir/types.js";
 import { collectReferencedIdentifiers, collectWrittenIdentifiers } from "../closures.js";
 import { reportError } from "../context/errors.js";

@@ -16,7 +16,7 @@
  * Non-literal arguments and parse failures fall through to the existing
  * dynamic-eval path.
  */
-import ts from "typescript";
+import { ts } from "../../ts-api.js";
 import type { CodegenContext, FunctionContext } from "../context/types.js";
 import { hoistFunctionDeclarations } from "../statements/nested-declarations.js";
 import { hoistLetConstWithTdz, hoistVarDeclarations } from "../index.js";

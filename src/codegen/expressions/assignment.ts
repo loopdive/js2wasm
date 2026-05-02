@@ -2,7 +2,7 @@
 /**
  * Assignment operator compilation: simple assignment, destructuring, compound, logical.
  */
-import ts from "typescript";
+import { ts } from "../../ts-api.js";
 import { isBooleanType, isExternalDeclaredClass, isStringType } from "../../checker/type-mapper.js";
 import type { FieldDef, Instr, ValType } from "../../ir/types.js";
 import { emitBoundsCheckedArrayGet, resolveArrayInfo } from "../array-methods.js";
