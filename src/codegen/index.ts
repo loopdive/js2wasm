@@ -5505,6 +5505,41 @@ export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void 
   if (isExternalDeclaredClass(tsType, ctx.checker)) return;
   // Tuple types are handled by getOrRegisterTupleType, not as anonymous structs
   if (isTupleType(tsType)) return;
+  // #1247: Array types compile to vec structs (length+data) via getOrRegisterVecType,
+  // not anonymous structs that pull in every Array.prototype method as a field. Without
+  // this guard, `string[]` registers an anonymous struct named after Array.prototype's
+  // shape, and `paths.shift()` resolves through compileCallablePropertyCall (a
+  // callable-field dispatch) instead of compileArrayMethodCall — producing
+  // struct-type mismatches at instantiation when the local was allocated via the
+  // vec path but the callable-property dispatch reads through the anon struct.
+  {
+    const sym = (tsType as ts.TypeReference).symbol ?? (tsType as ts.Type).symbol;
+    if (
+      sym?.name === "Array" ||
+      sym?.name === "ReadonlyArray" ||
+      sym?.name === "Int8Array" ||
+      sym?.name === "Uint8Array" ||
+      sym?.name === "Uint8ClampedArray" ||
+      sym?.name === "Int16Array" ||
+      sym?.name === "Uint16Array" ||
+      sym?.name === "Int32Array" ||
+      sym?.name === "Uint32Array" ||
+      sym?.name === "Float32Array" ||
+      sym?.name === "Float64Array" ||
+      sym?.name === "Promise" ||
+      sym?.name === "Date" ||
+      sym?.name === "Map" ||
+      sym?.name === "Set" ||
+      sym?.name === "WeakMap" ||
+      sym?.name === "WeakSet" ||
+      sym?.name === "RegExp" ||
+      sym?.name === "Number" ||
+      sym?.name === "String" ||
+      sym?.name === "Boolean"
+    ) {
+      return;
+    }
+  }
   // Callable types (functions) are compiled as closures, not structs
   if (tsType.getCallSignatures().length > 0) return;
   // Guard against infinite recursion on circular/self-referencing types.
