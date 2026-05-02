@@ -231,16 +231,27 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Fetch fresh baseline from baselines repo
+        id: fetch_baseline
         if: github.event_name == 'pull_request'
         run: |
           # Clone the baselines repo to get the current baseline JSONL.
           # This avoids LFS bandwidth on the main repo (all jsonl files are
           # now stored in loopdive/js2wasm-baselines, not LFS-tracked here).
-          git clone --depth=1 https://github.com/loopdive/js2wasm-baselines.git /tmp/js2wasm-baselines 2>/dev/null || true
+          # Use depth=2 so we can read the most recent commit's timestamp for
+          # the #1235 staleness warning.
+          git clone --depth=2 https://github.com/loopdive/js2wasm-baselines.git /tmp/js2wasm-baselines 2>/dev/null || true
           if [ -f /tmp/js2wasm-baselines/test262-current.jsonl ]; then
             mkdir -p benchmarks/results
             cp /tmp/js2wasm-baselines/test262-current.jsonl benchmarks/results/test262-current.jsonl
             echo "Baseline fetched from js2wasm-baselines repo."
+            # #1235 — capture baseline commit timestamp + sha for the staleness
+            # check below. The PR gate will warn if the baseline is older than
+            # the most recent main commit by more than a small threshold.
+            BASELINE_TS=$(git -C /tmp/js2wasm-baselines log -1 --format=%ct HEAD 2>/dev/null || echo 0)
+            BASELINE_SHA=$(git -C /tmp/js2wasm-baselines log -1 --format=%h HEAD 2>/dev/null || echo unknown)
+            echo "baseline_ts=$BASELINE_TS" >> "$GITHUB_OUTPUT"
+            echo "baseline_sha=$BASELINE_SHA" >> "$GITHUB_OUTPUT"
+            echo "Baseline commit: $BASELINE_SHA (unix=$BASELINE_TS)"
           else
             # Baselines repo not yet seeded — write empty JSONL so diff-test262
             # gets a valid (empty) baseline and reports 0 regressions / N improvements.
@@ -248,6 +259,36 @@ jobs:
             echo "Warning: baselines repo has no jsonl yet — using empty baseline."
             mkdir -p benchmarks/results
             echo -n "" > benchmarks/results/test262-current.jsonl
+            echo "baseline_ts=0" >> "$GITHUB_OUTPUT"
+            echo "baseline_sha=unknown" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check baseline staleness (#1235)
+        id: staleness
+        if: github.event_name == 'pull_request' && steps.fetch_baseline.outputs.baseline_ts != '0'
+        run: |
+          # If the baselines-repo JSONL hasn't been refreshed since several
+          # commits landed on main, the regression-gate's wasm_change count
+          # is contaminated by drift — tests that flipped on main since the
+          # last baseline refresh appear as PR regressions even though the
+          # PR didn't cause them. Emit a warning so devs/tech-lead can read
+          # the regression report skeptically.
+          MAIN_HEAD_TS=$(git log -1 --format=%ct origin/main 2>/dev/null || git log -1 --format=%ct main 2>/dev/null || echo 0)
+          BASELINE_TS="${{ steps.fetch_baseline.outputs.baseline_ts }}"
+          BASELINE_SHA="${{ steps.fetch_baseline.outputs.baseline_sha }}"
+          if [ "$MAIN_HEAD_TS" = "0" ] || [ "$BASELINE_TS" = "0" ]; then
+            echo "stale_minutes=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          DIFF_S=$(( MAIN_HEAD_TS - BASELINE_TS ))
+          DIFF_M=$(( DIFF_S / 60 ))
+          # Threshold: baseline older than main HEAD by ≥ 30 minutes. Tunable.
+          if [ "$DIFF_M" -ge 30 ]; then
+            echo "::warning::Baseline drift: js2wasm-baselines JSONL is ${DIFF_M}m older than main HEAD (baseline=${BASELINE_SHA}). Some 'regressions' below may be drift, not real PR-caused failures. See #1235."
+            echo "stale_minutes=$DIFF_M" >> "$GITHUB_OUTPUT"
+          else
+            echo "Baseline freshness OK: ${DIFF_M}m behind main HEAD."
+            echo "stale_minutes=$DIFF_M" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Download merged reports
@@ -306,6 +347,20 @@ jobs:
         run: |
           echo "test262 regressions detected relative to benchmarks/results/test262-current.jsonl"
           cat merged-reports/test262-regressions.txt
+          # #1235 — append staleness footer so devs reading the failed-job log
+          # see the warning even when not scrolling up to the workflow-level
+          # ::warning::. The footer is informational; the gate still fails.
+          STALE_M="${{ steps.staleness.outputs.stale_minutes || '0' }}"
+          if [ "$STALE_M" -ge 30 ]; then
+            echo ""
+            echo "==============================================================="
+            echo "  ⚠️  BASELINE DRIFT WARNING (#1235)"
+            echo "  The js2wasm-baselines JSONL is ${STALE_M}m older than main HEAD."
+            echo "  Some 'regressions' above may be drift, not real PR-caused"
+            echo "  failures. Cross-check against another open PR's regression"
+            echo "  list — overlapping clusters across unrelated PRs are drift."
+            echo "==============================================================="
+          fi
           exit 1
 
   promote-baseline:
