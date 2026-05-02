@@ -32,8 +32,7 @@ wrap_checklist:
 
 | Issue | Title | Priority | Agent |
 |---|---|---|---|
-| #1228 | IR selector widening: accept void return + any params (PR #142, v3 — reverting try/catch, re-merging main) | high | dev-1118 |
-| #1234 | Array.prototype sparse iter: fix non-Array receiver infinite loops (2 CT) | medium | dev-1222 |
+| #1234 | Array.prototype getter/setter fallback in object literals (PR #144, investigating 28 regressions) | medium | dev-1222 |
 
 ### Blocked
 
@@ -47,12 +46,13 @@ wrap_checklist:
 | Issue | Title | Priority | Blocked by |
 |---|---|---|---|
 | #1223 | TDZ async/gen: writer+reader fn-decl sharing via destructure-assign | medium | #1177 |
-| #1231 | perf: struct field type inference — eliminate boxing in object properties | high | architect spec done, needs dev dispatch |
 
 ### Done
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #1228 | IR selector widening: void return + any params — PR #142 merged (admin, drift-proven by #143 cross-check) | high | done |
+| #1231 | perf: struct field type inference Phase 1 — PR #143 merged; TypeMap seam documented; env-gated JS2WASM_IR_OBJECT_SHAPES=1 | high | done |
 | #1225 | Nested dstr from null/undefined: missing TypeError — fixed in PR #130 (net +32, ~244 tests) | high | done |
 | #1169q | IR Phase 4 Slice 14 — telemetry landed (PR #141); deletion deferred (0% claim on untyped corpus — selector needs any/void widening first) | high | done |
 | #1222 | ci: wasm-hash noise filter — exclude byte-identical regressions from PR gate | high | done |
