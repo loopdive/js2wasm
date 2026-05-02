@@ -130,9 +130,39 @@
   ],
   "ready": [
     {
-      "id": "1234",
-      "title": "Array.prototype.{unshift,reverse,forEach,…} on non-Array receivers iterate [0, length) instead of defined props",
+      "id": "1243",
+      "title": "for...in / Object.keys enumeration of compiled-object properties (lodash Tier 3)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "ready",
+      "sprint": "48"
+    },
+    {
+      "id": "1242",
+      "title": "WeakMap / WeakSet backed by strong references (lodash memoize / cloneDeep)",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "ready",
+      "sprint": "48"
+    },
+    {
+      "id": "1241",
+      "title": "Untitled",
       "priority": "medium",
+      "feasibility": "",
+      "depends_on": [],
+      "goal": "",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "1240",
+      "title": "perf: per-iteration eval compile budget for `comments/S7.4_A6.js` (still ~25s with #1229 cache)",
+      "priority": "low",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "test262-conformance",
@@ -140,16 +170,69 @@
       "sprint": ""
     },
     {
+      "id": "1239",
+      "title": "object literals with GetAccessor/SetAccessor — route to __defineProperty_accessor + force-externref var tagging",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "test262-conformance",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "1238",
+      "title": "IR Phase 4 Slice 13b — pseudo-ExternClassInfo registration for String + Array",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1169o",
+        "1169p"
+      ],
+      "goal": "ir-migration",
+      "status": "ready",
+      "sprint": "47"
+    },
+    {
+      "id": "1237",
+      "title": "playground: horizontal swipe on overflowing tab bar drags tab instead of scrolling (mobile)",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "playground-ux",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "1236",
+      "title": "Premature i32 specialization for `let s = 0` accumulators silently saturates on overflow",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": "ready",
+      "sprint": "48"
+    },
+    {
+      "id": "1235",
+      "title": "ci: prevent baseline drift false-positive regressions after admin-merges",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ci-quality",
+      "status": "ready",
+      "sprint": "47"
+    },
+    {
       "id": "1233",
       "title": "IR Phase 4 Slice 13d — Array per-element-type methods through IR",
       "priority": "medium",
       "feasibility": "hard",
       "depends_on": [
-        "1231"
+        "1238"
       ],
       "goal": "ir-migration",
       "status": "ready",
-      "sprint": "backlog"
+      "sprint": "48"
     },
     {
       "id": "1232",
@@ -157,11 +240,11 @@
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [
-        "1231"
+        "1238"
       ],
       "goal": "ir-migration",
       "status": "ready",
-      "sprint": "backlog"
+      "sprint": "47"
     },
     {
       "id": "1230",
@@ -181,7 +264,7 @@
       "depends_on": [],
       "goal": "test262-conformance",
       "status": "ready",
-      "sprint": ""
+      "sprint": "47"
     },
     {
       "id": "1200",
@@ -368,7 +451,7 @@
       ],
       "goal": "performance",
       "status": "ready",
-      "sprint": "47"
+      "sprint": "48"
     },
     {
       "id": "1122",
@@ -1473,6 +1556,20 @@
   ],
   "inprogress": [
     {
+      "id": "1231",
+      "title": "perf: struct field type inference — eliminate boxing in object properties",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1169n",
+        "1169o",
+        "1169p"
+      ],
+      "goal": "performance",
+      "status": "in-progress",
+      "sprint": "47"
+    },
+    {
       "id": "1206",
       "title": "fix(build-pages): copy benchmark JSONs + frame-nav-sync.js to top-level pages-dist paths (404s on landing page)",
       "priority": "medium",
@@ -1496,16 +1593,12 @@
   "review": [],
   "done": [
     {
-      "id": "1231",
-      "title": "perf: struct field type inference — eliminate boxing in object properties",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [
-        "1169n",
-        "1169o",
-        "1169p"
-      ],
-      "goal": "performance",
+      "id": "1234",
+      "title": "Array.prototype.{unshift,reverse,forEach,…} on non-Array receivers iterate [0, length) instead of defined props",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "test262-conformance",
       "status": "done",
       "sprint": "47"
     },

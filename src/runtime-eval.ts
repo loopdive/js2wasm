@@ -136,9 +136,43 @@ export function createEvalShim(options: EvalShimOptions = {}): (src: any, isDire
   const onCompiled = options.onCompiled;
   const sandbox = options.sandbox === true;
 
+  // #1229 — LRU cache: source-string → { instance, entry }. Eval calls in
+  // tight loops (e.g. test262's BMP-codepoint regex tests, eval-as-DSL
+  // patterns) re-compile the same source thousands of times. Caching the
+  // compiled Wasm module + instance turns each subsequent identical call
+  // into a single function invocation. Side effects of the eval'd code
+  // (var declarations, global writes) re-run on every entry() call —
+  // semantics match a fresh compile because the body is re-executed
+  // verbatim, just on a pre-instantiated module.
+  //
+  // Eviction: insertion-ordered Map; on size exceed, drop oldest. On hit,
+  // delete + reinsert to refresh recency. Cap chosen to bound memory at
+  // ~256 small Wasm modules; pure expression evals fit well below this.
+  const EVAL_CACHE_MAX = 256;
+  const evalCache = new Map<string, { instance: WebAssembly.Instance; entry: () => unknown }>();
+  // Negative cache: source strings that fail to compile shouldn't be
+  // re-tried in tight loops either. Stores the SyntaxError so subsequent
+  // hits throw the same error without re-running the parser.
+  const NEG_CACHE_MAX = 256;
+  const evalNegCache = new Map<string, SyntaxError>();
+
   return function __extern_eval(src: any, isDirect: number): any {
     // Spec: PerformEval step 2 — if x is not a String, return x unchanged.
     if (typeof src !== "string") return src;
+
+    // Cache hit — refresh recency and call the cached entry.
+    const cached = evalCache.get(src);
+    if (cached !== undefined) {
+      evalCache.delete(src);
+      evalCache.set(src, cached);
+      return cached.entry();
+    }
+    const negCached = evalNegCache.get(src);
+    if (negCached !== undefined) {
+      evalNegCache.delete(src);
+      evalNegCache.set(src, negCached);
+      throw negCached;
+    }
 
     // Pre-parse the eval source with a strict ScriptKind to catch syntax
     // errors that the js2wasm compile pipeline tolerates (e.g. stray `@`
@@ -156,7 +190,15 @@ export function createEvalShim(options: EvalShimOptions = {}): (src: any, isDire
     if (probeDiag && probeDiag.length > 0) {
       const first = probeDiag[0]!;
       const msg = typeof first.messageText === "string" ? first.messageText : first.messageText.messageText;
-      throw new SyntaxError(`eval: ${msg}`);
+      const err = new SyntaxError(`eval: ${msg}`);
+      // #1229 — cache the parse failure so a tight loop with the same bad
+      // source string doesn't re-parse on every iteration.
+      if (evalNegCache.size >= NEG_CACHE_MAX) {
+        const oldest = evalNegCache.keys().next().value;
+        if (oldest !== undefined) evalNegCache.delete(oldest);
+      }
+      evalNegCache.set(src, err);
+      throw err;
     }
 
     // Wrap the user source in a function whose return value is the result
@@ -339,6 +381,13 @@ export function createEvalShim(options: EvalShimOptions = {}): (src: any, isDire
       // Compilation succeeded but no entry export — treat as undefined.
       return undefined;
     }
+
+    // #1229 — populate cache (with simple FIFO eviction once cap is hit).
+    if (evalCache.size >= EVAL_CACHE_MAX) {
+      const oldest = evalCache.keys().next().value;
+      if (oldest !== undefined) evalCache.delete(oldest);
+    }
+    evalCache.set(src, { instance, entry: entry as () => unknown });
 
     // Synchronous call.  Any thrown value (including js2wasm's
     // exception-tag-tagged user throws) propagates back to the caller's
