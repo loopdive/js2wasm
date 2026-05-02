@@ -52,7 +52,7 @@ wrap_checklist:
 | #1232 | IR Phase 4 Slice 13c — String fixed-signature methods through IR | high | #1238 |
 | #1229 | perf: eval/RegExp LRU cache + peephole rewrite (7 compile_timeouts) | medium | — |
 | #1223 | TDZ async/gen: writer+reader fn-decl sharing via destructure-assign | medium | #1177 |
-| #1244 | npm stress test: compile Hono web framework to Wasm | medium | — |
+| #1244 | npm stress test: compile Hono web framework to Wasm — Tier 1 (router math primitives) lands; Tier 2+ blocked on #1247 (typed `string[]` struct mismatch) + #1246 (typeof-string narrowing) + class private-field semantics | medium | — |
 
 ### Done
 
