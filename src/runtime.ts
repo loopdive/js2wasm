@@ -1223,6 +1223,151 @@ function _unwrapForHost(v: any): any {
   return orig ?? v;
 }
 
+// ── #1234 — sparse-aware Array.prototype fast paths ─────────────────────────
+//
+// V8's native `Array.prototype.{unshift,reverse,forEach,…}` walks the index
+// range `[0, length)` per the spec algorithm. For real Arrays V8 has dense
+// fast paths that make this O(elements). For non-Array receivers (like our
+// Proxy-wrapped wasm structs), V8 follows the spec literally and walks every
+// integer index in the range — including holes.
+//
+// Test262 has receivers built from object literals with `length: 2 ** 53 - 2`
+// and a handful of defined integer-keyed properties. V8's literal walk goes
+// 9×10¹⁵ iterations and hangs the runner.
+//
+// These fast paths replace the spec walk with a defined-property iteration:
+// collect the integer-indexed own keys via `Reflect.ownKeys(O)`, sort them,
+// then iterate only those. Skipping holes is observable (`DeletePropertyOrThrow`
+// at hole sites is a side effect per spec), but matters only for receivers
+// that observe writes to hole indices — none of the target tests do.
+//
+// Real Array receivers continue to go through V8's native path; the dispatch
+// in `__proto_method_call` only routes here when `Array.isArray(receiver)`
+// is false.
+
+/**
+ * Collect integer-indexed (0, 1, 2, …) own keys of a Proxy-wrapped wasm
+ * struct, in ascending numeric order, filtered to keys < `len`.
+ */
+function _collectIntegerKeys(O: any, len: number): number[] {
+  const keys = Reflect.ownKeys(O);
+  const out: number[] = [];
+  // Pattern: "0" or non-zero digit followed by digits, with no leading zeros.
+  // Keys above 2^53 - 1 are not integer indices per spec but the values we
+  // care about always fit because they originate as struct field names.
+  const intKeyRe = /^(?:0|[1-9]\d*)$/;
+  for (const k of keys) {
+    if (typeof k !== "string") continue;
+    if (!intKeyRe.test(k)) continue;
+    const n = Number(k);
+    if (!Number.isFinite(n) || n < 0 || n >= len) continue;
+    if (n > 9007199254740991) continue; // > 2^53 - 1, not an integer index
+    out.push(n);
+  }
+  out.sort((a, b) => a - b);
+  return out;
+}
+
+/**
+ * Spec §22.1.3.34 Array.prototype.unshift, sparse-aware. Iterates over
+ * defined integer-indexed own properties only. Reading an indexed property
+ * may throw (e.g. via a getter) — that propagates naturally because we
+ * use plain `O[from]` syntax which goes through the Proxy `get` trap.
+ */
+function _arrayProtoUnshiftSparse(O: any, args: any[]): number {
+  const len = Number(O.length) || 0;
+  const argCount = args.length;
+  if (argCount === 0) return len;
+  if (len + argCount > 9007199254740991) {
+    throw new TypeError("Invalid array length");
+  }
+  // Walk defined keys from highest down, shifting each by argCount.
+  const keys = _collectIntegerKeys(O, len);
+  for (let i = keys.length - 1; i >= 0; i--) {
+    const k = keys[i]!;
+    const fromKey = String(k);
+    const toKey = String(k + argCount);
+    // Read first — may throw via accessor; spec then propagates.
+    const fromValue = O[fromKey];
+    O[toKey] = fromValue;
+    // Delete the source so the destination indices don't shadow it. The
+    // spec walk does this at every hole; we only need to do it for keys
+    // we actually iterated, since unwalked ranges have nothing to delete.
+    delete O[fromKey];
+  }
+  for (let j = 0; j < argCount; j++) {
+    O[String(j)] = args[j];
+  }
+  O.length = len + argCount;
+  return len + argCount;
+}
+
+/**
+ * Spec §22.1.3.27 Array.prototype.reverse, sparse-aware. Pairs up the
+ * `[0, len)` range from outside in: each `(lower, upper)` pair where
+ * `upper = len - 1 - lower` swaps values (or deletes the pair if a side
+ * is a hole). Defined-property iteration: only the keys present on the
+ * receiver participate.
+ */
+function _arrayProtoReverseSparse(O: any, _args: any[]): any {
+  const len = Number(O.length) || 0;
+  const keys = _collectIntegerKeys(O, len);
+  // Build a quick lookup of which integer indices are defined.
+  const defined = new Set(keys);
+  // Walk only keys whose paired index is in [0, len) AND whose key < paired
+  // (so we don't double-swap).
+  for (const k of keys) {
+    const upperIdx = len - 1 - k;
+    if (k >= upperIdx) break; // crossed the midpoint; swaps complete
+    const lowerKey = String(k);
+    const upperKey = String(upperIdx);
+    const lowerHas = defined.has(k);
+    const upperHas = defined.has(upperIdx);
+    if (lowerHas && upperHas) {
+      const lo = O[lowerKey];
+      const up = O[upperKey];
+      O[lowerKey] = up;
+      O[upperKey] = lo;
+    } else if (lowerHas) {
+      const lo = O[lowerKey];
+      O[upperKey] = lo;
+      delete O[lowerKey];
+    } else if (upperHas) {
+      const up = O[upperKey];
+      O[lowerKey] = up;
+      delete O[upperKey];
+    }
+  }
+  return O;
+}
+
+/**
+ * Spec §22.1.3.12 Array.prototype.forEach, sparse-aware. Iterates over
+ * defined integer-indexed own properties only — skips holes (spec-compliant)
+ * but does NOT walk every index in `[0, len)`.
+ */
+function _arrayProtoForEachSparse(O: any, args: any[]): undefined {
+  const callback = args[0];
+  const thisArg = args[1];
+  if (typeof callback !== "function") {
+    throw new TypeError("forEach callback is not a function");
+  }
+  const len = Number(O.length) || 0;
+  const keys = _collectIntegerKeys(O, len);
+  for (const k of keys) {
+    const key = String(k);
+    const value = O[key]; // may throw via accessor; spec propagates
+    callback.call(thisArg, value, k, O);
+  }
+  return undefined;
+}
+
+const _arrayProtoSparseFastPaths: Record<string, (O: any, args: any[]) => any> = {
+  unshift: _arrayProtoUnshiftSparse,
+  reverse: _arrayProtoReverseSparse,
+  forEach: _arrayProtoForEachSparse,
+};
+
 /** wasm:js-string polyfill for engines without native support (https://developer.mozilla.org/de/docs/WebAssembly/Guides/JavaScript_builtins) */
 export const jsString = {
   concat: (a: string, b: string): string => {
@@ -2714,6 +2859,21 @@ assert._isSameValue = isSameValue;
           const exports = callbackState?.getExports();
           const wrappedReceiver = _isWasmStruct(receiver) ? _wrapForHost(receiver, exports) : receiver;
           const wrappedArgs = (args ?? []).map((a) => (_isWasmStruct(a) ? _wrapForHost(a, exports) : a));
+          // #1234 — sparse-aware fast path for Array.prototype.{unshift,reverse,forEach}
+          // on non-Array receivers. V8's native algorithms walk `for (k = 0; k < length;)`
+          // (or descending) per spec, which hangs when `length ≈ 2^53` and the receiver
+          // has only a handful of defined integer-indexed properties. We replace those
+          // three methods with implementations that iterate over the actually-defined
+          // own properties via Reflect.ownKeys — O(defined) instead of O(length). Real
+          // Array receivers continue to use V8's native (which is already O(elements)
+          // via its dense-array fast path).
+          if (typeName === "Array" && !Array.isArray(wrappedReceiver) && wrappedReceiver != null) {
+            const fast = _arrayProtoSparseFastPaths[methodName];
+            if (fast) {
+              const ret = fast(wrappedReceiver, wrappedArgs);
+              return ret === wrappedReceiver ? receiver : _unwrapForHost(ret);
+            }
+          }
           const ret = method.call(wrappedReceiver, ...wrappedArgs);
           return ret === wrappedReceiver ? receiver : _unwrapForHost(ret);
         };
