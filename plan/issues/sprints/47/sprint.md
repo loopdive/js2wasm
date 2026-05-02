@@ -30,7 +30,10 @@ wrap_checklist:
 
 ### In Progress
 
-_(none)_
+| Issue | Title | Priority | Agent |
+|---|---|---|---|
+| #1228 | IR selector widening: accept void return + any params (PR #142, v3 — reverting try/catch, re-merging main) | high | dev-1118 |
+| #1234 | Array.prototype sparse iter: fix non-Array receiver infinite loops (2 CT) | medium | dev-1222 |
 
 ### Blocked
 
@@ -44,7 +47,7 @@ _(none)_
 | Issue | Title | Priority | Blocked by |
 |---|---|---|---|
 | #1223 | TDZ async/gen: writer+reader fn-decl sharing via destructure-assign | medium | #1177 |
-| #1231 | perf: struct field type inference — eliminate boxing in object properties | high | needs architect spec |
+| #1231 | perf: struct field type inference — eliminate boxing in object properties | high | architect spec done, needs dev dispatch |
 
 ### Done
 
