@@ -15715,8 +15715,8 @@
       "id": "1118",
       "title": "Worker/timeout exits and eval-code null deref (182 tests)",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "47",
       "depends_on": [],
       "files": [],
@@ -15840,7 +15840,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "47",
+      "sprint": "48",
       "depends_on": [
         "1124"
       ],
@@ -17378,18 +17378,6 @@
     },
     {
       "id": "1222",
-      "title": "Premature i32 specialization for `let s = 0` accumulators silently saturates on overflow",
-      "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "",
-      "depends_on": [],
-      "files": [],
-      "goal": "core-semantics",
-      "cluster": "core-semantics"
-    },
-    {
-      "id": "1222",
       "title": "ci: wasm-hash noise filter — exclude byte-identical regressions from PR gate",
       "priority": "high",
       "status": "done",
@@ -17402,22 +17390,10 @@
     },
     {
       "id": "1223",
-      "title": "playground: horizontal swipe on overflowing tab bar drags tab instead of scrolling (mobile)",
-      "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "",
-      "depends_on": [],
-      "files": [],
-      "goal": "playground-ux",
-      "cluster": "playground-ux"
-    },
-    {
-      "id": "1223",
       "title": "TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up)",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "blocked",
+      "raw_status": "blocked",
       "sprint": "47",
       "depends_on": [
         "1177",
@@ -17485,8 +17461,8 @@
       "id": "1228",
       "title": "IR selector widening: accept void return + any params",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "47",
       "depends_on": [],
       "files": [],
@@ -17499,7 +17475,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "",
+      "sprint": "47",
       "depends_on": [],
       "files": [],
       "goal": "test262-conformance",
@@ -17521,22 +17497,10 @@
     },
     {
       "id": "1231",
-      "title": "IR Phase 4 Slice 13b — pseudo-ExternClassInfo registration for String + Array",
-      "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "backlog",
-      "depends_on": [],
-      "files": [],
-      "goal": "ir-migration",
-      "cluster": "ir-migration"
-    },
-    {
-      "id": "1231",
       "title": "perf: struct field type inference — eliminate boxing in object properties",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "47",
       "depends_on": [],
       "files": [],
@@ -17549,9 +17513,9 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "backlog",
+      "sprint": "47",
       "depends_on": [
-        "1231"
+        "1238"
       ],
       "files": [],
       "goal": "ir-migration",
@@ -17563,26 +17527,13 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "backlog",
+      "sprint": "48",
       "depends_on": [
-        "1231"
+        "1238"
       ],
       "files": [],
       "goal": "ir-migration",
       "cluster": "ir-migration"
-    },
-    {
-      "id": "1234",
-      "title": "Array.prototype.{unshift,reverse,forEach,…} on non-Array receivers iterate [0, length) instead of defined props",
-      "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "",
-      "depends_on": [],
-      "files": [],
-      "goal": "test262-conformance",
-      "cluster": "test262-conformance",
-      "test262_fail": 2
     },
     {
       "id": "1234",
@@ -17598,6 +17549,54 @@
       "test262_fail": 2
     },
     {
+      "id": "1235",
+      "title": "ci: prevent baseline drift false-positive regressions after admin-merges",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "47",
+      "depends_on": [],
+      "files": [],
+      "goal": "ci-quality",
+      "cluster": "ci-quality"
+    },
+    {
+      "id": "1236",
+      "title": "Premature i32 specialization for `let s = 0` accumulators silently saturates on overflow",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "48",
+      "depends_on": [],
+      "files": [],
+      "goal": "core-semantics",
+      "cluster": "core-semantics"
+    },
+    {
+      "id": "1237",
+      "title": "playground: horizontal swipe on overflowing tab bar drags tab instead of scrolling (mobile)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "playground-ux",
+      "cluster": "playground-ux"
+    },
+    {
+      "id": "1238",
+      "title": "IR Phase 4 Slice 13b — pseudo-ExternClassInfo registration for String + Array",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "47",
+      "depends_on": [],
+      "files": [],
+      "goal": "ir-migration",
+      "cluster": "ir-migration"
+    },
+    {
       "id": "1239",
       "title": "object literals with GetAccessor/SetAccessor — route to __defineProperty_accessor + force-externref var tagging",
       "priority": "medium",
@@ -17608,6 +17607,75 @@
       "files": [],
       "goal": "test262-conformance",
       "cluster": "test262-conformance"
+    },
+    {
+      "id": "1239",
+      "title": "Untitled",
+      "priority": "medium",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "cluster": "Unclustered"
+    },
+    {
+      "id": "1240",
+      "title": "perf: per-iteration eval compile budget for `comments/S7.4_A6.js` (still ~25s with #1229 cache)",
+      "priority": "low",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "test262-conformance",
+      "cluster": "test262-conformance"
+    },
+    {
+      "id": "1240",
+      "title": "Untitled",
+      "priority": "medium",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "cluster": "Unclustered"
+    },
+    {
+      "id": "1241",
+      "title": "Untitled",
+      "priority": "medium",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "cluster": "Unclustered"
+    },
+    {
+      "id": "1242",
+      "title": "WeakMap / WeakSet backed by strong references (lodash memoize / cloneDeep)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "48",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1243",
+      "title": "for...in / Object.keys enumeration of compiled-object properties (lodash Tier 3)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "48",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
     },
     {
       "id": "backlog",
@@ -17672,10 +17740,6 @@
       "target": "1116"
     },
     {
-      "source": "1124",
-      "target": "1126"
-    },
-    {
       "source": "1090",
       "target": "1128"
     },
@@ -17690,14 +17754,6 @@
     {
       "source": "1164",
       "target": "1165"
-    },
-    {
-      "source": "1231",
-      "target": "1232"
-    },
-    {
-      "source": "1231",
-      "target": "1233"
     },
     {
       "source": "481",
@@ -18432,8 +18488,20 @@
       "target": "1227"
     },
     {
+      "source": "1238",
+      "target": "1232"
+    },
+    {
+      "source": "1124",
+      "target": "1126"
+    },
+    {
       "source": "1197",
       "target": "1199"
+    },
+    {
+      "source": "1238",
+      "target": "1233"
     },
     {
       "source": "321",
@@ -19123,7 +19191,7 @@
         "1025",
         "1031",
         "1098",
-        "1222"
+        "1236"
       ]
     },
     {
@@ -19469,7 +19537,9 @@
         "1074",
         "1075",
         "1107",
-        "1108"
+        "1108",
+        "1242",
+        "1243"
       ],
       "track": "supporting track"
     },
@@ -22266,7 +22336,7 @@
     },
     {
       "goal": "core-semantics",
-      "issue": "1222"
+      "issue": "1236"
     },
     {
       "goal": "correctness",
@@ -23259,6 +23329,14 @@
     {
       "goal": "npm-library-support",
       "issue": "1108"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1242"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1243"
     },
     {
       "goal": "observability",
@@ -26124,7 +26202,7 @@
     },
     {
       "goal": "compilable",
-      "issue": "1222"
+      "issue": "1236"
     },
     {
       "goal": "compilable",
@@ -26895,6 +26973,14 @@
       "issue": "1108"
     },
     {
+      "goal": "core-semantics",
+      "issue": "1242"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1243"
+    },
+    {
       "goal": "platform",
       "issue": "111"
     },
@@ -27005,6 +27091,14 @@
     {
       "goal": "platform",
       "issue": "1108"
+    },
+    {
+      "goal": "platform",
+      "issue": "1242"
+    },
+    {
+      "goal": "platform",
+      "issue": "1243"
     },
     {
       "goal": "core-semantics",
