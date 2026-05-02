@@ -167,4 +167,31 @@ describe("Issue #1283 — WeakMap host-import dispatch", () => {
     `;
     expect(await runTest(src)).toBe(42);
   });
+
+  // ── Regression guard for round 1 CI miss ───────────────────────────
+  // The original #1283 fix filtered both params AND results to all-externref.
+  // That over-filter broke methods returning `boolean → f64` (e.g.
+  // TypedArray.some, Iterator.every) on `any`-typed receivers, which CI
+  // surfaced as "some is not a function" / "every is not a function"
+  // failures across 13+ test262 entries. The current fix only filters
+  // params; result types pass through verbatim.
+  it("regression guard: Array.some on any-typed receiver still resolves", async () => {
+    const src = `
+      export function test(): number {
+        const arr: any = [1, 2, 3];
+        return arr.some((v: any) => v > 2) ? 1 : 0;
+      }
+    `;
+    expect(await runTest(src)).toBe(1);
+  });
+
+  it("regression guard: Array.every on any-typed receiver still resolves", async () => {
+    const src = `
+      export function test(): number {
+        const arr: any = [1, 2, 3];
+        return arr.every((v: any) => v > 0) ? 1 : 0;
+      }
+    `;
+    expect(await runTest(src)).toBe(1);
+  });
 });
