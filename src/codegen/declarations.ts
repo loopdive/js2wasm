@@ -2379,6 +2379,33 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
     }
   }
 
+  // ESM named-export declaration: `export { foo, bar as baz };` (#1277).
+  // Without this, the rewriter and existing ESM walker only handle
+  // `export function foo() {}` and `export default <ident>`. Re-exports
+  // from another module (`export { x } from "spec"`) are intentionally
+  // skipped here — those need import resolution + re-export wiring that
+  // isn't part of this gap.
+  if (isEntryFile) {
+    for (const stmt of sourceFile.statements) {
+      if (!ts.isExportDeclaration(stmt)) continue;
+      if (!stmt.exportClause || !ts.isNamedExports(stmt.exportClause)) continue;
+      if (stmt.moduleSpecifier) continue; // re-export — handled elsewhere
+      for (const spec of stmt.exportClause.elements) {
+        // `export { foo as bar }` → propertyName=foo, name=bar
+        // `export { foo }`        → propertyName=undefined, name=foo
+        const localName = spec.propertyName?.text ?? spec.name.text;
+        const exportedName = spec.name.text;
+        if (!ctx.funcMap.has(localName)) continue;
+        const funcIdx = ctx.funcMap.get(localName)!;
+        const func = ctx.mod.functions[funcIdx - ctx.numImportFuncs];
+        if (func && !func.exported) func.exported = true;
+        if (!ctx.mod.exports.some((e) => e.name === exportedName)) {
+          ctx.mod.exports.push({ name: exportedName, desc: { kind: "func", index: funcIdx } });
+        }
+      }
+    }
+  }
+
   // CJS exports: recognize `module.exports` / `exports.foo` patterns (#1075).
   // Phase 1 — register CJS function expressions and surface CJS assignments as Wasm exports.
   // This runs after the ESM export-default block so CJS and ESM don't conflict.
@@ -2454,6 +2481,36 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
             if (name !== "default") {
               ctx.mod.exports.push({ name: "default", desc: { kind: "func", index: funcIdx } });
             }
+          }
+        }
+        continue;
+      }
+
+      // Pattern 1c: `module.exports = { a, b: c, d }` — multi-named export via
+      // object literal (#1277). Handles shorthand (`{ a }`) and named-with-
+      // identifier (`{ alias: foo }`) shapes. Skips computed keys, methods,
+      // spreads, and non-identifier RHS — those bail out without exporting
+      // (a future enhancement could route generic-expression values through
+      // a synthetic global).
+      if (isModuleExports(expr.left) && ts.isObjectLiteralExpression(expr.right)) {
+        hasModuleExportsDefault = true;
+        for (const prop of expr.right.properties) {
+          let key: string | undefined;
+          let valName: string | undefined;
+          if (ts.isShorthandPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
+            key = prop.name.text;
+            valName = key;
+          } else if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && ts.isIdentifier(prop.initializer)) {
+            key = prop.name.text;
+            valName = prop.initializer.text;
+          }
+          if (!key || !valName) continue;
+          if (!ctx.funcMap.has(valName)) continue;
+          const funcIdx = ctx.funcMap.get(valName)!;
+          const func = ctx.mod.functions[funcIdx - ctx.numImportFuncs];
+          if (func && !func.exported) func.exported = true;
+          if (!ctx.mod.exports.some((e) => e.name === key)) {
+            ctx.mod.exports.push({ name: key, desc: { kind: "func", index: funcIdx } });
           }
         }
         continue;
