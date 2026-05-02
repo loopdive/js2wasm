@@ -673,10 +673,34 @@ export function tryExternClassMethodOnAny(
   // keep the historical first-match behavior.
   if (methodName === "slice") return null;
 
+  // (#1283) The dispatch below emits `externref` hints for every arg and
+  // assumes the call's params are all-externref. When iterating in
+  // insertion order we may otherwise hit an extern class whose method has a
+  // mixed param signature — e.g. TypedArray.set is `(externref, externref,
+  // f64)` and would mismatch the externref args we push. Concretely this
+  // hit WeakMap.set on `wm: any`: TypedArray's `set` was registered before
+  // WeakMap's, so first-match picked Uint8ClampedArray_set and produced an
+  // invalid Wasm module ("call[0] expected externref, found f64").
+  //
+  // Filter candidates to all-externref param signatures so arg coercions
+  // are always type-correct. Result types are NOT filtered — the dispatch
+  // returns sig.results[0]! to the caller verbatim, so methods like
+  // TypedArray.some `(externref, externref) -> f64` (boolean → f64) and
+  // Array.indexOf `(externref, externref, externref) -> f64` are valid
+  // first-match candidates. Filtering on results was too aggressive and
+  // forced these into __extern_method_call host-side dispatch, where wasm
+  // vec receivers are opaque to JS and `arr.some` returned undefined,
+  // surfacing as "some is not a function" runtime errors in test262.
+  const isAllExternrefParams = (sig: { params: ValType[] }): boolean => {
+    for (const p of sig.params) if (p.kind !== "externref") return false;
+    return true;
+  };
+
   for (const [key, info] of ctx.externClasses) {
     if (key !== info.className) continue;
     const sig = info.methods.get(methodName);
     if (!sig) continue;
+    if (!isAllExternrefParams(sig)) continue;
 
     const importName = `${info.importPrefix}_${methodName}`;
     let funcIdx = ctx.funcMap.get(importName);

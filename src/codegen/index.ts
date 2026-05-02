@@ -6483,7 +6483,28 @@ function registerExternClassImports(ctx: CodegenContext, info: ExternClassInfo):
 function collectUsedExternImports(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
   const registered = new Set<string>();
 
+  // Pre-scan source for user-defined class names. A user-defined class shadows
+  // any extern class with the same name (e.g. user `class Node` shadows DOM
+  // `Node`). Without this guard, `${ClassName}_new` would be added as a host
+  // import here, then collide on funcMap when class compilation later assigns
+  // the same key to a defined-function index (#1284). The orphan import slot
+  // then sits at the funcMap idx that the user-class registration overwrote,
+  // and the late-import shift skips that key (it appears in importNames),
+  // leaving funcMap[`${ClassName}_new`] pointing at an *adjacent* import slot
+  // after subsequent late imports are added — so `new UserClass(...)` lowers
+  // to a call against an unrelated host import (e.g. `__extern_set`).
+  const userClassNames = new Set<string>();
+  function collectUserClassNames(node: ts.Node): void {
+    if ((ts.isClassDeclaration(node) || ts.isClassExpression(node)) && node.name) {
+      userClassNames.add(node.name.text);
+    }
+    ts.forEachChild(node, collectUserClassNames);
+  }
+  collectUserClassNames(sourceFile);
+
   function resolveExtern(className: string, memberName: string, kind: "method" | "property"): ExternClassInfo | null {
+    // User-defined classes shadow extern classes — never resolve to extern (#1284).
+    if (userClassNames.has(className)) return null;
     let current: string | undefined = className;
     while (current) {
       const info = ctx.externClasses.get(current);
@@ -6508,7 +6529,7 @@ function collectUsedExternImports(ctx: CodegenContext, sourceFile: ts.SourceFile
     if (ts.isNewExpression(node)) {
       const type = ctx.checker.getTypeAtLocation(node);
       const className = type.getSymbol()?.name;
-      if (className) {
+      if (className && !userClassNames.has(className)) {
         const info = ctx.externClasses.get(className);
         if (info) register(`${info.importPrefix}_new`, info.constructorParams, [{ kind: "externref" }]);
       }
