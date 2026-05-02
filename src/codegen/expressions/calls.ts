@@ -5123,10 +5123,56 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           // Mutable capture: wrap in a ref cell so writes propagate back
           const refCellTypeIdx = getOrRegisterRefCellType(ctx, cap.valType);
           // Check if this local is already boxed (from a previous call to the same or another closure)
-          if (fctx.boxedCaptures?.has(cap.name)) {
+          //
+          // #1259: detect double-wrap when `localMap[cap.name]` was
+          // re-aimed at a boxed-cap local *deliberately* by a different
+          // codegen site (compileArrowAsClosure, emitFuncRefAsClosure,
+          // object-ops, etc.). All such sites use the `__boxed_<name>`
+          // local-naming convention AND set `boxedCaptures[cap.name]`
+          // in lockstep. The narrow guard here checks for both signals:
+          //   1. the slot's type matches `cap.valType`'s ref cell type, AND
+          //   2. the slot's name starts with `__boxed_`.
+          // If both hold, we're confident this slot is a deliberately
+          // boxed cap (not a coincidental same-typed local) and we can
+          // pass it through without re-boxing. The narrower guard avoids
+          // the regressions seen on the wider type-only guard (PR#166
+          // CI: net -25, 33 wasm-change regressions).
+          //
+          // Without this check, none of the existing call sites would
+          // hit the `localMap`-already-boxed-but-`boxedCaptures`-empty
+          // path on main today (they pair the two writes). The guard
+          // is defensive prep for #1177 Stage 1 — when Stage 1 re-aims
+          // `localMap` to an outer-fctx boxed local whose `__boxed_` name
+          // we can recognize, we'll treat it as already-boxed.
+          const candidateLocalIdx = fctx.localMap.get(cap.name);
+          let candidateIsBoxed = false;
+          if (candidateLocalIdx !== undefined) {
+            const candidateType = getLocalType(fctx, candidateLocalIdx);
+            const isRefCellTyped =
+              candidateType !== undefined &&
+              (candidateType.kind === "ref" || candidateType.kind === "ref_null") &&
+              (candidateType as { typeIdx: number }).typeIdx === refCellTypeIdx;
+            // Also require the name signal — only deliberately-boxed locals
+            // use the `__boxed_` convention.
+            const localSlot =
+              candidateLocalIdx >= fctx.params.length ? fctx.locals[candidateLocalIdx - fctx.params.length] : undefined;
+            const hasBoxedName = localSlot?.name?.startsWith(`__boxed_`) ?? false;
+            candidateIsBoxed = isRefCellTyped && hasBoxedName;
+          }
+          if (fctx.boxedCaptures?.has(cap.name) || candidateIsBoxed) {
             // Already a ref cell — pass the ref cell reference directly
-            const currentLocalIdx = fctx.localMap.get(cap.name)!;
+            const currentLocalIdx = fctx.localMap.get(cap.name) ?? cap.outerLocalIdx;
             fctx.body.push({ op: "local.get", index: currentLocalIdx });
+            // Backfill boxedCaptures only when we hit the new candidateIsBoxed
+            // branch — preserves invariants for downstream helpers that key on
+            // boxedCaptures membership.
+            if (candidateIsBoxed && !fctx.boxedCaptures?.has(cap.name)) {
+              if (!fctx.boxedCaptures) fctx.boxedCaptures = new Map();
+              fctx.boxedCaptures.set(cap.name, {
+                refCellTypeIdx,
+                valType: cap.valType,
+              });
+            }
           } else {
             // Create a ref cell, store the current value, keep ref on stack.
             // (Note: #1177 originally proposed `localMap.get(cap.name) ?? cap.outerLocalIdx`
