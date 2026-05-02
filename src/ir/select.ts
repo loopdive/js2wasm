@@ -535,16 +535,9 @@ function isPhase1StatementList(
       if (!isPhase1ThrowStatement(s, scope, localClasses)) return false;
       continue;
     }
-    // Slice 14 / #1228 — reject functions whose body contains a try/catch.
-    // The IR's exception semantics aren't spec-complete: a `throw` inside an
-    // IR-claimed function produces a `WebAssembly.Exception` value that the
-    // JS host's try/catch sees as a generic exception, not a JS-typed
-    // TypeError/RangeError/etc. Negative test262 tests probing
-    // `assert.throws(TypeError, ...)` rely on this semantic preservation,
-    // so any function with try/catch in its body must stay on the legacy
-    // path until the IR throw lowering is hardened. See PR #142 follow-up.
     if (ts.isTryStatement(s)) {
-      return false;
+      if (!isPhase1TryStatement(s, scope, localClasses)) return false;
+      continue;
     }
     return false;
   }
@@ -723,16 +716,16 @@ function isPhase1BodyStatement(stmt: ts.Statement, scope: Set<string>, localClas
   if (ts.isForOfStatement(stmt)) {
     return isPhase1ForOf(stmt, scope, localClasses);
   }
-  // Slice 9 (#1169h) — throw inside a body statement list.
+  // Slice 9 (#1169h) — throw / try inside a body statement list.
+  // Accepting these here lets a try body / catch body / finally body
+  // contain nested throws and nested try-statements (composes with the
+  // outer try's catch / finally inlining via the lowerer's structured
+  // emission).
   if (ts.isThrowStatement(stmt)) {
     return isPhase1ThrowStatement(stmt, scope, localClasses);
   }
-  // Slice 14 / #1228 — reject try/catch in nested body positions for the
-  // same reason as in `isPhase1StatementList`: IR exception semantics
-  // produce a `WebAssembly.Exception` value that breaks negative test262
-  // tests probing JS exception types. See PR #142 follow-up.
   if (ts.isTryStatement(stmt)) {
-    return false;
+    return isPhase1TryStatement(stmt, scope, localClasses);
   }
   return false;
 }

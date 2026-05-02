@@ -103,10 +103,7 @@ const cases: Case[] = [
         return alwaysThrows();
       }
     `,
-    // #1228: try/catch in body now retracts the selector claim. The function
-    // and its callers fall back to legacy. The equivalence assertion below
-    // still validates the behavior — both sides go through legacy and must agree.
-    expectedClaimed: [],
+    expectedClaimed: ["alwaysThrows", "test"],
     fn: "test",
     expected: 42,
   },
@@ -129,7 +126,7 @@ const cases: Case[] = [
         return noThrow();
       }
     `,
-    expectedClaimed: [],
+    expectedClaimed: ["noThrow", "test"],
     fn: "test",
     expected: 5,
   },
@@ -152,7 +149,7 @@ const cases: Case[] = [
         return omittedBinding();
       }
     `,
-    expectedClaimed: [],
+    expectedClaimed: ["omittedBinding", "test"],
     fn: "test",
     expected: 33,
   },
@@ -177,7 +174,7 @@ const cases: Case[] = [
         return doWithCleanup();
       }
     `,
-    expectedClaimed: [],
+    expectedClaimed: ["doWithCleanup", "test"],
     fn: "test",
     expected: 105,
   },
@@ -204,7 +201,7 @@ const cases: Case[] = [
         return fullWithThrow();
       }
     `,
-    expectedClaimed: [],
+    expectedClaimed: ["fullWithThrow", "test"],
     fn: "test",
     expected: 110,
   },
@@ -230,7 +227,7 @@ const cases: Case[] = [
         return fullNoThrow();
       }
     `,
-    expectedClaimed: [],
+    expectedClaimed: ["fullNoThrow", "test"],
     fn: "test",
     expected: 101,
   },
