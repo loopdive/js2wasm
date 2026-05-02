@@ -477,9 +477,12 @@ export class LayoutManager {
       if (e.pointerType === "mouse") return;
       if ((e.target as HTMLElement).closest(".close-btn")) return;
 
-      e.preventDefault();
-      tabEl.setPointerCapture(e.pointerId);
-
+      // #1237 — do NOT preventDefault or setPointerCapture yet. The tab bar
+      // is `overflow-x: auto`, so horizontal swipes need to reach the
+      // browser as native scroll gestures. We only know whether to claim
+      // the gesture as a tab-drag (vertical pull / non-overflowing bar)
+      // vs let the bar scroll (horizontal swipe on overflow) once the
+      // pointer has moved enough to reveal intent.
       this.touchTabDrag = {
         pointerId: e.pointerId,
         tabId,
@@ -498,6 +501,31 @@ export class LayoutManager {
           const dy = ev.clientY - this.touchTabDrag.startY;
           if (Math.hypot(dx, dy) < 10) return;
 
+          // #1237 — drag-vs-scroll intent gate. Once the user has moved
+          // 10 px, decide: if the tab bar is overflowing (i.e. there's
+          // somewhere to scroll to) AND the gesture is dominantly
+          // horizontal, abandon the drag — the browser's native scroll
+          // takes over via `touch-action: pan-x`. Otherwise (vertical
+          // pull, or a non-overflowing bar where there's nothing to
+          // scroll) commit to the tab-reorder drag. This is the only
+          // place we now call preventDefault / setPointerCapture, so
+          // the bar can scroll naturally on the swipe-rejected path.
+          const tabBar = tabEl.parentElement as HTMLElement | null;
+          const barOverflowing = !!tabBar && tabBar.scrollWidth > tabBar.clientWidth;
+          if (barOverflowing && Math.abs(dx) > Math.abs(dy)) {
+            // Horizontal swipe on an overflowing bar — release the
+            // gesture entirely and let the browser scroll the tab bar.
+            window.removeEventListener("pointermove", onMove);
+            window.removeEventListener("pointerup", onUp);
+            window.removeEventListener("pointercancel", onCancel);
+            this.touchTabDrag = null;
+            return;
+          }
+
+          ev.preventDefault();
+          if (!tabEl.hasPointerCapture(ev.pointerId)) {
+            tabEl.setPointerCapture(ev.pointerId);
+          }
           this.touchTabDrag.started = true;
           this.dragTabId = tabId;
           this.dragSourcePanelId = panelId;
