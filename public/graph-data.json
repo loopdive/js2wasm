@@ -17279,7 +17279,7 @@
       "title": "for...in / Object.keys enumeration of compiled-object properties (lodash Tier 3)",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "",
       "depends_on": [],
       "files": [],
@@ -17324,34 +17324,10 @@
     },
     {
       "id": "1247",
-      "title": "compiler: typed `string[]` local with `path.split('/')` initializer triggers struct-type mismatch",
-      "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "",
-      "depends_on": [],
-      "files": [],
-      "goal": "npm-library-support",
-      "cluster": "npm-library-support"
-    },
-    {
-      "id": "1247",
       "title": "compiler: typed string[] local with path.split('/') initializer triggers struct-type mismatch",
       "priority": "medium",
       "status": "done",
       "raw_status": "done",
-      "sprint": "",
-      "depends_on": [],
-      "files": [],
-      "goal": "npm-library-support",
-      "cluster": "npm-library-support"
-    },
-    {
-      "id": "1248",
-      "title": "compiler: typeof x === 'string' guard breaks String.prototype.substring(start) — returns single char",
-      "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
       "sprint": "",
       "depends_on": [],
       "files": [],
@@ -17641,8 +17617,8 @@
       "id": "1268",
       "title": "index-signature obj[key] ??= value returns NaN instead of assigning",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "",
       "depends_on": [],
       "files": [],
@@ -17758,7 +17734,7 @@
       "title": "CJS module.exports → Wasm export mapping in compileProject",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "",
       "depends_on": [],
       "files": [],
@@ -17794,7 +17770,7 @@
       "title": "CJS require() call support — static module graph via require() analysis",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "",
       "depends_on": [
         "1277"
@@ -17847,7 +17823,7 @@
       "title": "WeakMap host-import dispatch: type-mismatch on set/get/has/delete (carved off from #1242)",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "",
       "depends_on": [],
       "files": [],
@@ -17859,7 +17835,7 @@
       "title": "Class-typed values in index-signature dicts lose identity through extern_set/extern_get round-trip",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "",
       "depends_on": [],
       "files": [],
@@ -19774,8 +19750,6 @@
         "1108",
         "1243",
         "1247",
-        "1247",
-        "1248",
         "1248",
         "1249",
         "1250",
@@ -23746,14 +23720,6 @@
     },
     {
       "goal": "npm-library-support",
-      "issue": "1247"
-    },
-    {
-      "goal": "npm-library-support",
-      "issue": "1248"
-    },
-    {
-      "goal": "npm-library-support",
       "issue": "1248"
     },
     {
@@ -27692,14 +27658,6 @@
     },
     {
       "goal": "core-semantics",
-      "issue": "1247"
-    },
-    {
-      "goal": "core-semantics",
-      "issue": "1248"
-    },
-    {
-      "goal": "core-semantics",
       "issue": "1248"
     },
     {
@@ -27897,14 +27855,6 @@
     {
       "goal": "platform",
       "issue": "1247"
-    },
-    {
-      "goal": "platform",
-      "issue": "1247"
-    },
-    {
-      "goal": "platform",
-      "issue": "1248"
     },
     {
       "goal": "platform",
