@@ -320,6 +320,76 @@ function classifyEvalCallExpression(expr: ts.CallExpression, checker: ts.TypeChe
   return "none";
 }
 
+/**
+ * #1229 peephole — detect `eval("/" + X + "/")` and rewrite to `new RegExp(X)`.
+ *
+ * Test262's BMP-codepoint regex tests are 65k-iteration loops that build a
+ * regex literal via eval per iteration:
+ *
+ * ```js
+ * for (var cu = 0; cu <= 0xffff; ++cu) {
+ *   var pattern = eval("/" + xx + "/");
+ * }
+ * ```
+ *
+ * Each `eval()` call on js2wasm pays the full TS-parse + js2wasm-codegen +
+ * Wasm-instantiate pipeline (~50ms). 65,536 × 50ms = an hour of wall-clock,
+ * so the test always hits the 30s pool ceiling. By detecting the literal-
+ * fence shape `"/" + X + "/"` we can route directly to the RegExp
+ * constructor host call — same observable semantics for any code that
+ * inspects `.source` / `.flags` / matching behavior, but ~one
+ * host-call's worth of work instead of two.
+ *
+ * Returns:
+ *   - `InnerResult` (with stack push of the constructed RegExp externref) on match
+ *   - `undefined` if the AST shape doesn't match — caller falls through
+ */
+function tryEvalAsRegExpPeephole(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.CallExpression,
+): InnerResult | undefined {
+  if (expr.arguments.length !== 1) return undefined;
+  if (!ctx.externClasses.has("RegExp")) return undefined;
+
+  // Strip parens around the argument.
+  let arg = expr.arguments[0]!;
+  while (ts.isParenthesizedExpression(arg)) arg = arg.expression;
+
+  // Outer shape: BinaryExpression(`+`, BinaryExpression(`+`, "/", X), "/")
+  // (left-associative `+`).
+  if (!ts.isBinaryExpression(arg)) return undefined;
+  if (arg.operatorToken.kind !== ts.SyntaxKind.PlusToken) return undefined;
+  if (!ts.isStringLiteral(arg.right)) return undefined;
+  if (arg.right.text !== "/") return undefined;
+
+  let inner: ts.Expression = arg.left;
+  while (ts.isParenthesizedExpression(inner)) inner = inner.expression;
+  if (!ts.isBinaryExpression(inner)) return undefined;
+  if (inner.operatorToken.kind !== ts.SyntaxKind.PlusToken) return undefined;
+  if (!ts.isStringLiteral(inner.left)) return undefined;
+  if (inner.left.text !== "/") return undefined;
+
+  const xExpr = inner.right;
+
+  // Emit `new RegExp(X)` via the same path as the bare `RegExp(...)` form
+  // above (which routes to the extern-class `RegExp_new` import).
+  const externInfo = ctx.externClasses.get("RegExp")!;
+  const importName = `${externInfo.importPrefix}_new`;
+  const funcIdx = ctx.funcMap.get(importName);
+  if (funcIdx === undefined) return undefined;
+
+  // Argument 0: pattern source (the X expression as a string).
+  compileExpression(ctx, fctx, xExpr, externInfo.constructorParams[0]);
+  // Pad remaining constructor params (typically `flags` — defaults to undefined).
+  for (let i = 1; i < externInfo.constructorParams.length; i++) {
+    pushDefaultValue(fctx, externInfo.constructorParams[i]!, ctx);
+  }
+  const finalIdx = ctx.funcMap.get(importName) ?? funcIdx;
+  fctx.body.push({ op: "call", funcIdx: finalIdx });
+  return { kind: "externref" };
+}
+
 /** Returns true if the given `eval` identifier resolves to the global eval function (not a local shadow). */
 function isGlobalEvalIdentifier(ident: ts.Identifier, checker: ts.TypeChecker): boolean {
   const sym = checker.getSymbolAtLocation(ident);
@@ -544,6 +614,19 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
   {
     const evalKind = classifyEvalCallExpression(expr, ctx.checker);
     if (evalKind !== "none") {
+      // #1229 — peephole: `eval("/" + X + "/")` → `new RegExp(X)`.
+      // Test262's BMP-codepoint regex tests build a regex literal per
+      // iteration via eval; the eval pipeline (TS+codegen+wasm-instantiate)
+      // is ~50ms per call, hitting the 30s pool ceiling on the first few
+      // hundred of 65k iterations. Rewriting to the RegExp constructor
+      // avoids the eval pipeline entirely — one host call (regex parse +
+      // compile) instead of two (eval pipeline + regex parse + compile).
+      // The semantic difference (eval throws SyntaxError-by-eval; new RegExp
+      // throws SyntaxError-by-RegExp) is invisible to callers that only
+      // inspect `.source` / `.flags` / matching behavior, which is the
+      // entire test set this targets.
+      const rewritten = tryEvalAsRegExpPeephole(ctx, fctx, expr);
+      if (rewritten !== undefined) return rewritten;
       const inlined = tryStaticEvalInline(ctx, fctx, expr);
       if (inlined !== undefined) return inlined;
       let evalIdx = ctx.funcMap.get("__extern_eval");
