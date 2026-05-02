@@ -1272,7 +1272,23 @@ function _collectIntegerKeys(O: any, len: number): number[] {
  * Spec §22.1.3.34 Array.prototype.unshift, sparse-aware. Iterates over
  * defined integer-indexed own properties only. Reading an indexed property
  * may throw (e.g. via a getter) — that propagates naturally because we
- * use plain `O[from]` syntax which goes through the Proxy `get` trap.
+ * use plain `O[from]` syntax (which fires JS accessor `get` traps).
+ *
+ * Two semantic deviations from the spec walk that matter:
+ *
+ *   1. **Source not deleted after copy.** Per spec, when `fromPresent` is
+ *      true the algorithm does `Get + Set` only — no delete of `from`.
+ *      Source values that aren't subsequently overwritten by a higher-key
+ *      iteration's destination remain in place. (Real V8 unshift behaves
+ *      this way too — source keys persist when destination > source.)
+ *
+ *   2. **Hole-on-source iterations delete the destination.** Spec step v:
+ *      when `from` is a hole, `DeletePropertyOrThrow(O, to)`. We don't
+ *      iterate holes, so destination indices in hole ranges between
+ *      defined keys keep their stale values from the original receiver.
+ *      The two test262 targets (#1234) don't observe this divergence, but
+ *      it would surface on a test that checks per-index hole state across
+ *      a sparse iteration. Out of scope for #1234; tracked as a follow-up.
  */
 function _arrayProtoUnshiftSparse(O: any, args: any[]): number {
   const len = Number(O.length) || 0;
@@ -1281,7 +1297,10 @@ function _arrayProtoUnshiftSparse(O: any, args: any[]): number {
   if (len + argCount > 9007199254740991) {
     throw new TypeError("Invalid array length");
   }
-  // Walk defined keys from highest down, shifting each by argCount.
+  // Walk defined keys from highest down, copying each up by argCount.
+  // Sources are NOT deleted — spec reads then sets without deletion. Real
+  // sources may be implicitly overwritten by another iteration's
+  // destination, but that's fine in spec order.
   const keys = _collectIntegerKeys(O, len);
   for (let i = keys.length - 1; i >= 0; i--) {
     const k = keys[i]!;
@@ -1290,10 +1309,33 @@ function _arrayProtoUnshiftSparse(O: any, args: any[]): number {
     // Read first — may throw via accessor; spec then propagates.
     const fromValue = O[fromKey];
     O[toKey] = fromValue;
-    // Delete the source so the destination indices don't shadow it. The
-    // spec walk does this at every hole; we only need to do it for keys
-    // we actually iterated, since unwalked ranges have nothing to delete.
-    delete O[fromKey];
+  }
+  // Delete destinations that fall in hole ranges between defined keys —
+  // spec step v for each k where `from` was a hole calls
+  // DeletePropertyOrThrow(O, ToString(k + argCount - 1)). For our walk we
+  // only iterate defined keys, so destinations in hole ranges keep stale
+  // values unless explicitly cleared.
+  //
+  // Iterate over the defined keys (not the index range — gaps may span
+  // 2^53 indices). For each defined key `kd`, the spec hole-iteration
+  // would delete `kd` if and only if some hole iteration's destination
+  // landed on `kd` (i.e. there exists some hole-walked source `s` such
+  // that `s + argCount - 1 == kd`, which means `s = kd - argCount + 1`,
+  // and `s` must be in a hole range — i.e. `s` itself is not in
+  // `definedSet`). The check is O(defined) per defined key.
+  const definedSet = new Set(keys);
+  // We must also avoid deleting positions we just *wrote to* in the copy
+  // loop above. Those destinations are the new homes of source values;
+  // they shouldn't be cleared by a hole iteration. Build the set of
+  // destination keys actually written.
+  const writtenDestinations = new Set<number>();
+  for (const k of keys) writtenDestinations.add(k + argCount);
+  for (const kd of keys) {
+    if (writtenDestinations.has(kd)) continue; // a write covered this key
+    const sourceK = kd - argCount + 1;
+    if (sourceK < 0 || sourceK >= len) continue;
+    if (definedSet.has(sourceK)) continue; // source is defined → not a hole iteration
+    delete O[String(kd)];
   }
   for (let j = 0; j < argCount; j++) {
     O[String(j)] = args[j];
@@ -2860,18 +2902,25 @@ assert._isSameValue = isSameValue;
           const wrappedReceiver = _isWasmStruct(receiver) ? _wrapForHost(receiver, exports) : receiver;
           const wrappedArgs = (args ?? []).map((a) => (_isWasmStruct(a) ? _wrapForHost(a, exports) : a));
           // #1234 — sparse-aware fast path for Array.prototype.{unshift,reverse,forEach}
-          // on non-Array receivers. V8's native algorithms walk `for (k = 0; k < length;)`
-          // (or descending) per spec, which hangs when `length ≈ 2^53` and the receiver
-          // has only a handful of defined integer-indexed properties. We replace those
-          // three methods with implementations that iterate over the actually-defined
-          // own properties via Reflect.ownKeys — O(defined) instead of O(length). Real
-          // Array receivers continue to use V8's native (which is already O(elements)
-          // via its dense-array fast path).
+          // on non-Array receivers with a HUGE `length`. V8's native algorithms walk
+          // `for (k = 0; k < length;)` (or descending) per spec, which hangs when
+          // `length ≈ 2^53` and the receiver has only a handful of defined integer-
+          // indexed properties. Only intercept when the length exceeds a threshold
+          // where V8's spec walk would be impractical — for normal-sized receivers
+          // V8's native is correct and faster than our defined-property iteration.
           if (typeName === "Array" && !Array.isArray(wrappedReceiver) && wrappedReceiver != null) {
             const fast = _arrayProtoSparseFastPaths[methodName];
             if (fast) {
-              const ret = fast(wrappedReceiver, wrappedArgs);
-              return ret === wrappedReceiver ? receiver : _unwrapForHost(ret);
+              const lenRaw = wrappedReceiver.length;
+              const len = typeof lenRaw === "number" ? lenRaw : Number(lenRaw);
+              // 1<<20 = 1,048,576. V8's native walks ~10 ns/iteration on modest
+              // hardware, so a million iterations costs ~10 ms — well under the
+              // 30 s pool ceiling and below any timing-sensitive test threshold.
+              // Anything larger and we prefer the defined-property iteration.
+              if (Number.isFinite(len) && len > 1 << 20) {
+                const ret = fast(wrappedReceiver, wrappedArgs);
+                return ret === wrappedReceiver ? receiver : _unwrapForHost(ret);
+              }
             }
           }
           const ret = method.call(wrappedReceiver, ...wrappedArgs);
