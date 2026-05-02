@@ -1908,6 +1908,21 @@ function lowerMethodCall(expr: ts.CallExpression, cx: LowerCtx): IrValueId {
   const recv = lowerExpr(expr.expression.expression, cx, irVal({ kind: "f64" }));
   const recvType = cx.builder.typeOf(recv);
 
+  // Slice 13c (#1232) — String prototype method dispatch. When the receiver
+  // is `IrType.string`, look up the method in the synthetic String pseudo-
+  // extern registry (#1238) and dispatch to either the native helper
+  // (`__str_<method>`) or the JS-host import (`string_<method>`) based on
+  // the active string backend. Returns null when the method isn't supported
+  // by Phase 1 (caller falls through to the existing `string` arm below).
+  if (recvType.kind === "string") {
+    const r = lowerStringMethodCall(methodName, recv, expr.arguments, cx);
+    if (r !== null) return r;
+    // Method not in slice 13c table — fall through to the recvType.kind !== "class"
+    // check below, which throws the clean "not in slice 4" error and routes this
+    // function back to the legacy compiler path. Do NOT throw here — a premature
+    // throw here gets caught at the wrong layer and corrupts the claim state.
+  }
+
   // Slice 10 (#1169i) — extern-class method call. The legacy host imports
   // store the signature as `[receiver_externref, ...userParams] ->
   // results`, so we slice off `params[0]` when matching call args.
@@ -1983,6 +1998,148 @@ function lowerMethodCall(expr: ts.CallExpression, cx: LowerCtx): IrValueId {
   if (r === null) {
     // Defensive — emitClassCall returns null only when resultType is null.
     throw new Error(`ir/from-ast: class.call produced no result in ${cx.funcName}`);
+  }
+  return r;
+}
+
+/**
+ * Slice 13c (#1232) — Phase 1 String prototype-method dispatch through the IR.
+ *
+ * For an IR-claimed function with a string-typed receiver, dispatch the
+ * method call directly to:
+ *   - **`__str_<method>`** (native helper) when `nativeStrings` mode is on
+ *   - **`string_<method>`** (host import) when JS-host string backend is on
+ *
+ * Both helpers/imports are pre-registered by the legacy passes
+ * (`collectStringMethodImports` walks the entire source AST regardless
+ * of IR claim, so any `s.<method>(...)` triggers import registration;
+ * `ensureNativeStringHelpers` populates the native helpers once per
+ * module). The IR's `cx.builder.emitCall` then resolves the import name
+ * via the lowerer's `resolveFunc` at module-emit time.
+ *
+ * Argument coercion:
+ *   - **Native mode**: index args (start, end, fromIndex, position) are
+ *     `i32` in the helper signature. Lower the source `f64` and apply
+ *     `i32.trunc_sat_f64_s` (saturating truncation, matches the legacy
+ *     `compileStringMethodCall` path). String args lower as `IrType.string`
+ *     and pass through unchanged (resolver maps the IrType to
+ *     `(ref $NativeString)` at lower time).
+ *   - **JS-host mode**: index args remain f64 (the host import's signature
+ *     is `(externref, f64...) -> externref`). String args lower as
+ *     `IrType.string` (resolver maps to externref).
+ *
+ * Result type:
+ *   - String-returning methods: `IrType.string` (resolver picks externref
+ *     vs `(ref $NativeString)` per backend mode).
+ *   - Number-returning (`charCodeAt`, `indexOf`): `IrType.val<f64>`.
+ *   - Boolean-returning (`includes`, `startsWith`, `endsWith`): `IrType.val<i32>`.
+ *
+ * **MLIR seam alignment** (per #1231 Phase 2 design note): the dispatch
+ * table here is a static const + `cx.resolver.nativeStrings()` lookup —
+ * no IR node mutations, no ambient maps. A future MLIR optimizer
+ * producing the same `IrType.string` receiver shape would hit this same
+ * function unchanged.
+ *
+ * Returns `null` for unsupported methods so the caller can fall back to
+ * legacy via a clean throw.
+ */
+interface StringMethodSig {
+  /** User-arg ValTypes in JS-host mode (excluding receiver). Used to
+   *  hint `lowerExpr` and to choose i32-truncation for native mode. */
+  readonly hostArgs: readonly ValType[];
+  /** IR result type — `IrType.string` for string-returning methods,
+   *  `IrType.val<f64>` for number-returning, `IrType.val<i32>` for boolean. */
+  readonly result: IrType;
+  /** Number of required user args (excluding optional ones). */
+  readonly requiredArgs: number;
+}
+
+const STRING_METHOD_TABLE: Readonly<Record<string, StringMethodSig>> = {
+  toUpperCase: { hostArgs: [], result: { kind: "string" }, requiredArgs: 0 },
+  toLowerCase: { hostArgs: [], result: { kind: "string" }, requiredArgs: 0 },
+  trim: { hostArgs: [], result: { kind: "string" }, requiredArgs: 0 },
+  charAt: { hostArgs: [{ kind: "f64" }], result: { kind: "string" }, requiredArgs: 1 },
+  slice: {
+    hostArgs: [{ kind: "f64" }, { kind: "f64" }],
+    result: { kind: "string" },
+    requiredArgs: 1, // slice(start) is valid; end is optional
+  },
+  indexOf: {
+    hostArgs: [{ kind: "externref" }, { kind: "externref" }],
+    result: irVal({ kind: "f64" }),
+    requiredArgs: 1, // fromIndex optional
+  },
+  includes: {
+    hostArgs: [{ kind: "externref" }],
+    result: irVal({ kind: "i32" }),
+    requiredArgs: 1,
+  },
+};
+
+function lowerStringMethodCall(
+  methodName: string,
+  recv: IrValueId,
+  args: ts.NodeArray<ts.Expression>,
+  cx: LowerCtx,
+): IrValueId | null {
+  const sig = STRING_METHOD_TABLE[methodName];
+  if (!sig) return null;
+
+  if (args.length < sig.requiredArgs || args.length > sig.hostArgs.length) {
+    throw new Error(
+      `ir/from-ast: String.${methodName}(...) arg count ${args.length} not in [${sig.requiredArgs}, ${sig.hostArgs.length}] (${cx.funcName})`,
+    );
+  }
+
+  const useNative = cx.resolver?.nativeStrings?.() === true;
+  const funcName = useNative ? `__str_${methodName}` : `string_${methodName}`;
+
+  // Build the argument list. params[0] is always the receiver
+  // (`IrType.string`). Remaining args are coerced per backend.
+  const loweredArgs: IrValueId[] = [recv];
+  for (let i = 0; i < args.length; i++) {
+    const expectedHost = sig.hostArgs[i]!;
+    let argVal: IrValueId;
+    if (expectedHost.kind === "f64") {
+      // Index-style arg. Lower as f64, then truncate to i32 in native mode.
+      const f64Val = lowerExpr(args[i]!, cx, irVal({ kind: "f64" }));
+      argVal = useNative ? cx.builder.emitUnary("i32.trunc_sat_f64_s", f64Val, irVal({ kind: "i32" })) : f64Val;
+    } else if (expectedHost.kind === "externref") {
+      // String-style arg. Lower as IrType.string — resolver maps to
+      // externref (host) or (ref $NativeString) (native) at lower time.
+      argVal = lowerExpr(args[i]!, cx, { kind: "string" });
+    } else {
+      throw new Error(
+        `ir/from-ast: String.${methodName} arg ${i} expected ValType ${expectedHost.kind} not in slice 13c (${cx.funcName})`,
+      );
+    }
+    loweredArgs.push(argVal);
+  }
+
+  // Pad missing optional args with backend-appropriate sentinels.
+  // For host-mode externref args (e.g. indexOf's fromIndex omitted),
+  // emit `ref.null.extern` — the host import shim treats it as undefined.
+  // For host-mode f64 args (e.g. slice's end omitted), emit a sentinel
+  // that the host knows means "to end" (matches the legacy convention).
+  for (let i = args.length; i < sig.hostArgs.length; i++) {
+    const expectedHost = sig.hostArgs[i]!;
+    if (useNative) {
+      // Native helpers handle missing args inside the function body via
+      // sentinel values matching the legacy native-helper convention.
+      // For now, throw — Phase 1 only covers fully-specified call sites
+      // for native mode.
+      throw new Error(
+        `ir/from-ast: String.${methodName} optional arg ${i} omitted in nativeStrings mode not in slice 13c (${cx.funcName})`,
+      );
+    } else {
+      const def = emitDefaultExternArg(cx, expectedHost);
+      loweredArgs.push(def);
+    }
+  }
+
+  const r = cx.builder.emitCall({ kind: "func", name: funcName }, loweredArgs, sig.result);
+  if (r === null) {
+    throw new Error(`ir/from-ast: String.${methodName} produced void result (${cx.funcName})`);
   }
   return r;
 }

@@ -413,9 +413,22 @@ export function collectI32CoercedLocals(decl: ts.FunctionLikeDeclaration): Set<s
       ) {
         return true;
       }
-      // Add/sub/mul: safe if both operands are i32-safe
+      // #1236 — `+`, `-`, `*` of i32-safe operands are NOT safe to promote
+      // to i32 here. The arithmetic itself produces f64 in codegen (JS spec:
+      // `number + number` is f64), and the trailing `i32.trunc_sat_f64_s`
+      // saturates rather than wrapping when the result exceeds 2^31-1.
+      // Pre-#1236 logic accepted these as safe ("overflow wrap is OK") but
+      // saturation is silent corruption: a long-running accumulator
+      // (`let s = 0; for (let i = 0; i < 1e6; i++) s = s + i;`) returns
+      // 2147483647 instead of the spec-correct 499999500000. Demote the
+      // candidate to f64 instead — the f64 arithmetic now flows through
+      // an f64 local with no trunc-sat in sight.
+      //
+      // Loop counters (`for (let i = 0; ...; i++)`) are unaffected: they go
+      // through the separate `detectI32LoopVar` path which proves the
+      // counter is bounded by the loop condition.
       if (o === ts.SyntaxKind.PlusToken || o === ts.SyntaxKind.MinusToken || o === ts.SyntaxKind.AsteriskToken) {
-        return isI32SafeExpr(expr.left, depth + 1) && isI32SafeExpr(expr.right, depth + 1);
+        return false;
       }
       return false;
     }
@@ -435,13 +448,16 @@ export function collectI32CoercedLocals(decl: ts.FunctionLikeDeclaration): Set<s
     ) {
       return true;
     }
-    // Arithmetic compound: needs i32-safe RHS
+    // #1236 — `+=`, `-=`, `*=` desugar to `lhs = lhs + rhs` etc., which
+    // routes through f64 arithmetic and a trailing `i32.trunc_sat_f64_s`.
+    // Saturation on overflow silently corrupts long-running accumulators
+    // (see #1236 / Option A). Demote to f64 instead.
     if (
       op === ts.SyntaxKind.PlusEqualsToken ||
       op === ts.SyntaxKind.MinusEqualsToken ||
       op === ts.SyntaxKind.AsteriskEqualsToken
     ) {
-      return isI32SafeExpr(rhs);
+      return false;
     }
     return false;
   }

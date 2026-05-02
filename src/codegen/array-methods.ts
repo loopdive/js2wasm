@@ -10,7 +10,7 @@ import ts from "typescript";
 import { isStringType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
 import { reportError } from "./context/errors.js";
-import { allocLocal } from "./context/locals.js";
+import { allocLocal, getLocalType } from "./context/locals.js";
 import type { ClosureInfo, CodegenContext, FunctionContext } from "./context/types.js";
 import { addArrayIteratorImports, addStringImports, resolveWasmType } from "./index.js";
 import { addStringConstantGlobal, ensureExnTag, localGlobalIdx } from "./registry/imports.js";
@@ -1811,7 +1811,13 @@ export function compileArrayMethodCall(
       const name = receiverExpr.text;
       const localIdx = fctx.localMap.get(name);
       if (localIdx !== undefined) {
-        actualType = fctx.locals[localIdx]?.type;
+        // #1247: localIdx is the wasm-level index (params + locals);
+        // `fctx.locals` indexes only locals (no params). Use getLocalType
+        // to handle the offset correctly. Without this, in functions with
+        // params, `paths.shift()` looks up the wrong local and dispatches
+        // through a stale vec type idx, producing struct-type mismatches
+        // at instantiation.
+        actualType = getLocalType(fctx, localIdx);
       } else {
         const gIdx = ctx.moduleGlobals.get(name);
         if (gIdx !== undefined) {
