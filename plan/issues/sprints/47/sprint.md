@@ -44,6 +44,7 @@ _(none)_
 | Issue | Title | Priority | Blocked by |
 |---|---|---|---|
 | #1223 | TDZ async/gen: writer+reader fn-decl sharing via destructure-assign | medium | #1177 |
+| #1229 | perf: struct field type inference — eliminate boxing in object properties | high | needs architect spec |
 
 ### Done
 
