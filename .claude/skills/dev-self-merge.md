@@ -38,6 +38,11 @@ If `src/**` changes exist but no status file: CI is still in-flight. Wait.
 cat .claude/ci-status/pr-<N>.json
 ```
 
+If `test262_skipped: true` in the JSON, this was a test-only / docs-only PR
+(no `src/**` changes). Skip Steps 3–4 entirely:
+- `conclusion == "success"` → **MERGE** (go to Step 5)
+- `conclusion != "success"` → **ESCALATE — basic CI failed on a non-src PR.**
+
 Extract: `head_sha`, `net_per_test`, `regressions`, `regressions_real`,
 `regressions_wasm_change`, `wasm_identical_noise`, `compile_timeouts`,
 `improvements`, `run_url`.

@@ -1,0 +1,123 @@
+name: CI Status Feed (basic)
+
+# Writes a ci-status file for PRs where Test262 Sharded won't run — i.e.
+# test-only, docs-only, or plan-only changes that don't touch src/**. Without
+# this, dev CI-wait loops block forever because ci-status-feed.yml only fires
+# after Test262 Sharded, which never triggers for these PRs.
+#
+# When this workflow runs AND src/** was not changed, it writes pr-{N}.json
+# immediately with conclusion + head_sha and test262_skipped: true. The dev
+# loop exits normally and /dev-self-merge sees no test262 data — it merges
+# based on basic CI conclusion only.
+#
+# If src/** WAS changed, Test262 Sharded will also run and ci-status-feed.yml
+# will write the authoritative file. We skip in that case to avoid races.
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  write-basic-status:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.event == 'pull_request' }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve PR number
+        id: pr
+        run: |
+          pr_num=$(jq -r '.workflow_run.pull_requests[0].number // empty' < "$GITHUB_EVENT_PATH")
+          if [ -z "$pr_num" ]; then
+            head_branch="${{ github.event.workflow_run.head_branch }}"
+            pr_num=$(gh pr list --state all --head "$head_branch" --json number --jq '.[0].number' 2>/dev/null || echo "")
+          fi
+          if [ -z "$pr_num" ]; then
+            head_sha="${{ github.event.workflow_run.head_sha }}"
+            pr_num=$(gh pr list --state all --json number,headRefOid --jq --arg sha "$head_sha" '.[] | select(.headRefOid == $sha) | .number' 2>/dev/null | head -1 || echo "")
+          fi
+          if [ -z "$pr_num" ]; then
+            echo "No PR number resolvable — skipping"
+            echo "pr=" >> "$GITHUB_OUTPUT"
+          else
+            echo "pr=$pr_num" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check if src/** changed (Test262 Sharded will run)
+        id: src_changed
+        if: ${{ steps.pr.outputs.pr != '' }}
+        run: |
+          pr=${{ steps.pr.outputs.pr }}
+          # Check if any src/ file was changed in this PR
+          changed=$(gh pr diff "$pr" --name-only 2>/dev/null | grep -c '^src/' || echo 0)
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+          if [ "$changed" -gt 0 ]; then
+            echo "src/** changed — Test262 Sharded will run, skipping basic feed"
+          else
+            echo "No src/** changes — writing basic ci-status"
+          fi
+
+      - name: Write basic status file
+        if: ${{ steps.pr.outputs.pr != '' && steps.src_changed.outputs.changed == '0' }}
+        env:
+          PR: ${{ steps.pr.outputs.pr }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          mkdir -p .claude/ci-status
+          out=".claude/ci-status/pr-$PR.json"
+          jq -n \
+            --arg pr "$PR" \
+            --arg conclusion "$CONCLUSION" \
+            --arg head_branch "$HEAD_BRANCH" \
+            --arg head_sha "$HEAD_SHA" \
+            --arg run_url "$RUN_URL" \
+            --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            '{
+              pr: ($pr|tonumber),
+              conclusion: $conclusion,
+              head_branch: $head_branch,
+              head_sha: $head_sha,
+              run_url: $run_url,
+              timestamp: $timestamp,
+              test262_skipped: true,
+              pass: null,
+              fail: null,
+              compile_error: null,
+              snapshot_delta: null,
+              net_per_test: null,
+              regressions: null,
+              regressions_real: null,
+              regressions_wasm_change: null,
+              wasm_identical_noise: null,
+              compile_timeouts: null,
+              improvements: null
+            }' > "$out"
+          cat "$out"
+
+      - name: Commit and push
+        if: ${{ steps.pr.outputs.pr != '' && steps.src_changed.outputs.changed == '0' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .claude/ci-status/pr-${{ steps.pr.outputs.pr }}.json
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          git commit -m "chore(ci-status): feed PR #${{ steps.pr.outputs.pr }} result — ${{ github.event.workflow_run.conclusion }} (basic, no test262) [skip ci]"
+          git pull --rebase origin main || true
+          git push
