@@ -95,12 +95,25 @@ import ts from "typescript";
 /**
  * Atoms are the non-composite lattice elements. `LatticeAtom` excludes
  * `unknown`, `union`, and `dynamic`; those can never be members of a union.
+ *
+ * #1231 — the `object` atom now carries a recursive structural shape
+ * (a name-sorted list of `(name, atom)` field bindings) instead of an
+ * opaque `shape: string` discriminator. This lets propagation flow
+ * concrete field types end-to-end (e.g. `{x: f64, y: f64}`) so the IR
+ * can emit typed structs and skip box/unbox round-trips on property
+ * access. The lattice height is bounded via a depth cap of
+ * `LATTICE_OBJECT_SHAPE_MAX_DEPTH` (set to 3, matching the legacy
+ * `resolveWasmType` depth guard); shapes deeper than the cap widen to
+ * `dynamic` so the fixpoint always terminates.
  */
 export type LatticeAtom =
   | { readonly kind: "f64" }
   | { readonly kind: "bool" }
   | { readonly kind: "string" }
-  | { readonly kind: "object"; readonly shape: string };
+  | {
+      readonly kind: "object";
+      readonly fields: readonly { readonly name: string; readonly type: LatticeAtom }[];
+    };
 
 export type LatticeType =
   | { readonly kind: "unknown" }
@@ -110,6 +123,24 @@ export type LatticeType =
 
 /** Maximum union-member count before we widen to `dynamic`. */
 export const LATTICE_UNION_MAX_MEMBERS = 4;
+
+/**
+ * Maximum recursive depth of `LatticeAtom.object` shapes. Object shapes
+ * deeper than the cap widen to `dynamic` so the propagation lattice has
+ * bounded height and the worklist fixpoint terminates. Matches the
+ * legacy `resolveWasmType` depth guard at `codegen/index.ts:5255`.
+ */
+export const LATTICE_OBJECT_SHAPE_MAX_DEPTH = 3;
+
+/**
+ * Phase 1 of #1231 is gated behind an env flag — when unset, object
+ * literals and property accesses still infer to `dynamic` (the original
+ * behaviour) so unannotated functions stay on the legacy boxed path.
+ * Re-evaluated on every call so vitest can flip the flag per-test.
+ */
+function objectShapesEnabled(): boolean {
+  return process.env.JS2WASM_IR_OBJECT_SHAPES === "1";
+}
 
 export interface TypeMapEntry {
   readonly params: readonly LatticeType[];
@@ -332,6 +363,14 @@ function tsTypeToLattice(ty: ts.Type, _checker: ts.TypeChecker): LatticeType {
   if (flags & ts.TypeFlags.Any || flags & ts.TypeFlags.Unknown) return UNKNOWN;
   // Never is unreachable — treat as unknown so it doesn't kill fixpoint.
   if (flags & ts.TypeFlags.Never) return UNKNOWN;
+  // #1231 Phase 1 — under the env gate, TS-inferred object types seed as
+  // UNKNOWN so the body-walk pass can refine the shape via `inferExpr`.
+  // Without this, an unannotated `function createPoint(x, y) { return
+  // {x, y}; }` would have its checker-derived return type `{x: any,
+  // y: any}` lower to DYNAMIC, absorb every body-observed atom, and
+  // block the IR claim. Outside the gate the legacy DYNAMIC fallback
+  // is preserved.
+  if (flags & ts.TypeFlags.Object && objectShapesEnabled()) return UNKNOWN;
   // Object / union / enum / etc remain `dynamic` for now — they'd need
   // richer shape inference to be usable in the IR selector.
   return DYNAMIC;
@@ -462,7 +501,147 @@ function inferExpr(
     if (!entry) return DYNAMIC;
     return entry.returnType;
   }
+  // #1231 Phase 1 — object literal: build a typed shape from each
+  // property's inferred atom. Any property that doesn't reduce to a
+  // `LatticeAtom` (i.e. `unknown`, `union`, or `dynamic`) widens the
+  // whole literal to `dynamic`. Spread / methods / getters / setters /
+  // computed keys / duplicate keys also widen — those force the
+  // function back to the legacy boxed path.
+  if (ts.isObjectLiteralExpression(expr) && objectShapesEnabled()) {
+    return inferObjectLiteralAtom(expr, scope, entries);
+  }
+  // #1231 Phase 1 — property / element access on a known object atom:
+  // look up the field in the receiver's shape and return its atom.
+  // When the receiver is a union or dynamic we can't pick a unique
+  // field, so widen to dynamic.
+  if (ts.isPropertyAccessExpression(expr)) {
+    return inferPropertyAccessAtom(expr, scope, entries);
+  }
+  if (ts.isElementAccessExpression(expr)) {
+    return inferElementAccessAtom(expr, scope, entries);
+  }
   return DYNAMIC;
+}
+
+/**
+ * Build an `object` atom from an object literal. Returns `DYNAMIC` if
+ * any property's atom is not a concrete `LatticeAtom` (unknown / union /
+ * dynamic), or if the literal contains shapes Phase 1 doesn't model
+ * (spread, methods, accessors, computed keys, duplicate keys, empty
+ * literal). The depth cap (`LATTICE_OBJECT_SHAPE_MAX_DEPTH`) is checked
+ * after sub-inference so a deeply-nested literal widens cleanly.
+ */
+function inferObjectLiteralAtom(
+  expr: ts.ObjectLiteralExpression,
+  scope: ReadonlyMap<string, LatticeType>,
+  entries: ReadonlyMap<string, { params: LatticeType[]; returnType: LatticeType }>,
+): LatticeType {
+  if (expr.properties.length === 0) return DYNAMIC;
+  const fields: { name: string; type: LatticeAtom }[] = [];
+  const seen = new Set<string>();
+  for (const prop of expr.properties) {
+    let name: string | null;
+    let valExpr: ts.Expression;
+    if (ts.isPropertyAssignment(prop)) {
+      name = phase1ObjectPropertyName(prop.name);
+      if (name === null) return DYNAMIC;
+      valExpr = prop.initializer;
+    } else if (ts.isShorthandPropertyAssignment(prop)) {
+      name = prop.name.text;
+      valExpr = prop.name; // identifier ref
+    } else {
+      // SpreadAssignment, MethodDeclaration, GetAccessor, SetAccessor — defer to legacy.
+      return DYNAMIC;
+    }
+    if (seen.has(name)) return DYNAMIC; // duplicate keys not in Phase 1
+    seen.add(name);
+    const fieldType = inferExpr(valExpr, scope, entries);
+    if (!isAtomLattice(fieldType)) return DYNAMIC;
+    fields.push({ name, type: fieldType });
+  }
+  fields.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  const atom: LatticeAtom = { kind: "object", fields };
+  // Depth cap — a Phase 1 atom must not exceed the recursive shape
+  // depth limit. Widening here (instead of inside the loop) lets nested
+  // call return types contribute their own bounded shapes; only the
+  // construction site enforces the cap.
+  if (objectAtomDepth(atom) > LATTICE_OBJECT_SHAPE_MAX_DEPTH) return DYNAMIC;
+  return atom;
+}
+
+/**
+ * Look up `expr.name` against the receiver's object atom. Returns the
+ * field's atom if the receiver is an object atom and the field exists;
+ * otherwise widens to `dynamic`. Note that property access doesn't
+ * need its own gate — when `objectShapesEnabled()` is false no source
+ * produces an object atom, so the `recvType.kind === "object"` arm is
+ * never reached.
+ */
+function inferPropertyAccessAtom(
+  expr: ts.PropertyAccessExpression,
+  scope: ReadonlyMap<string, LatticeType>,
+  entries: ReadonlyMap<string, { params: LatticeType[]; returnType: LatticeType }>,
+): LatticeType {
+  if (!ts.isIdentifier(expr.name)) return DYNAMIC;
+  if (expr.questionDotToken) return DYNAMIC;
+  const recvType = inferExpr(expr.expression, scope, entries);
+  if (recvType.kind !== "object") return DYNAMIC;
+  const propName = expr.name.text;
+  const field = recvType.fields.find((f) => f.name === propName);
+  if (!field) return DYNAMIC;
+  return field.type;
+}
+
+/**
+ * Element access with a string-literal argument is sugar for property
+ * access; numeric / computed / non-literal keys widen to `dynamic`.
+ */
+function inferElementAccessAtom(
+  expr: ts.ElementAccessExpression,
+  scope: ReadonlyMap<string, LatticeType>,
+  entries: ReadonlyMap<string, { params: LatticeType[]; returnType: LatticeType }>,
+): LatticeType {
+  if (expr.questionDotToken) return DYNAMIC;
+  const arg = expr.argumentExpression;
+  if (!(ts.isStringLiteral(arg) || arg.kind === ts.SyntaxKind.NoSubstitutionTemplateLiteral)) {
+    return DYNAMIC;
+  }
+  const recvType = inferExpr(expr.expression, scope, entries);
+  if (recvType.kind !== "object") return DYNAMIC;
+  const propName = (arg as ts.StringLiteral | ts.NoSubstitutionTemplateLiteral).text;
+  const field = recvType.fields.find((f) => f.name === propName);
+  if (!field) return DYNAMIC;
+  return field.type;
+}
+
+/**
+ * Resolve an object literal's PropertyName to its canonical text key.
+ * Identifier and StringLiteral keys produce their text; NumericLiteral
+ * keys produce their canonical JS toString. Computed keys widen to
+ * legacy by returning null. Mirrors the helper in `from-ast.ts` —
+ * duplicated here to keep `propagate.ts` self-contained.
+ */
+function phase1ObjectPropertyName(name: ts.PropertyName): string | null {
+  if (ts.isIdentifier(name)) return name.text;
+  if (ts.isStringLiteral(name)) return name.text;
+  if (ts.isNumericLiteral(name)) return name.text;
+  return null;
+}
+
+/**
+ * Compute the recursive object-shape depth of a `LatticeAtom`. A scalar
+ * atom has depth 0; an object atom has `1 + max(field depth)`. Used to
+ * enforce `LATTICE_OBJECT_SHAPE_MAX_DEPTH` when constructing new shapes
+ * and when joining two object atoms.
+ */
+function objectAtomDepth(a: LatticeAtom): number {
+  if (a.kind !== "object") return 0;
+  let max = 0;
+  for (const f of a.fields) {
+    const d = objectAtomDepth(f.type);
+    if (d > max) max = d;
+  }
+  return max + 1;
 }
 
 function f64Compatible(t: LatticeType): boolean {
@@ -516,7 +695,18 @@ function isAtomLattice(t: LatticeType): t is LatticeAtom {
 
 function atomsEqual(a: LatticeAtom, b: LatticeAtom): boolean {
   if (a.kind !== b.kind) return false;
-  if (a.kind === "object" && b.kind === "object") return a.shape === b.shape;
+  if (a.kind === "object" && b.kind === "object") {
+    if (a.fields.length !== b.fields.length) return false;
+    // Field lists are name-sorted at construction time so positional
+    // comparison is sufficient.
+    for (let i = 0; i < a.fields.length; i++) {
+      const af = a.fields[i]!;
+      const bf = b.fields[i]!;
+      if (af.name !== bf.name) return false;
+      if (!atomsEqual(af.type, bf.type)) return false;
+    }
+    return true;
+  }
   return true;
 }
 
@@ -543,8 +733,22 @@ function extendUnion(members: readonly LatticeAtom[], atom: LatticeAtom): Lattic
 function atomOrder(a: LatticeAtom, b: LatticeAtom): number {
   const order = atomKindOrder(a.kind) - atomKindOrder(b.kind);
   if (order !== 0) return order;
-  if (a.kind === "object" && b.kind === "object") return a.shape.localeCompare(b.shape);
+  if (a.kind === "object" && b.kind === "object") {
+    return atomDescription(a).localeCompare(atomDescription(b));
+  }
   return 0;
+}
+
+/**
+ * Stable string description of a LatticeAtom — used for canonical
+ * union ordering. Object atoms produce a recursive `{name:type,...}`
+ * stringification of their field list (already name-sorted).
+ */
+function atomDescription(a: LatticeAtom): string {
+  if (a.kind === "object") {
+    return `{${a.fields.map((f) => `${f.name}:${atomDescription(f.type)}`).join(",")}}`;
+  }
+  return a.kind;
 }
 
 function atomKindOrder(k: LatticeAtom["kind"]): number {
@@ -569,7 +773,7 @@ function typesEqual(a: LatticeType, b: LatticeType): boolean {
     }
     return true;
   }
-  if (a.kind === "object" && b.kind === "object") return a.shape === b.shape;
+  if (a.kind === "object" && b.kind === "object") return atomsEqual(a, b);
   return true;
 }
 
@@ -702,9 +906,20 @@ export function lowerTypeToIrType(t: LatticeType): import("./nodes.js").IrType |
       // vs `(ref $AnyString)`) is decided by the lowerer's resolver based
       // on the active string backend.
       return { kind: "string" };
-    case "object":
-      // Object shape inference → IR type mapping is Slice 2 / future work.
-      return null;
+    case "object": {
+      // #1231 Phase 1 — recursively lower the object atom's field list
+      // to an IR object shape. Each field's atom must lower cleanly; any
+      // null bubbles up so the caller can fall back to legacy. Field
+      // names are already canonicalised (sorted) at construction time.
+      const fields: { name: string; type: import("./nodes.js").IrType }[] = [];
+      for (const f of t.fields) {
+        const ir = lowerTypeToIrType(f.type);
+        if (ir === null) return null;
+        fields.push({ name: f.name, type: ir });
+      }
+      if (fields.length === 0) return null;
+      return { kind: "object", shape: { fields } };
+    }
     case "union": {
       const members: import("./types.js").ValType[] = [];
       for (const m of t.members) {
