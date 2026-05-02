@@ -145,8 +145,10 @@ jobs:
           # This IS the merge gate — it measures what the PR actually did to the
           # baseline it was tested against, not an absolute snapshot difference.
           # See #1082 for why the distinction matters.
-          if [ "$improvements" != "null" ] && [ "$regressions" != "null" ]; then
-            net_per_test=$((improvements - regressions))
+          # #1287: use regressions_wasm_change (not regressions) so compile_timeout
+          # flaps from noisy CI runners don't drag net_per_test below zero.
+          if [ "$improvements" != "null" ] && [ "$regressions_wasm_change" != "null" ]; then
+            net_per_test=$((improvements - regressions_wasm_change))
           fi
 
           # Write JSON using jq so nothing is broken by shell quoting
