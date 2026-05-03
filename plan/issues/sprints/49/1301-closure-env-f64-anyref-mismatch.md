@@ -2,7 +2,7 @@
 id: 1301
 sprint: 49
 title: "Closure environment field-type mismatch: struct.new[0] expected f64, got anyref"
-status: ready
+status: in-progress
 created: 2026-05-03
 updated: 2026-05-03
 priority: medium
@@ -13,7 +13,7 @@ area: codegen
 language_feature: closures, arrow-functions
 goal: npm-library-support
 depends_on: []
-related: [1297, 1298, 1300]
+related: [1297, 1298, 1300, 1303]
 ---
 # #1301 — Wasm validator rejects closure env: struct.new[0] expected f64, found anyref
 
@@ -103,3 +103,61 @@ Likely causes:
 
 Middleware-compose is the entire `koa`/`hono` core abstraction. Without
 it, the npm library support goal cannot move past simple route trees.
+
+## Findings + fix (2026-05-03)
+
+### Root cause
+
+`compileCallExpression` in `src/codegen/expressions/calls.ts` resolved a
+plain identifier callee against `ctx.funcMap` BEFORE checking
+`fctx.localMap`. When an arrow function had a parameter named `next` AND
+an enclosing scope declared `function next() {...}`, the arrow body's
+`next()` resolved to the outer function via funcMap. The
+"nested-captures prepend" path then read `cap.outerLocalIdx` indices
+that pointed to the outer fctx's locals — but in the lifted arrow's
+fctx they map to entirely different (or out-of-range) locals, hence
+`local.get 4` of an `anyref __tmp_1` being fed into a `struct.new
+__ref_cell_f64` (whose field 0 is `f64`).
+
+### Fix
+
+In `compileCallExpression`'s "Regular function call" branch, when the
+callee is a plain identifier, check `fctx.localMap.has(funcName)` first.
+If true, the local lexically shadows any outer function or module-level
+closure of the same name; skip funcMap and closureMap lookups so the
+fallback dispatches via call_ref through the local's funcref. Without
+this, arrow params that share names with outer functions silently
+break.
+
+### Out of scope (filed as #1303)
+
+End-to-end execution of the two-middleware test (`exports.test() ===
+"[A][B]end"`) ALSO requires `mws[idx](c, next)` on a closure-typed
+array to dispatch correctly. With #1301's fix applied the binary
+validates and instantiates, but `mws[idx](c, next)` compiles to
+`ref.null extern; drop` — the call is silently dropped. Tracked under
+#1303. Tier 5c "two middlewares" stays skipped pending #1303.
+
+### Test changes
+
+Added `tests/issue-1301.test.ts` with 4 assertions:
+
+1. Two-middleware compose with arrow `next` param shadowing outer fn
+   compiles + validates (the literal #1301 bug).
+2. Single-mw recursive compose with same shadow pattern compiles +
+   validates (regression guard).
+3. Non-shadowing case still compiles + executes correctly (no
+   regression in the direct-call path).
+4. Local shadowing outer fn with same name dispatches via call_ref
+   through the local — observable end-to-end (returns 42, not the
+   outer fn's 100).
+
+### Acceptance criteria — status
+
+1. The two-middleware compose reproduction compiles cleanly — **DONE**.
+2. Wasm validator passes for array-of-arrow-middleware patterns —
+   **DONE**.
+3. Tier 5 #1297 test 5c passes without skip marker — **DEFERRED to
+   #1303**. The validation gap is closed; the runtime gap is a
+   separate codegen issue (`mws[idx](c, next)` element-access call on
+   closure-typed array drops to `ref.null`).

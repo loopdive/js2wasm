@@ -4768,8 +4768,18 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
   if (ts.isIdentifier(expr.expression)) {
     const funcName = expr.expression.text;
 
+    // (#1301) If the identifier resolves to a local/param in the current fctx,
+    // the local lexically shadows any outer function or module-level closure
+    // of the same name. Skip funcMap/closureMap lookups so we fall through to
+    // the local-callable dispatch path. Without this, an arrow with a `next`
+    // parameter whose enclosing scope declares `function next() {...}` would
+    // wrongly direct-call the outer `next` AND prepend the outer's nested
+    // captures using local indices that point to unrelated locals in the
+    // arrow's own frame — producing struct.new validation errors.
+    const isLocallyShadowed = fctx.localMap.has(funcName);
+
     // Check if this is a closure call
-    let closureInfo = ctx.closureMap.get(funcName);
+    let closureInfo = isLocallyShadowed ? undefined : ctx.closureMap.get(funcName);
 
     if (!closureInfo) {
       closureInfo = resolveClosureInfoFromLocal(ctx, fctx, funcName);
@@ -4783,7 +4793,9 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
     // (e.g. emitLocalTdzCheck → ensureLateImport(__throw_reference_error))
     // shift `ctx.numImportFuncs` and update `ctx.funcMap` entries, but a
     // local `const funcIdx` would hold the pre-shift value.
-    let funcIdx = ctx.funcMap.get(funcName);
+    // (#1301) Skip funcMap when locally shadowed; the local-callable fallback
+    // below handles dispatch via call_ref through the param/local.
+    let funcIdx = isLocallyShadowed ? undefined : ctx.funcMap.get(funcName);
     if (funcIdx === undefined) {
       // Before giving up, check if this identifier is a local/param with callable TS type
       // (e.g. function parameter `fn: (x: number) => number` stored as externref).
