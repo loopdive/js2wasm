@@ -526,6 +526,26 @@ function isPhase1StatementList(
       if (!isPhase1ForOf(s, scope, localClasses)) return false;
       continue;
     }
+    // Slice 12 (#1280) — `while` / `for` (C-style) as non-tail
+    // statements. The body is shape-checked via `isPhase1BodyStatement`
+    // (same restrictions as for-of).
+    if (ts.isWhileStatement(s)) {
+      if (!isPhase1WhileStatement(s, scope, localClasses)) return false;
+      continue;
+    }
+    if (ts.isForStatement(s)) {
+      if (!isPhase1ForStatement(s, scope, localClasses)) return false;
+      // Add init's let-declared names into outer scope so subsequent
+      // statements can reference the loop counter (TypeScript would
+      // narrow scope to the for-statement, but our scope tracker is
+      // a flat set; the conservative addition is fine for shape check).
+      if (s.initializer && ts.isVariableDeclarationList(s.initializer)) {
+        for (const d of s.initializer.declarations) {
+          if (ts.isIdentifier(d.name)) scope.add(d.name.text);
+        }
+      }
+      continue;
+    }
     // Slice 9 (#1169h) — throw / try as a non-tail statement. A throw
     // doesn't fall through, but the selector accepts it in non-tail
     // position and the lowerer emits a `throw` instr followed by an
@@ -647,6 +667,122 @@ function isPhase1ForOf(stmt: ts.ForOfStatement, scope: Set<string>, localClasses
 }
 
 /**
+ * Slice 12 (#1280): shape-check `while (cond) body`.
+ *   - `cond` must be a Phase-1 expression.
+ *   - `body` must be a single statement that's a Phase-1 body statement
+ *     (same restrictions as a for-of body — see `isPhase1BodyStatement`).
+ */
+function isPhase1WhileStatement(
+  stmt: ts.WhileStatement,
+  scope: ReadonlySet<string>,
+  localClasses: ReadonlySet<string>,
+): boolean {
+  if (!isPhase1Expr(stmt.expression, scope, localClasses)) return false;
+  return isPhase1BodyStatement(stmt.statement, new Set(scope), localClasses);
+}
+
+/**
+ * Slice 12 (#1280): shape-check `for (init; cond; update) body`.
+ *
+ *   - `init`   optional. When present, accepts either a
+ *              `VariableDeclarationList` (`for (let i = 0; ...)`) — same
+ *              shape as `isPhase1VarDecl` (single named decl with a
+ *              Phase-1 initializer; multi-decl is OK if each is named) —
+ *              or a Phase-1 expression (`for (i = 0; ...)`).
+ *   - `cond`   optional. Empty cond means infinite loop — rejected for
+ *              now; the typical pattern `for (;;) { ... break ... }`
+ *              would require break support which is deferred. When
+ *              present, must be a Phase-1 expression.
+ *   - `update` optional. Phase-1 expression. The most common shapes are
+ *              postfix `i++` / `i--`, prefix `++i` / `--i`, compound
+ *              assignment `i += 1`, or plain assignment `i = i + 1`.
+ *   - `body`   single Phase-1 body statement.
+ *
+ * The init's let-bindings enter scope before cond/update/body are
+ * shape-checked.
+ */
+function isPhase1ForStatement(
+  stmt: ts.ForStatement,
+  scope: ReadonlySet<string>,
+  localClasses: ReadonlySet<string>,
+): boolean {
+  // Cond must be present (no infinite loops in slice 12).
+  if (!stmt.condition) return false;
+
+  const innerScope = new Set(scope);
+
+  // Init: optional. Variable declaration adds bindings; expression init
+  // doesn't. Both must be Phase-1.
+  if (stmt.initializer) {
+    if (ts.isVariableDeclarationList(stmt.initializer)) {
+      const flags = stmt.initializer.flags;
+      if (!(flags & ts.NodeFlags.Let) && !(flags & ts.NodeFlags.Const)) return false;
+      for (const d of stmt.initializer.declarations) {
+        if (!ts.isIdentifier(d.name)) return false;
+        if (!d.initializer) return false;
+        if (!isPhase1Expr(d.initializer, innerScope, localClasses)) return false;
+        if (innerScope.has(d.name.text)) return false; // duplicate
+        innerScope.add(d.name.text);
+      }
+    } else {
+      // Expression init.
+      if (!isPhase1Expr(stmt.initializer, innerScope, localClasses)) return false;
+    }
+  }
+
+  // Cond: must be a Phase-1 expression in the inner scope.
+  if (!isPhase1Expr(stmt.condition, innerScope, localClasses)) return false;
+
+  // Update: optional. When present, must be a Phase-1 expression OR a
+  // postfix `i++` / `i--` (which `isPhase1Expr` doesn't accept on its
+  // own because postfix mutates state — but it's the canonical for-loop
+  // update so we accept it explicitly here).
+  if (stmt.incrementor) {
+    if (!isPhase1ForUpdateExpr(stmt.incrementor, innerScope, localClasses)) return false;
+  }
+
+  // Body: single Phase-1 body statement.
+  return isPhase1BodyStatement(stmt.statement, innerScope, localClasses);
+}
+
+/**
+ * Slice 12 (#1280): the `update` clause of a `for` loop. Same as
+ * Phase-1 expressions plus postfix `i++` / `i--` on identifiers in
+ * scope (which the body-statement layer accepts as an
+ * ExpressionStatement but `isPhase1Expr` does not — postfix is a
+ * mutation, not a pure expression).
+ */
+function isPhase1ForUpdateExpr(
+  expr: ts.Expression,
+  scope: ReadonlySet<string>,
+  localClasses: ReadonlySet<string>,
+): boolean {
+  if (ts.isPostfixUnaryExpression(expr)) {
+    const op = expr.operator;
+    if (op === ts.SyntaxKind.PlusPlusToken || op === ts.SyntaxKind.MinusMinusToken) {
+      return ts.isIdentifier(expr.operand) && scope.has(expr.operand.text);
+    }
+    return false;
+  }
+  if (ts.isBinaryExpression(expr)) {
+    const op = expr.operatorToken.kind;
+    // Plain or compound assignment to an identifier in scope.
+    if (
+      op === ts.SyntaxKind.EqualsToken ||
+      op === ts.SyntaxKind.PlusEqualsToken ||
+      op === ts.SyntaxKind.MinusEqualsToken ||
+      op === ts.SyntaxKind.AsteriskEqualsToken ||
+      op === ts.SyntaxKind.SlashEqualsToken
+    ) {
+      if (!ts.isIdentifier(expr.left)) return false;
+      if (!scope.has(expr.left.text)) return false;
+      return isPhase1Expr(expr.right, scope, localClasses);
+    }
+  }
+  return isPhase1Expr(expr, scope, localClasses);
+}
+
+/**
  * Slice 6 part 2 (#1181): recogniser for body statements inside a for-of
  * loop. Narrower than `isPhase1StatementList` — no nested closures, no
  * nested function decls, no fall-through if/else patterns. Accepts:
@@ -711,10 +847,33 @@ function isPhase1BodyStatement(stmt: ts.Statement, scope: Set<string>, localClas
         }
       }
     }
+    // Slice 12 (#1280): postfix `i++` / `i--` / prefix `++i` / `--i`
+    // as expression statements inside a loop body. Mutates the
+    // identifier's slot, not a pure expression — but as a statement
+    // it's the canonical loop counter mutation.
+    if (ts.isPostfixUnaryExpression(stmt.expression) || ts.isPrefixUnaryExpression(stmt.expression)) {
+      const op = stmt.expression.operator;
+      if (op === ts.SyntaxKind.PlusPlusToken || op === ts.SyntaxKind.MinusMinusToken) {
+        return ts.isIdentifier(stmt.expression.operand) && scope.has(stmt.expression.operand.text);
+      }
+    }
     return false;
   }
   if (ts.isForOfStatement(stmt)) {
     return isPhase1ForOf(stmt, scope, localClasses);
+  }
+  // Slice 12 (#1280) — nested while / for inside a body buffer.
+  if (ts.isWhileStatement(stmt)) {
+    return isPhase1WhileStatement(stmt, scope, localClasses);
+  }
+  if (ts.isForStatement(stmt)) {
+    if (!isPhase1ForStatement(stmt, scope, localClasses)) return false;
+    if (stmt.initializer && ts.isVariableDeclarationList(stmt.initializer)) {
+      for (const d of stmt.initializer.declarations) {
+        if (ts.isIdentifier(d.name)) scope.add(d.name.text);
+      }
+    }
+    return true;
   }
   // Slice 9 (#1169h) — throw / try inside a body statement list.
   // Accepting these here lets a try body / catch body / finally body
