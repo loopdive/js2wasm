@@ -2,7 +2,7 @@
 id: 1299
 sprint: 49
 title: "Virtual dispatch through abstract-base-typed dict values returns first stored subclass's method"
-status: in-progress
+status: done
 created: 2026-05-03
 updated: 2026-05-03
 priority: medium

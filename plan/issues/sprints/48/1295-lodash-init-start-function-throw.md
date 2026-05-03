@@ -2,7 +2,7 @@
 id: 1295
 sprint: 48
 title: "lodash transitive init: start-function throws WebAssembly.Exception during instantiate (clamp/add)"
-status: ready
+status: done
 created: 2026-05-03
 updated: 2026-05-03
 priority: medium

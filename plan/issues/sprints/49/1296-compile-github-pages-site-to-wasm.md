@@ -2,7 +2,7 @@
 id: 1296
 sprint: 49
 title: "Dogfood: compile dashboard/landing page JS to Wasm using js2wasm"
-status: in-progress
+status: done
 created: 2026-05-03
 updated: 2026-05-03
 priority: medium
