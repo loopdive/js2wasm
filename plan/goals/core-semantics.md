@@ -176,7 +176,7 @@ missing return values, incorrect type coercion, wrong control flow, broken scope
 | **1119** | ES2015 SingleNameBinding anonymous function/class naming from destructuring context | 44 | done | medium |
 | **1120** | Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks | 45 | done | high |
 | **1121** | Infer numeric recursive fast path without JSDoc hints on exported entrypoints | 45 | done | high |
-| **1126** | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | 48 | ready | high |
+| **1126** | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | 49 | in-progress | high |
 | **1127** | Class method param destructuring: nested array pattern + initializer throws spurious TypeError | 43 | done | high |
 | **1128** | Destructuring TDZ and AnnexB B.3.3 function-in-block hoisting (≥211 tests) | 45 | done | medium |
 | **1129** | ToObject (§7.1.18) not implemented — no primitive auto-boxing | Backlog | ready | low |

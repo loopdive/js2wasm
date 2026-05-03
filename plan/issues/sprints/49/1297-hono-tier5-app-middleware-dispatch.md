@@ -2,7 +2,7 @@
 id: 1297
 sprint: 49
 title: "Hono Tier 5 — Application class: route registration + middleware dispatch + Context"
-status: in-progress
+status: done
 created: 2026-05-03
 updated: 2026-05-03
 priority: medium

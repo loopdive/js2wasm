@@ -495,6 +495,14 @@ function staticTypeofForType(ctx: CodegenContext, tsType: ts.Type): string | nul
     if (sym && (sym.name === "String" || sym.name === "Number" || sym.name === "Boolean")) {
       return "object";
     }
+    // (#1304) Global `Function` interface — TS infers this for params used
+    // as `p.call(...)` / `p.apply(...)` etc. Without this branch the value
+    // falls into the generic "Object flag → object" path below and idiomatic
+    // guards like `if (typeof predicate != 'function')` const-fold to
+    // unconditional throws (lodash `negate`, `bind`, similar).
+    if (sym && sym.name === "Function") {
+      return "function";
+    }
   }
   // Check string before wasm type mapping (native strings map to ref)
   if (isStringType(tsType)) return "string";

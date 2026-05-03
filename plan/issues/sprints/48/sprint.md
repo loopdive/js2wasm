@@ -7,15 +7,35 @@ closed: 2026-05-03
 wrap_checklist:
   status_closed: true
   retro_written: true
-  diary_updated: true
-  end_tag_pushed: true
-  begin_tag_pushed: true
+  diary_updated: false
+  end_tag_pushed: false
+  begin_tag_pushed: false
 ---
 
 # Sprint 48
 
-**Date**: 2026-05-03 (single day, sprint 47 ran into it)
+**Date**: 2026-05-03 (single-day sprint, drained → S49)
 **Planned**: 2026-05-02 — seeded from S47 analysis + backlog review
+**Closed**: 2026-05-03 — all merged work landed; carry-over (#1199, #1223, #1241) + Stage 3 of #1126 moved to S49
+
+## Summary
+
+Sprint 48 ran a single intensive day, draining 13 issues:
+
+**Merged (13)**:
+- IR slice 13d (#1233), struct field inference Phase 3 (#1269), IR selector
+  while/for body claim (#1280), ESLint Tier 1 stress (#1282)
+- i32 saturation soundness fix (#1236), null-check peephole / Phase 3b (#1270)
+- LICM (#1200) — Stage 1+2 of int32 inference (#1126 stages, full umbrella moved to S49)
+- lodash Tier 1b execution-level (#1291), Tier 2 stress test (#1292)
+- Hono Tier 4 (#1293), Tier 5 (#1297, file in S49)
+- WebAssembly.Exception worker reclassification (#1294), compiler.ts re-throw (#1295 a + b)
+
+**Carried to S49**:
+- #1126 — int32/uint32 inference Stage 3 (emitter integration, ~500 LoC, biggest stage)
+- #1199 — perf: linear-memory backing for typed numeric arrays (no PR)
+- #1223 — TDZ async/gen writer+reader (still blocked on #1177 senior investigation)
+- #1241 — placeholder "Untitled" issue, needs PO triage
 
 ## Goals
 
@@ -72,76 +92,22 @@ Recommended dispatch (after S47 drains):
 
 _Generated from issue files. Update issue `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
 
-### Blocked
-
-| Issue | Title | Priority | Status |
-|---|---|---|---|
-| #1223 | TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up) | medium | blocked |
-
-### Ready
-
-| Issue | Title | Priority | Status |
-|---|---|---|---|
-| #1126 | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | high | ready |
-| #1199 | perf: linear-memory backing for typed numeric arrays (`Array<number>` with i32-only ops → `i32.load`/`i32.store`) | medium | ready |
-| #1200 | perf: loop-invariant code motion in optimizer pass (hoist `arr.length` etc. out of `for` conditions) | medium | ready |
-| #1241 | Untitled |  | ready |
-| #1270 | struct field inference Phase 3b: eliminate null-checks on (ref null $T) locals via peephole | medium | ready |
-| #1292 | lodash Tier 2 stress test — memoize, flow, partial application | medium | ready |
-| #1295 | compiler.ts: re-throw WebAssembly.Exception from internal catch blocks | high | ready |
-| #1295 | lodash transitive init: start-function throws WebAssembly.Exception during instantiate (clamp/add) | medium | ready |
-
-### In Progress
-
-| Issue | Title | Priority | Status |
-|---|---|---|---|
-| #1291 | lodash Tier 1b — upgrade add/clamp stress tests to execution-level assertions | medium | in-progress |
-| #1293 | Hono Tier 4 — string[][] array-of-arrays type support + #segments field | medium | in-progress |
-| #1294 | test262 worker: reclassify WebAssembly.Exception compile-errors as fail + restart fork | high | in-progress |
-
 ### Done
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #1200 | perf: loop-invariant code motion in optimizer pass (hoist `arr.length` etc. out of `for` conditions) | medium | done |
 | #1233 | IR Phase 4 Slice 13d — Array per-element-type methods through IR | medium | done |
 | #1236 | Premature i32 specialization for `let s = 0` accumulators silently saturates on overflow | high | done |
 | #1269 | struct field inference Phase 3: consumer-side specialization — emit struct.get without unboxing | medium | done |
+| #1270 | struct field inference Phase 3b: eliminate null-checks on (ref null $T) locals via peephole | medium | done |
 | #1280 | IR selector: claim while/for-loop bodies with typed numeric state | medium | done |
 | #1282 | ESLint Tier 1 stress test — minimal Linter.verify() compilation | medium | done |
+| #1291 | lodash Tier 1b — upgrade add/clamp stress tests to execution-level assertions | medium | done |
+| #1292 | lodash Tier 2 stress test — memoize, flow, partial application | medium | done |
+| #1293 | Hono Tier 4 — string[][] array-of-arrays type support + #segments field | medium | done |
+| #1294 | test262 worker: reclassify WebAssembly.Exception compile-errors as fail + restart fork | high | done |
+| #1295 | compiler.ts: re-throw WebAssembly.Exception from internal catch blocks | high | done |
+| #1295 | lodash transitive init: start-function throws WebAssembly.Exception during instantiate (clamp/add) | medium | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->
-
-## Retrospective
-
-**Closed**: 2026-05-03 at ~95% weekly budget.
-
-### What landed
-
-- #1233 IR Phase 4 Slice 13d — Array per-element-type methods through IR
-- #1236 Premature i32 specialization for accumulators (saturation fix)
-- #1269 struct field inference Phase 3 (struct.get without unboxing)
-- #1280 IR selector: while/for-loop bodies with typed numeric state
-- #1282 ESLint Tier 1 stress test
-- #1291 lodash Tier 1b — execution-level assertions for add/clamp
-- #1293 Hono Tier 4 — string[][] array-of-arrays + TrieRouter segment field
-- #1294 test262 worker: WebAssembly.Exception reclassification + fork restart
-- #1295 compiler.ts re-throw + lodash transitive init fix
-- #1270 struct field inference Phase 3b (null-check elimination via peephole)
-- #1290 TS7 forEachChild compatibility helper (Phase 1 of #1029)
-- #1200 LICM — closed with measurement (V8 JIT compensates; wasm-opt skips)
-
-### Deferred to S49
-
-- #1292 lodash Tier 2, #1270, #1236, #1200, #1223 — moved mid-sprint during 15% budget review
-- #1126 (int32 inference), #1199 (linear-memory arrays) — pushed to backlog (hard/senior scope)
-
-### What didn't ship from goals
-
-- Function.prototype.bind (#1038), iterator CT cluster (#991/#993), standalone readiness (#1094), lodash Tier 3 (#1242/#1243) — not started; deprioritized against higher-signal issues that surfaced during S48 (WebAssembly.Exception cascade, Hono/lodash stress test gaps)
-
-### Process notes
-
-- Idle counter in statusline shipped mid-sprint — good visibility on agent wait time
-- CI-wait fast-path for test-only PRs shipped — devs can now self-merge without waiting for test262 sharded
-- Variance escalation pattern (scattered 1-test flips in TypedArray/Promise/Temporal) now well-calibrated; approved ~5 PRs above 10% ratio threshold without incident
-- tsc regression from #1299 (#218) slipped through — TypeDef annotation fix applied same day, blocked 4 PRs for ~30 min
