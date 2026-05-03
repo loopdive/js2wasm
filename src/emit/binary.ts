@@ -27,6 +27,65 @@ export interface EmitResult {
   sourceMapEntries: SourceMapEntry[];
 }
 
+/**
+ * Collect WASM type indices referenced by a value type.
+ * Recursively descends into rec/sub wrappers via the caller (walkTypeDefRefs).
+ */
+function collectValTypeRefs(t: ValType, refs: Set<number>): void {
+  if (t.kind === "ref" || t.kind === "ref_null") refs.add(t.typeIdx);
+}
+
+/** Collect all type indices that a TypeDef references (excluding itself). */
+function collectTypeDefRefs(t: TypeDef, refs: Set<number>): void {
+  switch (t.kind) {
+    case "func":
+      for (const p of t.params) collectValTypeRefs(p, refs);
+      for (const r of t.results) collectValTypeRefs(r, refs);
+      break;
+    case "struct":
+      if (t.superTypeIdx !== undefined && t.superTypeIdx >= 0) refs.add(t.superTypeIdx);
+      for (const f of t.fields) collectValTypeRefs(f.type, refs);
+      break;
+    case "array":
+      collectValTypeRefs(t.element, refs);
+      break;
+    case "rec":
+      for (const inner of t.types) collectTypeDefRefs(inner, refs);
+      break;
+    case "sub":
+      if (t.superType !== null) refs.add(t.superType);
+      collectTypeDefRefs(t.type, refs);
+      break;
+  }
+}
+
+/**
+ * Compute rec-group boundaries for the type section. Each returned [start, end]
+ * (inclusive) tuple identifies a contiguous run of type definitions that must
+ * be encoded inside a single WasmGC rec group so that forward references between
+ * them validate. Singleton groups (start === end) are emitted without a rec
+ * wrapper, preserving canonical type identity for non-recursive entries.
+ */
+export function computeRecGroups(types: TypeDef[]): Array<[number, number]> {
+  const groups: Array<[number, number]> = [];
+  let i = 0;
+  while (i < types.length) {
+    let end = i;
+    let scan = i;
+    while (scan <= end) {
+      const refs = new Set<number>();
+      collectTypeDefRefs(types[scan]!, refs);
+      for (const r of refs) {
+        if (r > end && r < types.length) end = r;
+      }
+      scan++;
+    }
+    groups.push([i, end]);
+    i = end + 1;
+  }
+  return groups;
+}
+
 /** Emit a complete Wasm binary from an IR module */
 export function emitBinary(mod: WasmModule): Uint8Array {
   return emitBinaryWithSourceMap(mod).binary;
@@ -45,8 +104,27 @@ export function emitBinaryWithSourceMap(mod: WasmModule): EmitResult {
 
   // Type section
   if (mod.types.length > 0) {
+    // Compute rec-group boundaries: any type with a forward reference (typeIdx > self)
+    // must share a rec group with the referenced types so that WasmGC validation
+    // accepts the cross-type reference. Without this, a class struct registered
+    // before its dependent (vec/array) field types — e.g. `class C { rows: string[][] }`
+    // where the `__arr_ref_1`/`__vec_ref_1` types are appended after the class
+    // placeholder — fails with "Type index N is out of bounds" because each
+    // singleton type can only reference earlier types or itself. (#1293)
+    const recGroups = computeRecGroups(mod.types);
     enc.section(SECTION.type, (s) => {
-      s.vector(mod.types, (t, e) => encodeTypeDef(t, e));
+      s.u32(recGroups.length);
+      for (const [start, end] of recGroups) {
+        if (start === end) {
+          encodeTypeDef(mod.types[start]!, s);
+        } else {
+          s.byte(TYPE.rec);
+          s.u32(end - start + 1);
+          for (let i = start; i <= end; i++) {
+            encodeTypeDef(mod.types[i]!, s);
+          }
+        }
+      }
     });
   }
 

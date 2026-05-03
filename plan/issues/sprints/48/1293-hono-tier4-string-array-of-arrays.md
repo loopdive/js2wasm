@@ -2,7 +2,7 @@
 id: 1293
 sprint: 48
 title: "Hono Tier 4 — string[][] array-of-arrays type support + #segments field"
-status: ready
+status: in-progress
 created: 2026-05-03
 updated: 2026-05-03
 priority: medium
@@ -74,3 +74,51 @@ Once `string[][]` compiles:
 - `number[][]` (matrix) should be covered by the same fix
 - The fix touches the array type registration path, not the IR selector —
   this is a WasmGC type-section change
+
+## Implementation Notes
+
+The bug was not in `resolveWasmType` / `getOrRegisterArrayType` /
+`getOrRegisterVecType` — the IR was already registering nested vec types
+correctly. The actual symptom (`WebAssembly.instantiate(): Type index N is
+out of bounds @+30`) was a **type-section encoding** issue:
+
+1. `collectClassDeclaration` pre-registers a placeholder struct at
+   `mod.types.length` (so self-referencing fields like `next: ListNode | null`
+   resolve to a valid type index). The placeholder slot is reserved
+   *before* field types are resolved.
+2. Resolving a `string[][]` field calls `getOrRegisterVecType` twice —
+   once for the inner `string[]` (already cached) and once for the outer
+   `string[][]`. The outer registration appends a new array type AND a
+   new vec struct *after* the placeholder slot.
+3. The placeholder slot is then overwritten with the real class struct
+   def, whose `rows` field references the newly-appended vec by its
+   actual index — which is *higher* than the class's own index.
+4. The emitter encoded each type as its own implicit rec group of 1.
+   In WasmGC, a singleton-rec type can only reference earlier types or
+   itself. A forward reference (`type idx 3 → type idx 5`) fails
+   validation.
+
+Fix: in `src/emit/binary.ts`, automatically detect forward references in
+the type section and group consecutive types into a single WasmGC rec
+group when needed. `computeRecGroups` walks `mod.types` and extends the
+current group's end whenever an entry references a later index;
+transitively, the group extends to cover all reachable forward refs.
+Singleton groups (no forward refs) are still encoded without a rec
+wrapper, preserving canonical type identity for the common case.
+
+This is a backend-only change. No codegen / IR changes required.
+
+## Test Results
+
+`tests/issue-1293.test.ts` (6/6) — minimal repros for `string[][]`,
+`number[][]`, class field with `string[][]`, length checks.
+
+`tests/stress/hono-tier4.test.ts` (5/5) — Tier 4 trie-router with
+`segments: string[][]` field on Node:
+- Tier 4a: `root.segments.length` tracks all 11 registered routes
+- Tier 4b: per-route inner length matches `split(path)`
+- Tier 4c: nested `node.segments[i][j]` returns the registered segment
+- Tier 4d: 11 routes + 3 misses still resolve (regression check vs Tier 3)
+- Tier 4e: parametric + wildcard routing unaffected by the new field
+
+Tier 1 / 2 / 3 stress tests (3 + 5 + 6) — all green; no regressions.
