@@ -83,6 +83,7 @@
     "build:planning-artifacts": "node scripts/build-planning-artifacts.mjs",
     "report": "npx tsx scripts/serve-report.ts",
     "build:pages": "node scripts/run-pages-build.mjs",
+    "deploy:registry-home": "mkdir -p .registry-home && cp index.html .registry-home/index.html && node ../file-registry-cli/dist/bin/main.js commit .registry-home -r users/tt/projects/ts2wasm && node ../file-registry-cli/dist/bin/main.js push .registry-home -r users/tt/projects/ts2wasm --public",
     "upload": "pnpm run build:playground && node ../file-registry-cli/dist/bin/main.js commit && node ../file-registry-cli/dist/bin/main.js push",
     "prepare": "git config core.hooksPath .husky || true"
   },
