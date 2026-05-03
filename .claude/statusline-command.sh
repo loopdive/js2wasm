@@ -30,6 +30,8 @@ if [ -d "$status_dir" ]; then
   now_sec=$(date +%s)
   for f in "$status_dir"/*.json; do
     [ -f "$f" ] || continue
+    state=$(jq -r '.state // empty' "$f" 2>/dev/null)
+    [ "$state" = "active" ] && continue
     since=$(jq -r '.since // empty' "$f" 2>/dev/null)
     [ -z "$since" ] && continue
     elapsed=$(( now_sec - since ))
