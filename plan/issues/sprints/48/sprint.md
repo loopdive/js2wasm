@@ -7,9 +7,9 @@ closed: 2026-05-03
 wrap_checklist:
   status_closed: true
   retro_written: true
-  diary_updated: false
-  end_tag_pushed: false
-  begin_tag_pushed: false
+  diary_updated: true
+  end_tag_pushed: true
+  begin_tag_pushed: true
 ---
 
 # Sprint 48
