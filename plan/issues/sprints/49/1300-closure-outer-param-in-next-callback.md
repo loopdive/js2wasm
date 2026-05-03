@@ -2,7 +2,7 @@
 id: 1300
 sprint: 49
 title: "Closure capturing outer parameter inside an inline lambda passed as a Next callback null-derefs at call time"
-status: ready
+status: in-progress
 created: 2026-05-03
 updated: 2026-05-03
 priority: medium
@@ -86,3 +86,47 @@ the storage is the closure env struct, not a user struct).
   ordering / arity contract is exercised end-to-end via the workaround.
 - Likely shares a fix with #1298 (function-typed value storage). May
   collapse into a single fix once the call-site unwrap is generalized.
+
+## Implementation
+
+The bug was in `isHostCallbackArgument` in `src/codegen/closures.ts`. The
+function decides whether an inline arrow at a call site should be
+compiled as a first-class GC-struct closure (`compileArrowAsClosure`)
+or as a host-wrapped callback (`compileArrowAsCallback` via
+`__make_callback`). It only returned false (= use closure path) when the
+callee was a known top-level function in `funcMap`.
+
+When the callee is an identifier that's a *function-typed parameter*
+(e.g. `a(callback)` where `a: Mw = (next: Next) => string`), the receiver
+(the body of `a`, compiled as `__closure_2`) tries to `ref.cast` the
+externref it gets back to a `__fn_wrap_N_struct` and load the `funcref`
+field. The host-wrapped externref from `__make_callback` is NOT one of
+those wrap structs, so the cast yields null and the next `struct.get`
+null-derefs.
+
+Fix: extend the identifier-callee branch to consult the TS checker for
+call signatures on the callee's type. If the type has a call signature
+(i.e. it's callable — function-typed param, function-typed local, etc.),
+take the closure path so the produced externref is shape-compatible with
+the receiver's `ref.cast`.
+
+```ts
+const calleeType = ctx.checker.getTypeAtLocation(parent.expression);
+const callSigs = calleeType?.getCallSignatures?.();
+if (callSigs && callSigs.length > 0) return false;
+```
+
+Wrapped in try/catch so any TS-checker error falls back to the existing
+host-callback path (no behavior change for those cases).
+
+## Test Results
+
+`tests/issue-1300.test.ts` — 4/4 pass:
+- two-layer compose: inner lambda captures outer parameter
+- single-layer: call function-typed param directly (baseline)
+- lambda with no captures passed to a fn-typed param
+- three-layer compose: chained captures
+
+Hono Tier 1-5 stress regression: 29/29 active pass (4 unrelated skipped).
+Closure / callback / Promise / Map test sweep: identical pass/fail counts
+to main (no regressions).
