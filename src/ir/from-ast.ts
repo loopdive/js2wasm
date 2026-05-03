@@ -35,7 +35,7 @@
 //     call's return type comes from `callReturnTypes` (same TypeMap),
 //     with arg types validated against the propagated callee param types.
 
-import { ts } from "../ts-api.js";
+import { ts, forEachChild } from "../ts-api.js";
 
 import { evaluateConstantCondition } from "../codegen/statements/control-flow.js";
 import { IrFunctionBuilder } from "./builder.js";
@@ -687,9 +687,9 @@ function collectMutatedLetNamesFromBlock(body: ts.Block): Set<string> {
         if (ts.isIdentifier(node.operand)) writes.add(node.operand.text);
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   };
-  ts.forEachChild(body, visit);
+  forEachChild(body, visit);
   return writes;
 }
 
@@ -3511,7 +3511,7 @@ function analyseCaptures(
         if (ts.isIdentifier(node.operand)) written.add(node.operand.text);
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   };
   if (fn.body) {
     if (ts.isBlock(fn.body)) {
@@ -3590,9 +3590,9 @@ function collectOuterWrites(fn: ts.FunctionDeclaration | ts.ArrowFunction | ts.F
         if (ts.isIdentifier(node.operand)) writes.add(node.operand.text);
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   };
-  ts.forEachChild(body, visit);
+  forEachChild(body, visit);
   return writes;
 }
 

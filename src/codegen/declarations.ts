@@ -5,7 +5,7 @@
  *
  * Extracted from codegen/index.ts (#1013).
  */
-import { ts } from "../ts-api.js";
+import { ts, forEachChild } from "../ts-api.js";
 import {
   isBigIntType,
   isBooleanType,
@@ -754,11 +754,11 @@ export function unifiedVisitNode(ctx: CodegenContext, state: UnifiedCollectorSta
   // Track computed property name depth for string literal collection
   if (ts.isComputedPropertyName(node)) {
     state.insideComputedPropertyName++;
-    ts.forEachChild(node, (child) => unifiedVisitNode(ctx, state, child));
+    forEachChild(node, (child) => unifiedVisitNode(ctx, state, child));
     state.insideComputedPropertyName--;
     return; // already recursed
   }
-  ts.forEachChild(node, (child) => unifiedVisitNode(ctx, state, child));
+  forEachChild(node, (child) => unifiedVisitNode(ctx, state, child));
 }
 
 /** Run all post-walk finalization (register imports based on collected state) */
@@ -1141,10 +1141,10 @@ export function resolveGenericCallSiteTypes(
         found = { params, results };
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
-  ts.forEachChild(sourceFile, visit);
+  forEachChild(sourceFile, visit);
   return found;
 }
 
@@ -1189,10 +1189,10 @@ export function inferParamTypeFromCallSites(
         }
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
-  ts.forEachChild(sourceFile, visit);
+  forEachChild(sourceFile, visit);
   return conflict ? null : agreed;
 }
 
@@ -1298,9 +1298,9 @@ export function inferParamTypeFromBody(
       }
     }
 
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
-  ts.forEachChild(decl.body, visit);
+  forEachChild(decl.body, visit);
   return foundNumericUse ? { kind: "f64" } : null;
 }
 
@@ -1347,9 +1347,9 @@ export function inferNumericReturnTypes(ctx: CodegenContext, sourceFile: ts.Sour
         candidates.set(node.name.text, node);
       }
     }
-    ts.forEachChild(node, collectFns);
+    forEachChild(node, collectFns);
   }
-  ts.forEachChild(sourceFile, collectFns);
+  forEachChild(sourceFile, collectFns);
   if (candidates.size === 0) return new Map();
 
   // Inference set: starts with all candidates, and shrinks as we eliminate
@@ -1532,9 +1532,9 @@ export function inferNumericReturnTypes(ctx: CodegenContext, sourceFile: ts.Sour
             sawBareReturn = true;
           }
         }
-        ts.forEachChild(node, visit);
+        forEachChild(node, visit);
       };
-      ts.forEachChild(fnDecl.body, visit);
+      forEachChild(fnDecl.body, visit);
     }
     fnInfo.set(fnName, { paramNames, returns, sawBareReturn, paramsAllNumeric });
   }
@@ -1915,14 +1915,22 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
   // First: collect enum declarations (so enum values are available)
   collectEnumDeclarations(ctx, sourceFile);
 
-  // Second: collect interfaces and type aliases (so struct types are available)
-  for (const stmt of sourceFile.statements) {
-    if (ts.isInterfaceDeclaration(stmt)) {
-      collectInterface(ctx, stmt);
-    } else if (ts.isTypeAliasDeclaration(stmt)) {
-      const aliasType = ctx.checker.getTypeAtLocation(stmt);
-      if (aliasType.flags & ts.TypeFlags.Object) {
-        collectObjectType(ctx, stmt.name.text, aliasType);
+  // Second: collect interfaces and type aliases (so struct types are available).
+  // Skip declarations from `.d.ts` files: those describe shapes of host
+  // values (DOM types, npm package public API). Lowering them to WasmGC
+  // structs registers types whose fields can recursively reference array
+  // types of other declaration-file interfaces, producing forward heap-type
+  // references that fail Wasm validation when the dead-elim pass compacts
+  // the type section. (#1287)
+  if (!sourceFile.isDeclarationFile) {
+    for (const stmt of sourceFile.statements) {
+      if (ts.isInterfaceDeclaration(stmt)) {
+        collectInterface(ctx, stmt);
+      } else if (ts.isTypeAliasDeclaration(stmt)) {
+        const aliasType = ctx.checker.getTypeAtLocation(stmt);
+        if (aliasType.flags & ts.TypeFlags.Object) {
+          collectObjectType(ctx, stmt.name.text, aliasType);
+        }
       }
     }
   }
@@ -1986,16 +1994,25 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
     if (ts.isClassExpression(node)) {
       registerClassExpression(node);
     }
-    ts.forEachChild(node, collectAnonymousClassesInNewExpr);
+    forEachChild(node, collectAnonymousClassesInNewExpr);
   }
 
   function collectClassesFromStatements(stmts: ts.NodeArray<ts.Statement> | readonly ts.Statement[]): void {
     for (const stmt of stmts) {
-      if (ts.isClassDeclaration(stmt) && stmt.name && !hasDeclareModifier(stmt)) {
+      // `class X` in a `.d.ts` file is implicitly ambient — only the type
+      // declaration is real, there is no JS body to compile. Treating it as
+      // a user-defined class registers a WasmGC struct type whose field
+      // resolution can produce forward heap-type references (e.g.
+      // `children: X[]` → struct ref array ref struct loop) that fail Wasm
+      // validation. The extern collection pass (`collectExternClass` /
+      // `collectExternFromDeclareVar` in `index.ts`) owns the type-only
+      // registration for these shapes. (#1287)
+      const isAmbient = hasDeclareModifier(stmt) || stmt.getSourceFile().isDeclarationFile;
+      if (ts.isClassDeclaration(stmt) && stmt.name && !isAmbient) {
         collectClassDeclaration(ctx, stmt);
         // Register class declaration .name
         ctx.functionNameMap.set(stmt.name.text, stmt.name.text);
-      } else if (ts.isVariableStatement(stmt) && !hasDeclareModifier(stmt)) {
+      } else if (ts.isVariableStatement(stmt) && !isAmbient) {
         for (const decl of stmt.declarationList.declarations) {
           if (ts.isIdentifier(decl.name) && decl.initializer && ts.isClassExpression(decl.initializer)) {
             collectClassDeclaration(ctx, decl.initializer, decl.name.text);
@@ -2945,7 +2962,11 @@ export function compileDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
     insideFunction = false,
   ): void {
     for (const stmt of stmts) {
-      if (ts.isClassDeclaration(stmt) && stmt.name && !hasDeclareModifier(stmt)) {
+      // Mirror the `.d.ts` ambient guard from `collectClassesFromStatements`:
+      // there is no body to compile for classes declared in declaration
+      // files. (#1287)
+      const isAmbient = hasDeclareModifier(stmt) || stmt.getSourceFile().isDeclarationFile;
+      if (ts.isClassDeclaration(stmt) && stmt.name && !isAmbient) {
         if (insideFunction) {
           // Defer body compilation — will be compiled in compileNestedClassDeclaration
           // when the enclosing function is compiled (so captured locals are available)
@@ -2958,7 +2979,7 @@ export function compileDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
             reportError(ctx, stmt, `Internal error compiling class '${stmt.name.text}': ${msg}`);
           }
         }
-      } else if (ts.isVariableStatement(stmt) && !hasDeclareModifier(stmt)) {
+      } else if (ts.isVariableStatement(stmt) && !isAmbient) {
         for (const decl of stmt.declarationList.declarations) {
           if (ts.isIdentifier(decl.name) && decl.initializer && ts.isClassExpression(decl.initializer)) {
             if (insideFunction) {
@@ -3065,7 +3086,7 @@ export function compileDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
     if (ts.isClassExpression(node)) {
       compileAnonClassIfNeeded(node);
     }
-    ts.forEachChild(node, compileAnonymousClassBodiesInNode);
+    forEachChild(node, compileAnonymousClassBodiesInNode);
   }
 
   compileClassesFromStatements(sourceFile.statements);

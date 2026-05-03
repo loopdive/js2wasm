@@ -86,7 +86,7 @@
 //   to parameter identifiers for simplicity. Locals used inside Phase-1
 //   functions are already constrained by the selector's shape check.
 
-import { ts } from "../ts-api.js";
+import { ts, forEachChild } from "../ts-api.js";
 
 // ---------------------------------------------------------------------------
 // Public shapes
@@ -426,9 +426,9 @@ function buildCallGraph(decls: ReadonlyMap<string, ts.FunctionDeclaration>): Map
           sites.push({ callee, argExprs: node.arguments.slice() });
         }
       }
-      ts.forEachChild(node, visit);
+      forEachChild(node, visit);
     };
-    ts.forEachChild(fn.body, visit);
+    forEachChild(fn.body, visit);
     graph.set(name, sites);
   }
   return graph;
@@ -888,13 +888,13 @@ function walkBodyForReturns(
     // specifically recognize, we still visit children so nested
     // `return` statements inside unexpected statement shapes aren't
     // lost.
-    ts.forEachChild(node, (child) => walk(child, scope));
+    forEachChild(node, (child) => walk(child, scope));
   };
 
   const rootScope = new Map<string, LatticeType>(paramScope);
   // Body of a FunctionDeclaration is a Block. Walk its statements in
   // the root scope so param types are visible.
-  ts.forEachChild(body, (child) => walk(child, rootScope));
+  forEachChild(body, (child) => walk(child, rootScope));
 }
 
 // ---------------------------------------------------------------------------

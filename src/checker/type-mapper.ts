@@ -165,6 +165,13 @@ function isDeclareContext(node: ts.Node): boolean {
       return isDeclareContext(node.parent.parent);
     }
   }
+  // Top-level declarations in `.d.ts` files are implicitly ambient (#1287).
+  // Without this, `export class Foo { children: Foo[] }` in a `.d.ts` would
+  // be classified as a regular user class by `isExternalDeclaredClass` →
+  // `ensureStructForType` registers a WasmGC struct with a self-referencing
+  // field, producing a forward-reference heap type that fails Wasm validation.
+  const sf = node.getSourceFile();
+  if (sf && sf.isDeclarationFile) return true;
   return false;
 }
 

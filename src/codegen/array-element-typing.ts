@@ -21,7 +21,7 @@
  * built-in coerceType layer handles i32 → f64 promotion at the few read sites
  * that consume the value in a non-i32 context (#1126's existing pattern).
  */
-import { ts } from "../ts-api.js";
+import { ts, forEachChild } from "../ts-api.js";
 
 /**
  * Return true if `expr` provably produces a 32-bit signed integer at runtime,
@@ -178,7 +178,7 @@ function collectForCounterNames(decl: ts.FunctionLikeDeclaration): Set<string> {
         }
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
   visit(decl.body);
   return out;
@@ -253,9 +253,9 @@ export function collectI32SpecializedArrays(
         }
       }
     }
-    ts.forEachChild(node, collectDecls);
+    forEachChild(node, collectDecls);
   }
-  ts.forEachChild(decl.body, collectDecls);
+  forEachChild(decl.body, collectDecls);
 
   if (candidates.size === 0) return result;
 
@@ -291,7 +291,7 @@ export function collectI32SpecializedArrays(
         ts.isAccessor(node) ||
         ts.isConstructorDeclaration(node))
     ) {
-      ts.forEachChild(node, (c) => visit(c, true));
+      forEachChild(node, (c) => visit(c, true));
       return;
     }
 
@@ -370,10 +370,10 @@ export function collectI32SpecializedArrays(
       }
     }
 
-    ts.forEachChild(node, (c) => visit(c, insideNested));
+    forEachChild(node, (c) => visit(c, insideNested));
   }
 
-  ts.forEachChild(decl.body, (child) => visit(child, false));
+  forEachChild(decl.body, (child) => visit(child, false));
 
   for (const name of candidates) {
     if (!disqualified.has(name)) result.add(name);

@@ -2,7 +2,7 @@
 /**
  * Assignment operator compilation: simple assignment, destructuring, compound, logical.
  */
-import { ts } from "../../ts-api.js";
+import { ts, forEachChild } from "../../ts-api.js";
 import { isBooleanType, isExternalDeclaredClass, isStringType } from "../../checker/type-mapper.js";
 import type { FieldDef, Instr, ValType } from "../../ir/types.js";
 import { emitBoundsCheckedArrayGet, resolveArrayInfo } from "../array-methods.js";
@@ -3796,9 +3796,9 @@ function hasStringAssignment(name: string, fromExpr: ts.Node): boolean {
         return;
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
-  ts.forEachChild(scope, visit);
+  forEachChild(scope, visit);
   return found;
 }
 
@@ -3841,9 +3841,9 @@ function hasStringAssignmentInParentScopes(name: string, fromExpr: ts.Node): boo
         return;
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
-  ts.forEachChild(root, visit);
+  forEachChild(root, visit);
   return found;
 }
 

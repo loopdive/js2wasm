@@ -11,7 +11,7 @@
  * These variables are inferred to have array-like shape and can be compiled
  * as WasmGC vec structs instead of externref/AnyValue.
  */
-import { ts } from "./ts-api.js";
+import { ts, forEachChild } from "./ts-api.js";
 
 export interface InferredShape {
   /** Named fields set on the variable (e.g. "length") with inferred types */
@@ -128,7 +128,7 @@ export function collectShapes(checker: ts.TypeChecker, sourceFile: ts.SourceFile
       }
     }
 
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
   visit(sourceFile);

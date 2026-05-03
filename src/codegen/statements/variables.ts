@@ -2,7 +2,7 @@
 /**
  * Variable declaration statement lowering.
  */
-import { ts } from "../../ts-api.js";
+import { ts, forEachChild } from "../../ts-api.js";
 import { isStringType, isVoidType } from "../../checker/type-mapper.js";
 import type { Instr, ValType } from "../../ir/types.js";
 import { reportError } from "../context/errors.js";
@@ -75,7 +75,7 @@ function inferArrayVecType(ctx: CodegenContext, decl: ts.VariableDeclaration): V
       }
     }
 
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
   visit(scope);

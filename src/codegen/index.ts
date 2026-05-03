@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
-import { ts } from "../ts-api.js";
+import { ts, forEachChild } from "../ts-api.js";
 import type { MultiTypedAST, TypedAST } from "../checker/index.js";
 import {
   isBigIntType,
@@ -117,7 +117,7 @@ function sourceContainsClass(sourceFile: ts.SourceFile): boolean {
       found = true;
       return;
     }
-    ts.forEachChild(node, walk);
+    forEachChild(node, walk);
   }
   walk(sourceFile);
   return found;
@@ -2640,7 +2640,7 @@ export function generateMultiModule(
 
 function collectAllSourceImports(ctx: CodegenContext, sourceFile: ts.SourceFile): void {
   const state = createUnifiedCollectorState(sourceFile);
-  ts.forEachChild(sourceFile, (node) => unifiedVisitNode(ctx, state, node));
+  forEachChild(sourceFile, (node) => unifiedVisitNode(ctx, state, node));
   finalizeUnifiedCollector(ctx, state);
 }
 
@@ -2675,11 +2675,11 @@ function collectConsoleImports(ctx: CodegenContext, sourceFile: ts.SourceFile): 
         }
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
   // Scan all statements (including top-level code compiled into __module_init)
-  ts.forEachChild(sourceFile, visit);
+  forEachChild(sourceFile, visit);
 
   for (const method of CONSOLE_METHODS) {
     const needed = neededByMethod.get(method);
@@ -2750,9 +2750,9 @@ function registerWasiImports(ctx: CodegenContext, sourceFile: ts.SourceFile): vo
         needsProcExit = true;
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
-  ts.forEachChild(sourceFile, visit);
+  forEachChild(sourceFile, visit);
 
   // writeFileSync also needs fd_write for the actual file data write
   if (needsPathOpen) needsFdWrite = true;
@@ -3026,10 +3026,10 @@ function collectPrimitiveMethodImports(ctx: CodegenContext, sourceFile: ts.Sourc
         needed.add("string_compare");
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
-  ts.forEachChild(sourceFile, visit);
+  forEachChild(sourceFile, visit);
 
   if (needed.has("number_toString")) {
     const t = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
@@ -3145,7 +3145,7 @@ function collectStringMethodImports(ctx: CodegenContext, sourceFile: ts.SourceFi
         }
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
   for (const stmt of sourceFile.statements) {
@@ -3422,11 +3422,11 @@ function collectStringLiterals(ctx: CodegenContext, sourceFile: ts.SourceFile): 
       literals.add("module.wasm");
       literals.add("[object Object]");
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
   // Scan all statements (including top-level code compiled into __module_init)
-  ts.forEachChild(sourceFile, visit);
+  forEachChild(sourceFile, visit);
 
   // typeof expressions may need type-name constants not present in source
   if (hasTypeofExpr) {
@@ -3478,7 +3478,7 @@ function collectForInStringLiterals(ctx: CodegenContext, sourceFile: ts.SourceFi
         if (!ctx.stringGlobalMap.has(prop.name)) literals.add(prop.name);
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
   for (const stmt of sourceFile.statements) {
@@ -3530,7 +3530,7 @@ function collectInExprStringLiterals(ctx: CodegenContext, sourceFile: ts.SourceF
         }
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
   for (const stmt of sourceFile.statements) {
@@ -3588,7 +3588,7 @@ function collectObjectMethodStringLiterals(ctx: CodegenContext, sourceFile: ts.S
         if (!ctx.stringLiteralMap.has(prop.name)) literals.add(prop.name);
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
   for (const stmt of sourceFile.statements) {
@@ -3684,11 +3684,11 @@ function collectMathImports(ctx: CodegenContext, sourceFile: ts.SourceFile): voi
     ) {
       needed.add("pow");
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
   // Scan all statements (including top-level code compiled into __module_init)
-  ts.forEachChild(sourceFile, visit);
+  forEachChild(sourceFile, visit);
 
   for (const method of needed) {
     if (method === "random") {
@@ -3821,11 +3821,11 @@ function collectParseImports(ctx: CodegenContext, sourceFile: ts.SourceFile): vo
         }
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
   // Scan all statements (including top-level code compiled into __module_init)
-  ts.forEachChild(sourceFile, visit);
+  forEachChild(sourceFile, visit);
 
   for (const name of needed) {
     if (name === "parseInt") {
@@ -3913,10 +3913,10 @@ function collectUnknownConstructorImports(ctx: CodegenContext, sourceFile: ts.So
         }
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
-  ts.forEachChild(sourceFile, visit);
+  forEachChild(sourceFile, visit);
 
   for (const [name, argCount] of needed) {
     const importName = `__new_${name}`;
@@ -3944,10 +3944,10 @@ function collectWrapperConstructors(ctx: CodegenContext, sourceFile: ts.SourceFi
         return;
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
-  ts.forEachChild(sourceFile, visit);
+  forEachChild(sourceFile, visit);
 
   if (found) {
     ensureWrapperTypes(ctx);
@@ -3968,7 +3968,7 @@ function collectStringStaticImports(ctx: CodegenContext, sourceFile: ts.SourceFi
     ) {
       needsFromCharCode = true;
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
   for (const stmt of sourceFile.statements) {
@@ -4023,7 +4023,7 @@ function collectPromiseImports(ctx: CodegenContext, sourceFile: ts.SourceFile): 
     if (ts.isNewExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "Promise") {
       needConstructor = true;
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
   for (const stmt of sourceFile.statements) {
@@ -4099,7 +4099,7 @@ function collectJsonImports(ctx: CodegenContext, sourceFile: ts.SourceFile): voi
       if (method === "stringify") needStringify = true;
       if (method === "parse") needParse = true;
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
   for (const stmt of sourceFile.statements) {
@@ -4148,7 +4148,7 @@ function collectCallbackImports(ctx: CodegenContext, sourceFile: ts.SourceFile):
       found = true;
       return;
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
   for (const stmt of sourceFile.statements) {
@@ -4194,7 +4194,7 @@ function collectGeneratorImports(ctx: CodegenContext, sourceFile: ts.SourceFile)
       found = true;
       return;
     }
-    ts.forEachChild(node, visitNode);
+    forEachChild(node, visitNode);
   }
 
   for (const stmt of sourceFile.statements) {
@@ -4341,7 +4341,7 @@ function collectFunctionalArrayImports(ctx: CodegenContext, sourceFile: ts.Sourc
         }
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
   for (const stmt of sourceFile.statements) {
@@ -4436,7 +4436,7 @@ function collectUnionImports(ctx: CodegenContext, sourceFile: ts.SourceFile): vo
         return;
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
   for (const stmt of sourceFile.statements) {
@@ -5003,7 +5003,7 @@ function collectIteratorImports(ctx: CodegenContext, sourceFile: ts.SourceFile):
         return;
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
   for (const stmt of sourceFile.statements) {
@@ -5503,6 +5503,17 @@ function ensureDateStructForCtx(ctx: CodegenContext): number {
 export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void {
   if (!(tsType.flags & ts.TypeFlags.Object)) return;
   if (isExternalDeclaredClass(tsType, ctx.checker)) return;
+  // Types declared in `.d.ts` files (interfaces, type aliases, classes
+  // exported from declaration-file-only packages) have no JS implementation
+  // we can lower to a WasmGC struct. Registering them as anon structs
+  // recursively pulls in their fields' types, which for any non-trivial
+  // shape (e.g. `errors: ValidationError[]` in `@types/json-schema`)
+  // produces forward heap-type references that fail Wasm validation.
+  // Skip registration — these types map to `externref` everywhere. (#1287)
+  const dtsDecls = tsType.symbol?.getDeclarations?.();
+  if (dtsDecls && dtsDecls.length > 0 && dtsDecls.every((d) => d.getSourceFile().isDeclarationFile)) {
+    return;
+  }
   // Tuple types are handled by getOrRegisterTupleType, not as anonymous structs
   if (isTupleType(tsType)) return;
   // #1247: Array types compile to vec structs (length+data) via getOrRegisterVecType,
@@ -6498,7 +6509,7 @@ function collectUsedExternImports(ctx: CodegenContext, sourceFile: ts.SourceFile
     if ((ts.isClassDeclaration(node) || ts.isClassExpression(node)) && node.name) {
       userClassNames.add(node.name.text);
     }
-    ts.forEachChild(node, collectUserClassNames);
+    forEachChild(node, collectUserClassNames);
   }
   collectUserClassNames(sourceFile);
 
@@ -6628,11 +6639,11 @@ function collectUsedExternImports(ctx: CodegenContext, sourceFile: ts.SourceFile
       }
     }
 
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
   for (const stmt of sourceFile.statements) {
-    ts.forEachChild(stmt, visit);
+    forEachChild(stmt, visit);
   }
 }
 
@@ -6643,10 +6654,10 @@ function collectDeclaredGlobals(ctx: CodegenContext, libFile: ts.SourceFile, use
   const referencedNames = new Set<string>();
   const collectRefs = (node: ts.Node): void => {
     if (ts.isIdentifier(node)) referencedNames.add(node.text);
-    ts.forEachChild(node, collectRefs);
+    forEachChild(node, collectRefs);
   };
   for (const stmt of userFile.statements) {
-    ts.forEachChild(stmt, collectRefs);
+    forEachChild(stmt, collectRefs);
   }
 
   for (const stmt of libFile.statements) {
@@ -6851,10 +6862,10 @@ function sourceUsesLibGlobals(sourceFile: ts.SourceFile): boolean {
       found = true;
       return;
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   };
   for (const stmt of sourceFile.statements) {
-    ts.forEachChild(stmt, visit);
+    forEachChild(stmt, visit);
     if (found) break;
   }
   return found;
@@ -6877,10 +6888,10 @@ function checkWasiDomUsage(ctx: CodegenContext, sourceFile: ts.SourceFile): void
         );
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   };
   for (const stmt of sourceFile.statements) {
-    ts.forEachChild(stmt, visit);
+    forEachChild(stmt, visit);
   }
 }
 
@@ -7194,12 +7205,12 @@ function needsTdzFlag(ctx: CodegenContext, decl: ts.VariableDeclaration): boolea
         ts.isMethodDeclaration(node))
     ) {
       // But DO check if they reference our symbol (closure capture)
-      ts.forEachChild(node, visit);
+      forEachChild(node, visit);
       return;
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
-  ts.forEachChild(scope, visit);
+  forEachChild(scope, visit);
   return needsFlag;
 }
 

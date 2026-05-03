@@ -2,7 +2,7 @@
 /**
  * Loop statement lowering: while, for, do-while, for-of, for-in.
  */
-import { ts } from "../../ts-api.js";
+import { ts, forEachChild } from "../../ts-api.js";
 import { isStringType } from "../../checker/type-mapper.js";
 import type { Instr, ValType } from "../../ir/types.js";
 import { popBody, pushBody } from "../context/bodies.js";
@@ -285,7 +285,7 @@ function loopBodyMutatesIndexOrArray(body: ts.Statement, indexName: string, arra
       return;
     }
 
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
   visit(body);
