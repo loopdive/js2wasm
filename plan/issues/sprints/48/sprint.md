@@ -1,7 +1,8 @@
 ---
 id: 48
-status: planning
+status: active
 created: 2026-05-02
+started: 2026-05-03
 wrap_checklist:
   status_closed: false
   retro_written: false
