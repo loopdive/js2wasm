@@ -1,7 +1,7 @@
 ---
 id: 1134
 title: "__any_eq loose equality missing cross-tag coercion — null==undefined, bool==number all return false"
-status: in-progress
+status: done
 created: 2026-04-17
 updated: 2026-04-17
 priority: medium
