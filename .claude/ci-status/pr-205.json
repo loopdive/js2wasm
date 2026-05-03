@@ -1,0 +1,19 @@
+{
+  "pr": 205,
+  "conclusion": "success",
+  "head_branch": "issue-1126-stage1-lattice",
+  "head_sha": "5b5e895174cc172a0df54c3905522a9ba403a2c7",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25269041073",
+  "timestamp": "2026-05-03T03:56:29Z",
+  "pass": 26266,
+  "fail": 13874,
+  "compile_error": 1536,
+  "snapshot_delta": -13,
+  "net_per_test": 35,
+  "regressions": 49,
+  "regressions_real": 16,
+  "regressions_wasm_change": 16,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 33,
+  "improvements": 51
+}
