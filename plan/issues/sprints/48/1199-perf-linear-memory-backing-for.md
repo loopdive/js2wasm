@@ -2,7 +2,7 @@
 id: 1199
 sprint: 48
 title: "perf: linear-memory backing for typed numeric arrays (`Array<number>` with i32-only ops → `i32.load`/`i32.store`)"
-status: ready
+status: deferred
 created: 2026-04-27
 updated: 2026-04-27
 priority: medium

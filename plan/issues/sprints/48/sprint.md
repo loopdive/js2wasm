@@ -1,19 +1,20 @@
 ---
 id: 48
-status: active
+status: done
 created: 2026-05-02
 started: 2026-05-03
+closed: 2026-05-03
 wrap_checklist:
-  status_closed: false
-  retro_written: false
-  diary_updated: false
-  end_tag_pushed: false
-  begin_tag_pushed: false
+  status_closed: true
+  retro_written: true
+  diary_updated: true
+  end_tag_pushed: true
+  begin_tag_pushed: true
 ---
 
 # Sprint 48
 
-**Date**: TBD (follows S47)
+**Date**: 2026-05-03 (single day, sprint 47 ran into it)
 **Planned**: 2026-05-02 — seeded from S47 analysis + backlog review
 
 ## Goals
@@ -109,3 +110,38 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | #1282 | ESLint Tier 1 stress test — minimal Linter.verify() compilation | medium | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->
+
+## Retrospective
+
+**Closed**: 2026-05-03 at ~95% weekly budget.
+
+### What landed
+
+- #1233 IR Phase 4 Slice 13d — Array per-element-type methods through IR
+- #1236 Premature i32 specialization for accumulators (saturation fix)
+- #1269 struct field inference Phase 3 (struct.get without unboxing)
+- #1280 IR selector: while/for-loop bodies with typed numeric state
+- #1282 ESLint Tier 1 stress test
+- #1291 lodash Tier 1b — execution-level assertions for add/clamp
+- #1293 Hono Tier 4 — string[][] array-of-arrays + TrieRouter segment field
+- #1294 test262 worker: WebAssembly.Exception reclassification + fork restart
+- #1295 compiler.ts re-throw + lodash transitive init fix
+- #1270 struct field inference Phase 3b (null-check elimination via peephole)
+- #1290 TS7 forEachChild compatibility helper (Phase 1 of #1029)
+- #1200 LICM — closed with measurement (V8 JIT compensates; wasm-opt skips)
+
+### Deferred to S49
+
+- #1292 lodash Tier 2, #1270, #1236, #1200, #1223 — moved mid-sprint during 15% budget review
+- #1126 (int32 inference), #1199 (linear-memory arrays) — pushed to backlog (hard/senior scope)
+
+### What didn't ship from goals
+
+- Function.prototype.bind (#1038), iterator CT cluster (#991/#993), standalone readiness (#1094), lodash Tier 3 (#1242/#1243) — not started; deprioritized against higher-signal issues that surfaced during S48 (WebAssembly.Exception cascade, Hono/lodash stress test gaps)
+
+### Process notes
+
+- Idle counter in statusline shipped mid-sprint — good visibility on agent wait time
+- CI-wait fast-path for test-only PRs shipped — devs can now self-merge without waiting for test262 sharded
+- Variance escalation pattern (scattered 1-test flips in TypedArray/Promise/Temporal) now well-calibrated; approved ~5 PRs above 10% ratio threshold without incident
+- tsc regression from #1299 (#218) slipped through — TypeDef annotation fix applied same day, blocked 4 PRs for ~30 min

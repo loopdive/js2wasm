@@ -2,7 +2,7 @@
 id: 1126
 sprint: 48
 title: "Infer when JavaScript number flows can be safely lowered to int32 or uint32"
-status: ready
+status: deferred
 created: 2026-04-16
 updated: 2026-05-02
 priority: high

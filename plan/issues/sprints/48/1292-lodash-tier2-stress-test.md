@@ -2,7 +2,7 @@
 id: 1292
 sprint: 48
 title: "lodash Tier 2 stress test — memoize, flow, partial application"
-status: in-progress
+status: done
 created: 2026-05-03
 updated: 2026-05-03
 priority: medium

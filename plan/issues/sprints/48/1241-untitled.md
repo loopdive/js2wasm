@@ -2,7 +2,7 @@
 id: 1241
 sprint: 48
 title: "Untitled"
-status: ready
+status: done
 created: 2026-05-02
 updated: 2026-05-02
 redirect: plan/issues/sprints/48/1243.md
