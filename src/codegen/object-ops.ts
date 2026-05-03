@@ -887,7 +887,15 @@ export function compileObjectDefineProperty(
       if (fieldType.kind === "f64") {
         // f64 comparison using SameValue semantics (ECMA-262 §7.2.10):
         //   SameValue(x, y) = (x == y && copysign(1,x) == copysign(1,y)) || (x != x && y != y)
-        // This correctly handles: SameValue(NaN, NaN) = true, SameValue(+0, -0) = false
+        // This correctly handles: SameValue(NaN, NaN) = true, SameValue(+0, -0) = false.
+        //
+        // f64.copysign(x, y) returns x with the sign of y. To extract the
+        // SIGN of a value (without its magnitude) we need copysign(1, value).
+        // In Wasm stack order, that's: push 1, then push value, then copysign
+        // pops y=value first and x=1 second. The previous version had the
+        // pushes reversed, computing copysign(value, 1) = abs(value), which
+        // collapsed `+0` and `-0` to the same sign and silently allowed
+        // `Object.defineProperty(obj, "x", { value: -0 })` on a frozen +0.
         const compareBody: Instr[] = [
           { op: "global.get", index: errMsgGlobal } as Instr,
           { op: "throw", tagIdx } as Instr,
@@ -896,11 +904,11 @@ export function compileObjectDefineProperty(
         fctx.body.push({ op: "local.get", index: oldValLocal });
         fctx.body.push({ op: "local.get", index: newValLocal });
         fctx.body.push({ op: "f64.eq" });
+        fctx.body.push({ op: "f64.const", value: 1.0 });
         fctx.body.push({ op: "local.get", index: oldValLocal });
-        fctx.body.push({ op: "f64.const", value: 1.0 });
         fctx.body.push({ op: "f64.copysign" } as unknown as Instr);
-        fctx.body.push({ op: "local.get", index: newValLocal });
         fctx.body.push({ op: "f64.const", value: 1.0 });
+        fctx.body.push({ op: "local.get", index: newValLocal });
         fctx.body.push({ op: "f64.copysign" } as unknown as Instr);
         fctx.body.push({ op: "f64.eq" });
         fctx.body.push({ op: "i32.and" });

@@ -5503,6 +5503,17 @@ function ensureDateStructForCtx(ctx: CodegenContext): number {
 export function ensureStructForType(ctx: CodegenContext, tsType: ts.Type): void {
   if (!(tsType.flags & ts.TypeFlags.Object)) return;
   if (isExternalDeclaredClass(tsType, ctx.checker)) return;
+  // Types declared in `.d.ts` files (interfaces, type aliases, classes
+  // exported from declaration-file-only packages) have no JS implementation
+  // we can lower to a WasmGC struct. Registering them as anon structs
+  // recursively pulls in their fields' types, which for any non-trivial
+  // shape (e.g. `errors: ValidationError[]` in `@types/json-schema`)
+  // produces forward heap-type references that fail Wasm validation.
+  // Skip registration — these types map to `externref` everywhere. (#1287)
+  const dtsDecls = tsType.symbol?.getDeclarations?.();
+  if (dtsDecls && dtsDecls.length > 0 && dtsDecls.every((d) => d.getSourceFile().isDeclarationFile)) {
+    return;
+  }
   // Tuple types are handled by getOrRegisterTupleType, not as anonymous structs
   if (isTupleType(tsType)) return;
   // #1247: Array types compile to vec structs (length+data) via getOrRegisterVecType,
