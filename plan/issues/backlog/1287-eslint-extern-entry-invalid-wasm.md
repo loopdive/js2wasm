@@ -1,7 +1,7 @@
 ---
 id: 1287
 title: "ESLint entry-point compileProject emits invalid Wasm (`Type index 10 is out of bounds`)"
-status: ready
+status: done
 created: 2026-05-03
 updated: 2026-05-03
 priority: medium
