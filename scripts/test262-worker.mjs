@@ -602,6 +602,20 @@ function restoreBuiltins() {
     }
   }
 
+  // Validate restore — if any method is still not the original, the descriptor
+  // is non-configurable and the fork is poisoned. Restart so the next test
+  // gets a clean environment. (#1295)
+  for (const { obj, values } of _methodOrig) {
+    for (const [key, orig] of values) {
+      if (obj[key] !== orig) {
+        console.error(
+          `[unified-worker pid=${process.pid}] FATAL: prototype method ${String(key)} not restored (non-configurable poison) — exiting for restart (#1295)`,
+        );
+        process.exit(1);
+      }
+    }
+  }
+
   // Restore static/namespace methods on constructors.
   for (const { obj, values } of _staticOrig) {
     for (const [key, orig, origDesc] of values) {
