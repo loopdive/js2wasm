@@ -108,6 +108,19 @@ import { ts, forEachChild } from "../ts-api.js";
  */
 export type LatticeAtom =
   | { readonly kind: "f64" }
+  // #1126 Stage 1 — integer-domain atoms. Both lower to the same Wasm
+  // `i32` storage, but are distinguished as separate lattice elements so
+  // op selection (signed vs unsigned shifts, comparisons, conversions)
+  // can be made structurally rather than via ad-hoc heuristics.
+  //   `i32` — signed two's-complement, range [-2^31, 2^31)
+  //   `u32` — unsigned, range [0, 2^32)
+  // Producer rules (Stage 2) determine when expressions enter these
+  // domains; preserve/widen rules (also Stage 2) determine when they
+  // collapse back to `f64`. Notably, arithmetic (+,-,*,%) on two `i32`s
+  // widens to `f64` because JS `+` semantics don't wrap on overflow —
+  // see #1236 for the bug this rule structurally prevents.
+  | { readonly kind: "i32" }
+  | { readonly kind: "u32" }
   | { readonly kind: "bool" }
   | { readonly kind: "string" }
   | {
@@ -160,6 +173,8 @@ export type TypeMap = ReadonlyMap<string, TypeMapEntry>;
 
 const UNKNOWN: LatticeType = { kind: "unknown" };
 const F64: LatticeType = { kind: "f64" };
+const I32: LatticeType = { kind: "i32" };
+const U32: LatticeType = { kind: "u32" };
 const BOOL: LatticeType = { kind: "bool" };
 const STRING: LatticeType = { kind: "string" };
 const DYNAMIC: LatticeType = { kind: "dynamic" };
@@ -663,7 +678,14 @@ function objectAtomDepth(a: LatticeAtom): number {
 }
 
 function f64Compatible(t: LatticeType): boolean {
-  return t.kind === "f64" || t.kind === "unknown";
+  // #1126 Stage 1 — `i32` and `u32` are numeric subdomains of `f64`:
+  // a value in either can be widened to f64 with `f64.convert_i32_s/u`
+  // without loss, so any `f64`-shaped expression context (arithmetic,
+  // numeric comparisons) accepts them. The lattice atoms remain
+  // distinct so Stage 3's emitter can pick the narrowed-i32 path
+  // when both operands stay narrow. `unknown` stays compatible so
+  // unresolved-but-not-yet-widened values propagate through fixpoint.
+  return t.kind === "f64" || t.kind === "i32" || t.kind === "u32" || t.kind === "unknown";
 }
 
 function boolCompatible(t: LatticeType): boolean {
@@ -678,6 +700,31 @@ function join(a: LatticeType, b: LatticeType): LatticeType {
   if (a.kind === "dynamic" || b.kind === "dynamic") return DYNAMIC;
   if (a.kind === "unknown") return b;
   if (b.kind === "unknown") return a;
+
+  // #1126 Stage 1 — numeric-domain widening rules. Joining two distinct
+  // numeric atoms (any combination of i32/u32/f64) widens to f64 rather
+  // than forming a union, because:
+  //
+  //   • A union `{i32, f64}` would force a tagged-union representation
+  //     for what is logically still "a JS number" — wasteful, and the
+  //     V1 union lowering doesn't support i32-as-bare-i32 anyway (the
+  //     i32 slot is reserved for bool).
+  //   • `i32 ⊔ u32 = f64` (not a union) because the value `2^31` is
+  //     positive in u32 but negative in i32 — the only domain that
+  //     contains both interpretations losslessly is f64. Encoding that
+  //     as a tagged union would require runtime sign-disambiguation
+  //     which f64 already represents directly.
+  //   • i32/u32 are subdomains of f64 (`f64Compatible` returns true for
+  //     both), so widening preserves every fact a downstream consumer
+  //     could care about.
+  //
+  // Same-kind atom join (i32 ⊔ i32, u32 ⊔ u32) collapses normally via
+  // the atomsEqual fast path below.
+  if (isAtomLattice(a) && isAtomLattice(b)) {
+    const aNumeric = a.kind === "f64" || a.kind === "i32" || a.kind === "u32";
+    const bNumeric = b.kind === "f64" || b.kind === "i32" || b.kind === "u32";
+    if (aNumeric && bNumeric && a.kind !== b.kind) return F64;
+  }
 
   // Atom ⊔ Atom: same kind collapses; different kinds form a union.
   if (isAtomLattice(a) && isAtomLattice(b)) {
@@ -708,7 +755,14 @@ function join(a: LatticeType, b: LatticeType): LatticeType {
 }
 
 function isAtomLattice(t: LatticeType): t is LatticeAtom {
-  return t.kind === "f64" || t.kind === "bool" || t.kind === "string" || t.kind === "object";
+  return (
+    t.kind === "f64" ||
+    t.kind === "i32" ||
+    t.kind === "u32" ||
+    t.kind === "bool" ||
+    t.kind === "string" ||
+    t.kind === "object"
+  );
 }
 
 function atomsEqual(a: LatticeAtom, b: LatticeAtom): boolean {
@@ -728,10 +782,46 @@ function atomsEqual(a: LatticeAtom, b: LatticeAtom): boolean {
   return true;
 }
 
+/**
+ * Pre-pass for `makeUnion` — #1126 Stage 1 numeric collapse.
+ *
+ * If two or more *different* numeric atoms (any combination of f64/i32/u32)
+ * appear in the input, replace all of them with a single f64 atom. This
+ * preserves the invariant established by `join`: a union never simultaneously
+ * holds an integer-domain atom and a wider numeric atom. Rationale matches
+ * `join`'s numeric-widening rule — i32/u32 are subdomains of f64, encoding
+ * them as siblings in a tagged union would force runtime sign-disambiguation
+ * for no semantic gain.
+ *
+ * Returns the input array unchanged when at most one numeric atom is present
+ * (the common case for non-numeric unions like `{string, bool}`).
+ */
+function collapseNumericAtoms(members: readonly LatticeAtom[]): readonly LatticeAtom[] {
+  const distinctNumericKinds = new Set<string>();
+  for (const m of members) {
+    if (m.kind === "f64" || m.kind === "i32" || m.kind === "u32") distinctNumericKinds.add(m.kind);
+  }
+  if (distinctNumericKinds.size <= 1) return members;
+  const out: LatticeAtom[] = [];
+  let f64Added = false;
+  for (const m of members) {
+    if (m.kind === "f64" || m.kind === "i32" || m.kind === "u32") {
+      if (!f64Added) {
+        out.push({ kind: "f64" });
+        f64Added = true;
+      }
+      continue;
+    }
+    out.push(m);
+  }
+  return out;
+}
+
 /** Build a canonical union from a list of atoms (dedupe + sort). */
 function makeUnion(members: readonly LatticeAtom[]): LatticeType {
+  const collapsed = collapseNumericAtoms(members);
   const deduped: LatticeAtom[] = [];
-  for (const m of members) {
+  for (const m of collapsed) {
     if (!deduped.some((d) => atomsEqual(d, m))) deduped.push(m);
   }
   if (deduped.length > LATTICE_UNION_MAX_MEMBERS) return DYNAMIC;
@@ -773,12 +863,21 @@ function atomKindOrder(k: LatticeAtom["kind"]): number {
   switch (k) {
     case "f64":
       return 0;
-    case "bool":
+    // i32/u32 sort right after f64 — they're numeric atoms, so within a
+    // canonical union they cluster together. Order: f64 < i32 < u32 <
+    // bool < string < object. The relative ordering doesn't affect
+    // semantics; it only affects the deterministic canonical form used
+    // by `typesEqual` for fixpoint convergence.
+    case "i32":
       return 1;
-    case "string":
+    case "u32":
       return 2;
-    case "object":
+    case "bool":
       return 3;
+    case "string":
+      return 4;
+    case "object":
+      return 5;
   }
 }
 
@@ -916,6 +1015,17 @@ export function lowerTypeToIrType(t: LatticeType): import("./nodes.js").IrType |
   switch (t.kind) {
     case "f64":
       return { kind: "val", val: { kind: "f64" } };
+    // #1126 Stage 1 — both `i32` and `u32` lattice atoms lower to the same
+    // Wasm `i32` storage but are tagged with the IR `signed` fact so
+    // Stage 3 emit decisions (signed vs unsigned shifts, comparisons,
+    // conversions back to f64) can be made structurally. `bool` still
+    // lowers as i32 with default (signed) semantics — the v1 union
+    // mapping already relies on bool taking the i32 slot, and bool/i32
+    // never co-exist in the same union here.
+    case "i32":
+      return { kind: "val", val: { kind: "i32" }, signed: true };
+    case "u32":
+      return { kind: "val", val: { kind: "i32" }, signed: false };
     case "bool":
       return { kind: "val", val: { kind: "i32" } };
     case "string":
@@ -943,7 +1053,14 @@ export function lowerTypeToIrType(t: LatticeType): import("./nodes.js").IrType |
       for (const m of t.members) {
         if (m.kind === "f64") members.push({ kind: "f64" });
         else if (m.kind === "bool") members.push({ kind: "i32" });
-        else return null; // string/object members not supported in V1 tagged unions
+        // string/object members not supported in V1 tagged unions.
+        // #1126 Stage 1 — i32/u32 atoms also fall through to `return null`
+        // here. They should never reach this case in practice: the lattice
+        // `join` rules collapse `i32 ⊔ f64 = f64` and `i32 ⊔ u32 = f64`,
+        // so a union containing an integer-domain atom only forms when
+        // joining with a non-numeric atom (string/object/bool). That
+        // shape isn't representable in V1 tagged unions either way.
+        else return null;
       }
       if (members.length < 2) return null;
       return { kind: "union", members };
@@ -962,4 +1079,12 @@ export const _internals = {
   tsTypeToLattice,
   typeNodeToLattice,
   makeUnion,
+  // #1126 Stage 1 — lattice atom constants for unit tests.
+  F64,
+  I32,
+  U32,
+  BOOL,
+  STRING,
+  UNKNOWN,
+  DYNAMIC,
 };
