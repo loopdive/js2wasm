@@ -164,6 +164,31 @@ function objectShapesEnabled(): boolean {
   return process.env.JS2WASM_IR_OBJECT_SHAPES !== "0";
 }
 
+/**
+ * #1126 Stage 2 — integer-domain inference flag. Default **OFF** until
+ * Stage 3 lands the emitter side. While off, all producer rules below
+ * fall back to their pre-#1126 behaviour (`F64` for numeric literals,
+ * `DYNAMIC` for bitwise/shift ops, etc.) so this PR cannot change the
+ * shape of any compiled function.
+ *
+ * To opt in locally: `JS2WASM_IR_I32_DOMAIN=1 npm test`.
+ *
+ * This mirrors the staged-rollout pattern from #1231 (object shapes)
+ * and #1238 (pseudo-extern Array). When Stage 3 ships, the default
+ * flips to ON and the env var becomes an opt-out (`=0`) emergency hatch.
+ */
+function i32DomainEnabled(): boolean {
+  return process.env.JS2WASM_IR_I32_DOMAIN === "1";
+}
+
+// Range constants for integer-domain literal classification.
+// Inclusive of MIN_I32, exclusive of (MAX_I32 + 1) = 2^31. The u32
+// upper bound is 2^32 (exclusive). `Number.isSafeInteger` covers
+// values up to 2^53, but Stage 2 only narrows into 32-bit domains.
+const MIN_I32 = -0x80000000; // -(2^31)
+const MAX_I32_PLUS_1 = 0x80000000; // 2^31
+const MAX_U32_PLUS_1 = 0x100000000; // 2^32
+
 export interface TypeMapEntry {
   readonly params: readonly LatticeType[];
   readonly returnType: LatticeType;
@@ -467,7 +492,28 @@ function inferExpr(
   if (ts.isParenthesizedExpression(expr)) {
     return inferExpr(expr.expression, scope, entries);
   }
-  if (ts.isNumericLiteral(expr)) return F64;
+  if (ts.isNumericLiteral(expr)) {
+    // #1126 Stage 2 — integer-literal classification. JavaScript numeric
+    // literals are spec'd as f64, but many code paths use them as
+    // integer constants (`for (let i = 0; ...)`, `arr[0]`, bit masks).
+    // When the flag is on, classify the literal into the narrowest
+    // exact-integer domain it fits:
+    //   • integer in [-2^31, 2^31)   → I32 (preserves signed arithmetic)
+    //   • integer in [2^31, 2^32)    → U32 (cannot fit signed; unsigned-only)
+    //   • non-integer or out of u32  → F64 (existing behaviour)
+    // `Number.isInteger(NaN)` and `Number.isInteger(Infinity)` are
+    // both false so those naturally widen to F64. Negative zero is
+    // an integer; we keep it in I32 (its f64 vs. i32 representations
+    // are equivalent for arithmetic).
+    if (i32DomainEnabled()) {
+      const v = +expr.text;
+      if (Number.isFinite(v) && Number.isInteger(v)) {
+        if (v >= MIN_I32 && v < MAX_I32_PLUS_1) return I32;
+        if (v >= 0 && v < MAX_U32_PLUS_1) return U32;
+      }
+    }
+    return F64;
+  }
   if (expr.kind === ts.SyntaxKind.TrueKeyword || expr.kind === ts.SyntaxKind.FalseKeyword) return BOOL;
   // #1231 Phase 2 — string-typed argument literals (e.g.
   // `createUser("Alice", 30)`) seed the callee's param atom as STRING
@@ -486,9 +532,20 @@ function inferExpr(
     switch (expr.operator) {
       case ts.SyntaxKind.MinusToken:
       case ts.SyntaxKind.PlusToken:
+        // Unary `-` must widen i32 to f64: `-(-2^31) = 2^31` overflows
+        // the signed i32 range, so we conservatively return F64. Unary
+        // `+` is the JS ToNumber coercion which also normalises to
+        // f64. Both operands are still `f64Compatible` (i32/u32 widen
+        // cleanly), so the predicate is unchanged.
         return f64Compatible(rand) ? F64 : DYNAMIC;
       case ts.SyntaxKind.ExclamationToken:
         return boolCompatible(rand) ? BOOL : DYNAMIC;
+      case ts.SyntaxKind.TildeToken:
+        // #1126 Stage 2 — JS bitwise NOT (`~e`) applies ToInt32(e) and
+        // returns ~ToInt32(e), which is always a signed 32-bit integer.
+        // Producer rule: `~(any f64-compatible) → I32`.
+        if (i32DomainEnabled() && f64Compatible(rand)) return I32;
+        return DYNAMIC;
       default:
         return DYNAMIC;
     }
@@ -497,11 +554,51 @@ function inferExpr(
     const l = inferExpr(expr.left, scope, entries);
     const r = inferExpr(expr.right, scope, entries);
     switch (expr.operatorToken.kind) {
+      // ─── Arithmetic ────────────────────────────────────────────────
+      // #1126 Stage 2 — `+ - * / %` always widens to F64 even when both
+      // operands are integer-domain. JavaScript `+` does not wrap on
+      // overflow: `(2^30) * 2` is exactly `2^31` (still safe in f64),
+      // but `i32.mul` would trap-or-wrap into the signed range. Returning
+      // F64 here is the structural fix for #1236 — the f64Compatible
+      // predicate accepts i32/u32 (from Stage 1) so an i32+i32
+      // expression cleanly widens via `f64.convert_i32_s` at emit time.
+      // `%` (PercentToken) was previously absent from this arm and fell
+      // through to DYNAMIC; it follows the same arithmetic semantics so
+      // we add it now (also avoids a Stage-2 surprise where `i32 % i32`
+      // would have stayed DYNAMIC).
       case ts.SyntaxKind.PlusToken:
       case ts.SyntaxKind.MinusToken:
       case ts.SyntaxKind.AsteriskToken:
       case ts.SyntaxKind.SlashToken:
+      case ts.SyntaxKind.PercentToken:
         return f64Compatible(l) && f64Compatible(r) ? F64 : DYNAMIC;
+      // ─── Bitwise (& | ^) ───────────────────────────────────────────
+      // #1126 Stage 2 — JS bitwise ops apply ToInt32 to each operand
+      // and return a signed 32-bit integer. Producer: I32. Behind the
+      // i32-domain flag.
+      case ts.SyntaxKind.AmpersandToken:
+      case ts.SyntaxKind.BarToken:
+      case ts.SyntaxKind.CaretToken:
+        if (i32DomainEnabled() && f64Compatible(l) && f64Compatible(r)) return I32;
+        return DYNAMIC;
+      // ─── Shift left / signed shift right ───────────────────────────
+      // `e1 << e2` and `e1 >> e2` apply ToInt32 to e1 and ToUint32(e2)
+      // (mod 32); the result is a signed Int32. Producer: I32.
+      case ts.SyntaxKind.LessThanLessThanToken:
+      case ts.SyntaxKind.GreaterThanGreaterThanToken:
+        if (i32DomainEnabled() && f64Compatible(l) && f64Compatible(r)) return I32;
+        return DYNAMIC;
+      // ─── Unsigned shift right ──────────────────────────────────────
+      // `e1 >>> e2` applies ToUint32(e1) and ToUint32(e2); result is
+      // an unsigned 32-bit integer. Producer: U32.
+      case ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken:
+        if (i32DomainEnabled() && f64Compatible(l) && f64Compatible(r)) return U32;
+        return DYNAMIC;
+      // ─── Comparisons ───────────────────────────────────────────────
+      // Both sides f64-compatible (which now includes i32/u32) → BOOL.
+      // Stage 3's emitter will pick `i32.lt_s` vs `i32.lt_u` vs
+      // `f64.lt` based on the operand atoms; for the lattice the
+      // result is the same boolean.
       case ts.SyntaxKind.LessThanToken:
       case ts.SyntaxKind.LessThanEqualsToken:
       case ts.SyntaxKind.GreaterThanToken:
@@ -528,6 +625,26 @@ function inferExpr(
     return join(inferExpr(expr.whenTrue, scope, entries), inferExpr(expr.whenFalse, scope, entries));
   }
   if (ts.isCallExpression(expr)) {
+    // #1126 Stage 2 — recognise `Math.imul` / `Math.clz32` as integer
+    // builtins. Both are ToInt32-coerced producers per the ECMAScript
+    // spec:
+    //   • Math.imul(a, b) → signed 32-bit multiplication, Int32 result
+    //   • Math.clz32(x)   → count of leading zeros, Uint32 result
+    // The receiver must be the literal identifier `Math`; we do not
+    // trace aliases (`const M = Math; M.imul(...)`) — Stage 4
+    // cross-fn narrowing can pick those up later.
+    if (
+      i32DomainEnabled() &&
+      ts.isPropertyAccessExpression(expr.expression) &&
+      ts.isIdentifier(expr.expression.expression) &&
+      expr.expression.expression.text === "Math" &&
+      ts.isIdentifier(expr.expression.name)
+    ) {
+      const method = expr.expression.name.text;
+      if (method === "imul") return I32;
+      if (method === "clz32") return U32;
+      // Fall through for other Math methods — they remain DYNAMIC.
+    }
     if (!ts.isIdentifier(expr.expression)) return DYNAMIC;
     const name = expr.expression.text;
     const entry = entries.get(name);
@@ -1087,4 +1204,7 @@ export const _internals = {
   STRING,
   UNKNOWN,
   DYNAMIC,
+  // #1126 Stage 2 — flag accessor for tests so the per-rule producers
+  // can be exercised deterministically without touching `process.env`.
+  i32DomainEnabled,
 };
