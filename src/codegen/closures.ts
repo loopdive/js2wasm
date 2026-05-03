@@ -982,6 +982,28 @@ export function isHostCallbackArgument(node: ts.Node, ctx: CodegenContext): bool
         // User-defined function — use closure path, not host callback
         return false;
       }
+      // (#1300) The callee may be a function-typed parameter or local
+      // (e.g. `function compose(a: Mw): string { return a(() => "end"); }` —
+      // `a` is a parameter, not in funcMap). Such callees hold a wasm
+      // closure struct ref at runtime; the inline arrow argument MUST be
+      // built as a wasm closure (compileArrowAsClosure) so the receiver's
+      // call_ref / ref.cast dispatch can unwrap it. Wrapping it via
+      // __make_callback produces a host externref the receiver cannot
+      // unwrap → silent null-deref at the inner call site.
+      const calleeSym = ctx.checker.getSymbolAtLocation(parent.expression);
+      if (calleeSym?.declarations) {
+        for (const decl of calleeSym.declarations) {
+          if (
+            ts.isParameter(decl) ||
+            ts.isVariableDeclaration(decl) ||
+            ts.isFunctionDeclaration(decl) ||
+            ts.isFunctionExpression(decl) ||
+            ts.isArrowFunction(decl)
+          ) {
+            return false;
+          }
+        }
+      }
     }
     // For method calls (property access), check if the method is known array HOF
     // (filter, map, etc.) — those have dedicated inline compilation and ARE handled

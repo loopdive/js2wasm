@@ -2,7 +2,7 @@
 id: 1300
 sprint: 49
 title: "Closure capturing outer parameter inside an inline lambda passed as a Next callback null-derefs at call time"
-status: ready
+status: done
 created: 2026-05-03
 updated: 2026-05-03
 priority: medium
@@ -86,3 +86,48 @@ the storage is the closure env struct, not a user struct).
   ordering / arity contract is exercised end-to-end via the workaround.
 - Likely shares a fix with #1298 (function-typed value storage). May
   collapse into a single fix once the call-site unwrap is generalized.
+
+## Resolution (2026-05-03)
+
+Root cause was NOT in the closure env packing — it was in the dispatch
+decision at the inline-arrow's _argument_ site. `isHostCallbackArgument`
+in `src/codegen/closures.ts` only recognized user-defined callees by
+name lookup in `funcMap`. When the callee is a function-typed parameter
+or local (e.g. `compose1(a)` body does `a(() => "end")`, where `a` is a
+`Mw` parameter), `funcMap.get("a")` returns undefined, so the predicate
+fell through to `return true`. The arrow `() => "end"` was therefore
+compiled via `compileArrowAsCallback` (host externref wrapping the wasm
+function via `__make_callback`) instead of `compileArrowAsClosure`
+(wasm GC closure struct).
+
+When the receiving Mw (the user-passed arrow) then invoked its `next`
+parameter, the call site executed the wasm closure-struct path:
+`any.convert_extern → ref.test (ref $wrapper) → if-true: cast and
+call_ref / if-false: ref.null`. The `__make_callback` externref is NOT
+a wasm GC struct, so `ref.test` returned false, the local was set to
+null, and the subsequent `struct.get` deref-crashed with "dereferencing
+a null pointer". The intermediate `emitNullCheckThrow` had a backup
+local sentinel from `emitGuardedRefCast` that suppressed the throw on
+"wrong struct type" (correctly, to allow multi-struct dispatch
+elsewhere) — but for parameter-callee invocation there was no
+multi-struct fallback to fall through into.
+
+**Fix**: extend `isHostCallbackArgument` to consult the TS symbol of the
+callee identifier. If any declaration is a `ParameterDeclaration`,
+`VariableDeclaration`, `FunctionDeclaration`, `FunctionExpression`, or
+`ArrowFunction`, the callee is a user-side callable holding a wasm
+closure value — return false so `compileArrowFunction` selects
+`compileArrowAsClosure`. The arrow then becomes a wasm GC struct that
+the receiver's `ref.cast` and `call_ref` can unwrap.
+
+**Verification**: `tests/issue-1300.test.ts` (8 cases, all passing):
+the original 2-level repro returns `"<a><b>end</b></a>"`, the 1-level
+collapse returns `"<a>end</a>"`, regression guards cover named-Mw,
+inline-Mw-no-call, named-next-cb, direct-call-with-no-wrap, and
+variable-bound Mw callee. Closure equivalence tests
+(`fn-variable-call`, `array-callback-three-params`,
+`illegal-cast-assert-throws`) — 14/14 still pass on the patched
+branch. TypeScript check clean.
+
+The Tier 5 hono test workaround (#1297, module-level step functions)
+can now collapse to inline arrows; that follow-up belongs in #1297.
