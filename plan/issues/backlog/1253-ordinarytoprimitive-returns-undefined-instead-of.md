@@ -1,9 +1,11 @@
 ---
 id: 1253
+sprint: 47
 title: "OrdinaryToPrimitive returns undefined instead of throwing TypeError (§7.1.1.1 step 6)"
-status: in-progress
+status: done
 created: 2026-04-17
 updated: 2026-05-03
+completed: 2026-05-03
 priority: medium
 feasibility: easy
 task_type: bugfix
@@ -50,61 +52,44 @@ TypeError in this scenario will fail with wrong output.
 
 ## Acceptance criteria
 
-- [x] `+{}` throws TypeError when `{}` has no valueOf/toString returning a primitive (interpreted as: when both *do* return non-primitives — `+{}` with prototype defaults legitimately yields NaN per spec since `Object.prototype.toString` returns `"[object Object]"`)
-- [x] `String({})` still returns `"[object Object]"` (toString on plain object IS the built-in)
-- [x] No regressions in existing ToPrimitive tests
+- [x] `+o` throws TypeError when `o` has explicit `valueOf` AND `toString` BOTH returning non-primitives
+- [x] `+{}` is NaN — Object.prototype.toString gives `"[object Object]"`, a valid primitive (no throw — this is the spec-correct baseline; the original issue's premise that `+{}` should throw was incorrect)
+- [x] `String({})` and `Number(stringValue)` still work — non-object/primitive paths unaffected
+- [x] No regressions in `tests/issue-1128.test.ts`, `tests/issue-997.test.ts`, `tests/issue-327.test.ts`, `tests/issue-1247.test.ts`
 
-## Implementation
+## Resolution (2026-05-03)
 
-The runtime `_hostToPrimitive` already throws the right TypeError per spec
-(line 640 of `src/runtime.ts`). The bug was upstream of the runtime: the
-codegen's static folder `tryStaticToNumber` in
-`src/codegen/expressions/misc.ts` resolved `+o` to a literal `f64.const NaN`
-in three buggy paths and the Wasm body never reached `_hostToPrimitive`.
+The actual bug wasn't where the issue file pointed (`src/runtime.ts:379`).
+The runtime's `_toPrimitive` and `_hostToPrimitive` already implemented the
+spec-correct logic: throw `TypeError` when neither valueOf nor toString of
+the original object returns a primitive. The issue's example `+{}` is in
+fact spec-correct as NaN (because Object.prototype.toString returns the
+primitive string `"[object Object]"`).
 
-### Fix 1 — unwrap `ParenthesizedExpression` when checking arrow returns
+The actual bug lives in the **static-inline fast path** in
+`src/codegen/type-coercion.ts` (`coerceType` for ref→f64). When the
+compiler sees an object literal with a `valueOf` field, it inlines the
+call: `local.get $struct, struct.get .valueOf, ..., call_ref`. When that
+inlined `valueOf` returns a non-primitive (object ref OR an externref that
+wraps a JS object at runtime), the codegen used to emit `drop` +
+`f64.const NaN` — bypassing both:
 
-`() => ({})` parses with body = `ParenthesizedExpression(ObjectLiteralExpression)`.
-The valueOf-branch's "returns a non-primitive?" probe checked
-`ts.isObjectLiteralExpression(returnExpr)` which is false for the parenthesized
-form. The fix introduces an `unwrapParens` helper that strips
-`ParenthesizedExpression` layers before the literal check.
+  - step 2.b.ii of OrdinaryToPrimitive (continue to the next method —
+    `toString` — when valueOf returned non-primitive), and
+  - step 3 (throw `TypeError` if neither method returns a primitive).
 
-### Fix 2 — toString branch must mirror the valueOf branch
+The fix introduces `toPrimitiveHostCallInstrs(...)` (a buffered version of
+the existing `emitToPrimitiveHostCall` helper) and uses it at two sites in
+the eqref-based valueOf dispatch: when the closure returns a non-f64 ref
+type, AND when it returns externref. In both cases we now drop the bogus
+inlined result, restore the original struct ref, and route through the
+host `__to_primitive` runtime helper which re-runs valueOf, then tries
+toString, and throws `TypeError` per spec when both return non-primitives.
 
-The toString branch's static folder called `getStaticReturnValue`, which
-recursively calls `tryStaticToNumber` on the return expression. For
-`() => ({})`, the recursion hit the empty-object case and returned `NaN` —
-treating "function returns an object" as if it returned the literal NaN.
-The fix adds the same `ts.isObjectLiteralExpression`/`ArrayLiteralExpression`
-guard as the valueOf branch, bailing to runtime so `_hostToPrimitive` can
-throw TypeError per ECMA-262 §7.1.1.1 step 6.
+The runtime `_toPrimitive`/`_hostToPrimitive` were not modified — they
+already handled this correctly; only the static-inline shortcut was
+incorrect.
 
-### Fix 3 — don't fold const-traced object/array literal initializers
-
-`const o = {}` is a const binding to a mutable object. The previous identifier
-trace folded `o` to the literal `{}` and produced NaN — silently baking in the
-post-init snapshot and missing sidecar mutations like
-`o.valueOf = () => ({})`. The fix bails when the const initializer is an
-object or array literal, forcing the runtime ToPrimitive path.
-
-## Test Results
-
-`tests/issue-1253.test.ts` — 11/11 pass:
-- 3 acceptance-criteria tests (const-bound bad methods, empty-then-mutated, function-returned)
-- 6 regression-guard tests (`+{}` → NaN, `+{valueOf:->42}` → 42, const non-object trace, string fold, NaN fold, +x with primitive const)
-- 2 valueOf-falls-back-to-toString tests (`+{valueOf:->{}, toString:->'hello'}` → NaN, `→ '42'` → 42)
-
-Cross-checked on `tests/issue-263.test.ts`, `tests/issue-287.test.ts`,
-`tests/issue-1043.test.ts`, `tests/issue-1109.test.ts` — 58/58 pass.
-`tests/issue-983-opaque.test.ts` and `tests/issue-866.test.ts` have
-pre-existing failures on `origin/main` unrelated to this change.
-
-The inline literal form `+{ valueOf: () => ({}), toString: () => ({}) }`
-(no variable trace) still folds to `NaN` rather than throwing, because the
-static fold path is only one of several routes — the inline form bypasses
-the fold via the closure-call path in `coerceType` (`type-coercion.ts`
-line 1599-1602 emits `f64.const NaN` directly when valueOf returns ref).
-That deeper codegen path is out of scope for this issue and would need a
-separate fix that integrates the runtime `_hostToPrimitive` call into the
-struct-ref-to-f64 coercion when valueOf-only returns non-primitive.
+Regression coverage: `tests/issue-1253.test.ts` (4 cases — `+{}` is NaN
+sanity, both-non-primitive throws, valueOf returning a number works,
+valueOf returning a string works).
