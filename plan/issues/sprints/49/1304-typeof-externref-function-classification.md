@@ -2,7 +2,7 @@
 id: 1304
 sprint: 49
 title: "typeof on externref-wrapped JS function returns 'object' instead of 'function'"
-status: ready
+status: in-progress
 created: 2026-05-03
 updated: 2026-05-03
 priority: medium
@@ -114,3 +114,52 @@ Almost every reasonable JS library does typeof guards on function
 arguments. Without correct externref→function classification, the JS
 host cannot pass a callback into Wasm — a hard limit on practical
 interop.
+
+## Root cause (2026-05-03)
+
+The bug is NOT in the runtime `__typeof_function` host import — that
+function correctly returns `1` for callable JS values. The bug is at
+*compile time* in `staticTypeofForType`
+(`src/codegen/typeof-delete.ts`).
+
+When TypeScript compiles `lodash-es/negate.js`, it infers the type of
+the `predicate` parameter as the global `Function` interface (because
+the function body uses `predicate.call(this, ...)` and
+`predicate.apply(this, args)`). `staticTypeofForType` checks for the
+`String/Number/Boolean` wrapper symbol names but does NOT check for
+`Function` — so the type falls through to the externref/Object branch
+which returns `"object"`.
+
+The compiled `if (typeof predicate != 'function')` then folds at
+compile time:
+- `staticTypeof = "object"` (wrong)
+- `stringLiteral = "function"`
+- `matches = false` → `result = isNeq ? 1 : 0` = `1`
+
+The compiler emits `i32.const 1` for the if condition, so the
+`throw new TypeError(...)` runs unconditionally on every call.
+
+Fix: add a `Function` symbol check in the `Object` flag branch that
+returns `"function"` directly, mirroring the existing
+`String/Number/Boolean` wrapper logic.
+
+## Test Results
+
+`tests/issue-1304.test.ts` — 5/5 pass:
+- typeof === 'function' on a JS function passed as externref
+- typeof !== 'function' is false for a JS function
+- typeof === 'object' on a plain object
+- typeof === 'number' on a JS number
+- Function-typed param doesn't fold typeof guard to always-throw
+  (lodash negate idiom — captures the original repro)
+
+End-to-end with lodash:
+- `compileProject('lodash-es/negate.js', {allowJs:true})` previously
+  threw `TypeError: Expected a function` on every call. After fix,
+  `negate(jsFn)` returns the wrapped negated callable.
+
+Regression check: identical pass/fail counts to main on
+`tests/typeof-comparison.test.ts`, `tests/typeof-expression.test.ts`,
+`tests/typeof-member-expression.test.ts`, `tests/null-narrowing.test.ts`,
+`tests/union-narrowing.test.ts`. Hono Tier 1-5 + lodash Tier 1 stress
+tests: 35/35 active pass (4 unrelated skipped) — no regressions.
