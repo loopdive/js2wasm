@@ -28,4 +28,14 @@ wrap_checklist:
 | #1290 | test262 runner: TS7 batch-parse via @typescript/native-preview (132× speedup) | high |
 
 <!-- GENERATED_ISSUE_TABLES_START -->
+## Issue Tables
+
+_Generated from issue files. Update issue `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
+
+### Ready
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1290 | perf: test262 runner — TS7 batch-parse via @typescript/native-preview (132× cold speedup) | high | ready |
+
 <!-- GENERATED_ISSUE_TABLES_END -->

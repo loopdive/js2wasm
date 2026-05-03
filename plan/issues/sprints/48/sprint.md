@@ -71,6 +71,12 @@ Recommended dispatch (after S47 drains):
 
 _Generated from issue files. Update issue `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
 
+### Blocked
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1223 | TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up) | medium | blocked |
+
 ### Ready
 
 | Issue | Title | Priority | Status |
@@ -78,12 +84,28 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | #1126 | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | high | ready |
 | #1199 | perf: linear-memory backing for typed numeric arrays (`Array<number>` with i32-only ops → `i32.load`/`i32.store`) | medium | ready |
 | #1200 | perf: loop-invariant code motion in optimizer pass (hoist `arr.length` etc. out of `for` conditions) | medium | ready |
-| #1233 | IR Phase 4 Slice 13d — Array per-element-type methods through IR | medium | ready |
-| #1236 | Premature i32 specialization for `let s = 0` accumulators silently saturates on overflow | high | ready |
 | #1241 | Untitled |  | ready |
-| #1269 | struct field inference Phase 3: consumer-side specialization — emit struct.get without unboxing | medium | ready |
 | #1270 | struct field inference Phase 3b: eliminate null-checks on (ref null $T) locals via peephole | medium | ready |
-| #1280 | IR selector: claim while/for-loop bodies with typed numeric state | medium | ready |
-| #1282 | ESLint Tier 1 stress test — minimal Linter.verify() compilation | medium | ready |
+| #1292 | lodash Tier 2 stress test — memoize, flow, partial application | medium | ready |
+| #1295 | compiler.ts: re-throw WebAssembly.Exception from internal catch blocks | high | ready |
+| #1295 | lodash transitive init: start-function throws WebAssembly.Exception during instantiate (clamp/add) | medium | ready |
+
+### In Progress
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1291 | lodash Tier 1b — upgrade add/clamp stress tests to execution-level assertions | medium | in-progress |
+| #1293 | Hono Tier 4 — string[][] array-of-arrays type support + #segments field | medium | in-progress |
+| #1294 | test262 worker: reclassify WebAssembly.Exception compile-errors as fail + restart fork | high | in-progress |
+
+### Done
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1233 | IR Phase 4 Slice 13d — Array per-element-type methods through IR | medium | done |
+| #1236 | Premature i32 specialization for `let s = 0` accumulators silently saturates on overflow | high | done |
+| #1269 | struct field inference Phase 3: consumer-side specialization — emit struct.get without unboxing | medium | done |
+| #1280 | IR selector: claim while/for-loop bodies with typed numeric state | medium | done |
+| #1282 | ESLint Tier 1 stress test — minimal Linter.verify() compilation | medium | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->

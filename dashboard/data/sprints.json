@@ -2941,7 +2941,6 @@
       "1207",
       "1216",
       "1222",
-      "1223",
       "1224",
       "1225",
       "1226",
@@ -3060,22 +3059,45 @@
       "1126",
       "1199",
       "1200",
+      "1223",
       "1233",
       "1236",
       "1241",
       "1269",
       "1270",
       "1280",
-      "1282"
+      "1282",
+      "1291",
+      "1292",
+      "1293",
+      "1294",
+      "1295"
     ],
     "completedIssueIds": [
       "1233",
+      "1236",
       "1269",
       "1280",
       "1282"
     ],
     "explicitCarryOver": false,
     "isPlanning": false,
+    "isClosed": false
+  },
+  {
+    "name": "sprint 49",
+    "sprintNumber": 49,
+    "status": "planning",
+    "date": "",
+    "baseline": "",
+    "result": "",
+    "issueCount": 0,
+    "issueIds": [
+      "1290"
+    ],
+    "completedIssueIds": [],
+    "explicitCarryOver": false,
+    "isPlanning": true,
     "isClosed": false
   }
 ]
