@@ -111,7 +111,7 @@
       ],
       "goal": "crash-free",
       "status": "blocked",
-      "sprint": "47"
+      "sprint": "48"
     },
     {
       "id": "1166",
@@ -186,6 +186,40 @@
   ],
   "ready": [
     {
+      "id": "1295",
+      "title": "compiler.ts: re-throw WebAssembly.Exception from internal catch blocks",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [
+        "1294"
+      ],
+      "goal": "conformance",
+      "status": "ready",
+      "sprint": "48"
+    },
+    {
+      "id": "1292",
+      "title": "lodash Tier 2 stress test — memoize, flow, partial application",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [
+        "1291"
+      ],
+      "goal": "npm-library-support",
+      "status": "ready",
+      "sprint": "48"
+    },
+    {
+      "id": "1290",
+      "title": "perf: test262 runner — TS7 batch-parse via @typescript/native-preview (132× cold speedup)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "performance",
+      "status": "ready",
+      "sprint": "49"
+    },
+    {
       "id": "1270",
       "title": "struct field inference Phase 3b: eliminate null-checks on (ref null $T) locals via peephole",
       "priority": "medium",
@@ -247,16 +281,6 @@
       "goal": "ci-hardening",
       "status": "ready",
       "sprint": ""
-    },
-    {
-      "id": "1236",
-      "title": "Premature i32 specialization for `let s = 0` accumulators silently saturates on overflow",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": "ready",
-      "sprint": "48"
     },
     {
       "id": "1230",
@@ -1560,14 +1584,38 @@
   ],
   "inprogress": [
     {
-      "id": "1290",
-      "title": "perf: test262 runner — TS7 batch-parse via @typescript/native-preview (132× cold speedup)",
+      "id": "1294",
+      "title": "test262 worker: reclassify WebAssembly.Exception compile-errors as fail + restart fork",
       "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "conformance",
+      "status": "in-progress",
+      "sprint": "48"
+    },
+    {
+      "id": "1293",
+      "title": "Hono Tier 4 — string[][] array-of-arrays type support + #segments field",
+      "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
-      "goal": "performance",
+      "goal": "npm-library-support",
       "status": "in-progress",
-      "sprint": ""
+      "sprint": "48"
+    },
+    {
+      "id": "1291",
+      "title": "lodash Tier 1b — upgrade add/clamp stress tests to execution-level assertions",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [
+        "1276",
+        "1277",
+        "1279"
+      ],
+      "goal": "npm-library-support",
+      "status": "in-progress",
+      "sprint": "48"
     },
     {
       "id": "1206",
@@ -2020,6 +2068,16 @@
       "goal": "developer-experience",
       "status": "done",
       "sprint": ""
+    },
+    {
+      "id": "1236",
+      "title": "Premature i32 specialization for `let s = 0` accumulators silently saturates on overflow",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": "done",
+      "sprint": "48"
     },
     {
       "id": "1235",

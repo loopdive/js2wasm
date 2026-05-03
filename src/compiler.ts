@@ -374,6 +374,12 @@ export function compileSource(
       }
     }
   } catch (e) {
+    if (
+      typeof WebAssembly !== "undefined" &&
+      (WebAssembly as unknown as { Exception?: Function }).Exception &&
+      e instanceof (WebAssembly as unknown as { Exception: Function }).Exception
+    )
+      throw e;
     pushSourceAnchoredDiagnostic(
       errors,
       ast.sourceFile,
@@ -433,6 +439,12 @@ export function compileSource(
       binary = emitBinary(mod);
     }
   } catch (e) {
+    if (
+      typeof WebAssembly !== "undefined" &&
+      (WebAssembly as unknown as { Exception?: Function }).Exception &&
+      e instanceof (WebAssembly as unknown as { Exception: Function }).Exception
+    )
+      throw e;
     pushSourceAnchoredDiagnostic(
       errors,
       ast.sourceFile,
@@ -647,6 +659,12 @@ export function compileMultiSource(
       }
     }
   } catch (e) {
+    if (
+      typeof WebAssembly !== "undefined" &&
+      (WebAssembly as unknown as { Exception?: Function }).Exception &&
+      e instanceof (WebAssembly as unknown as { Exception: Function }).Exception
+    )
+      throw e;
     pushSourceAnchoredDiagnostic(
       errors,
       multiAst.entryFile,
@@ -698,6 +716,12 @@ export function compileMultiSource(
       binary = emitBinary(mod);
     }
   } catch (e) {
+    if (
+      typeof WebAssembly !== "undefined" &&
+      (WebAssembly as unknown as { Exception?: Function }).Exception &&
+      e instanceof (WebAssembly as unknown as { Exception: Function }).Exception
+    )
+      throw e;
     pushSourceAnchoredDiagnostic(
       errors,
       multiAst.entryFile,
@@ -878,6 +902,12 @@ export function compileFilesSource(entryPath: string, options: CompileOptions = 
       }
     }
   } catch (e) {
+    if (
+      typeof WebAssembly !== "undefined" &&
+      (WebAssembly as unknown as { Exception?: Function }).Exception &&
+      e instanceof (WebAssembly as unknown as { Exception: Function }).Exception
+    )
+      throw e;
     pushSourceAnchoredDiagnostic(
       errors,
       multiAst.entryFile,
@@ -923,6 +953,12 @@ export function compileFilesSource(entryPath: string, options: CompileOptions = 
       binary = emitBinary(mod);
     }
   } catch (e) {
+    if (
+      typeof WebAssembly !== "undefined" &&
+      (WebAssembly as unknown as { Exception?: Function }).Exception &&
+      e instanceof (WebAssembly as unknown as { Exception: Function }).Exception
+    )
+      throw e;
     pushSourceAnchoredDiagnostic(
       errors,
       multiAst.entryFile,

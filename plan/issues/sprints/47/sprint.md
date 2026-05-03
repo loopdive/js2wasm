@@ -156,45 +156,10 @@ Sprint 47 was the largest sprint to date: 631 commits, 50+ issues closed across 
 
 _Generated from issue files. Update issue `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
 
-### Blocked
-
-| Issue | Title | Priority | Status |
-|---|---|---|---|
-| #1223 | TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up) | medium | blocked |
-| #1285 | Hono Tier 3 stress test — recursive TrieRouter with class-typed Node children | high | blocked |
-
-### Ready
-
-| Issue | Title | Priority | Status |
-|---|---|---|---|
-| #1278 | Update stale lodash-tier1 stress test — resolver fixed, clamp/add behavior changed | low | ready |
-| #1281 | IR: optional chaining `?.` and `?.()` — IR path support | medium | ready |
-| #1286 | Object.keys(any-typed obj).join() throws illegal cast — externref→string-array coerce missing | medium | ready |
-
-### In Progress
-
-| Issue | Title | Priority | Status |
-|---|---|---|---|
-| #1242 | WeakMap / WeakSet backed by strong references (lodash memoize / cloneDeep) | high | in-progress |
-| #1243 | for...in / Object.keys enumeration of compiled-object properties (lodash Tier 3) | high | in-progress |
-| #1251 | baseline-validate: TS checker non-determinism causes 19/50 false failures on main JSONL | medium | in-progress |
-| #1259 | async-gen yield-star sync-fallback leaks unboxed ref-cell into iter capture | high | in-progress |
-| #1267 | optimizer: method calls in expression-statement position silently dropped when return value unused | high | in-progress |
-| #1271 | for...in / Object.keys enumeration over compiled objects | high | in-progress |
-| #1272 | Symbol as object key — Symbol.for(), well-known Symbols as property keys | medium | in-progress |
-| #1273 | instanceof across compilation boundaries | medium | in-progress |
-| #1276 | HOF returning closure — function-valued module exports (createMathOperation pattern) | high | in-progress |
-| #1277 | CJS module.exports → Wasm export mapping in compileProject | medium | in-progress |
-| #1279 | CJS require() call support — static module graph via require() analysis | high | in-progress |
-| #1283 | WeakMap host-import dispatch: type-mismatch on set/get/has/delete (carved off from #1242) | high | in-progress |
-| #1284 | Class-typed values in index-signature dicts lose identity through extern_set/extern_get round-trip | high | in-progress |
-
 ### Review
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
-| #1258 | compileForOfAssignDestructuringExternref must route writes through boxedCaptures.struct.set | high | review |
-| #1260 | Destructuring of null/undefined must throw TypeError per §13.15.5.5 | high | review |
 | #1278 | Update stale lodash-tier1 stress test — resolver fixed, clamp/add behavior changed | low | review |
 
 ### Done
@@ -225,15 +190,35 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | #1234 | Array.prototype.{unshift,reverse,forEach,…} on non-Array receivers iterate [0, length) instead of defined props | medium | done |
 | #1235 | ci: prevent baseline drift false-positive regressions after admin-merges | high | done |
 | #1238 | IR Phase 4 Slice 13b — pseudo-ExternClassInfo registration for String + Array | high | done |
+| #1242 | WeakMap / WeakSet backed by strong references (lodash memoize / cloneDeep) | high | done |
+| #1243 | for...in / Object.keys enumeration of compiled-object properties (lodash Tier 3) | high | done |
 | #1244 | npm stress test: compile Hono web framework to Wasm | high | done |
 | #1245 | Investigate #1177 Stage 1 regressions — 59 compile_timeouts + 81 real regressions in PR#125 | high | done |
 | #1246 | ci: differential test262 — compare branch tip vs main HEAD with src-tree-hash caching | high | done |
-| #1247 | compiler: typed string[] local with path.split('/') initializer triggers struct-type mismatch | medium | done |
+| #1247 | compiler: typed `string[]` local with `path.split('/')` initializer triggers struct-type mismatch | medium | done |
 | #1248 | compiler: typeof x === 'string' guard breaks String.prototype.substring(start) — returns single char | medium | done |
 | #1249 | class private fields and methods (#name syntax) — PrivateIdentifier codegen | medium | done |
 | #1250 | logical assignment operators: \|\|=, &&=, ??= (ES2021) | medium | done |
+| #1251 | baseline-validate: TS checker non-determinism causes 19/50 false failures on main JSONL | medium | done |
+| #1258 | compileForOfAssignDestructuringExternref must route writes through boxedCaptures.struct.set | high | done |
+| #1259 | async-gen yield-star sync-fallback leaks unboxed ref-cell into iter capture | high | done |
+| #1260 | Destructuring of null/undefined must throw TypeError per §13.15.5.5 | high | done |
+| #1267 | optimizer: method calls in expression-statement position silently dropped when return value unused | high | done |
 | #1268 | index-signature obj[key] ??= value returns NaN instead of assigning | medium | done |
+| #1271 | for...in / Object.keys enumeration over compiled objects | high | done |
+| #1272 | Symbol as object key — Symbol.for(), well-known Symbols as property keys | medium | done |
+| #1273 | instanceof across compilation boundaries | medium | done |
 | #1274 | Hono Tier 2 stress test: route registration + basic dispatch via TrieRouter | high | done |
 | #1275 | typeof-guard narrowing for any-typed parameters (untyped JS functions) | high | done |
+| #1276 | HOF returning closure — function-valued module exports (createMathOperation pattern) | high | done |
+| #1277 | CJS module.exports → Wasm export mapping in compileProject | medium | done |
+| #1278 | Update stale lodash-tier1 stress test — resolver fixed, clamp/add behavior changed | low | done |
+| #1279 | CJS require() call support — static module graph via require() analysis | high | done |
+| #1281 | IR: optional chaining `?.` and `?.()` — IR path support | medium | done |
+| #1283 | WeakMap host-import dispatch: type-mismatch on set/get/has/delete (carved off from #1242) | high | done |
+| #1284 | Class-typed values in index-signature dicts lose identity through extern_set/extern_get round-trip | high | done |
+| #1285 | Hono Tier 3 stress test — recursive TrieRouter with class-typed Node children | high | done |
+| #1286 | Object.keys(any-typed obj).join() throws illegal cast — externref→string-array coerce missing | medium | done |
+| #1288 | TypeScript 7 (@typescript/native-preview) support under --ts7 feature flag | medium | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->

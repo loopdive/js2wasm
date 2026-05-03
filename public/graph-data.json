@@ -15692,8 +15692,8 @@
       "id": "1134",
       "title": "__any_eq loose equality missing cross-tag coercion — null==undefined, bool==number all return false",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "",
       "depends_on": [],
       "files": [],
@@ -17025,7 +17025,7 @@
       "priority": "medium",
       "status": "blocked",
       "raw_status": "blocked",
-      "sprint": "47",
+      "sprint": "48",
       "depends_on": [
         "1177",
         "1205"
@@ -17156,8 +17156,8 @@
       "id": "1233",
       "title": "IR Phase 4 Slice 13d — Array per-element-type methods through IR",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "48",
       "depends_on": [
         "1238"
@@ -17195,8 +17195,8 @@
       "id": "1236",
       "title": "Premature i32 specialization for `let s = 0` accumulators silently saturates on overflow",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "48",
       "depends_on": [],
       "files": [],
@@ -17266,8 +17266,8 @@
       "id": "1242",
       "title": "WeakMap / WeakSet backed by strong references (lodash memoize / cloneDeep)",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "47",
       "depends_on": [],
       "files": [],
@@ -17278,8 +17278,8 @@
       "id": "1243",
       "title": "for...in / Object.keys enumeration of compiled-object properties (lodash Tier 3)",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "47",
       "depends_on": [],
       "files": [],
@@ -17324,11 +17324,11 @@
     },
     {
       "id": "1247",
-      "title": "compiler: typed string[] local with path.split('/') initializer triggers struct-type mismatch",
+      "title": "compiler: typed `string[]` local with `path.split('/')` initializer triggers struct-type mismatch",
       "priority": "medium",
       "status": "done",
       "raw_status": "done",
-      "sprint": "47",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "npm-library-support",
@@ -17374,8 +17374,8 @@
       "id": "1251",
       "title": "baseline-validate: TS checker non-determinism causes 19/50 false failures on main JSONL",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "47",
       "depends_on": [],
       "files": [],
@@ -17386,8 +17386,8 @@
       "id": "1252",
       "title": "SameValue for DefineProperty f64 comparison uses f64.ne — wrong for NaN and ±0",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "",
       "depends_on": [],
       "files": [],
@@ -17398,9 +17398,9 @@
       "id": "1253",
       "title": "OrdinaryToPrimitive returns undefined instead of throwing TypeError (§7.1.1.1 step 6)",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "47",
       "depends_on": [
         "1090"
       ],
@@ -17460,8 +17460,8 @@
       "id": "1258",
       "title": "compileForOfAssignDestructuringExternref must route writes through boxedCaptures.struct.set",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "review",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "47",
       "depends_on": [],
       "files": [],
@@ -17473,8 +17473,8 @@
       "id": "1259",
       "title": "async-gen yield-star sync-fallback leaks unboxed ref-cell into iter capture",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "47",
       "depends_on": [],
       "files": [],
@@ -17486,8 +17486,8 @@
       "id": "1260",
       "title": "Destructuring of null/undefined must throw TypeError per §13.15.5.5",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "review",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "47",
       "depends_on": [],
       "files": [],
@@ -17593,8 +17593,8 @@
       "id": "1267",
       "title": "optimizer: method calls in expression-statement position silently dropped when return value unused",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "47",
       "depends_on": [],
       "files": [],
@@ -17629,8 +17629,8 @@
       "id": "1269",
       "title": "struct field inference Phase 3: consumer-side specialization — emit struct.get without unboxing",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "48",
       "depends_on": [
         "1231"
@@ -17658,8 +17658,8 @@
       "id": "1271",
       "title": "for...in / Object.keys enumeration over compiled objects",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "47",
       "depends_on": [],
       "files": [],
@@ -17670,8 +17670,8 @@
       "id": "1272",
       "title": "Symbol as object key — Symbol.for(), well-known Symbols as property keys",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "47",
       "depends_on": [],
       "files": [],
@@ -17682,8 +17682,8 @@
       "id": "1273",
       "title": "instanceof across compilation boundaries",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "47",
       "depends_on": [],
       "files": [],
@@ -17721,8 +17721,8 @@
       "id": "1276",
       "title": "HOF returning closure — function-valued module exports (createMathOperation pattern)",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "47",
       "depends_on": [],
       "files": [],
@@ -17733,8 +17733,8 @@
       "id": "1277",
       "title": "CJS module.exports → Wasm export mapping in compileProject",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "47",
       "depends_on": [],
       "files": [],
@@ -17745,8 +17745,8 @@
       "id": "1278",
       "title": "Update stale lodash-tier1 stress test — resolver fixed, clamp/add behavior changed",
       "priority": "low",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "47",
       "depends_on": [],
       "files": [],
@@ -17769,8 +17769,8 @@
       "id": "1279",
       "title": "CJS require() call support — static module graph via require() analysis",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "47",
       "depends_on": [
         "1277"
@@ -17783,8 +17783,8 @@
       "id": "1280",
       "title": "IR selector: claim while/for-loop bodies with typed numeric state",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "48",
       "depends_on": [],
       "files": [],
@@ -17795,8 +17795,8 @@
       "id": "1281",
       "title": "IR: optional chaining `?.` and `?.()` — IR path support",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "47",
       "depends_on": [],
       "files": [],
@@ -17807,8 +17807,8 @@
       "id": "1282",
       "title": "ESLint Tier 1 stress test — minimal Linter.verify() compilation",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "48",
       "depends_on": [
         "1277",
@@ -17822,8 +17822,8 @@
       "id": "1283",
       "title": "WeakMap host-import dispatch: type-mismatch on set/get/has/delete (carved off from #1242)",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "47",
       "depends_on": [],
       "files": [],
@@ -17834,8 +17834,8 @@
       "id": "1284",
       "title": "Class-typed values in index-signature dicts lose identity through extern_set/extern_get round-trip",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "47",
       "depends_on": [],
       "files": [],
@@ -17846,8 +17846,8 @@
       "id": "1285",
       "title": "Hono Tier 3 stress test — recursive TrieRouter with class-typed Node children",
       "priority": "high",
-      "status": "blocked",
-      "raw_status": "blocked",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "47",
       "depends_on": [
         "1284"
@@ -17860,9 +17860,137 @@
       "id": "1286",
       "title": "Object.keys(any-typed obj).join() throws illegal cast — externref→string-array coerce missing",
       "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "47",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1287",
+      "title": "ESLint entry-point compileProject emits invalid Wasm (`Type index 10 is out of bounds`)",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1288",
+      "title": "TypeScript 7 (@typescript/native-preview) support under --ts7 feature flag",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "platform",
+      "cluster": "platform"
+    },
+    {
+      "id": "1289",
+      "title": "ESLint linter.js direct compile: array.set type mismatch in FileReport_addRuleMessage",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "47",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1290",
+      "title": "perf: test262 runner — TS7 batch-parse via @typescript/native-preview (132× cold speedup)",
+      "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "47",
+      "sprint": "49",
+      "depends_on": [],
+      "files": [],
+      "goal": "performance",
+      "cluster": "performance"
+    },
+    {
+      "id": "1291",
+      "title": "lodash Tier 1b — upgrade add/clamp stress tests to execution-level assertions",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "48",
+      "depends_on": [
+        "1276",
+        "1277",
+        "1279"
+      ],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1292",
+      "title": "lodash Tier 2 stress test — memoize, flow, partial application",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "48",
+      "depends_on": [
+        "1291"
+      ],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1293",
+      "title": "Hono Tier 4 — string[][] array-of-arrays type support + #segments field",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "48",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1294",
+      "title": "test262 worker: reclassify WebAssembly.Exception compile-errors as fail + restart fork",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "48",
+      "depends_on": [],
+      "files": [],
+      "goal": "conformance",
+      "cluster": "conformance"
+    },
+    {
+      "id": "1295",
+      "title": "compiler.ts: re-throw WebAssembly.Exception from internal catch blocks",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "48",
+      "depends_on": [
+        "1294"
+      ],
+      "files": [],
+      "goal": "conformance",
+      "cluster": "conformance"
+    },
+    {
+      "id": "1295",
+      "title": "lodash transitive init: start-function throws WebAssembly.Exception during instantiate (clamp/add)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "48",
       "depends_on": [],
       "files": [],
       "goal": "npm-library-support",
@@ -18623,14 +18751,6 @@
       "target": "1216"
     },
     {
-      "source": "1177",
-      "target": "1223"
-    },
-    {
-      "source": "1205",
-      "target": "1223"
-    },
-    {
       "source": "1207",
       "target": "1227"
     },
@@ -18663,6 +18783,14 @@
       "target": "1199"
     },
     {
+      "source": "1177",
+      "target": "1223"
+    },
+    {
+      "source": "1205",
+      "target": "1223"
+    },
+    {
       "source": "1238",
       "target": "1233"
     },
@@ -18685,6 +18813,26 @@
     {
       "source": "1279",
       "target": "1282"
+    },
+    {
+      "source": "1276",
+      "target": "1291"
+    },
+    {
+      "source": "1277",
+      "target": "1291"
+    },
+    {
+      "source": "1279",
+      "target": "1291"
+    },
+    {
+      "source": "1291",
+      "target": "1292"
+    },
+    {
+      "source": "1294",
+      "target": "1295"
     },
     {
       "source": "321",
@@ -19769,7 +19917,13 @@
         "1282",
         "1284",
         "1285",
-        "1286"
+        "1286",
+        "1287",
+        "1289",
+        "1291",
+        "1292",
+        "1293",
+        "1295"
       ],
       "track": "supporting track"
     },
@@ -19838,7 +19992,8 @@
         "1264",
         "1266",
         "1269",
-        "1270"
+        "1270",
+        "1290"
       ],
       "track": "parallel — does not block conformance goals."
     },
@@ -19908,7 +20063,8 @@
         "1187",
         "1244",
         "1254",
-        "1255"
+        "1255",
+        "1288"
       ],
       "track": "parallel — does not block conformance goals."
     },
@@ -23799,6 +23955,30 @@
       "issue": "1286"
     },
     {
+      "goal": "npm-library-support",
+      "issue": "1287"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1289"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1291"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1292"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1293"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1295"
+    },
+    {
       "goal": "observability",
       "issue": "880"
     },
@@ -23985,6 +24165,10 @@
     {
       "goal": "performance",
       "issue": "1270"
+    },
+    {
+      "goal": "performance",
+      "issue": "1290"
     },
     {
       "goal": "platform",
@@ -24217,6 +24401,10 @@
     {
       "goal": "platform",
       "issue": "1255"
+    },
+    {
+      "goal": "platform",
+      "issue": "1288"
     },
     {
       "goal": "property-model",
@@ -27737,6 +27925,30 @@
       "issue": "1286"
     },
     {
+      "goal": "core-semantics",
+      "issue": "1287"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1289"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1291"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1292"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1293"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1295"
+    },
+    {
       "goal": "platform",
       "issue": "111"
     },
@@ -27937,6 +28149,30 @@
       "issue": "1286"
     },
     {
+      "goal": "platform",
+      "issue": "1287"
+    },
+    {
+      "goal": "platform",
+      "issue": "1289"
+    },
+    {
+      "goal": "platform",
+      "issue": "1291"
+    },
+    {
+      "goal": "platform",
+      "issue": "1292"
+    },
+    {
+      "goal": "platform",
+      "issue": "1293"
+    },
+    {
+      "goal": "platform",
+      "issue": "1295"
+    },
+    {
       "goal": "core-semantics",
       "issue": "25"
     },
@@ -28111,6 +28347,10 @@
     {
       "goal": "core-semantics",
       "issue": "1270"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1290"
     },
     {
       "goal": "standalone-mode",
@@ -28343,6 +28583,10 @@
     {
       "goal": "standalone-mode",
       "issue": "1255"
+    },
+    {
+      "goal": "standalone-mode",
+      "issue": "1288"
     },
     {
       "goal": "core-semantics",
