@@ -1024,6 +1024,50 @@ export class IrFunctionBuilder {
       resultType: null,
     });
   }
+
+  // --- generic structured loops (slice 12 — #1280) ------------------------
+
+  /**
+   * Slice 12 (#1280): emit a `while (cond) body` declarative loop. The
+   * caller pre-collects the cond + body buffers via `collectBodyInstrs`
+   * and threads through the SSA value emitted by the cond's last
+   * instruction. The lowerer emits the canonical
+   * `block { loop { <cond>; i32.eqz; br_if 1; <body>; br 0 } }`
+   * Wasm pattern.
+   */
+  emitWhileLoop(args: { cond: readonly IrInstr[]; condValue: IrValueId; body: readonly IrInstr[] }): void {
+    this.pushInstr({
+      kind: "while.loop",
+      cond: args.cond,
+      condValue: args.condValue,
+      body: args.body,
+      result: null,
+      resultType: null,
+    });
+  }
+
+  /**
+   * Slice 12 (#1280): emit a `for (init; cond; update) body` declarative
+   * loop. `init` is emitted as separate IR instructions BEFORE this
+   * instr (a `let i = 0` is just a `lowerVarDecl`, no special encoding
+   * needed). The instr carries cond, body, update.
+   */
+  emitForLoop(args: {
+    cond: readonly IrInstr[];
+    condValue: IrValueId;
+    body: readonly IrInstr[];
+    update: readonly IrInstr[];
+  }): void {
+    this.pushInstr({
+      kind: "for.loop",
+      cond: args.cond,
+      condValue: args.condValue,
+      body: args.body,
+      update: args.update,
+      result: null,
+      resultType: null,
+    });
+  }
 }
 
 // Convenience: value-id brand with no underlying type map — useful for tests

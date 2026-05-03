@@ -758,5 +758,11 @@ function collectUses(instr: IrInstr): readonly IrValueId[] {
       return [instr.receiver, instr.value];
     case "extern.regex":
       return [];
+    // Slice 12 (#1280): while.loop / for.loop. The cond / body /
+    // update buffers are walked separately by the dead-code analysis
+    // walker; the instr itself only directly references condValue.
+    case "while.loop":
+    case "for.loop":
+      return [instr.condValue];
   }
 }

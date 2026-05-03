@@ -335,6 +335,19 @@ function lowerStatementList(stmts: readonly ts.Statement[], cx: LowerCtx): void 
       lowerForOfStatement(s, cx);
       continue;
     }
+    // Slice 12 (#1280): generic structured `while (cond) body` and
+    // `for (init; cond; update) body` loops. Both lower to a
+    // declarative `{while,for}.loop` IR instr which the lowerer
+    // emits as `block { loop { <cond>; i32.eqz; br_if 1; <body>;
+    // <update?>; br 0 } }`.
+    if (ts.isWhileStatement(s)) {
+      lowerWhileStatement(s, cx);
+      continue;
+    }
+    if (ts.isForStatement(s)) {
+      lowerForStatement(s, cx);
+      continue;
+    }
     // Slice 9 (#1169h): throw / try as a non-tail statement.
     if (ts.isThrowStatement(s)) {
       lowerThrowStatement(s, cx);
@@ -2500,6 +2513,139 @@ function lowerForOfStatement(stmt: ts.ForOfStatement, cx: LowerCtx): void {
   lowerForOfIterFromExternrefValue(stmt, cx, iterableV, loopVarName, valTy?.kind === "externref");
 }
 
+// ---------------------------------------------------------------------------
+// Slice 12 (#1280) — generic structured loops (`while` / `for`)
+// ---------------------------------------------------------------------------
+
+/**
+ * Slice 12 (#1280): lower `while (cond) body` to an IR `while.loop`
+ * declarative instruction.
+ *
+ * Pattern: collect the cond expression's IR into a buffer, capture the
+ * resulting i32 SSA value, collect the body statements into another
+ * buffer, then emit `while.loop`. The lowerer emits the canonical
+ * `block { loop { <cond>; i32.eqz; br_if 1; <body>; br 0 } }` Wasm
+ * pattern.
+ *
+ * The body uses a fresh scope (cloned from `cx.scope`) so any
+ * `let`-decls inside the body don't leak out — the selector's
+ * `mutatedLets` analysis already tagged any outer `let` whose name
+ * the body reassigns as slot-bound, so cross-iteration writes go
+ * through `slot.read` / `slot.write` and survive the loop.
+ */
+function lowerWhileStatement(stmt: ts.WhileStatement, cx: LowerCtx): void {
+  const condInstrs = cx.builder.collectBodyInstrs(() => {
+    lowerExpr(stmt.expression, cx, irVal({ kind: "i32" }));
+  });
+  const condResult = condInstrs[condInstrs.length - 1]?.result;
+  if (condResult === null || condResult === undefined) {
+    throw new Error(`ir/from-ast: while cond produced no SSA value (${cx.funcName})`);
+  }
+  const bodyCx: LowerCtx = { ...cx, scope: new Map(cx.scope) };
+  const bodyInstrs = cx.builder.collectBodyInstrs(() => {
+    lowerStmt(stmt.statement, bodyCx);
+  });
+  cx.builder.emitWhileLoop({
+    cond: condInstrs,
+    condValue: condResult,
+    body: bodyInstrs,
+  });
+}
+
+/**
+ * Slice 12 (#1280): lower `for (init; cond; update) body` to an IR
+ * `for.loop` declarative instruction.
+ *
+ * The init clause is emitted INLINE before the for.loop instr (a
+ * `let` declaration becomes a `lowerVarDecl`; an expression init
+ * becomes a `lowerExpr` whose result is dropped). Cond, update, and
+ * body are collected into separate buffers carried on the for.loop
+ * instr. The loop variable's binding enters scope before
+ * cond/update/body are lowered.
+ */
+function lowerForStatement(stmt: ts.ForStatement, cx: LowerCtx): void {
+  if (!stmt.condition) {
+    throw new Error(`ir/from-ast: for without cond not in slice 12 (${cx.funcName})`);
+  }
+  const innerCx: LowerCtx = { ...cx, scope: new Map(cx.scope) };
+
+  // 1. Init — emit inline before the for.loop instr.
+  if (stmt.initializer) {
+    if (ts.isVariableDeclarationList(stmt.initializer)) {
+      // Synthesize a VariableStatement so we can re-use lowerVarDecl.
+      // The flags carry let/const-ness (already validated by the selector).
+      const synthStmt = ts.factory.createVariableStatement(undefined, stmt.initializer);
+      lowerVarDecl(synthStmt, innerCx);
+    } else {
+      // Expression init — lower as a value, drop the result.
+      void lowerExpr(stmt.initializer, innerCx, irVal({ kind: "f64" }));
+    }
+  }
+
+  // 2. Cond — collect its IR into a buffer.
+  const condInstrs = innerCx.builder.collectBodyInstrs(() => {
+    lowerExpr(stmt.condition!, innerCx, irVal({ kind: "i32" }));
+  });
+  const condResult = condInstrs[condInstrs.length - 1]?.result;
+  if (condResult === null || condResult === undefined) {
+    throw new Error(`ir/from-ast: for cond produced no SSA value (${cx.funcName})`);
+  }
+
+  // 3. Body — collect into a buffer.
+  const bodyInstrs = innerCx.builder.collectBodyInstrs(() => {
+    lowerStmt(stmt.statement, innerCx);
+  });
+
+  // 4. Update — collect into a buffer (or empty if absent).
+  const updateInstrs: IrInstr[] = stmt.incrementor
+    ? innerCx.builder.collectBodyInstrs(() => {
+        lowerForUpdateExpr(stmt.incrementor!, innerCx);
+      })
+    : [];
+
+  innerCx.builder.emitForLoop({
+    cond: condInstrs,
+    condValue: condResult,
+    body: bodyInstrs,
+    update: updateInstrs,
+  });
+}
+
+/**
+ * Slice 12 (#1280): lower the update clause of a `for` loop. Mirrors
+ * the body-statement dispatcher's expression-statement branch (postfix
+ * `i++` / `i--`, prefix, plain assignment, compound assignment) but
+ * drops the result.
+ */
+function lowerForUpdateExpr(expr: ts.Expression, cx: LowerCtx): void {
+  if (ts.isPostfixUnaryExpression(expr) || ts.isPrefixUnaryExpression(expr)) {
+    const op = expr.operator;
+    if ((op === ts.SyntaxKind.PlusPlusToken || op === ts.SyntaxKind.MinusMinusToken) && ts.isIdentifier(expr.operand)) {
+      lowerIncrementDecrement(expr.operand, op, cx);
+      return;
+    }
+  }
+  if (ts.isBinaryExpression(expr)) {
+    const op = expr.operatorToken.kind;
+    if (op === ts.SyntaxKind.EqualsToken && ts.isIdentifier(expr.left)) {
+      lowerIdentifierAssignment(expr.left, expr.right, cx);
+      return;
+    }
+    if (
+      (op === ts.SyntaxKind.PlusEqualsToken ||
+        op === ts.SyntaxKind.MinusEqualsToken ||
+        op === ts.SyntaxKind.AsteriskEqualsToken ||
+        op === ts.SyntaxKind.SlashEqualsToken) &&
+      ts.isIdentifier(expr.left)
+    ) {
+      lowerCompoundAssignment(expr.left, op, expr.right, cx);
+      return;
+    }
+  }
+  // Fallback: lower as an expression and drop the result.
+  void lowerExpr(expr, cx, irVal({ kind: "f64" }));
+}
+
 /**
  * Slice 6 part 3 (#1182) iter-host emit helper, factored out of
  * `lowerForOfStatement` so the string-arm host-strings fall-through can
@@ -2785,10 +2931,35 @@ function lowerStmt(stmt: ts.Statement, cx: LowerCtx): void {
         }
       }
     }
+    // Slice 12 (#1280): postfix `i++` / `i--` and prefix `++i` / `--i`
+    // as expression statements. Desugar to compound assignment by
+    // synthesizing a `PlusEquals`/`MinusEquals` lowering against
+    // an i32(1)/f64(1) literal — the value semantics for use as an
+    // expression-statement match: the RHS is read, modified, written
+    // back, the result is dropped.
+    if (ts.isPostfixUnaryExpression(stmt.expression) || ts.isPrefixUnaryExpression(stmt.expression)) {
+      const op = stmt.expression.operator;
+      if (
+        (op === ts.SyntaxKind.PlusPlusToken || op === ts.SyntaxKind.MinusMinusToken) &&
+        ts.isIdentifier(stmt.expression.operand)
+      ) {
+        lowerIncrementDecrement(stmt.expression.operand, op, cx);
+        return;
+      }
+    }
     throw new Error(`ir/from-ast: unsupported body ExpressionStatement shape in ${cx.funcName}`);
   }
   if (ts.isForOfStatement(stmt)) {
     lowerForOfStatement(stmt, cx);
+    return;
+  }
+  // Slice 12 (#1280): nested while / for loops inside a body buffer.
+  if (ts.isWhileStatement(stmt)) {
+    lowerWhileStatement(stmt, cx);
+    return;
+  }
+  if (ts.isForStatement(stmt)) {
+    lowerForStatement(stmt, cx);
     return;
   }
   // Slice 9 (#1169h) — throw / try inside a body-statement context.
@@ -2887,6 +3058,44 @@ function lowerCompoundAssignment(id: ts.Identifier, compoundOp: ts.SyntaxKind, r
       throw new Error(`ir/from-ast: unsupported compound assign op ${ts.SyntaxKind[compoundOp]} in ${cx.funcName}`);
   }
   const result = cx.builder.emitBinary(binop, lhs, rhsValue, irVal({ kind: "f64" }));
+  cx.builder.emitSlotWrite(binding.slotIndex, result);
+}
+
+/**
+ * Slice 12 (#1280): `<id>++` / `<id>--` / `++<id>` / `--<id>` as an
+ * expression statement. Lowers to a slot read, +/- 1, slot write.
+ * Result value is discarded (we're in expression-statement position).
+ *
+ * Both i32 and f64 slots are supported — the typical loop counter is
+ * f64 (typed `number`) but `type i32 = number` annotated counters use
+ * i32. The binop dispatches on the slot ValType.
+ */
+function lowerIncrementDecrement(id: ts.Identifier, op: ts.SyntaxKind, cx: LowerCtx): void {
+  const binding = cx.scope.get(id.text);
+  if (!binding) {
+    throw new Error(`ir/from-ast: increment/decrement of undeclared "${id.text}" in ${cx.funcName}`);
+  }
+  if (binding.kind !== "slot") {
+    throw new Error(
+      `ir/from-ast: increment/decrement of non-slot "${id.text}" — mutation pre-pass should have detected it (${cx.funcName})`,
+    );
+  }
+  const slotValType = asVal(binding.type);
+  // The IR's binop set only includes f64 arithmetic — i32 add/sub
+  // would need additional binop variants. For now, restrict to f64
+  // counters (the common case for `let i = 0; i++` where `i: number`).
+  // i32-typed counters fall back to legacy via the lowerer's throw.
+  if (!slotValType || slotValType.kind !== "f64") {
+    throw new Error(
+      `ir/from-ast: increment/decrement of non-f64 slot "${id.text}" (${describeIrType(binding.type)}) not in slice 12 (${cx.funcName})`,
+    );
+  }
+  const lhs = cx.builder.emitSlotRead(binding.slotIndex);
+  const isAdd = op === ts.SyntaxKind.PlusPlusToken;
+  const oneIr: IrType = irVal({ kind: "f64" });
+  const one = cx.builder.emitConst({ kind: "f64", value: 1 }, oneIr);
+  const binop: IrBinop = isAdd ? "f64.add" : "f64.sub";
+  const result = cx.builder.emitBinary(binop, lhs, one, oneIr);
   cx.builder.emitSlotWrite(binding.slotIndex, result);
 }
 

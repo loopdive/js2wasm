@@ -651,6 +651,21 @@ function renameInstrOperands(inst: IrInstr, rename: ReadonlyMap<IrValueId, IrVal
     }
     case "extern.regex":
       return inst;
+    // Slice 12 (#1280): while.loop / for.loop. The cond/body/update
+    // buffers carry their own SSA values and are renamed via the
+    // recursive walker in inline-small's body-buffer pass (mirrors
+    // the forof.* handling above). Renaming the condValue keeps the
+    // instr-level reference consistent.
+    case "while.loop": {
+      const cv = mapId(rename, inst.condValue);
+      if (cv === inst.condValue) return inst;
+      return { ...inst, condValue: cv };
+    }
+    case "for.loop": {
+      const cv = mapId(rename, inst.condValue);
+      if (cv === inst.condValue) return inst;
+      return { ...inst, condValue: cv };
+    }
   }
 }
 

@@ -1404,6 +1404,95 @@ export interface IrInstrThrow extends IrInstrBase {
   readonly value: IrValueId;
 }
 
+// ---------------------------------------------------------------------------
+// Generic structured loops (#1280 — IR Phase 4 Slice 12)
+// ---------------------------------------------------------------------------
+//
+// Slice 12 extends the IR's loop coverage beyond the iterator-shaped
+// `forof.*` family. `while.loop` and `for.loop` are statement-level
+// declarative instructions that wrap a condition buffer, a body buffer,
+// and (for `for.loop`) an update buffer. The lowerer emits the
+// canonical `block { loop { <cond>; i32.eqz; br_if 1; <body>; <update?>;
+// br 0 } }` Wasm pattern.
+//
+// Cross-iteration mutable state lives in slots (same convention as the
+// `forof.*` family) — outer-scope `let` bindings that the source code
+// reassigns inside / through the loop are slot-bound during from-ast
+// lowering via the existing `mutatedLets` analysis. SSA values defined
+// inside the body register against the surrounding block via the
+// recursive walks in `lower.ts::registerInstrDefs` /
+// `allocLocalForInstr`; uses inside the body are recorded against a
+// synthetic block id (-1) so any outer-defined operand crosses the
+// loop boundary and pre-materializes into a Wasm local before the
+// loop op runs.
+
+/**
+ * Slice 12 (#1280) — `while (cond) body` loop.
+ *
+ * Lowering pattern:
+ *   block
+ *     loop
+ *       <cond instrs>          ;; computes condValue
+ *       <emit condValue>       ;; pushes the i32 boolean
+ *       i32.eqz
+ *       br_if 1                ;; exit on falsy
+ *       <body instrs>
+ *       br 0                   ;; continue
+ *     end
+ *   end
+ *
+ * `condValue` MUST be the SSA result of an instruction in `cond` (or
+ * an outer-scope value that's loaded into `cond`'s last instr). The
+ * resolver coerces non-i32 values to i32 via the standard truthy
+ * lowering path — for now the from-ast layer enforces an i32 result.
+ *
+ * Result: void (`result: null`).
+ */
+export interface IrInstrWhileLoop extends IrInstrBase {
+  readonly kind: "while.loop";
+  /** Instructions that compute the condition. Re-evaluated per iteration. */
+  readonly cond: readonly IrInstr[];
+  /** SSA value of the condition (an i32 boolean). */
+  readonly condValue: IrValueId;
+  /** Body instructions executed each iteration when the cond is truthy. */
+  readonly body: readonly IrInstr[];
+}
+
+/**
+ * Slice 12 (#1280) — `for (init; cond; update) body` loop.
+ *
+ * The init clause is emitted by the from-ast layer as ordinary IR
+ * statements BEFORE the `for.loop` instr (init is just a let-decl or
+ * an assignment expression statement, no special encoding needed).
+ * The instr carries cond, body, update.
+ *
+ * Lowering pattern:
+ *   block
+ *     loop
+ *       <cond instrs>
+ *       <emit condValue>
+ *       i32.eqz
+ *       br_if 1
+ *       <body instrs>
+ *       <update instrs>        ;; runs after body, before re-evaluating cond
+ *       br 0
+ *     end
+ *   end
+ *
+ * Result: void (`result: null`).
+ */
+export interface IrInstrForLoop extends IrInstrBase {
+  readonly kind: "for.loop";
+  /** Instructions that compute the condition. Re-evaluated per iteration. */
+  readonly cond: readonly IrInstr[];
+  /** SSA value of the condition (an i32 boolean). */
+  readonly condValue: IrValueId;
+  /** Body instructions executed each iteration when the cond is truthy. */
+  readonly body: readonly IrInstr[];
+  /** Update instructions executed after the body each iteration. */
+  readonly update: readonly IrInstr[];
+}
+
 /**
  * Slice 9 (#1169h) — try / catch / finally as a declarative statement-level
  * instr. Mirrors the slice-6 `forof.vec` shape: the body / catch handler /
@@ -1504,7 +1593,10 @@ export type IrInstr =
   | IrInstrExternCall
   | IrInstrExternProp
   | IrInstrExternPropSet
-  | IrInstrRegExpLiteral;
+  | IrInstrRegExpLiteral
+  // Slice 12 (#1280) — generic structured loops.
+  | IrInstrWhileLoop
+  | IrInstrForLoop;
 
 // ---------------------------------------------------------------------------
 // Slot definitions (#1169e — IR Phase 4 Slice 6)

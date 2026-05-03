@@ -415,6 +415,13 @@ function collectInstrUses(instr: IrInstr): readonly IrValueId[] {
       return [instr.receiver, instr.value];
     case "extern.regex":
       return [];
+    // Slice 12 (#1280): while.loop / for.loop. The cond / body / update
+    // buffers are already walked separately by the dead-code analysis
+    // walker (see the forof.* pattern above); the instr itself reports
+    // the condValue as a use so that the SSA def survives DCE.
+    case "while.loop":
+    case "for.loop":
+      return [instr.condValue];
   }
 }
 
