@@ -1,23 +1,28 @@
 ---
 id: 49
-status: planning
+status: active
 created: 2026-05-03
+started: 2026-05-03
 wrap_checklist:
   status_closed: false
   retro_written: false
   diary_updated: false
   end_tag_pushed: false
-  begin_tag_pushed: false
+  begin_tag_pushed: true
 ---
 
 # Sprint 49
 
 **Planned**: 2026-05-03 — seeded from S48 analysis
+**Started**: 2026-05-03
 
 ## Goals
 
-1. **test262 runner performance** — TS7 batch-parse via `@typescript/native-preview` (#1290, 132× cold speedup)
-2. TBD — carry from S48 as issues complete
+1. **Closure/call correctness** — fix call-path bugs surfaced by Hono/lodash stress tests (#1298, #1300, #1301, #1306)
+2. **lodash Tier 2** — memoize, flow, partial application (#1292, unblocked by #1300+#1302+#1303)
+3. **Hono Tier 6** — next steps after Tier 5 landed in S48 (#1297)
+4. **test262 runner TS7 Phase 2** — batch-parse hot path (#1290 Phase 1 done, Phase 2 pending)
+5. **typeof / bitwise cleanup** — #1304 (typeof externref function), #1305 (var init externref leak)
 
 ## Sprint issues
 
