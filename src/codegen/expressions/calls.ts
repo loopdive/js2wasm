@@ -4953,8 +4953,32 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
   if (ts.isIdentifier(expr.expression)) {
     const funcName = expr.expression.text;
 
+    // (#1301) Param/local that shadows an outer function with nested captures:
+    // the funcMap path emits a direct call AND prepends the outer's nested
+    // captures using `cap.outerLocalIdx` indices. Inside a lifted closure
+    // body those indices map to unrelated locals in the lifted fctx, which
+    // produces struct.new validation errors:
+    //   "struct.new[0] expected type f64, found local.get of type anyref".
+    //
+    // Narrow trigger: only redirect when ALL of:
+    //   1. The current fctx has a local/param with this name (real shadow)
+    //   2. The funcMap entry has nestedFuncCaptures (the broken path)
+    //   3. The local has a callable TS type (actually used as a callable)
+    //
+    // Other shadow cases stay on the funcMap path — direct calls that don't
+    // emit cap-prepend logic are already correct, even if a coincidental
+    // local with the same name exists in the current scope.
+    let isLocallyShadowed = false;
+    if (fctx.localMap.has(funcName) && ctx.nestedFuncCaptures.has(funcName)) {
+      const localCalleeTsType = ctx.checker.getTypeAtLocation(expr.expression);
+      const localCallSigs = localCalleeTsType?.getCallSignatures?.();
+      if (localCallSigs && localCallSigs.length > 0) {
+        isLocallyShadowed = true;
+      }
+    }
+
     // Check if this is a closure call
-    let closureInfo = ctx.closureMap.get(funcName);
+    let closureInfo = isLocallyShadowed ? undefined : ctx.closureMap.get(funcName);
 
     if (!closureInfo) {
       closureInfo = resolveClosureInfoFromLocal(ctx, fctx, funcName);
@@ -4968,7 +4992,9 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
     // (e.g. emitLocalTdzCheck → ensureLateImport(__throw_reference_error))
     // shift `ctx.numImportFuncs` and update `ctx.funcMap` entries, but a
     // local `const funcIdx` would hold the pre-shift value.
-    let funcIdx = ctx.funcMap.get(funcName);
+    // (#1301) Skip funcMap when locally shadowed; the local-callable fallback
+    // below handles dispatch via call_ref through the param/local.
+    let funcIdx = isLocallyShadowed ? undefined : ctx.funcMap.get(funcName);
     if (funcIdx === undefined) {
       // Before giving up, check if this identifier is a local/param with callable TS type
       // (e.g. function parameter `fn: (x: number) => number` stored as externref).
