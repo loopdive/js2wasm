@@ -859,6 +859,23 @@ process.on("message", async (msg) => {
     // state.  Recreate immediately so subsequent compilations don't cascade-fail.
     incrementalCompiler = null;
     createFreshCompiler();
+    if (err instanceof WebAssembly.Exception) {
+      // Poisoned String.prototype (or similar built-in) — Wasm throw escaped
+      // from the TS compiler internals. Send fail (not compile_error) and
+      // restart the fork so subsequent tests get a clean environment.
+      process.send({
+        id,
+        status: "fail",
+        error: "wasm exception during compile (poisoned built-in)",
+        isException: true,
+        compileMs: performance.now() - compileStart,
+      });
+      postCompileCleanup();
+      // Flush process.send before exiting so the pool's exit handler can
+      // respawn a clean fork for subsequent tests.
+      process.nextTick(() => process.exit(1));
+      return;
+    }
     process.send({
       id,
       status: "compile_error",
