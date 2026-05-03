@@ -39,6 +39,7 @@ export default defineConfig(async () => {
         "node:fs": resolve(import.meta.dirname, "stubs/node-fs-stub.js"),
         "node:child_process": resolve(import.meta.dirname, "stubs/node-stub.js"),
         "node:os": resolve(import.meta.dirname, "stubs/node-stub.js"),
+        "node:module": resolve(import.meta.dirname, "stubs/node-module-stub.js"),
       },
     },
     server: {
