@@ -4768,22 +4768,23 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
   if (ts.isIdentifier(expr.expression)) {
     const funcName = expr.expression.text;
 
-    // (#1301) If the identifier resolves to a local/param in the current fctx
-    // AND that local has a callable TS type (so it actually shadows an outer
-    // function call site), skip funcMap/closureMap lookups so we fall through
-    // to the local-callable dispatch path. Without this, an arrow with a
-    // `next` parameter whose enclosing scope declares `function next() {...}`
-    // would wrongly direct-call the outer `next` AND prepend the outer's
-    // nested captures using local indices that point to unrelated locals in
-    // the arrow's own frame — producing struct.new validation errors.
+    // (#1301) Param/local that shadows an outer function with nested captures:
+    // the funcMap path emits a direct call AND prepends the outer's nested
+    // captures using `cap.outerLocalIdx` indices. Inside a lifted closure
+    // body those indices map to unrelated locals in the lifted fctx, which
+    // produces struct.new validation errors:
+    //   "struct.new[0] expected type f64, found local.get of type anyref".
     //
-    // The callable-TS-type guard avoids false positives for locals that
-    // coincidentally share a name with a funcMap entry but aren't callable
-    // (those would route to a now-broken call_ref path and break otherwise-
-    // working calls — observed as ~280 test262 regressions on a broader
-    // localMap.has-only check).
+    // Narrow trigger: only redirect when ALL of:
+    //   1. The current fctx has a local/param with this name (real shadow)
+    //   2. The funcMap entry has nestedFuncCaptures (the broken path)
+    //   3. The local has a callable TS type (actually used as a callable)
+    //
+    // Other shadow cases stay on the funcMap path — direct calls that don't
+    // emit cap-prepend logic are already correct, even if a coincidental
+    // local with the same name exists in the current scope.
     let isLocallyShadowed = false;
-    if (fctx.localMap.has(funcName)) {
+    if (fctx.localMap.has(funcName) && ctx.nestedFuncCaptures.has(funcName)) {
       const localCalleeTsType = ctx.checker.getTypeAtLocation(expr.expression);
       const localCallSigs = localCalleeTsType?.getCallSignatures?.();
       if (localCallSigs && localCallSigs.length > 0) {

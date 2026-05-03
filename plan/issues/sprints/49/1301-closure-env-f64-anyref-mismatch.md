@@ -13,7 +13,7 @@ area: codegen
 language_feature: closures, arrow-functions
 goal: npm-library-support
 depends_on: []
-related: [1297, 1298, 1300, 1303]
+related: [1297, 1298, 1300, 1306]
 ---
 # #1301 — Wasm validator rejects closure env: struct.new[0] expected f64, found anyref
 
@@ -129,14 +129,14 @@ fallback dispatches via call_ref through the local's funcref. Without
 this, arrow params that share names with outer functions silently
 break.
 
-### Out of scope (filed as #1303)
+### Out of scope (filed as #1306)
 
 End-to-end execution of the two-middleware test (`exports.test() ===
 "[A][B]end"`) ALSO requires `mws[idx](c, next)` on a closure-typed
 array to dispatch correctly. With #1301's fix applied the binary
 validates and instantiates, but `mws[idx](c, next)` compiles to
 `ref.null extern; drop` — the call is silently dropped. Tracked under
-#1303. Tier 5c "two middlewares" stays skipped pending #1303.
+#1306. Tier 5c "two middlewares" stays skipped pending #1306.
 
 ### Test changes
 
@@ -158,6 +158,6 @@ Added `tests/issue-1301.test.ts` with 4 assertions:
 2. Wasm validator passes for array-of-arrow-middleware patterns —
    **DONE**.
 3. Tier 5 #1297 test 5c passes without skip marker — **DEFERRED to
-   #1303**. The validation gap is closed; the runtime gap is a
+   #1306**. The validation gap is closed; the runtime gap is a
    separate codegen issue (`mws[idx](c, next)` element-access call on
    closure-typed array drops to `ref.null`).

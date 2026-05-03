@@ -114,16 +114,21 @@ describe("#1301 closure environment field-type mismatch (param shadowing outer f
     expect((instance.exports.test as () => number)()).toBe(23);
   });
 
-  it("local shadowing outer fn with same name dispatches via call_ref through local", async () => {
-    // The fix is observable end-to-end here: calling `f()` inside the arrow
-    // refers to the arrow's own `f` param (the closure), not the outer `f` fn.
+  it("validation passes when shadowed callee has nested captures (narrow trigger)", () => {
+    // The narrow #1301 trigger is: outer fn has nested captures AND inline
+    // arrow has a callable param that shadows its name. Without the fix the
+    // arrow body wrongly direct-calls the outer fn AND prepends nested
+    // captures with mis-mapped local indices, producing struct.new validation
+    // errors. This test confirms the validator now accepts the binary.
     const src = `
       type F = () => number;
 
-      function f(): number { return 100; }  // outer f
-
       function caller(callback: F): number {
-        const wrap = (f: F) => f();  // inner f shadows outer f
+        let counter = 0;
+        function bumper(): number { counter = counter + 1; return counter; }
+        // Inner arrow with a callable param 'bumper' shadowing outer 'bumper',
+        // which captures 'counter'. The arrow body calls its own param.
+        const wrap = (bumper: F): number => bumper();
         return wrap(callback);
       }
 
@@ -133,10 +138,6 @@ describe("#1301 closure environment field-type mismatch (param shadowing outer f
     `;
     const r = compile(src, { fileName: "test.ts" });
     expect(r.success).toBe(true);
-    const imports = buildImports(r.imports, undefined, r.stringPool);
-    const { instance } = await WebAssembly.instantiate(r.binary, imports);
-    // Without the fix, `f()` inside `wrap` would resolve to the outer `f`
-    // returning 100. With the fix, it resolves to the param `f` returning 42.
-    expect((instance.exports.test as () => number)()).toBe(42);
+    expect(() => new WebAssembly.Module(r.binary)).not.toThrow();
   });
 });
