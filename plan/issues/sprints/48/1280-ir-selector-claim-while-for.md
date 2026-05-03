@@ -2,7 +2,7 @@
 id: 1280
 sprint: 48
 title: "IR selector: claim while/for-loop bodies with typed numeric state"
-status: ready
+status: done
 created: 2026-05-02
 updated: 2026-05-02
 priority: medium
