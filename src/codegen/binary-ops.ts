@@ -1443,8 +1443,14 @@ export function compileBinaryExpression(
                   { op: "ref.eq" },
                 ],
                 else: [
-                  // Right is not eqref — cannot be equal to a GC ref
-                  { op: "i32.const", value: 0 },
+                  // Right is not eqref. For STRICT equality (===), a GC eqref
+                  // and a non-eqref host externref cannot be ===, so 0 is
+                  // definitive. For LOOSE equality (==), JS coercion may still
+                  // make them equal — e.g. `0 == -0` where the i31ref +0 is
+                  // eqref and the HeapNumber -0 is not. Push -1 sentinel so
+                  // the outer `if (i32.ne result -1)` branches into the host
+                  // fallback (`__host_loose_eq`) which calls JS `==`. (#1134)
+                  { op: "i32.const", value: isStrict ? 0 : -1 },
                 ],
               },
             ];
@@ -1453,7 +1459,7 @@ export function compileBinaryExpression(
           })(),
         ],
         else: [
-          // Left is not eqref — fall through to numeric comparison
+          // Left is not eqref — fall through to numeric / host comparison
           // by pushing -1 as sentinel to indicate "not handled"
           { op: "i32.const", value: -1 },
         ],

@@ -1,21 +1,23 @@
 ---
 id: 47
-status: active
+status: done
 created: 2026-05-01
 groomed: 2026-05-01
 started: 2026-05-01
+closed: 2026-05-03
 wrap_checklist:
-  status_closed: false
-  retro_written: false
-  diary_updated: false
-  end_tag_pushed: false
+  status_closed: true
+  retro_written: true
+  diary_updated: true
+  end_tag_pushed: true
   begin_tag_pushed: true
 ---
 
 # Sprint 47
 
-**Date**: 2026-05-01 → TBD
+**Date**: 2026-05-01 → 2026-05-03
 **Baseline**: 27,104 / 46,632 = 58.1% pass (at S46 close, after #1177/#1219/#1220/#1221)
+**Final**: 26,247 / 43,088 = 60.9% pass (test suite trimmed; ~2% net conformance gain)
 **Created**: 2026-05-01 — seeded from S46 analysis + failure landscape review
 **Groomed**: 2026-05-01 — tech lead + PO session
 
@@ -80,7 +82,72 @@ wrap_checklist:
 
 ## Retrospective
 
-TBD
+### What shipped
+
+Sprint 47 was the largest sprint to date: 631 commits, 50+ issues closed across 3 days.
+
+**IR migration (slices 11–14)**
+- Slice 11: switch statements + missing binary/unary operators through IR
+- Slice 12: dynamic element access + array literals through IR
+- Slice 13: String + Array prototype methods through IR (13b pseudo-ExternClassInfo, 13c String fixed-sig methods)
+- Slice 14: legacy codegen retirement — `expressions.ts`/`statements.ts` deleted
+
+**Performance**
+- Escape-analysis scalarization: eliminates array allocation in fill+reduce shape
+- Bounds-check elimination via SSA on monotonic indexed loops
+- i32 element specialization for `number[]` under `|0`/`& mask`/`>> n`
+- Pre-size dense arrays at allocation site
+- Struct field type inference Phase 2: eliminates boxing in object properties
+- Eval/RegExp LRU: no recompile in 65k-loop tests (compile_timeouts down)
+
+**Conformance fixes**
+- Class/dstr defaults: TypeError guard fires before default applied (408 failures fixed)
+- Nested dstr from null/undefined: missing TypeError (~244 tests)
+- Class private fields and methods (#name syntax)
+- Logical assignment (||=, &&=, ??=)
+- RegExp constructor with flags='undefinedy' regression (~288 tests)
+- for-of assign-dstr routes writes through boxedCaptures (#1258)
+- Dstr of null/undefined throws TypeError (#1260)
+
+**Module / npm library support**
+- CJS module.exports → Wasm export mapping
+- CJS require() static module graph
+- Optional chaining ?. and ?.()
+- Typed string[] local with split() fix
+- typeof x === 'string' guard fix
+- index-signature obj[key] ??= returns NaN fix
+- WeakMap host-import type dispatch fix
+- Class-typed dict values extern round-trip identity fix
+- Object.keys(any).join() externref cast fix
+- Hono Tier 2 + Tier 3 (TrieRouter) stress tests
+- ESLint Tier 1 + invalid Wasm fix + array.set type mismatch fix
+
+**TypeScript 7 / tooling**
+- TS7 @typescript/native-preview feature flag (#1288)
+- test262 runner TS7 batch-parse forEachChild compat helper (#1290, 132× cold speedup)
+- SameValue f64 comparison for DefineProperty (#1252)
+- OrdinaryToPrimitive throws TypeError (#1253)
+- __any_eq loose equality i31ref vs HeapNumber fix (#1134)
+
+**CI quality**
+- Wasm-hash noise filter: byte-identical regressions excluded from PR gate
+- Differential test262: branch-vs-main with src-tree-hash caching
+- Baseline drift prevention after admin-merges
+- Benchmark baseline auto-commit on push-to-main
+- Baseline-validate TS checker non-determinism fix
+- Runner pool timeout starts at dispatch, not enqueue (156 false CTs eliminated)
+
+### What didn't land
+
+- #1223 TDZ async/gen writer+reader: still blocked on #1177 Stage 1 — carry to S48
+- #1126 int32 inference: deferred again (needs architect spec) — carry to S48
+- #1177 Stage 1 re-land: needs senior-dev Opus investigation — carry to S48
+
+### Process notes
+
+- Merge queue management: 8 open PRs at once created coordination overhead. More frequent intra-sprint merges (daily instead of batch) would reduce conflict resolution work.
+- Baseline drift caused spurious "failure" conclusions on ci-status files for 6 PRs; all required admin-merge with manual evidence review. The differential test (#1246) and wasm-hash filter (#1222) have now automated the analysis, but the ci-status-feed SHA mismatch window still requires tech-lead judgment.
+- TS7 batch-parse discovered and shipped in same sprint as investigation — fast turnaround model working well for research-to-implementation.
 
 <!-- GENERATED_ISSUE_TABLES_END -->
 

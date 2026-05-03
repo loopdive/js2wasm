@@ -2,7 +2,7 @@
 id: 1242
 sprint: 47
 title: "WeakMap / WeakSet backed by strong references (lodash memoize / cloneDeep)"
-status: in-progress
+status: done
 created: 2026-05-02
 updated: 2026-05-02
 priority: high

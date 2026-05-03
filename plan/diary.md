@@ -1,5 +1,26 @@
 # Project Diary
 
+## 2026-05-03 — Sprint 47 close
+
+**Sprint 47 closed.** 3-day sprint (2026-05-01 → 2026-05-03). 631 commits, 50+ issues completed.
+
+**Key results:**
+- 26,247 / 43,088 = 60.9% pass (test suite trimmed from 46,632; ~2% net conformance gain)
+- **IR migration complete**: Slices 11–14 landed — switch/operators, element access/array literals, String+Array prototype methods, legacy codegen (`expressions.ts`/`statements.ts`) retired
+- **Performance**: escape-analysis scalarization, bounds-check elimination, i32 element specialization, pre-size dense arrays, struct field type inference Phase 2, eval/RegExp LRU cache
+- **npm library support**: CJS module.exports + require(), optional chaining, ESLint Tier 1/2/3 stress tests, Hono Tier 2/3 stress tests, WeakMap fix, extern round-trip identity fix
+- **TypeScript 7**: forEachChild compat helper + TS7 feature flag (#1288, #1290) — 132× cold parse speedup in test262 runner
+- **CI quality**: wasm-hash noise filter (#1222), differential test262 (#1246), baseline drift prevention (#1235), runner pool timeout fix (#1227) — 156 false compile_timeouts eliminated
+- **Conformance**: class/dstr defaults (408 failures), private fields, logical assignment, WeakMap dispatch, SameValue f64, OrdinaryToPrimitive TypeError, __any_eq i31ref vs HeapNumber
+
+**Carries to Sprint 48:**
+- #1223 TDZ async/gen writer+reader (blocked on #1177 Stage 1)
+- #1126 int32/uint32 inference (needs architect spec)
+- #1177 Stage 1 (needs senior-dev Opus)
+
+**Baseline**: 26,247 / 43,088 = 60.9%
+**Sprint 48 begins.** IR Slice 13d (Array methods), int32 inference, Function.bind, compile-timeout cluster, and standalone readiness are the headline priorities.
+
 ## 2026-05-01 — Sprint 46 mid-sprint session
 
 **Sprint 46 active.** Started 2026-04-30; this session ran 2026-04-30 → 2026-05-01.

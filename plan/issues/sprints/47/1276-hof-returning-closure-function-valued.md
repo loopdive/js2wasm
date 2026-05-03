@@ -2,7 +2,7 @@
 id: 1276
 sprint: 47
 title: "HOF returning closure — function-valued module exports (createMathOperation pattern)"
-status: in-progress
+status: done
 created: 2026-05-02
 updated: 2026-05-02
 priority: high

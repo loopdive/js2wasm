@@ -1268,31 +1268,42 @@ function staticTypeOfFor(t: IrType): string | null {
 }
 
 /**
- * Optional-chaining gate (#1281). Returns true when the TypeScript type
- * could carry `null`, `undefined`, `void`, `unknown`, or `any` — i.e.
- * cases where the IR's eager-evaluation primitives (no short-circuit
- * `if/else` for property access) cannot safely evaluate the receiver.
- * Returns false when the type checker has narrowed the union to
- * non-nullish, in which case `?.` is redundant safety syntax and the
- * IR can lower it as a regular access.
+ * Optional-chaining gate (#1281). Returns true when the lowered IrType
+ * could carry a null reference at runtime — i.e. cases where the IR's
+ * eager-evaluation primitives (no short-circuit `if/else` for property
+ * access) cannot safely evaluate the receiver.
  *
- * `any` is treated as nullable to be safe — the source could carry
- * a null value at runtime and we have no static guarantee otherwise.
+ * Conservative: anything that's not a known non-null kind (`object`,
+ * `class`, `string`, `extern` class, `closure`, `vec`, or `val.kind:
+ * "ref"`) is treated as nullable. That's slightly stricter than spec
+ * semantics but keeps the gate sound — the legacy fallback handles all
+ * remaining cases correctly.
  */
-function isPossiblyNullable(type: ts.Type, checker: ts.TypeChecker): boolean {
-  if (type.flags & (ts.TypeFlags.Null | ts.TypeFlags.Undefined | ts.TypeFlags.Void)) return true;
-  if (type.flags & ts.TypeFlags.Any) return true;
-  if (type.flags & ts.TypeFlags.Unknown) return true;
-  if (type.isUnion()) {
-    for (const t of type.types) {
-      if (isPossiblyNullable(t, checker)) return true;
+function isIrTypeNullable(t: IrType): boolean {
+  switch (t.kind) {
+    case "object":
+    case "class":
+    case "string":
+    case "closure":
+      return false;
+    case "extern":
+      // Host-class externref values (Map, RegExp, ...) — externref is
+      // nullable at the JS host level. Treat as nullable for `?.` gating.
+      return true;
+    case "val": {
+      const v = t.val;
+      // Non-null reference types in WasmGC are `ref`. Vecs/typed arrays
+      // surface as `ref` to a registered struct. Everything else
+      // (ref_null, externref, eqref, anyref, funcref, primitives) can
+      // carry null at the JS source level.
+      return v.kind !== "ref";
     }
+    case "union":
+    case "boxed":
+      return true;
+    default:
+      return true;
   }
-  // Non-strict-null-checks setups treat undefined as a member of every
-  // type. `getNonNullableType` strips the implicit nullish portion;
-  // when the result differs from the input, the input was nullable.
-  const nn = checker.getNonNullableType(type);
-  return nn !== type;
 }
 
 /**
@@ -1312,23 +1323,6 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, cx: LowerCtx): I
   if (!ts.isIdentifier(expr.name)) {
     throw new Error(`ir/from-ast: computed property access not in slice 2 (${cx.funcName})`);
   }
-  // Optional chaining (`obj?.prop`, #1281). For receivers whose TypeScript
-  // type is provably non-null (e.g. `obj: { x: number }` after narrowing),
-  // `?.` is redundant safety syntax and we can emit the regular access.
-  // For genuinely nullable receivers (`T | null | undefined`) the IR has
-  // no short-circuit primitive yet — throw so the function falls back to
-  // legacy, where `compileOptionalPropertyAccess` already emits the
-  // null-guarded `if/else` block.
-  if (expr.questionDotToken) {
-    if (!cx.checker) {
-      throw new Error(`ir/from-ast: optional chaining (?.) without checker not in slice 11 (${cx.funcName})`);
-    }
-    const recvTsType = cx.checker.getTypeAtLocation(expr.expression);
-    if (isPossiblyNullable(recvTsType, cx.checker)) {
-      throw new Error(`ir/from-ast: optional chaining (?.) on nullable receiver not in slice 11 (${cx.funcName})`);
-    }
-    // fall through — treat the access as a regular `.prop` lookup
-  }
   const propName = expr.name.text;
 
   // Receiver type is unknown until we lower it; pass an f64 hint (the
@@ -1336,6 +1330,17 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, cx: LowerCtx): I
   // advisory — string / object lowerings ignore it.
   const recv = lowerExpr(expr.expression, cx, irVal({ kind: "f64" }));
   const recvType = cx.builder.typeOf(recv);
+
+  // Optional chaining (`obj?.prop`, #1281). For receivers whose lowered
+  // IrType is provably non-null (struct shapes, class instances, strings,
+  // non-null refs), `?.` is redundant safety syntax and we lower it like
+  // a regular `.` access. For genuinely nullable IrTypes (ref_null, raw
+  // externref) the IR has no short-circuit primitive yet — throw so the
+  // function falls back to legacy, where `compileOptionalPropertyAccess`
+  // already emits the null-guarded `if/else` block.
+  if (expr.questionDotToken && isIrTypeNullable(recvType)) {
+    throw new Error(`ir/from-ast: optional chaining (?.) on nullable receiver not in slice 11 (${cx.funcName})`);
+  }
 
   if (recvType.kind === "string") {
     // Slice 1 — only `.length` is supported on string receivers.
@@ -1578,22 +1583,15 @@ function phase1PropertyName(name: ts.PropertyName): string | null {
  * ignored — both are bugs.
  */
 function lowerCall(expr: ts.CallExpression, cx: LowerCtx): IrValueId {
-  // Optional call (`fn?.()` / `obj?.method()`, #1281). Same approach as
-  // optional property access: when the callee's TypeScript type is provably
-  // non-null, `?.()` is redundant safety syntax and we lower it like a
-  // regular call. Genuinely nullable callees still throw to the legacy
-  // path, where `compileOptionalCallExpression` emits the null-guarded
-  // `if/else` block.
+  // Optional call (`fn?.()` / `obj?.method()`, #1281). The IR has no
+  // short-circuit primitive for nullable callees, and at this point we
+  // haven't yet lowered the callee/receiver to inspect its IrType. The
+  // safe path is to throw to legacy, where `compileOptionalCallExpression`
+  // already emits the null-guarded `if/else` block. The optional
+  // PROPERTY-ACCESS path (`obj?.prop`) gets the IR fast-path; full
+  // optional-call IR support is a follow-up.
   if (expr.questionDotToken) {
-    if (!cx.checker) {
-      throw new Error(`ir/from-ast: optional call (?.()) without checker not in slice 11 (${cx.funcName})`);
-    }
-    const calleeNode = ts.isPropertyAccessExpression(expr.expression) ? expr.expression.expression : expr.expression;
-    const calleeTsType = cx.checker.getTypeAtLocation(calleeNode);
-    if (isPossiblyNullable(calleeTsType, cx.checker)) {
-      throw new Error(`ir/from-ast: optional call (?.()) on nullable callee not in slice 11 (${cx.funcName})`);
-    }
-    // fall through — treat as a regular call
+    throw new Error(`ir/from-ast: optional call (?.()) not in slice 11 (${cx.funcName})`);
   }
   // Slice 4 (#1169d): method call — `<recv>.<methodName>(args)`. The
   // receiver must lower to an IrType.class; the method must exist on

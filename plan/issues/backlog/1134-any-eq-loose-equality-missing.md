@@ -1,7 +1,7 @@
 ---
 id: 1134
 title: "__any_eq loose equality missing cross-tag coercion — null==undefined, bool==number all return false"
-status: ready
+status: done
 created: 2026-04-17
 updated: 2026-04-17
 priority: medium
@@ -99,8 +99,50 @@ Most TypeScript code uses `===`, not `==`, but test262 exercises both extensivel
 
 ## Acceptance criteria
 
-- [ ] `null == undefined` returns true for any-typed values
-- [ ] `true == 1` returns true for any-typed values
-- [ ] `false == 0` returns true for any-typed values
-- [ ] `"1" == 1` returns true for any-typed values
-- [ ] `undefined == null` returns true for any-typed values
+- [x] `null == undefined` returns true for any-typed values
+- [x] `true == 1` returns true for any-typed values
+- [x] `false == 0` returns true for any-typed values
+- [x] `"1" == 1` returns true for any-typed values
+- [x] `undefined == null` returns true for any-typed values
+
+## Resolution
+
+The original spec described a missing `__any_eq` cross-tag branch. The
+actual behavior on main today is: most cross-tag loose-equality cases
+already route through `__host_loose_eq` (a host import that calls JS
+`==`), and that handles all §7.2.15 coercion correctly — see
+commits `dd6d81150` (#1134 first pass) and `5620e7154` (#1133 string
+content).
+
+A subtler bug remained in the **ref-identity fast path**
+(`compileBinaryEquality` in `src/codegen/binary-ops.ts:1429-1448`): V8
+stores small integer JS Numbers (e.g. `+0`) as `i31ref` (an eqref) and
+HeapNumbers (e.g. `-0`) as non-eqref. When the left operand is eqref
+but the right isn't, the fast path emitted a definitive `i32.const 0`
+("not equal") for both `==` and `===`. That's correct for `===` (no
+coercion) but wrong for `==`, where JS coercion can still make them
+equal — the canonical case being `0 == -0` (which is `true` per §7.2.15).
+
+Fix: emit `i32.const isStrict ? 0 : -1` in that else branch. The `-1`
+sentinel is the same one the rest of the fast path uses to mean
+"defer to host fallback", so the outer `if (i32.ne result -1)` cleanly
+routes loose equality through `__host_loose_eq`. The strict path keeps
+the definitive `0` (so `var b = ...; obj === b` still short-circuits
+when refs aren't comparable).
+
+## Test Results
+
+- `tests/issue-1134.test.ts` extended from 6 to 11 cases. All pass.
+  - Original: null/undefined cross-tag, true/1, false/0, null≠0,
+    null!==undefined.
+  - New: `0 == -0` (i31ref vs HeapNumber), `false == ''`, `"1" == 1`
+    (cross-type loose), object-identity `===`, distinct-objects `==`
+    regression guards.
+
+## Out of scope (separate audit)
+
+The strict-equality numeric-fallback path (`__unbox_number` coerces
+strings) causes pre-existing bugs like `'1' === 1` returning `true`
+and `0 === -0` returning `false`. Those affect `===` only and don't
+appear in this issue's acceptance criteria; they should be tracked
+through a separate strict-equality audit.

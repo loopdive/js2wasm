@@ -2,7 +2,7 @@
 id: 1271
 sprint: 47
 title: "for...in / Object.keys enumeration over compiled objects"
-status: in-progress
+status: done
 created: 2026-05-02
 updated: 2026-05-02
 priority: high
