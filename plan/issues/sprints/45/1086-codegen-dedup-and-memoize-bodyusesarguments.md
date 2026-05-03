@@ -1,5 +1,6 @@
 ---
 id: 1086
+sprint: 45
 title: "codegen: dedup and memoize bodyUsesArguments to eliminate #96's O(N²) re-walk"
 status: done
 created: 2026-04-11

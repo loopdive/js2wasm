@@ -1,5 +1,6 @@
 ---
 id: 1016
+sprint: 45
 title: "Iterator protocol null access — closed/exhausted iterators crash (500+ FAIL)"
 status: done
 created: 2026-04-10

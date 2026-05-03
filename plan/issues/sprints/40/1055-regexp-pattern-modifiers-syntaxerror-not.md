@@ -1,5 +1,6 @@
 ---
 id: 1055
+sprint: 40
 title: "RegExp pattern modifiers: SyntaxError not thrown for invalid modifier syntax"
 status: done
 created: 2026-04-11

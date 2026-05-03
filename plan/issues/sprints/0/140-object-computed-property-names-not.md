@@ -1,5 +1,6 @@
 ---
 id: 140
+sprint: 0
 title: "Issue #140: Object computed property names not working at runtime"
 status: done
 created: 2026-03-11

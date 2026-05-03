@@ -1,5 +1,6 @@
 ---
 id: 335
+sprint: 7
 title: "- Parser comma errors (non-computed-property contexts)"
 status: done
 created: 2026-03-13

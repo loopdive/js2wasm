@@ -1,5 +1,6 @@
 ---
 id: 306
+sprint: 0
 title: "Issue #306: Prefix/postfix increment/decrement compile errors"
 status: done
 created: 2026-03-11

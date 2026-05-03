@@ -1,5 +1,6 @@
 ---
 id: 243
+sprint: 0
 title: "Issue #243: Unsupported assignment target patterns"
 status: done
 created: 2026-03-11

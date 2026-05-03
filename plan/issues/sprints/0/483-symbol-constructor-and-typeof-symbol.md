@@ -1,5 +1,6 @@
 ---
 id: 483
+sprint: 0
 title: "Symbol() constructor and typeof symbol (207 tests)"
 status: done
 created: 2026-03-18

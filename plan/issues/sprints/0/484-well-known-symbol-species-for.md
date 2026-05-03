@@ -1,5 +1,6 @@
 ---
 id: 484
+sprint: 0
 title: "Well-known Symbol.species for constructor delegation (52 tests)"
 status: done
 created: 2026-03-18

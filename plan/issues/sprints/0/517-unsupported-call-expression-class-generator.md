@@ -1,5 +1,6 @@
 ---
 id: 517
+sprint: 0
 title: "Unsupported call expression: class/generator/built-in method calls (2,164+ CE)"
 status: done
 created: 2026-03-18

@@ -1,5 +1,6 @@
 ---
 id: 177
+sprint: 2
 title: "- Bug: Spread operator in new expressions"
 status: done
 created: 2026-03-11

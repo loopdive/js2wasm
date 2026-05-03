@@ -1,5 +1,6 @@
 ---
 id: 53
+sprint: 0
 title: "Issue 53: Numeric separators"
 status: done
 created: 2026-03-02

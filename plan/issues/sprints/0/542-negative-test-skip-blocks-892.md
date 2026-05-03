@@ -1,5 +1,6 @@
 ---
 id: 542
+sprint: 0
 title: "Negative test skip blocks 892 tests"
 status: done
 created: 2026-03-18

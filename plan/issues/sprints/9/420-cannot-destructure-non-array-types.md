@@ -1,5 +1,6 @@
 ---
 id: 420
+sprint: 9
 title: "Cannot destructure non-array types (34 CE)"
 status: done
 created: 2026-03-17

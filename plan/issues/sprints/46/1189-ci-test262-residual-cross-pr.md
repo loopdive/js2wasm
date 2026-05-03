@@ -1,5 +1,6 @@
 ---
 id: 1189
+sprint: 46
 title: "ci(test262): residual cross-PR regression overlap (~95%) from runner-load CT noise — not cache staleness"
 status: wont-fix
 created: 2026-04-27

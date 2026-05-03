@@ -1,5 +1,6 @@
 ---
 id: 1231
+sprint: 47
 title: "perf: struct field type inference — eliminate boxing in object properties"
 status: done
 created: 2026-05-02

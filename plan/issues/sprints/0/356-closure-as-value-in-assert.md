@@ -1,5 +1,6 @@
 ---
 id: 356
+sprint: 0
 title: "- Closure-as-value in assert and array-like objects"
 status: done
 created: 2026-03-13

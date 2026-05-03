@@ -1,5 +1,6 @@
 ---
 id: 1201
+sprint: 46
 title: "credibility: per-path test262 scores in test262-report.json — wire categorical data into landing page and report.html"
 status: done
 created: 2026-04-27

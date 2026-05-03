@@ -1,5 +1,6 @@
 ---
 id: 540
+sprint: 0
 title: "Array out of bounds guards (14+ FAIL)"
 status: done
 created: 2026-03-18

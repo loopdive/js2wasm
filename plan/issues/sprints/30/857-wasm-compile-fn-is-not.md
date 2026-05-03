@@ -1,5 +1,6 @@
 ---
 id: 857
+sprint: 30
 title: "wasm_compile: 'fn is not a function' in Array callback methods (247 tests)"
 status: done
 created: 2026-03-28

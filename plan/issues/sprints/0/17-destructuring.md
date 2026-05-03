@@ -1,5 +1,6 @@
 ---
 id: 17
+sprint: 0
 title: "Issue 17: Destructuring"
 status: done
 created: 2026-02-28

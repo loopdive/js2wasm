@@ -1,5 +1,6 @@
 ---
 id: 478
+sprint: 0
 title: "assert.throws side-effect assertions — 342 tests"
 status: done
 created: 2026-03-18

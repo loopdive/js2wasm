@@ -1,5 +1,6 @@
 ---
 id: 229
+sprint: 0
 title: "Issue #229: Tagged template cache: array out of bounds on top-level repeated calls"
 status: done
 created: 2026-03-11

@@ -1,5 +1,6 @@
 ---
 id: 1043
+sprint: 45
 title: "Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination"
 status: done
 created: 2026-04-11

@@ -1,5 +1,6 @@
 ---
 id: 494
+sprint: 22
 title: "Remove stale skip filters (194 tests)"
 status: done
 created: 2026-03-18

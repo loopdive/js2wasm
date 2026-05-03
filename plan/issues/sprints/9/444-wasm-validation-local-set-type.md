@@ -1,5 +1,6 @@
 ---
 id: 444
+sprint: 9
 title: "Wasm validation: local.set type mismatch (292 CE)"
 status: done
 created: 2026-03-17

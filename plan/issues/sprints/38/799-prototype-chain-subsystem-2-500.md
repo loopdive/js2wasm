@@ -1,5 +1,6 @@
 ---
 id: 799
+sprint: 38
 title: "- Prototype chain subsystem (~2,500 tests)"
 status: done
 created: 2026-03-26

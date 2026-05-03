@@ -1,5 +1,6 @@
 ---
 id: 203
+sprint: 2
 title: "LEB128 encoding overflow for large type indices"
 status: done
 created: 2026-03-11

@@ -1,5 +1,6 @@
 ---
 id: 464
+sprint: 21
 title: "Array bounds check elimination for loops with known bounds"
 status: done
 created: 2026-03-18

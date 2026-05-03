@@ -1,5 +1,6 @@
 ---
 id: 363
+sprint: 0
 title: "- Tagged template .raw property and identity"
 status: done
 created: 2026-03-13

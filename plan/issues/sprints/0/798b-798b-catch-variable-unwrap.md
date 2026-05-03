@@ -1,5 +1,6 @@
 ---
 id: 798b
+sprint: 0
 title: "#798b -- Catch variable unwrap"
 status: done
 created: 2026-03-26

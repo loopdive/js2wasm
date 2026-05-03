@@ -1,5 +1,6 @@
 ---
 id: 401
+sprint: 0
 title: "Wasm validation errors"
 status: done
 created: 2026-03-16

@@ -1,5 +1,6 @@
 ---
 id: 238
+sprint: 0
 title: "Issue #238: Class expression new -- `new (class { ... })()` pattern"
 status: done
 created: 2026-03-11

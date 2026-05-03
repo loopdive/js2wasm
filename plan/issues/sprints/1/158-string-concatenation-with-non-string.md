@@ -1,5 +1,6 @@
 ---
 id: 158
+sprint: 1
 title: "String concatenation with non-string operands"
 status: done
 created: 2026-03-11

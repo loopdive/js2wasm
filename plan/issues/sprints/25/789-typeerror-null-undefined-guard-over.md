@@ -1,5 +1,6 @@
 ---
 id: 789
+sprint: 25
 title: "- TypeError null/undefined guard over-triggering (15,630 tests)"
 status: done
 created: 2026-03-26

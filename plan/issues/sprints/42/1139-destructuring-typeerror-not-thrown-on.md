@@ -1,5 +1,6 @@
 ---
 id: 1139
+sprint: 42
 title: "Destructuring: TypeError not thrown on null/undefined source (RequireObjectCoercible)"
 status: done
 created: 2026-04-20

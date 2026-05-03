@@ -1,5 +1,6 @@
 ---
 id: 1091
+sprint: 41
 title: "Early error detection gap — 94 tests compile when they should throw SyntaxError"
 status: done
 created: 2026-04-12

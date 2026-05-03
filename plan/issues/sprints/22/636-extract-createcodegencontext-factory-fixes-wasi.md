@@ -1,5 +1,6 @@
 ---
 id: 636
+sprint: 22
 title: "Extract createCodegenContext() factory (fixes WASI multi-module bug)"
 status: done
 created: 2026-03-19

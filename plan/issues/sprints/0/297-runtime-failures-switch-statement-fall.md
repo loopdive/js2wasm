@@ -1,5 +1,6 @@
 ---
 id: 297
+sprint: 0
 title: "Issue #297: Runtime failures -- switch statement fall-through"
 status: done
 created: 2026-03-11

@@ -1,5 +1,6 @@
 ---
 id: 573
+sprint: 0
 title: "struct.get on null ref in class tests (751 CE + 223 null pointer FAIL)"
 status: done
 created: 2026-03-19

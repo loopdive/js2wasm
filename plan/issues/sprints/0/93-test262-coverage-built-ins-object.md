@@ -1,5 +1,6 @@
 ---
 id: 93
+sprint: 0
 title: "Issue 93: Test262 coverage — built-ins/Object"
 status: done
 created: 2026-03-09

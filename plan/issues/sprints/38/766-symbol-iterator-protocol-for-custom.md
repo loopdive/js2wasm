@@ -1,5 +1,6 @@
 ---
 id: 766
+sprint: 38
 title: "- Symbol.iterator protocol for custom iterables"
 status: done
 created: 2026-03-23

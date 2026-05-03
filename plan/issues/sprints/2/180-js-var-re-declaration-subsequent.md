@@ -1,5 +1,6 @@
 ---
 id: 180
+sprint: 2
 title: "JS var re-declaration: 'Subsequent variable declarations must have the same type'"
 status: done
 created: 2026-03-11

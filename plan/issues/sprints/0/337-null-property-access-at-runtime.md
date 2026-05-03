@@ -1,5 +1,6 @@
 ---
 id: 337
+sprint: 0
 title: "- Null property access at runtime"
 status: done
 created: 2026-03-13

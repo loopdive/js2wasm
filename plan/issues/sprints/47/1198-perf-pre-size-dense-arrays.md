@@ -1,5 +1,6 @@
 ---
 id: 1198
+sprint: 47
 title: "perf: pre-size dense arrays at allocation site (`const a = []; for ... a[i] = ...` → `new Array(n)`)"
 status: done
 created: 2026-04-27

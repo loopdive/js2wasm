@@ -1,5 +1,6 @@
 ---
 id: 154
+sprint: 1
 title: "Issue #154: while/do-while loop condition evaluation"
 status: done
 created: 2026-03-11

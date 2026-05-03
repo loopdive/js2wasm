@@ -1,5 +1,6 @@
 ---
 id: 239
+sprint: 0
 title: "Issue #239: Element access on struct types (bracket notation)"
 status: done
 created: 2026-03-11

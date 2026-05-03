@@ -1,5 +1,6 @@
 ---
 id: 677
+sprint: 0
 title: "Full property descriptor support (writable/enumerable/configurable)"
 status: done
 created: 2026-03-20

@@ -1,5 +1,6 @@
 ---
 id: 1217
+sprint: 46
 title: "ci(test262): smoke-canary — re-run main HEAD twice with fresh cache, fail if flip rate > 0"
 status: done
 created: 2026-04-30

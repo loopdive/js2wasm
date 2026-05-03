@@ -1,5 +1,6 @@
 ---
 id: 645
+sprint: 0
 title: "Add testTypedArray.js to allowed includes (1,731 skip)"
 status: done
 created: 2026-03-19

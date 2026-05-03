@@ -1,5 +1,6 @@
 ---
 id: 208
+sprint: 2
 title: "Issue #208: Computed property names with complex expressions"
 status: done
 created: 2026-03-11

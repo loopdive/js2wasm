@@ -1,5 +1,6 @@
 ---
 id: 697
+sprint: 16
 title: "- Struct type errors for non-class structs (944 CE residual)"
 status: done
 created: 2026-03-20

@@ -1,5 +1,6 @@
 ---
 id: 547
+sprint: 0
 title: "Restore search/filter UI in report.html"
 status: done
 created: 2026-03-18

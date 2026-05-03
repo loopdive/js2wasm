@@ -1,5 +1,6 @@
 ---
 id: 1136
+sprint: 42
 title: "Array.prototype.flat() and flatMap() not implemented"
 status: done
 created: 2026-04-20

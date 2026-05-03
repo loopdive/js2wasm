@@ -1,5 +1,6 @@
 ---
 id: 1109
+sprint: 45
 title: "lodash-es clamp: Wasm validation error in typeof/RegExp codegen path"
 status: done
 created: 2026-04-12

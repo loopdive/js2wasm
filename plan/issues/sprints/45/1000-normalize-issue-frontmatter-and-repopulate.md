@@ -1,5 +1,6 @@
 ---
 id: 1000
+sprint: 45
 title: "Normalize issue frontmatter and repopulate historical sprint issue assignments"
 status: ready
 created: 2026-04-07

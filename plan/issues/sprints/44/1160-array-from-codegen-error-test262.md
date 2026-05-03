@@ -1,5 +1,6 @@
 ---
 id: 1160
+sprint: 44
 title: "Array.from codegen error — test262-worker prototype poisoning leak (730 tests)"
 status: done
 created: 2026-04-21

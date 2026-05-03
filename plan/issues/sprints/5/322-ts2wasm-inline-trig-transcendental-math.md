@@ -1,5 +1,6 @@
 ---
 id: 322
+sprint: 5
 title: "[ts2wasm] Inline trig/transcendental Math methods as pure Wasm"
 status: done
 created: 2026-03-12

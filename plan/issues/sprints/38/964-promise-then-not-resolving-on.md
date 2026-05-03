@@ -1,5 +1,6 @@
 ---
 id: 964
+sprint: 38
 title: "Promise .then() not resolving on all Promise types (531 tests)"
 status: done
 created: 2026-04-05

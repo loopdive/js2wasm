@@ -1,5 +1,6 @@
 ---
 id: 686
+sprint: 15
 title: "Closure capture type preservation"
 status: done
 created: 2026-03-20

@@ -1,5 +1,6 @@
 ---
 id: 576
+sprint: 21
 title: "TEST_CATEGORIES covers only 10,501 of ~23,000 previously-tested tests"
 status: done
 created: 2026-03-19

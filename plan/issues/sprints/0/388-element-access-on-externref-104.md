@@ -1,5 +1,6 @@
 ---
 id: 388
+sprint: 0
 title: "- Element access on externref (104 CE)"
 status: done
 created: 2026-03-16

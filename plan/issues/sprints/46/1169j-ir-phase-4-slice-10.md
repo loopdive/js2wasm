@@ -1,5 +1,6 @@
 ---
 id: 1169j
+sprint: 46
 title: "IR Phase 4 Slice 10 step B — TypedArray construction + index access through IR"
 status: done
 created: 2026-04-28

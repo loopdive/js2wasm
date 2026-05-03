@@ -1,5 +1,6 @@
 ---
 id: 798a
+sprint: 0
 title: "#798a -- Emit catch_all in try/catch compilation"
 status: done
 created: 2026-03-26

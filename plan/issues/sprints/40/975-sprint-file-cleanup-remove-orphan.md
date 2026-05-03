@@ -1,5 +1,6 @@
 ---
 id: 975
+sprint: 40
 title: "Sprint file cleanup — remove orphan issue refs from closed sprints"
 status: done
 created: 2026-04-06

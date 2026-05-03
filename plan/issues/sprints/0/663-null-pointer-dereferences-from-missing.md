@@ -1,5 +1,6 @@
 ---
 id: 663
+sprint: 0
 title: "- Null pointer dereferences from missing property access (2,050 FAIL)"
 status: done
 created: 2026-03-20

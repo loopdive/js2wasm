@@ -1,5 +1,6 @@
 ---
 id: 548
+sprint: 0
 title: "Security: WAT string injection + memory bounds validation"
 status: done
 created: 2026-03-18

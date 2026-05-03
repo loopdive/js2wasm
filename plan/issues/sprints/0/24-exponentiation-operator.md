@@ -1,5 +1,6 @@
 ---
 id: 24
+sprint: 0
 title: "Issue 24: Exponentiation operator"
 status: done
 created: 2026-02-28

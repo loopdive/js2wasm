@@ -1,5 +1,6 @@
 ---
 id: 936
+sprint: 37
 title: "Add equivalence tests for Math built-in methods"
 status: done
 created: 2026-04-03

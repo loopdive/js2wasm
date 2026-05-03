@@ -1,5 +1,6 @@
 ---
 id: 466
+sprint: 21
 title: "Local reuse / register allocation to reduce local section bloat"
 status: done
 created: 2026-03-18

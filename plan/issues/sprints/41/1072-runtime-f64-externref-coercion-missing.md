@@ -1,5 +1,6 @@
 ---
 id: 1072
+sprint: 41
 title: "runtime: f64 → externref coercion missing on function return in bundled prettier (trimNewlinesEnd validation fail)"
 status: done
 created: 2026-04-11

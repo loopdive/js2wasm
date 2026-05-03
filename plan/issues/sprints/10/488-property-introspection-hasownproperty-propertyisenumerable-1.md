@@ -1,5 +1,6 @@
 ---
 id: 488
+sprint: 10
 title: "Property introspection: hasOwnProperty / propertyIsEnumerable (1,617 tests)"
 status: done
 created: 2026-03-18

@@ -1,5 +1,6 @@
 ---
 id: 332
+sprint: 7
 title: "- Export declaration at top level errors"
 status: done
 created: 2026-03-13

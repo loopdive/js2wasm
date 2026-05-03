@@ -1,5 +1,6 @@
 ---
 id: 984
+sprint: 40
 title: "Regression: compileExpression receives undefined AST nodes in class/private generator paths (154 CE)"
 status: done
 created: 2026-04-06

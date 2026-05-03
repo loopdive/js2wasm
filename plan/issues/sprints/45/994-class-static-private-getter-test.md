@@ -1,5 +1,6 @@
 ---
 id: 994
+sprint: 45
 title: "Class static-private-getter test hits 30s compiler timeout"
 status: done
 created: 2026-04-07

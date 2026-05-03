@@ -1,5 +1,6 @@
 ---
 id: 780
+sprint: 0
 title: "- TypeError (null/undefined access) in built-in method dispatch (~9,128 tests)"
 status: done
 created: 2026-03-25

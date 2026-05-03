@@ -1,5 +1,6 @@
 ---
 id: 26
+sprint: 0
 title: "Issue 26: Array methods via host imports"
 status: done
 created: 2026-02-28

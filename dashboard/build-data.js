@@ -145,6 +145,17 @@ function loadIssues() {
       const fm = parseFrontmatter(text);
       const id = String(fm.id || f.replace(".md", ""));
       const title = fm.title || extractTitle(text);
+      // Sprint membership: prefer explicit `sprint:` frontmatter, but fall
+      // back to the parent directory name. The repo convention is that an
+      // issue file at `plan/issues/sprints/<N>/<id>-…md` belongs to sprint
+      // <N>, even when the frontmatter omits the field. (The dashboard
+      // previously dropped 55+ sprint-47 issues that didn't have an explicit
+      // `sprint:` line — that's the root cause behind "sprint shows only one
+      // ticket" reports.)
+      const dirSegments = file.split("/");
+      const sprintsIdx = dirSegments.lastIndexOf("sprints");
+      const sprintFromDir =
+        sprintsIdx >= 0 && sprintsIdx + 1 < dirSegments.length - 1 ? dirSegments[sprintsIdx + 1] : "";
       return {
         id,
         title,
@@ -153,7 +164,7 @@ function loadIssues() {
         depends_on: fm.depends_on || [],
         goal: fm.goal || "",
         status: normalizeIssueStatus(fm.status),
-        sprint: fm.sprint || "",
+        sprint: fm.sprint || sprintFromDir,
       };
     });
 

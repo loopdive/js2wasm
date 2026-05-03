@@ -1,5 +1,6 @@
 ---
 id: 1098
+sprint: 45
 title: "Audit and reduce patch-layer accumulation in codegen (155 workarounds, special cases, fallbacks)"
 status: ready
 created: 2026-04-12

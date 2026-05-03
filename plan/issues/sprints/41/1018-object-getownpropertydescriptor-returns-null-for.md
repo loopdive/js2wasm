@@ -1,5 +1,6 @@
 ---
 id: 1018
+sprint: 41
 title: "Object.getOwnPropertyDescriptor returns null for missing/accessor properties (160 FAIL)"
 status: done
 created: 2026-04-10

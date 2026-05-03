@@ -1,5 +1,6 @@
 ---
 id: 64
+sprint: 0
 title: "Issue 64: Generators and yield"
 status: done
 created: 2026-03-02

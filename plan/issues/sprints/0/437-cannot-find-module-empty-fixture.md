@@ -1,5 +1,6 @@
 ---
 id: 437
+sprint: 0
 title: "Cannot find module empty_FIXTURE.js -- test infrastructure gap (38 CE)"
 status: done
 created: 2026-03-17

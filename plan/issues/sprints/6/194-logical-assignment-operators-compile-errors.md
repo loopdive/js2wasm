@@ -1,5 +1,6 @@
 ---
 id: 194
+sprint: 6
 title: "Logical assignment operators compile errors"
 status: done
 created: 2026-03-11

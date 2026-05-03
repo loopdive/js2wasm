@@ -1,5 +1,6 @@
 ---
 id: 1168
+sprint: 44
 title: "IR frontend widening — IrType union/boxed, lattice string/object/union, box/unbox instructions"
 status: done
 created: 2026-04-22

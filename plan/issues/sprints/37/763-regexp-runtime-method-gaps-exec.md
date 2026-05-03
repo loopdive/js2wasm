@@ -1,5 +1,6 @@
 ---
 id: 763
+sprint: 37
 title: "- RegExp runtime method gaps (exec, match, replace, split)"
 status: done
 created: 2026-03-22

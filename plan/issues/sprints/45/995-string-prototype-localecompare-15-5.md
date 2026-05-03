@@ -1,5 +1,6 @@
 ---
 id: 995
+sprint: 45
 title: "String.prototype.localeCompare 15.5.4.9_CE hits 30s compiler timeout"
 status: done
 created: 2026-04-07

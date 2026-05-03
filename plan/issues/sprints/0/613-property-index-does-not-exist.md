@@ -1,5 +1,6 @@
 ---
 id: 613
+sprint: 0
 title: "Property 'index' does not exist on string[] (206 CE)"
 status: done
 created: 2026-03-19

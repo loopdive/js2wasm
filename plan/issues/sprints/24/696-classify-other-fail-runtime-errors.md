@@ -1,5 +1,6 @@
 ---
 id: 696
+sprint: 24
 title: "Classify 'other fail' runtime errors (4,649 FAIL)"
 status: done
 created: 2026-03-20

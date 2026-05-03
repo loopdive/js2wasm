@@ -1,5 +1,6 @@
 ---
 id: 949
+sprint: 37
 title: "Research: Integrate Chris Fallin's JS-to-Wasm Blog Series into Documentation"
 status: done
 created: 2026-04-04

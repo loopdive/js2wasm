@@ -1,5 +1,6 @@
 ---
 id: 365
+sprint: 0
 title: "Collection mutation during for-of (15 skip)"
 status: done
 created: 2026-03-13

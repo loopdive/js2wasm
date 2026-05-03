@@ -1,5 +1,6 @@
 ---
 id: 1224
+sprint: 47
 title: "class method dstr-parameter defaults: Cannot destructure null/undefined — guard fires before default is applied (408 failures)"
 status: done
 created: 2026-05-01

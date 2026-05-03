@@ -1,5 +1,6 @@
 ---
 id: 555
+sprint: 0
 title: "Cache invalidation misses uncommitted source changes"
 status: done
 created: 2026-03-18

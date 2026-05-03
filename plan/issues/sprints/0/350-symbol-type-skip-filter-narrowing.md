@@ -1,5 +1,6 @@
 ---
 id: 350
+sprint: 0
 title: "Symbol type skip filter narrowing"
 status: done
 created: 2026-03-13

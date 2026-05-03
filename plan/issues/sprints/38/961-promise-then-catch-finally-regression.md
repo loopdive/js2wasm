@@ -1,5 +1,6 @@
 ---
 id: 961
+sprint: 38
 title: "Promise .then()/.catch()/.finally() regression after #960 removal (1,095 tests)"
 status: done
 created: 2026-04-05

@@ -1,5 +1,6 @@
 ---
 id: 1274
+sprint: 47
 title: "Hono Tier 2 stress test: route registration + basic dispatch via TrieRouter"
 status: done
 created: 2026-05-02

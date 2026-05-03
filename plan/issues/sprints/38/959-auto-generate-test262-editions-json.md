@@ -1,5 +1,6 @@
 ---
 id: 959
+sprint: 38
 title: "Auto-generate test262-editions.json from runner results"
 status: done
 created: 2026-04-05

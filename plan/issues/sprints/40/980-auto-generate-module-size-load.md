@@ -1,5 +1,6 @@
 ---
 id: 980
+sprint: 40
 title: "Auto-generate module size + load time benchmarks for landing page"
 status: done
 created: 2026-04-06

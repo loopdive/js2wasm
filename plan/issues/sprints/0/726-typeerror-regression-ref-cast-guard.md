@@ -1,5 +1,6 @@
 ---
 id: 726
+sprint: 0
 title: "- TypeError regression: ref.cast guard returns ref.null for valid objects (1,948 tests)"
 status: done
 created: 2026-03-22

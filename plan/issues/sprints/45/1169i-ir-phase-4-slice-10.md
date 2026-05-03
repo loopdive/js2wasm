@@ -1,5 +1,6 @@
 ---
 id: 1169i
+sprint: 45
 title: "IR Phase 4 Slice 10 — remaining builtins (RegExp, TypedArray, DataView) through the IR path"
 status: done
 created: 2026-04-27

@@ -1,5 +1,6 @@
 ---
 id: 847
+sprint: 30
 title: "for-await-of / for-of destructuring produces wrong values (660 tests)"
 status: done
 created: 2026-03-28

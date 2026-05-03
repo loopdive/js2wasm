@@ -1,5 +1,6 @@
 ---
 id: 164
+sprint: 1
 title: "Issue #164: variable declaration edge cases"
 status: done
 created: 2026-03-11

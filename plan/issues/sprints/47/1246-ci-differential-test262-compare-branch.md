@@ -1,5 +1,6 @@
 ---
 id: 1246
+sprint: 47
 title: "ci: differential test262 — compare branch tip vs main HEAD with src-tree-hash caching"
 status: done
 created: 2026-05-02

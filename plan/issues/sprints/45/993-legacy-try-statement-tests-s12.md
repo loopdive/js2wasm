@@ -1,5 +1,6 @@
 ---
 id: 993
+sprint: 45
 title: "Legacy try-statement tests S12.14_A9/A11/A12_T3 hit 30s compiler timeout"
 status: done
 created: 2026-04-07

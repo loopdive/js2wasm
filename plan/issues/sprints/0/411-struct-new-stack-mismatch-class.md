@@ -1,5 +1,6 @@
 ---
 id: 411
+sprint: 0
 title: "struct.new stack mismatch -- class/object construction emits wrong argument count"
 status: done
 created: 2026-03-17

@@ -1,5 +1,6 @@
 ---
 id: 198
+sprint: 6
 title: "Switch statement compile errors and failures"
 status: done
 created: 2026-03-11

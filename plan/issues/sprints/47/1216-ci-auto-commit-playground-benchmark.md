@@ -1,5 +1,6 @@
 ---
 id: 1216
+sprint: 47
 title: "ci: auto-commit playground benchmark baseline on push-to-main (architectural follow-up to #1214)"
 status: done
 created: 2026-04-30

@@ -1,5 +1,6 @@
 ---
 id: 462
+sprint: 10
 title: "Null narrowing: skip redundant ref.is_null guards after if (x !== null)"
 status: done
 created: 2026-03-18

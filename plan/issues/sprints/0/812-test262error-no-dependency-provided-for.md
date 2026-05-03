@@ -1,5 +1,6 @@
 ---
 id: 812
+sprint: 0
 title: "- Test262Error 'no dependency provided for extern class' (801 tests)"
 status: done
 created: 2026-03-27

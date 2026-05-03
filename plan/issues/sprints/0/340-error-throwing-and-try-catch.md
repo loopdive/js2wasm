@@ -1,5 +1,6 @@
 ---
 id: 340
+sprint: 0
 title: "- Error throwing and try/catch/finally"
 status: done
 created: 2026-03-13

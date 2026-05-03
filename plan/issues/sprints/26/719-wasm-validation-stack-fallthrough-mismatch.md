@@ -1,5 +1,6 @@
 ---
 id: 719
+sprint: 26
 title: "Wasm validation: stack fallthrough mismatch (310 CE)"
 status: done
 created: 2026-03-21

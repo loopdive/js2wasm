@@ -1,5 +1,6 @@
 ---
 id: 1196
+sprint: 47
 title: "perf: bounds-check elimination via SSA on monotonic indexed array loops"
 status: done
 created: 2026-04-27

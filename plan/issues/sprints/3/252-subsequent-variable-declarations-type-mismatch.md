@@ -1,5 +1,6 @@
 ---
 id: 252
+sprint: 3
 title: "Issue #252: Subsequent variable declarations type mismatch (var re-declaration)"
 status: done
 created: 2026-03-11

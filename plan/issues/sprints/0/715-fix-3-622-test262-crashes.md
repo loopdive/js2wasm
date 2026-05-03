@@ -1,5 +1,6 @@
 ---
 id: 715
+sprint: 0
 title: "- Fix 3,622 test262 crashes: emitNullGuardedStructGet missing ctx parameter"
 status: done
 created: 2026-03-21

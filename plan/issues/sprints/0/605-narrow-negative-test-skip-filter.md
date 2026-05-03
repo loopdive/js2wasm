@@ -1,5 +1,6 @@
 ---
 id: 605
+sprint: 0
 title: "Narrow negative test skip filter (892 tests)"
 status: done
 created: 2026-03-19

@@ -1,5 +1,6 @@
 ---
 id: 286
+sprint: 4
 title: "Logical assignment compile errors -- nullish and short-circuit"
 status: done
 created: 2026-03-11

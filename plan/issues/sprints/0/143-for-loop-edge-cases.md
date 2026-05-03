@@ -1,5 +1,6 @@
 ---
 id: 143
+sprint: 0
 title: "Issue #143: for-loop edge cases"
 status: done
 created: 2026-03-11

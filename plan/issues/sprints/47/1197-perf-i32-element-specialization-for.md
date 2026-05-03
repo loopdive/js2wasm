@@ -1,5 +1,6 @@
 ---
 id: 1197
+sprint: 47
 title: "perf: i32 element specialization for `number[]` arrays under `| 0` / `& mask` / `>> n` patterns"
 status: done
 created: 2026-04-27

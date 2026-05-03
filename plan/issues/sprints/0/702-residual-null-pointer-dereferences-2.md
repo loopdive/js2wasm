@@ -1,5 +1,6 @@
 ---
 id: 702
+sprint: 0
 title: "Residual null pointer dereferences: 2,767 runtime failures"
 status: done
 created: 2026-03-21

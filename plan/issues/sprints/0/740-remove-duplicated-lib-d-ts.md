@@ -1,5 +1,6 @@
 ---
 id: 740
+sprint: 0
 title: "- Remove duplicated lib.d.ts copies, read from typescript package at runtime"
 status: done
 created: 2026-03-22

@@ -1,5 +1,6 @@
 ---
 id: 1208
+sprint: 45
 title: "landing: surface ADRs — rename 'How it works' to 'Approach', add Architecture section with ADR HTML renderings"
 status: done
 created: 2026-04-27

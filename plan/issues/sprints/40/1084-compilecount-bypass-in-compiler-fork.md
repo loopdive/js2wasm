@@ -1,5 +1,6 @@
 ---
 id: 1084
+sprint: 40
 title: "compileCount bypass in compiler-fork-worker.mjs — RECREATE never fires when errors dominate a chunk"
 status: done
 created: 2026-04-11

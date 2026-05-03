@@ -1,5 +1,6 @@
 ---
 id: 406
+sprint: 0
 title: "'base' is possibly null errors"
 status: done
 created: 2026-03-16

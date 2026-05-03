@@ -1,5 +1,6 @@
 ---
 id: 479
+sprint: 0
 title: "Narrow wrapper constructor skip — 155 tests"
 status: done
 created: 2026-03-18

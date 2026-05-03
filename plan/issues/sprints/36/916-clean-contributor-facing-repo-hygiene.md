@@ -1,5 +1,6 @@
 ---
 id: 916
+sprint: 36
 title: "Clean contributor-facing repo hygiene and remove misleading clutter"
 status: done
 created: 2026-04-03

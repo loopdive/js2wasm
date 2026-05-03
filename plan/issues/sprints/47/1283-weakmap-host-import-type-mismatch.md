@@ -1,5 +1,6 @@
 ---
 id: 1283
+sprint: 47
 title: "WeakMap host-import dispatch: type-mismatch on set/get/has/delete (carved off from #1242)"
 status: in-progress
 created: 2026-05-02

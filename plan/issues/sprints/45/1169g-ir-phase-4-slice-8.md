@@ -1,5 +1,6 @@
 ---
 id: 1169g
+sprint: 45
 title: "IR Phase 4 Slice 8 — destructuring and rest/spread through the IR path"
 status: done
 created: 2026-04-27

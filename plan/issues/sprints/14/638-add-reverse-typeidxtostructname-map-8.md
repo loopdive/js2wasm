@@ -1,5 +1,6 @@
 ---
 id: 638
+sprint: 14
 title: "Add reverse typeIdxToStructName map (8 O(N) → O(1))"
 status: done
 created: 2026-03-19

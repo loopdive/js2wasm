@@ -1,5 +1,6 @@
 ---
 id: 389
+sprint: 0
 title: "- Element access on class instances (76 CE)"
 status: done
 created: 2026-03-16

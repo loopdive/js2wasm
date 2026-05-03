@@ -1,5 +1,6 @@
 ---
 id: 669
+sprint: 0
 title: "eval() and new Function() support"
 status: done
 created: 2026-03-20

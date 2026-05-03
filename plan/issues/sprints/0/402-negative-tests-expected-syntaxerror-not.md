@@ -1,5 +1,6 @@
 ---
 id: 402
+sprint: 0
 title: "Negative tests: expected SyntaxError not raised"
 status: done
 created: 2026-03-16

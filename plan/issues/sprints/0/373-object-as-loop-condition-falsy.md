@@ -1,5 +1,6 @@
 ---
 id: 373
+sprint: 0
 title: "Object as loop condition / falsy value handling"
 status: done
 created: 2026-03-13

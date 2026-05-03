@@ -1,5 +1,6 @@
 ---
 id: 822
+sprint: 31
 title: "Wasm type mismatch compile errors (907 CE)"
 status: done
 created: 2026-03-27

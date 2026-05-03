@@ -1,5 +1,6 @@
 ---
 id: 1119
+sprint: 44
 title: "ES2015 SingleNameBinding anonymous function/class naming from destructuring context"
 status: done
 created: 2026-04-14

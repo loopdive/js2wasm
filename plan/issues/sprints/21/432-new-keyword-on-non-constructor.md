@@ -1,5 +1,6 @@
 ---
 id: 432
+sprint: 21
 title: "new keyword on non-constructor builtins causes stack underflow (42 CE)"
 status: done
 created: 2026-03-17

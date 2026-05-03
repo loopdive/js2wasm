@@ -1,5 +1,6 @@
 ---
 id: 948
+sprint: 37
 title: "Systematic WAT analysis of all passing equivalence tests — find codegen patterns to optimize"
 status: done
 created: 2026-04-04

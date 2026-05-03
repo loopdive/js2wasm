@@ -1,5 +1,6 @@
 ---
 id: 695
+sprint: 0
 title: "Emit proper exceptions for TypeError/ReferenceError/etc (4,738 FAIL)"
 status: done
 created: 2026-03-20

@@ -1,5 +1,6 @@
 ---
 id: 1169c
+sprint: 45
 title: "IR Phase 4 Slice 3 — closures (captures, ref cells, transitive captures) through the IR path"
 status: done
 created: 2026-04-26
