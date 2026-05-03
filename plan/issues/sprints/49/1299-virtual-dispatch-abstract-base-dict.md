@@ -159,25 +159,65 @@ with `addUnionImports` index shifting). Filed as Phase 2 follow-up
 within this same issue — the test cases here will start passing once
 Phase 2 lands on top of Phase 1.
 
-## Test Results (Phase 1 — struct subtype fix only)
+## Phase 2 implementation — tag-comparison virtual dispatch
 
-`tests/issue-1299.test.ts` — 4 cases, all still **failing** because
-Cause B is not yet fixed:
-- dict[k].id() dispatches to runtime subclass
-- baseline plain-local Base = new A() | new B()
-- concrete base + override through dict
-- three subclasses through dict
+Implemented `emitVirtualMethodDispatchByTag` in
+`src/codegen/expressions/calls.ts` mirroring the `instanceof` codegen
+pattern: load the receiver's `__tag` field (i32, set in each subclass's
+constructor), compare against each candidate's known `classTag` value,
+call the matching subclass's method body with a `ref.cast_null` to the
+correct subclass struct type. Receiver and arguments are evaluated once
+and saved to temp locals so each branch references them.
 
-WAT inspection confirms Cause A is fixed (the subclass→base copy is
-gone, replaced by `ref.cast null` preserving identity). The static
-dispatch remains the blocker.
+This pattern replaces the earlier `ref.test (ref $A)` cascade attempt
+which produced wrong results (V8 returned A's branch for B values
+even though the ref.test should have failed). Tag comparison sidesteps
+that quirk by reading the explicit `__tag` field that the constructor
+unconditionally initialises.
+
+The dispatch fires whenever the call site collects ≥ 2 candidate
+subclass implementations of a method, either via the "method-not-on-
+receiver" walk-children path (abstract base) or via the
+"method-on-receiver-with-overrides" walk-descendants path (concrete
+base + override).
+
+## Known remaining gap — dict / index-signature reads
+
+The dict path (`dict["k"].id()` where `dict: { [k: string]: Base }`)
+takes a separate code path that statically casts the externref-typed
+dict value to the FIRST candidate subclass struct (e.g. `(ref null A)`)
+and calls that subclass's method directly — never reaching the
+virtual-dispatch collector here. The cast either traps at runtime
+(illegal cast) or compiles to an invalid call signature
+(`call[0] expected type (ref null 3), found ref.as_non_null of type
+(ref 1)`), depending on whether the receiver type is widened first.
+
+Fix needed in the dict / index-signature read path
+(`src/codegen/expressions/assignment.ts` element-access and call-site
+property access for index-signature dicts) to:
+1. Avoid statically picking a single concrete subclass when the value
+   type is an abstract base.
+2. Route the call through the same `emitVirtualMethodDispatchByTag`
+   helper. The helper takes a struct-typed receiver, so the dict path
+   needs to widen to the base struct ref BEFORE invoking dispatch.
+
+Filing as a Phase 3 follow-up since it touches a different file.
+
+## Test Results (Phase 1 + Phase 2)
+
+`tests/issue-1299.test.ts` — 4 cases, **1 pass / 3 fail**:
+- ✓ baseline: plain-local `Base = new A() | new B()` dispatches
+  correctly — virtual dispatch fires, returns 1002 as expected.
+- ✗ dict[k].id() dispatches — fails (Phase 3 needed)
+- ✗ concrete base + override through dict — fails (Phase 3 needed)
+- ✗ three subclasses through dict — CompileError (Phase 3 needed)
 
 Regression check: identical pass/fail counts to main on
 `tests/inheritance.test.ts`, `tests/abstract-classes.test.ts`,
 `tests/private-class-members.test.ts`, `tests/nested-class-declarations.test.ts`,
 `tests/class-method-calls.test.ts`, `tests/class-methods.test.ts`,
 `tests/class-static-private-this.test.ts`. No regressions from the
-struct subtype change.
+struct subtype change OR the virtual dispatch addition.
 
 Hono Tier 1-5 stress tests: 21/25 active pass (4 unrelated skipped) —
 no regressions.
