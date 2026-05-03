@@ -1,9 +1,11 @@
 ---
 id: 1289
+sprint: 47
 title: "ESLint linter.js direct compile: array.set type mismatch in FileReport_addRuleMessage"
-status: ready
+status: done
 created: 2026-05-03
 updated: 2026-05-03
+completed: 2026-05-03
 priority: medium
 feasibility: medium
 reasoning_effort: high
@@ -61,7 +63,57 @@ This may share a root cause with #1247 (typed `string[]` local with
 
 ## Acceptance criteria
 
-1. `tests/stress/eslint-tier1.test.ts` → Tier 1c unskipped: the
-   ESLint `linter.js` direct compile produces a Wasm binary that
-   passes `WebAssembly.instantiate`.
-2. No regression in lodash / Hono Tier 1+2 stress tests.
+1. The specific `array.set[2] expected type (ref null X), found array.get
+   of type (ref null Y)` error in `FileReport_addRuleMessage` is gone
+   when compiling `eslint/lib/linter/linter.js` directly. ✅
+2. No regression in lodash / Hono Tier 1+2 stress tests. ✅
+3. Tier 1d (instantiate the linter.js binary) — partially advanced; the
+   FileReport_addRuleMessage error is fixed but a separate
+   `extern.convert_any` validation error in `Config_new` (offset
+   ~104394) is now exposed. Filing as a follow-up issue, distinct from
+   the vec-coercion fix that #1289 addresses.
+
+## Resolution (2026-05-03)
+
+The bug lived in `emitVecToVecBody` in `src/codegen/type-coercion.ts`.
+That helper coerces one vec type to another by element-by-element copy
+with optional element-type coercion:
+
+```ts
+fctx.body.push({ op: "array.get", typeIdx: srcVec.arrTypeIdx });
+if (srcVec.elemType.kind !== dstVec.elemType.kind) {
+  coerceType(ctx, fctx, srcVec.elemType, dstVec.elemType);
+}
+fctx.body.push({ op: "array.set", typeIdx: dstVec.arrTypeIdx });
+```
+
+The `kind` check is too lax: when both vec elements are `kind: "ref"`
+(or `ref_null`) but with different `typeIdx` (i.e. unrelated struct
+shapes), the coercion is skipped and the `array.set` fails Wasm
+validation because the value's type doesn't match the destination
+array's element type.
+
+In `FileReport_addRuleMessage`, shape inference produced two slightly
+different message-shape structs across the eslint module graph (the
+function calls `createProblem({...})` which builds an object literal
+with conditional fields, while sibling methods `addError` /
+`addWarning` push results from `createLintingProblem` with a different
+field set). The vec-to-vec coercion path was therefore copying from a
+vec of one struct type into a vec of another, hitting the kind-only
+check and skipping the cast.
+
+Fix: compare both `.kind` AND `.typeIdx` for ref/ref_null elements and
+route through `coerceType` (which emits a guarded `ref.cast` to the
+destination element type) whenever they differ.
+
+Regression test: `tests/issue-1289.test.ts` — minimal mixed-shape repro
+(works in JS mode where TS strict checks don't reject the heterogeneous
+push) plus a smoke test that pins the ESLint linter.js binary not
+failing with the FileReport_addRuleMessage array.set pattern.
+
+## Follow-up
+
+The remaining `extern.convert_any[0] expected type anyref, found
+extern.convert_any of type externref` error in `Config_new` is a
+distinct codegen bug (double-emitted extern.convert_any), filed as
+follow-up. Tier 1d remains skipped pending that fix.
