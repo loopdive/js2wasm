@@ -1,5 +1,5 @@
 ---
-id: 1299
+id: 1301
 sprint: 49
 title: "Closure environment field-type mismatch: struct.new[0] expected f64, got anyref"
 status: ready
@@ -13,9 +13,9 @@ area: codegen
 language_feature: closures, arrow-functions
 goal: npm-library-support
 depends_on: []
-related: [1297, 1298]
+related: [1297, 1298, 1300]
 ---
-# #1299 — Wasm validator rejects closure env: struct.new[0] expected f64, found anyref
+# #1301 — Wasm validator rejects closure env: struct.new[0] expected f64, found anyref
 
 ## Background
 
@@ -92,7 +92,7 @@ Likely causes:
 1. The two-middleware compose reproduction above compiles cleanly
 2. Wasm validator passes for array-of-arrow-middleware patterns
 3. Tier 5 #1297 test `5c — compose: two middlewares run in registration
-   order` passes without skip marker
+   order` passes without skip marker (currently skipped with TODO #1301)
 
 ## Files
 

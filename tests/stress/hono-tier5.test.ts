@@ -255,13 +255,15 @@ describe("#1297 Hono Tier 5 — App class + middleware compose + dispatch", () =
    * This case is intentionally simple — both middlewares pass
    * through to next() and concatenate. No early-return short-circuit.
    */
-  // TODO #1299 — two arrow middlewares each calling `next()` produce a
+  // TODO #1301 — two arrow middlewares each calling `next()` produce a
   // closure-env field type mismatch at compile time:
   //   "struct.new[0] expected type f64, found local.get of type anyref"
   // Single-middleware compose works (see short-circuit + empty cases
   // below) so this is specific to multiple arrows in a Middleware[]
-  // literal. Re-enable once #1299 lands.
-  it.skip("Tier 5c — compose: two middlewares run in registration order (#1299)", async () => {
+  // literal. Re-enable once #1301 lands.
+  // Note: This is a separate gap from #1299 (the abstract-base virtual
+  // dispatch bug surfaced during workaround exploration).
+  it.skip("Tier 5c — compose: two middlewares run in registration order (#1301)", async () => {
     const { exports } = await run(`
       ${MIDDLEWARE_SRC}
       export function test(): string {

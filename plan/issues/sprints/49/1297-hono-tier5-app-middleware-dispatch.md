@@ -171,6 +171,14 @@ as the Map shape, different representation. Passing (6):
   lambda passed as a `Next` callback null-deref at call time. Surfaced
   while exploring inline-compose workaround in middleware. Tier 5
   works around by hoisting middleware steps to module-level functions.
+- **#1301** — Wasm validator rejects closure env: `struct.new[0]
+  expected type f64, found local.get of type anyref @+1438` when
+  compiling two arrow middlewares each calling `next()` from a shared
+  `Middleware[]` literal. Single arrow + non-calling-next variants
+  compile fine (see passing 5c short-circuit/empty cases). Distinct
+  from #1300 — fires before runtime, blocks the canonical inline
+  compose pattern. Skipped Tier 5c case `5c — two middlewares run in
+  registration order` references this issue.
 
 ### Regression check
 
