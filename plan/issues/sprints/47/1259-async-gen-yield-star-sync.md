@@ -2,7 +2,7 @@
 id: 1259
 sprint: 47
 title: "async-gen yield-star sync-fallback leaks unboxed ref-cell into iter capture"
-status: in-progress
+status: done
 created: 2026-05-02
 updated: 2026-05-02
 priority: high

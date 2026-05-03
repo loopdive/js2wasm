@@ -2,7 +2,7 @@
 id: 1258
 sprint: 47
 title: "compileForOfAssignDestructuringExternref must route writes through boxedCaptures.struct.set"
-status: review
+status: done
 created: 2026-05-02
 updated: 2026-05-02
 priority: high

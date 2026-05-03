@@ -2,7 +2,7 @@
 id: 1251
 sprint: 47
 title: "baseline-validate: TS checker non-determinism causes 19/50 false failures on main JSONL"
-status: in-progress
+status: done
 created: 2026-05-02
 updated: 2026-05-02
 priority: medium
