@@ -557,6 +557,47 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
 
   const materialized = new Set<IrValueId>();
 
+  /**
+   * #1303 — Defensive coercion for bitwise op operands.
+   *
+   * Bitwise ops (`&`, `|`, `^`, `<<`, `>>`, `>>>`) require f64 on the
+   * stack — their lowering chain `emitJsToInt32` starts with `f64.trunc`
+   * which traps validation if the operand is not f64. The IR generator's
+   * `requireF64` guard in `from-ast.ts` is supposed to prevent any
+   * non-f64-val IR `binary` instruction from reaching the lowerer, but
+   * on lodash `partial.js`'s `mergeData` the lowered operand still
+   * arrives as externref. Suspected root cause (filed as #1305):
+   * module-level `var WRAP_BIND_FLAG = 1` in JS mode is treated as
+   * `any`; the IR generator types the use as f64-val based on the
+   * literal initializer, but the lowered `global.get` returns externref.
+   *
+   * Defense: after `emitValue(v)` for a bitwise operand, check the IR
+   * type. If it is NOT f64-val (the contract), emit `__unbox_number`
+   * to coerce externref → f64. For correctly-typed values the branch
+   * is never taken and codegen is byte-identical.
+   *
+   * Once #1305 lands the IR contract holds across the board and this
+   * helper can be removed.
+   */
+  const coerceToF64ForBitwise = (v: IrValueId, out: Instr[]): void => {
+    let t: IrType;
+    try {
+      t = typeOf(v);
+    } catch {
+      return; // value type unknown — leave as-is
+    }
+    if (t.kind === "val" && t.val.kind === "f64") return; // already f64
+    // Try to resolve __unbox_number; if absent, leave the value alone
+    // (the legacy validator will then surface the type mismatch and we
+    // haven't masked any other contract violation).
+    try {
+      const idx = resolver.resolveFunc({ kind: "func", name: "__unbox_number" });
+      out.push({ op: "call", funcIdx: idx });
+    } catch {
+      // resolver doesn't know __unbox_number — fall through unchanged
+    }
+  };
+
   const emitValue = (v: IrValueId, out: Instr[]): void => {
     const pi = paramIdx.get(v);
     if (pi !== undefined) {
@@ -599,22 +640,29 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
         emitValue(instr.value, out);
         out.push({ op: "global.set", index: resolver.resolveGlobal(instr.target) });
         return;
-      case "binary":
-        emitValue(instr.lhs, out);
-        emitValue(instr.rhs, out);
-        // Slice 11 (#1169n) — JS bitwise composite ops. Each pops two
-        // f64 from the stack, applies JS ToInt32 to each, runs the i32
-        // op, and converts back to f64. We use a per-function scratch
-        // f64 local to stash the right operand while we ToInt32 the
-        // left (Wasm has no general "swap" op).
-        if (
+      case "binary": {
+        const isJsBitwise =
           instr.op === "js.bitand" ||
           instr.op === "js.bitor" ||
           instr.op === "js.bitxor" ||
           instr.op === "js.shl" ||
           instr.op === "js.shr_s" ||
-          instr.op === "js.shr_u"
-        ) {
+          instr.op === "js.shr_u";
+        emitValue(instr.lhs, out);
+        // #1303 — defensive coercion only for JS bitwise ops, where the
+        // lowering's first instruction (`f64.trunc` inside `emitJsToInt32`)
+        // requires f64 on stack. Other binary ops (`f64.add`, `i32.eq`)
+        // are not affected and must NOT be coerced (would break i32
+        // boolean ops). See `coerceToF64ForBitwise` doc + #1305.
+        if (isJsBitwise) coerceToF64ForBitwise(instr.lhs, out);
+        emitValue(instr.rhs, out);
+        if (isJsBitwise) coerceToF64ForBitwise(instr.rhs, out);
+        // Slice 11 (#1169n) — JS bitwise composite ops. Each pops two
+        // f64 from the stack, applies JS ToInt32 to each, runs the i32
+        // op, and converts back to f64. We use a per-function scratch
+        // f64 local to stash the right operand while we ToInt32 the
+        // left (Wasm has no general "swap" op).
+        if (isJsBitwise) {
           const { rhs: rhsSlot, tmp: tmpSlot } = ensureJsBitwiseScratch();
           // Stack: [lhs_f64, rhs_f64]
           out.push({ op: "local.set", index: rhsSlot });
@@ -649,6 +697,7 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
         }
         out.push({ op: instr.op } as unknown as Instr);
         return;
+      }
       case "unary":
         emitValue(instr.rand, out);
         out.push({ op: instr.op } as unknown as Instr);

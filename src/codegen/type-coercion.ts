@@ -6,7 +6,7 @@
  * Contains: coerceType, pushDefaultValue, defaultValueInstrs, coercionInstrs.
  */
 
-import type { ArrayTypeDef, Instr, StructTypeDef, ValType } from "../ir/types.js";
+import type { ArrayTypeDef, Instr, StructTypeDef, TypeDef, ValType } from "../ir/types.js";
 import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
 import type { ClosureInfo, CodegenContext, FunctionContext, OptionalParamInfo } from "./context/types.js";
 import { addUnionImports, ensureAnyHelpers, isAnyValue } from "./index.js";
@@ -672,12 +672,41 @@ function emitSafeStructConversion(
     }
   }
 
+  // (#1299) Wasm GC subtype check: if `from` is a declared subtype of `to`
+  // (via `superTypeIdx` chain on the struct definitions), no conversion is
+  // needed — the value on the stack is already valid as the wider type.
+  // Skipping the field-by-field copy here PRESERVES the runtime subclass
+  // identity, which is required for virtual method dispatch on
+  // base-typed locals (e.g. `const a: Base = new A(); a.id()` where `id`
+  // is overridden in `A`).
+  if (isDeclaredStructSubtype(ctx, fromTypeIdx, toTypeIdx)) {
+    return true;
+  }
+
   // Case 3: struct narrowing — destination fields are a subset of source fields
   const narrowInfo = getStructNarrowInfo(ctx, fromTypeIdx, toTypeIdx);
   if (narrowInfo) {
     return emitStructNarrowBody(ctx, fctx, fromTypeIdx, toTypeIdx, narrowInfo);
   }
 
+  return false;
+}
+
+/** Returns true if `fromTypeIdx` is a declared Wasm subtype of `toTypeIdx`
+ *  via the struct `superTypeIdx` chain (or identical types). Used to skip
+ *  field-copy narrowing when the source ref is already a valid wider ref
+ *  under Wasm GC subtyping (#1299). */
+function isDeclaredStructSubtype(ctx: CodegenContext, fromTypeIdx: number, toTypeIdx: number): boolean {
+  if (fromTypeIdx === toTypeIdx) return true;
+  let cur: number | undefined = fromTypeIdx;
+  let depth = 0;
+  while (cur !== undefined && depth < 64) {
+    if (cur === toTypeIdx) return true;
+    const def: TypeDef | undefined = ctx.mod.types[cur];
+    if (!def || def.kind !== "struct") return false;
+    cur = (def as StructTypeDef).superTypeIdx;
+    depth++;
+  }
   return false;
 }
 
