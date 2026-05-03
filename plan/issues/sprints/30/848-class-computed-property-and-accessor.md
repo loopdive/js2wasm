@@ -1,5 +1,6 @@
 ---
 id: 848
+sprint: 30
 title: "Class computed property and accessor correctness (1,015 tests)"
 status: done
 created: 2026-03-28

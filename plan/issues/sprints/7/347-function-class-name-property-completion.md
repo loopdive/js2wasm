@@ -1,5 +1,6 @@
 ---
 id: 347
+sprint: 7
 title: "- Function/class .name property completion"
 status: done
 created: 2026-03-13

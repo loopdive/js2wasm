@@ -1,5 +1,6 @@
 ---
 id: 490
+sprint: 14
 title: "Function/class .name property (576 tests)"
 status: done
 created: 2026-03-18

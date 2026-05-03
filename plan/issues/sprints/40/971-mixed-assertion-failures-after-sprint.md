@@ -1,5 +1,6 @@
 ---
 id: 971
+sprint: 40
 title: "Mixed assertion failures after sprint 38 merges (~180 tests)"
 status: done
 created: 2026-04-05

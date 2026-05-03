@@ -1,5 +1,6 @@
 ---
 id: 129
+sprint: 1
 title: "propertyHelper.js test262 harness include"
 status: wont-fix
 created: 2026-03-11

@@ -1,5 +1,6 @@
 ---
 id: 1210
+sprint: 46
 title: "labs/benchmarks: js2wasm string-hash Wasmtime lane hits 20s timeout — WasmGC i16-array GC pressure"
 status: done
 created: 2026-04-29

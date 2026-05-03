@@ -1,5 +1,6 @@
 ---
 id: 6
+sprint: 0
 title: "Issue 6: Classes"
 status: done
 created: 2026-02-27

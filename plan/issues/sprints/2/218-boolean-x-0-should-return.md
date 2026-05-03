@@ -1,5 +1,6 @@
 ---
 id: 218
+sprint: 2
 title: "Issue #218: Boolean(x = 0) should return false"
 status: done
 created: 2026-03-11

@@ -1,5 +1,6 @@
 ---
 id: 768
+sprint: 18
 title: "- throwOnNull default regression: ~6400 tests fail with TypeError (null/undefined access)"
 status: done
 created: 2026-03-22

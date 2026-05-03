@@ -1,5 +1,6 @@
 ---
 id: 1037
+sprint: 42
 title: "Symbol.dispose / Symbol.asyncDispose not accessible (30 FAIL)"
 status: done
 created: 2026-04-11

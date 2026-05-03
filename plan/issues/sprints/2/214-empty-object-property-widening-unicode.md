@@ -1,5 +1,6 @@
 ---
 id: 214
+sprint: 2
 title: "Issue #214: Empty object property widening (unicode escape + member-expr tests)"
 status: done
 created: 2026-03-11

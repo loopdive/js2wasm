@@ -1,5 +1,6 @@
 ---
 id: 982
+sprint: 40
 title: "Extract performance benchmark chart into a reusable web component"
 status: done
 created: 2026-04-06

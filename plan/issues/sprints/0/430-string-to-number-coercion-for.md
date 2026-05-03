@@ -1,5 +1,6 @@
 ---
 id: 430
+sprint: 0
 title: "String-to-number coercion for non-addition arithmetic operators (36 CE)"
 status: done
 created: 2026-03-17

@@ -1,5 +1,6 @@
 ---
 id: 1242
+sprint: 47
 title: "WeakMap / WeakSet backed by strong references (lodash memoize / cloneDeep)"
 status: in-progress
 created: 2026-05-02

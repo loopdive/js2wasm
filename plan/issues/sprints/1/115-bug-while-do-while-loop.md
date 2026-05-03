@@ -1,5 +1,6 @@
 ---
 id: 115
+sprint: 1
 title: "Issue 115: Bug — while/do-while loop internal variable scope crash"
 status: done
 created: 2026-03-10

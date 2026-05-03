@@ -1,5 +1,6 @@
 ---
 id: 918
+sprint: 36
 title: "Create a curated batch of contributor-friendly starter issues with exact file ownership and acceptance criteria"
 status: done
 created: 2026-04-03

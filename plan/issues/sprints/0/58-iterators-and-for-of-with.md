@@ -1,5 +1,6 @@
 ---
 id: 58
+sprint: 0
 title: "Issue 58: Iterators and for...of with custom iterables"
 status: done
 created: 2026-03-02

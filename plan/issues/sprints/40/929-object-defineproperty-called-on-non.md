@@ -1,5 +1,6 @@
 ---
 id: 929
+sprint: 40
 title: "Object.defineProperty called on non-object (88 FAIL)"
 status: done
 created: 2026-04-03

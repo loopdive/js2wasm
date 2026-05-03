@@ -1,5 +1,6 @@
 ---
 id: 798
+sprint: 0
 title: "- try/catch JS exception interop (~3,000 tests)"
 status: done
 created: 2026-03-26

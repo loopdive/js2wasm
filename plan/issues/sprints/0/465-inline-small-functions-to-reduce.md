@@ -1,5 +1,6 @@
 ---
 id: 465
+sprint: 0
 title: "Inline small functions to reduce call overhead"
 status: done
 created: 2026-03-18

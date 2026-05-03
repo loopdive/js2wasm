@@ -1,5 +1,6 @@
 ---
 id: 125
+sprint: 1
 title: "Object.defineProperty / property descriptors"
 status: wont-fix
 created: 2026-03-11

@@ -1,5 +1,6 @@
 ---
 id: 67
+sprint: 0
 title: "Issue 67: Closed import objects — replace Proxy with compiler manifest"
 status: done
 created: 2026-03-03

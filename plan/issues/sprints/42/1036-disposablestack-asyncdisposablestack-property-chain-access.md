@@ -1,5 +1,6 @@
 ---
 id: 1036
+sprint: 42
 title: "DisposableStack/AsyncDisposableStack property-chain access produces Wasm null trap (94 FAIL)"
 status: done
 created: 2026-04-11

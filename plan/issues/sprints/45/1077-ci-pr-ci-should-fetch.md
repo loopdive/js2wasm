@@ -1,5 +1,6 @@
 ---
 id: 1077
+sprint: 45
 title: "CI: PR CI should fetch fresh baseline from origin/main at runtime, not read branch-tip copy"
 status: done
 created: 2026-04-11

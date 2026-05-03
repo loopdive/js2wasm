@@ -1,5 +1,6 @@
 ---
 id: 937
+sprint: 37
 title: "Add console.info() and console.debug() as aliases for console.log()"
 status: done
 created: 2026-04-03

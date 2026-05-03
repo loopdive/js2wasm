@@ -1,5 +1,6 @@
 ---
 id: 1179
+sprint: 45
 title: "Improve js2wasm `array-sum` hot-runtime perf — currently ~9× slower than Node and behind Javy"
 status: done
 created: 2026-04-27

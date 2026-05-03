@@ -1,5 +1,6 @@
 ---
 id: 1131
+sprint: 43
 title: "Middle-end SSA IR: implementation plan"
 status: ready
 created: 2026-04-19

@@ -1,5 +1,6 @@
 ---
 id: 314
+sprint: 6
 title: "Issue #314: Performance -- compile time profiling and optimization"
 status: done
 created: 2026-03-11

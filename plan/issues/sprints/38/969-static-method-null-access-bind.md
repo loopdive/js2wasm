@@ -1,5 +1,6 @@
 ---
 id: 969
+sprint: 38
 title: "Static method null access (bind/call) + DataView/TypedArray methods + String.split (22 tests)"
 status: done
 created: 2026-04-05

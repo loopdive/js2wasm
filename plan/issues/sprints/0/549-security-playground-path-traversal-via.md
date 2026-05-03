@@ -1,5 +1,6 @@
 ---
 id: 549
+sprint: 0
 title: "Security: playground path traversal via symlinks"
 status: done
 created: 2026-03-18

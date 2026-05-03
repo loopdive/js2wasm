@@ -1,5 +1,6 @@
 ---
 id: 564
+sprint: 0
 title: "Worker crashed -- 572 tests lost to worker process crashes"
 status: done
 created: 2026-03-19

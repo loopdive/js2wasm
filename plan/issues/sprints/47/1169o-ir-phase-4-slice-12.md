@@ -1,5 +1,6 @@
 ---
 id: 1169o
+sprint: 47
 title: "IR Phase 4 Slice 12 — dynamic element access + array literals through IR"
 status: done
 created: 2026-05-01

@@ -1,5 +1,6 @@
 ---
 id: 668
+sprint: 14
 title: "'String literal not registered' for empty string (43 CE)"
 status: done
 created: 2026-03-20

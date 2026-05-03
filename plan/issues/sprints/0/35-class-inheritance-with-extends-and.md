@@ -1,5 +1,6 @@
 ---
 id: 35
+sprint: 0
 title: "Issue #35: Class inheritance with extends and super"
 status: done
 created: 2026-03-01

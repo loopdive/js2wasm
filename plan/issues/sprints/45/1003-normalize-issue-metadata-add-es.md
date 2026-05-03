@@ -1,5 +1,6 @@
 ---
 id: 1003
+sprint: 45
 title: "Normalize issue metadata: add ES edition, language feature, and task type to all issue frontmatter"
 status: ready
 created: 2026-04-09

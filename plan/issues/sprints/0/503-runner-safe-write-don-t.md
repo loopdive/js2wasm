@@ -1,5 +1,6 @@
 ---
 id: 503
+sprint: 0
 title: "Runner safe-write: don't corrupt report on crash"
 status: done
 created: 2026-03-18

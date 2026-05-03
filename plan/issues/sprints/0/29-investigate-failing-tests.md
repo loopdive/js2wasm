@@ -1,5 +1,6 @@
 ---
 id: 29
+sprint: 0
 title: "Issue 29: Investigate failing tests"
 status: done
 created: 2026-02-28

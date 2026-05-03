@@ -1,5 +1,6 @@
 ---
 id: 280
+sprint: 0
 title: "Issue #280: Function expression compile errors -- name binding and hoisting"
 status: done
 created: 2026-03-11

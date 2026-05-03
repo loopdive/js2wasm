@@ -1,5 +1,6 @@
 ---
 id: 331
+sprint: 0
 title: "- Strict mode arguments/eval identifier restriction"
 status: done
 created: 2026-03-13

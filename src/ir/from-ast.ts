@@ -164,6 +164,8 @@ export interface AstToIrOptions {
    * passes it in.
    */
   readonly resolver?: IrFromAstResolver;
+  /** Optional-chain nullability check (#1281). When absent, `?.` / `?.()` throw to legacy. */
+  readonly checker?: ts.TypeChecker;
 }
 
 /**
@@ -270,6 +272,7 @@ export function lowerFunctionAstToIr(fn: ts.FunctionDeclaration, options: AstToI
     mutatedLets,
     funcKind: isGenerator ? "generator" : "regular",
     generatorBufferSlot,
+    checker: options.checker,
   };
   lowerStatementList(stmts, cx);
 
@@ -634,6 +637,8 @@ interface LowerCtx {
    * `gen.push`; `lowerTail` reads it when emitting `gen.epilogue`.
    */
   readonly generatorBufferSlot?: number;
+  /** Optional-chain nullability check (#1281). When absent, `?.` / `?.()` throw to legacy. */
+  readonly checker?: ts.TypeChecker;
 }
 
 /**
@@ -1302,6 +1307,9 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, cx: LowerCtx): I
   // legacy, where `compileOptionalPropertyAccess` already emits the
   // null-guarded `if/else` block.
   if (expr.questionDotToken) {
+    if (!cx.checker) {
+      throw new Error(`ir/from-ast: optional chaining (?.) without checker not in slice 11 (${cx.funcName})`);
+    }
     const recvTsType = cx.checker.getTypeAtLocation(expr.expression);
     if (isPossiblyNullable(recvTsType, cx.checker)) {
       throw new Error(`ir/from-ast: optional chaining (?.) on nullable receiver not in slice 11 (${cx.funcName})`);
@@ -1564,6 +1572,9 @@ function lowerCall(expr: ts.CallExpression, cx: LowerCtx): IrValueId {
   // path, where `compileOptionalCallExpression` emits the null-guarded
   // `if/else` block.
   if (expr.questionDotToken) {
+    if (!cx.checker) {
+      throw new Error(`ir/from-ast: optional call (?.()) without checker not in slice 11 (${cx.funcName})`);
+    }
     const calleeNode = ts.isPropertyAccessExpression(expr.expression) ? expr.expression.expression : expr.expression;
     const calleeTsType = cx.checker.getTypeAtLocation(calleeNode);
     if (isPossiblyNullable(calleeTsType, cx.checker)) {

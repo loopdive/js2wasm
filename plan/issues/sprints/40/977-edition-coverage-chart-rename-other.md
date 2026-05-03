@@ -1,5 +1,6 @@
 ---
 id: 977
+sprint: 40
 title: "Edition coverage chart: rename 'Other' to 'ES3/Core' or 'Proposals'"
 status: done
 created: 2026-04-06

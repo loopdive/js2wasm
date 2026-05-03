@@ -1,5 +1,6 @@
 ---
 id: 1112
+sprint: 0
 title: "delete operator via undefined sentinel (232 tests)"
 status: done
 created: 2026-03-19

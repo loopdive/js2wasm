@@ -1,5 +1,6 @@
 ---
 id: 906
+sprint: 45
 title: "Compile away TDZ tracking for definite-assignment top-level numeric locals"
 status: done
 created: 2026-04-02

@@ -1,5 +1,6 @@
 ---
 id: 459
+sprint: 0
 title: "Object.defineProperty getter/setter subset"
 status: done
 created: 2026-03-17

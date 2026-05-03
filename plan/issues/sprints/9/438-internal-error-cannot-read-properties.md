@@ -1,5 +1,6 @@
 ---
 id: 438
+sprint: 9
 title: "Internal error: Cannot read properties of undefined in expression compilation (20 CE)"
 status: done
 created: 2026-03-17

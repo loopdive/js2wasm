@@ -1,5 +1,6 @@
 ---
 id: 648
+sprint: 0
 title: "Residual illegal cast (988 FAIL)"
 status: done
 created: 2026-03-19

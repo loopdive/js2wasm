@@ -1,5 +1,6 @@
 ---
 id: 1058
+sprint: 45
 title: "Compile the TypeScript compiler itself to Wasm — self-hosting stress test"
 status: ready
 created: 2026-04-11

@@ -1,5 +1,6 @@
 ---
 id: 633
+sprint: 0
 title: "Object.defineProperty tests fail (297 FAIL)"
 status: done
 created: 2026-03-19

@@ -1,5 +1,6 @@
 ---
 id: 515
+sprint: 0
 title: "Wasm validation: uninitialized non-defaultable local + struct.get/set type errors (~470 CE)"
 status: done
 created: 2026-03-18

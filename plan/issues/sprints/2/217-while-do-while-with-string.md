@@ -1,5 +1,6 @@
 ---
 id: 217
+sprint: 2
 title: "- While/do-while with string/object loop conditions and labeled block break"
 status: done
 created: 2026-03-11

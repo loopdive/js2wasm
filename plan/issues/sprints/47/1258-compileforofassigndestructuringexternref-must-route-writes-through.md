@@ -1,5 +1,6 @@
 ---
 id: 1258
+sprint: 47
 title: "compileForOfAssignDestructuringExternref must route writes through boxedCaptures.struct.set"
 status: review
 created: 2026-05-02

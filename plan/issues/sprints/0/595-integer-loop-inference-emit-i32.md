@@ -1,5 +1,6 @@
 ---
 id: 595
+sprint: 0
 title: "Integer loop inference: emit i32 loop counters in default mode"
 status: done
 created: 2026-03-19

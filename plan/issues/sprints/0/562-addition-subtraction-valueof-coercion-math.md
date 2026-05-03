@@ -1,5 +1,6 @@
 ---
 id: 562
+sprint: 0
 title: "Addition/subtraction valueOf coercion + Math special values (17 FAIL)"
 status: done
 created: 2026-03-19

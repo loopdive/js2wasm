@@ -1,5 +1,6 @@
 ---
 id: 1256
+sprint: 45
 title: "i32 fast path for `*` is not spec-faithful when true product exceeds 2^53"
 status: done
 created: 2026-04-27

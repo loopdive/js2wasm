@@ -1,5 +1,6 @@
 ---
 id: 911
+sprint: 39
 title: "Split statements.ts into control-flow, variables, destructuring, loops, and functions modules"
 status: done
 created: 2026-04-03

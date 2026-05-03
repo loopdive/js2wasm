@@ -1,5 +1,6 @@
 ---
 id: 666
+sprint: 0
 title: "Suppress 'await outside async' diagnostic (146 CE)"
 status: done
 created: 2026-03-20

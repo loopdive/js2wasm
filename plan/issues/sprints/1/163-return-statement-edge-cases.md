@@ -1,5 +1,6 @@
 ---
 id: 163
+sprint: 1
 title: "Issue #163: return statement edge cases"
 status: done
 created: 2026-03-11

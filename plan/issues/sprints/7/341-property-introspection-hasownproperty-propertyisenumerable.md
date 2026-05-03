@@ -1,5 +1,6 @@
 ---
 id: 341
+sprint: 7
 title: "- Property introspection (hasOwnProperty, propertyIsEnumerable)"
 status: done
 created: 2026-03-13

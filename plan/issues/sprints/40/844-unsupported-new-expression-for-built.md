@@ -1,5 +1,6 @@
 ---
 id: 844
+sprint: 40
 title: "Unsupported new expression for built-in classes (85 CE)"
 status: done
 created: 2026-03-28

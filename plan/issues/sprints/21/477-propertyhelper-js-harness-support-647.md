@@ -1,5 +1,6 @@
 ---
 id: 477
+sprint: 21
 title: "propertyHelper.js harness support — 647 tests"
 status: done
 created: 2026-03-18

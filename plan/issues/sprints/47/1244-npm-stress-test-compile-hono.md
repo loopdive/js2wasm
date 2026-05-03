@@ -1,5 +1,6 @@
 ---
 id: 1244
+sprint: 47
 title: "npm stress test: compile Hono web framework to Wasm"
 status: done
 created: 2026-05-02

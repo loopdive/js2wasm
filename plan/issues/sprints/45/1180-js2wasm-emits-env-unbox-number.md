@@ -1,5 +1,6 @@
 ---
 id: 1180
+sprint: 45
 title: "js2wasm emits `env::__unbox_number` (and sibling box/unbox helpers) host imports on `--target wasi` builds"
 status: done
 created: 2026-04-27

@@ -1,5 +1,6 @@
 ---
 id: 774
+sprint: 19
 title: "- Missing early error checks: tests expect SyntaxError but compile successfully"
 status: done
 created: 2026-03-22

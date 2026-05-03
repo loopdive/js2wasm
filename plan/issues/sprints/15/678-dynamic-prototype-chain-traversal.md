@@ -1,5 +1,6 @@
 ---
 id: 678
+sprint: 15
 title: "Dynamic prototype chain traversal"
 status: done
 created: 2026-03-20

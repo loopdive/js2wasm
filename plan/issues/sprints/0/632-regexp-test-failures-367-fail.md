@@ -1,5 +1,6 @@
 ---
 id: 632
+sprint: 0
 title: "RegExp test failures (367 FAIL)"
 status: done
 created: 2026-03-19

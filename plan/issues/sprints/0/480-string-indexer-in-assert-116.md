@@ -1,5 +1,6 @@
 ---
 id: 480
+sprint: 0
 title: "String() indexer in assert — 116 tests"
 status: done
 created: 2026-03-18

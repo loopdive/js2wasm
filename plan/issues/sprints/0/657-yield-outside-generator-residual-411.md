@@ -1,5 +1,6 @@
 ---
 id: 657
+sprint: 0
 title: "Yield outside generator residual (411 CE)"
 status: done
 created: 2026-03-20

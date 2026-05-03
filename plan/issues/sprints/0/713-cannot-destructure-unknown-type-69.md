@@ -1,5 +1,6 @@
 ---
 id: 713
+sprint: 0
 title: "Cannot destructure: unknown type (69 CE)"
 status: done
 created: 2026-03-21

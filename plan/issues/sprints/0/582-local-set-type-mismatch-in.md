@@ -1,5 +1,6 @@
 ---
 id: 582
+sprint: 0
 title: "local.set type mismatch in C_method (84 CE)"
 status: done
 created: 2026-03-19

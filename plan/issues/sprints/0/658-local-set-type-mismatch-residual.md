@@ -1,5 +1,6 @@
 ---
 id: 658
+sprint: 0
 title: "local.set type mismatch residual (659 CE)"
 status: done
 created: 2026-03-20

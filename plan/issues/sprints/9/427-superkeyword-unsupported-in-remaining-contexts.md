@@ -1,5 +1,6 @@
 ---
 id: 427
+sprint: 9
 title: "SuperKeyword unsupported in remaining contexts (11 CE)"
 status: done
 created: 2026-03-17

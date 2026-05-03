@@ -1,5 +1,6 @@
 ---
 id: 231
+sprint: 3
 title: "Issue #231: Member expression property assignment on empty objects (escaped identifiers)"
 status: done
 created: 2026-03-11

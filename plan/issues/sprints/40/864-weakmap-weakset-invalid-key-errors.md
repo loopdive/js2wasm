@@ -1,5 +1,6 @@
 ---
 id: 864
+sprint: 40
 title: "WeakMap/WeakSet invalid key errors (45 FAIL)"
 status: done
 created: 2026-03-29

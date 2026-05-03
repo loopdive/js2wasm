@@ -1,5 +1,6 @@
 ---
 id: 7
+sprint: 0
 title: "Issue 7: Closures / Arrow functions"
 status: done
 created: 2026-02-27

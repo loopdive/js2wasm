@@ -1,5 +1,6 @@
 ---
 id: 1250
+sprint: 47
 title: "logical assignment operators: ||=, &&=, ??= (ES2021)"
 status: done
 created: 2026-05-02

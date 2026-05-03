@@ -1,5 +1,6 @@
 ---
 id: 607
+sprint: 0
 title: "Remaining small skip patterns (302 tests)"
 status: done
 created: 2026-03-19

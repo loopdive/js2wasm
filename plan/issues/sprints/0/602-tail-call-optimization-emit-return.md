@@ -1,5 +1,6 @@
 ---
 id: 602
+sprint: 0
 title: "- Tail call optimization: emit return_call for recursive functions"
 status: done
 created: 2026-03-19

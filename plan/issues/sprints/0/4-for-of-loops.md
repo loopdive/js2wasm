@@ -1,5 +1,6 @@
 ---
 id: 4
+sprint: 0
 title: "Issue 4: for-of loops"
 status: done
 created: 2026-02-27

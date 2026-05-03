@@ -1,5 +1,6 @@
 ---
 id: 145
+sprint: 1
 title: "Issue #145: allowJs type flexibility — boolean/string/void as number"
 status: done
 created: 2026-03-11

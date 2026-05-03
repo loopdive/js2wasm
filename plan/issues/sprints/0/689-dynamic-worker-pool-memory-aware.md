@@ -1,5 +1,6 @@
 ---
 id: 689
+sprint: 0
 title: "Dynamic worker pool: memory-aware scaling with dead worker recovery"
 status: done
 created: 2026-03-20

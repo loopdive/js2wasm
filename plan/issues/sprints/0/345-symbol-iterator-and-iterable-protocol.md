@@ -1,5 +1,6 @@
 ---
 id: 345
+sprint: 0
 title: "- Symbol.iterator and iterable protocol"
 status: done
 created: 2026-03-13

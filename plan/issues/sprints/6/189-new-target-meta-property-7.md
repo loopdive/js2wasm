@@ -1,5 +1,6 @@
 ---
 id: 189
+sprint: 6
 title: "`new.target` meta-property: 7 compile errors"
 status: done
 created: 2026-03-11

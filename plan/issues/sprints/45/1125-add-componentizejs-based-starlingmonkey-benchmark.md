@@ -1,5 +1,6 @@
 ---
 id: 1125
+sprint: 45
 title: "Add ComponentizeJS-based StarlingMonkey benchmark setup with Wizer and Weval"
 status: done
 created: 2026-04-16

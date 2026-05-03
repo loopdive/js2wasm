@@ -1,5 +1,6 @@
 ---
 id: 408
+sprint: 9
 title: "Compiler hangs on for-of with Set mutation during iteration"
 status: done
 created: 2026-03-17

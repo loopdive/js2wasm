@@ -1,5 +1,6 @@
 ---
 id: 502
+sprint: 0
 title: "Quick wins: narrow stale skip filters (~1,160 tests)"
 status: done
 created: 2026-03-18

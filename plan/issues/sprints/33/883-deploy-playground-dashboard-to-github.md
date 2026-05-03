@@ -1,5 +1,6 @@
 ---
 id: 883
+sprint: 33
 title: "Deploy playground + dashboard to GitHub Pages"
 status: done
 created: 2026-03-31

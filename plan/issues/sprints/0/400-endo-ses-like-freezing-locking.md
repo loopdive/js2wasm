@@ -1,5 +1,6 @@
 ---
 id: 400
+sprint: 0
 title: "- Endo/SES-like freezing/locking of insecure language features"
 status: done
 created: 2026-03-16

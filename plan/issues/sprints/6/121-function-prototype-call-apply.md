@@ -1,5 +1,6 @@
 ---
 id: 121
+sprint: 6
 title: "Issue 121: Function.prototype.call/apply"
 status: done
 created: 2026-03-11

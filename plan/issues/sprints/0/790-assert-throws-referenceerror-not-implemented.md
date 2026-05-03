@@ -1,5 +1,6 @@
 ---
 id: 790
+sprint: 0
 title: "- assert.throws(ReferenceError) not implemented (788 tests)"
 status: done
 created: 2026-03-26

@@ -1,5 +1,6 @@
 ---
 id: 467
+sprint: 0
 title: "Constant folding for compile-time evaluable expressions"
 status: done
 created: 2026-03-18

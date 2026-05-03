@@ -1,5 +1,6 @@
 ---
 id: 546
+sprint: 0
 title: "Remaining skip filters: small patterns (460 tests)"
 status: done
 created: 2026-03-18

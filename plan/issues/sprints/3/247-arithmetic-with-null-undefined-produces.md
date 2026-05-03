@@ -1,5 +1,6 @@
 ---
 id: 247
+sprint: 3
 title: "Issue #247: Arithmetic with null/undefined produces wrong results"
 status: done
 created: 2026-03-11

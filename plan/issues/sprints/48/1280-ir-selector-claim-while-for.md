@@ -1,5 +1,6 @@
 ---
 id: 1280
+sprint: 48
 title: "IR selector: claim while/for-loop bodies with typed numeric state"
 status: ready
 created: 2026-05-02

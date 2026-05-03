@@ -1,9 +1,10 @@
 ---
 id: 1282
+sprint: 48
 title: "ESLint Tier 1 stress test — minimal Linter.verify() compilation"
-status: ready
+status: in-progress
 created: 2026-05-02
-updated: 2026-05-02
+updated: 2026-05-03
 priority: medium
 feasibility: hard
 reasoning_effort: high
@@ -12,7 +13,7 @@ area: codegen
 language_feature: classes, Map, WeakMap, CJS, instanceof
 goal: npm-library-support
 depends_on: [1277, 1279]
-related: [1244, 1274]
+related: [1244, 1274, 1287, 1289]
 ---
 # #1282 — ESLint Tier 1 stress test
 
@@ -65,3 +66,38 @@ Roughly in dependency order:
 1. `tests/stress/eslint-tier1.test.ts` exists and runs (all tests pass or have skip markers)
 2. Each skip marker references the specific blocking issue
 3. When all blockers close, at least the trivial `verify('')` case passes
+
+## Resolution (2026-05-03)
+
+`tests/stress/eslint-tier1.test.ts` lands with 5 `it` blocks
+mirroring the Hono / lodash Tier 1 pattern:
+
+| Tier | Assertion | Status |
+|------|-----------|--------|
+| 1a | `compileProject` accepts `import { Linter } from "eslint"` entry | **passes** (1 KB shim binary) |
+| 1b | Tier 1a binary instantiates without Wasm validation errors | skipped → #1287 |
+| 1c | `eslint/lib/linter/linter.js` direct compile succeeds | **passes** (255 KB binary) |
+| 1d | `linter.js` binary instantiates without Wasm validation errors | skipped → #1289 |
+| 1e | `linter.verify("const x = 1;", {})` returns `[]` end-to-end | skipped → #1287, #1289, #1273, #1271, #1275 |
+
+Two new follow-up issues filed during this work:
+
+- **#1287** — minimal `new Linter()` entry compiles but emits invalid
+  Wasm (`Type index 10 is out of bounds`) because the `eslint`
+  package's JS implementation is opaque to the resolver and codegen
+  references a never-declared heap type at index 8.
+- **#1289** — direct `linter.js` compile produces a 255 KB binary
+  that fails Wasm validation in `FileReport_addRuleMessage`
+  (`array.set[2] expected type (ref null 80), found array.get of
+  type (ref null 64)`) — likely shape-inference width mismatch on
+  message-array element type.
+
+The 1c-passing binary (255 KB across the 32-file linter.js graph)
+demonstrates that the CJS resolver + module.exports plumbing
+(#1279, #1277) already handles the depth and breadth of a
+real-world npm package. The remaining gap is codegen correctness
+on the constructed Wasm types, not module resolution.
+
+Tier 1a + 1c stay green as a regression sentinel for the
+compile-time fast path. Tier 1b/1d/1e progressively unskip as their
+referenced issues land.

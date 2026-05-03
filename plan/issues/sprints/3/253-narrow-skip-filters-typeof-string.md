@@ -1,5 +1,6 @@
 ---
 id: 253
+sprint: 3
 title: "Issue #253: Narrow skip filters -- typeof string comparison, loose inequality"
 status: done
 created: 2026-03-11

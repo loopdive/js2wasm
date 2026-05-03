@@ -379,42 +379,42 @@ describe("#1274 Hono Tier 2 — Router with parameterized paths", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Tier 2e — recursive trie with class-typed children (BLOCKED — follow-up)
+// Tier 2e — recursive trie with class-typed children (UNBLOCKED by #1284)
 // ---------------------------------------------------------------------------
 
-describe("#1274 Hono Tier 2 — recursive Node trie (gap-blocked)", () => {
+describe("#1274 Hono Tier 2 — recursive Node trie (post-#1284)", () => {
   /**
    * Tier 2e — Hono's actual `TrieRouter` uses a recursive Node
-   * structure with `#children: { [seg: string]: Node }`. The
-   * **index-signature dict with class-typed values** currently fails
-   * with "dereferencing a null pointer" at runtime — even simple
-   * `set + get` round-trips lose the class instance through the
-   * `__extern_set` / `__extern_get` codepath.
+   * structure with `#children: { [seg: string]: Node }`. Was BLOCKED
+   * by #1284: user `class Node` shadowed the DOM `Node` extern,
+   * registering an orphan `Node_new` host import whose funcMap slot
+   * later collided with `__extern_set` after a late import shift —
+   * `new Node(42)` lowered to `call __extern_set(box(42), undef,
+   * undef)` and trapped on a null deref.
    *
-   * Repro from `.tmp/probe-tier2d.mts`:
-   *
-   * ```ts
-   * class Node { id: number; #children: { [s: string]: Node } = {};
-   *   constructor(id: number) { this.id = id; }
-   *   addChild(seg: string, c: Node): void { this.#children[seg] = c; }
-   *   getChild(seg: string): number { return this.#children[seg].id; }
-   * }
-   * ```
-   *
-   * `addChild + getChild("a")` on a fresh tree throws a wasm null-deref
-   * at the second `__extern_get`'s downstream cast. This is a separate
-   * codegen issue from the patterns Tier 2d exercises and merits its
-   * own follow-up. Tier 2d above provides a working alternative
-   * (parallel-array routes) that satisfies the issue's acceptance
-   * criteria for static + parameterized + 404 paths.
+   * Fix: `collectUsedExternImports` now suppresses extern import
+   * registration for any class name appearing as a user
+   * `ClassDeclaration` / `ClassExpression`. The full recursive trie
+   * is exercised end-to-end in `tests/stress/hono-tier3.test.ts`
+   * (#1285); this Tier 2e block keeps the smallest reproducer
+   * intact as a permanent regression sentinel for the underlying
+   * pattern.
    */
-  it.skip("Tier 2e — recursive Node trie with #children: { [seg: string]: Node } (BLOCKED)", () => {
-    // To unskip:
-    //  1. File a follow-up issue for "index-signature dict with
-    //     class-typed values fails round-trip via __extern_set /
-    //     __extern_get".
-    //  2. Once fixed, uncomment the recursive Node + TrieRouter test
-    //     I drafted in the original Tier 2d (preserved in git
-    //     history at this commit).
+  it("Tier 2e — addChild + getChild roundtrip on `#children: { [s: string]: Node }`", async () => {
+    const { exports } = await run(`
+      class Node {
+        id: number;
+        #children: { [s: string]: Node } = {};
+        constructor(id: number) { this.id = id; }
+        addChild(seg: string, c: Node): void { this.#children[seg] = c; }
+        getChild(seg: string): number { return this.#children[seg].id; }
+      }
+      export function test(): number {
+        const root = new Node(0);
+        root.addChild("a", new Node(42));
+        return root.getChild("a");
+      }
+    `);
+    expect(exports.test!()).toBe(42);
   });
 });

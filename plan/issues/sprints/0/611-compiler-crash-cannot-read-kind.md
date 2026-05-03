@@ -1,5 +1,6 @@
 ---
 id: 611
+sprint: 0
 title: "Compiler crash: Cannot read 'kind' of undefined (2,995 CE)"
 status: done
 created: 2026-03-19

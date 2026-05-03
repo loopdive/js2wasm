@@ -1,5 +1,6 @@
 ---
 id: 1169m
+sprint: 46
 title: "IR Phase 4 Slice 10 step E — Promise through IR (best-effort)"
 status: done
 created: 2026-04-28

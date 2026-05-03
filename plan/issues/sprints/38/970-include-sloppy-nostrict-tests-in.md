@@ -1,5 +1,6 @@
 ---
 id: 970
+sprint: 38
 title: "Include sloppy (noStrict) tests in test262 runner for report filtering"
 status: done
 created: 2026-04-05

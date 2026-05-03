@@ -1,5 +1,6 @@
 ---
 id: 320
+sprint: 6
 title: "[ts2wasm] Codegen: Dead import and type elimination"
 status: done
 created: 2026-03-12

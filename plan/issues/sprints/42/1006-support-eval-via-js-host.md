@@ -1,5 +1,6 @@
 ---
 id: 1006
+sprint: 42
 title: "Support eval via JS host import"
 status: done
 created: 2026-04-09

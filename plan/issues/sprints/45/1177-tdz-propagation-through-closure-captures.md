@@ -1,5 +1,6 @@
 ---
 id: 1177
+sprint: 45
 title: "TDZ propagation through closure captures — fix ReferenceError on pre-declaration capture"
 status: done
 created: 2026-04-26

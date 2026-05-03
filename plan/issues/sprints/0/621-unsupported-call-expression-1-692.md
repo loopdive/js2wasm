@@ -1,5 +1,6 @@
 ---
 id: 621
+sprint: 0
 title: "Unsupported call expression (1,692 CE)"
 status: done
 created: 2026-03-19

@@ -1,5 +1,6 @@
 ---
 id: 1273
+sprint: 47
 title: "instanceof across compilation boundaries"
 status: in-progress
 created: 2026-05-02

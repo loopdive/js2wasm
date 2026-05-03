@@ -1,5 +1,6 @@
 ---
 id: 62
+sprint: 0
 title: "Issue 62: JSON.parse / JSON.stringify via host"
 status: done
 created: 2026-03-02

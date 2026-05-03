@@ -1,5 +1,6 @@
 ---
 id: 1122
+sprint: 45
 title: "Keep standalone recursive numeric benchmark stable across non-run entry exports"
 status: ready
 created: 2026-04-15

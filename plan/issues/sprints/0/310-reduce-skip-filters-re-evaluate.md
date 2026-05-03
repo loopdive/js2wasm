@@ -1,5 +1,6 @@
 ---
 id: 310
+sprint: 0
 title: "Issue #310: Reduce skip filters -- re-evaluate conservative skips"
 status: done
 created: 2026-03-11

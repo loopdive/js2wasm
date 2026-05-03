@@ -1,5 +1,6 @@
 ---
 id: 526
+sprint: 0
 title: "RuntimeError: dereferencing a null pointer (129 FAIL)"
 status: done
 created: 2026-03-18

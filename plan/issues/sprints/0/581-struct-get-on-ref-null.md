@@ -1,5 +1,6 @@
 ---
 id: 581
+sprint: 0
 title: "struct.get on ref.null in Wasm:test function (177 CE)"
 status: done
 created: 2026-03-19

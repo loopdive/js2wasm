@@ -1,5 +1,6 @@
 ---
 id: 717
+sprint: 0
 title: "Regression: import.source/defer stub breaks 117 negative parse tests"
 status: done
 created: 2026-03-21

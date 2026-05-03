@@ -1,5 +1,6 @@
 ---
 id: 291
+sprint: 0
 title: "Issue #291: In operator compile errors -- dynamic property checks"
 status: done
 created: 2026-03-11

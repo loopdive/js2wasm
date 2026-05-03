@@ -1,5 +1,6 @@
 ---
 id: 667
+sprint: 0
 title: "'hint is not defined' in toPrimitive coercion (71 CE)"
 status: done
 created: 2026-03-20

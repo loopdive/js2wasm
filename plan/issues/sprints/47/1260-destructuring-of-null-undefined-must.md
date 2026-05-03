@@ -1,5 +1,6 @@
 ---
 id: 1260
+sprint: 47
 title: "Destructuring of null/undefined must throw TypeError per §13.15.5.5"
 status: review
 created: 2026-05-02

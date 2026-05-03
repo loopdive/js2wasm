@@ -1,5 +1,6 @@
 ---
 id: 1040
+sprint: 40
 title: "Array.prototype reduce/map — invalid Wasm binary regression from #1030 extended dispatch"
 status: done
 created: 2026-04-11

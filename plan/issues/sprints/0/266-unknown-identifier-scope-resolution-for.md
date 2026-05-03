@@ -1,5 +1,6 @@
 ---
 id: 266
+sprint: 0
 title: "Issue #266: Unknown identifier -- scope resolution for multi-variable patterns"
 status: done
 created: 2026-03-11

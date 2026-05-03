@@ -1,5 +1,6 @@
 ---
 id: 226
+sprint: 3
 title: "Issue #226: valueOf/toString coercion on comparison operators"
 status: done
 created: 2026-03-11
