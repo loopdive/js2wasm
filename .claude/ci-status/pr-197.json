@@ -1,0 +1,19 @@
+{
+  "pr": 197,
+  "conclusion": "failure",
+  "head_branch": "issue-1287-eslint-extern-entry-invalid-wasm",
+  "head_sha": "18196a9655af5e04579d142b9d6e1eea65a2b778",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25266045911",
+  "timestamp": "2026-05-03T01:51:47Z",
+  "pass": 26253,
+  "fail": 13884,
+  "compile_error": 1541,
+  "snapshot_delta": -109,
+  "net_per_test": 34,
+  "regressions": 61,
+  "regressions_real": 27,
+  "regressions_wasm_change": 27,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 34,
+  "improvements": 61
+}

@@ -2,7 +2,7 @@
 id: 1277
 sprint: 47
 title: "CJS module.exports → Wasm export mapping in compileProject"
-status: in-progress
+status: done
 created: 2026-05-02
 updated: 2026-05-02
 priority: medium

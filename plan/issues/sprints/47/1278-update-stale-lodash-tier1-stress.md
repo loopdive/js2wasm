@@ -2,7 +2,7 @@
 id: 1278
 sprint: 47
 title: "Update stale lodash-tier1 stress test — resolver fixed, clamp/add behavior changed"
-status: ready
+status: done
 created: 2026-05-02
 updated: 2026-05-02
 priority: low
@@ -44,3 +44,21 @@ or marked `.skip` with a comment pointing to the relevant issue (#1275, #1276).
 2. Tests 4, 5 assert the fixed resolver behavior (real .js resolved, not @types)
 3. Tests 2, 3 either assert new current error or are `.skip`-ped with issue refs
 4. No new logic added — test-only change
+
+## Resolution (2026-05-03)
+
+`tests/stress/lodash-tier1.test.ts` was already updated to assert the current
+correct behavior — likely as part of the #1277 (CJS module.exports) and #1074
+work that landed before this issue was claimed. All 6 tests pass on current
+main:
+
+- Test 1 (CommonJS lodash/identity): asserts `identity` + `default` Wasm
+  exports (PR #1277 fix)
+- Test 2 (ESM lodash-es/identity): asserts `default` + `identity` exports (#1074)
+- Test 3 (clamp): asserts validates as Wasm module (instantiation gap noted)
+- Test 4 (add): asserts validates (HOF gap #1276 noted)
+- Test 5 (ModuleResolver): asserts real `.js` body resolved, not `@types/.d.ts`
+- Test 6 (resolveAllImports): asserts `anyRealJs: true, anyTypeDecl: false`
+
+Status retroactively flipped to `done`. No code changes — issue file metadata
+cleanup only.

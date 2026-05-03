@@ -1,7 +1,7 @@
 ---
 id: 1287
 title: "ESLint entry-point compileProject emits invalid Wasm (`Type index 10 is out of bounds`)"
-status: ready
+status: in-progress
 created: 2026-05-03
 updated: 2026-05-03
 priority: medium
@@ -89,3 +89,76 @@ collision guard, leaving a phantom type ref behind.
 2. The instantiated module's `test()` may still fail at runtime
    (Linter is not actually implemented in the module graph), but
    the binary must be valid Wasm.
+
+## Resolution (2026-05-03)
+
+### Actual root cause
+
+The original hypothesis (extern import suppression leaving a phantom
+type ref) was wrong. The real bug: **interfaces declared in `.d.ts`
+files were being lowered to WasmGC struct types**, dragging in their
+field types recursively. For a real-world npm package like `eslint`,
+this pulls in chains like:
+
+```
+Linter → Linter.LintMessage[] → @eslint/core types
+       → @types/estree.Comment / SwitchCase / VariableDeclarator …
+       → @types/json-schema.JSONSchema4 / ValidationError
+```
+
+Each interface registers a struct type. Each `T[]` field registers an
+array of `ref<struct T>` and a vec wrapper struct. Hundreds of types
+get queued; the dead-elim pass then compacts the surviving ones, and
+the surviving order produces forward heap-type references — vec at
+new index 6 reads `data: ref<9>` where new type 9 is itself another
+struct (not an array). Wasm validation rejects: "Type index 9 is out
+of bounds @+41".
+
+`acorn` and `typescript` imports work because their `.d.ts` exports
+are smaller / don't have the same chain of array-of-interface fields
+that triggers the forward-ref pattern.
+
+### Fix
+
+Three guards, layered defensively:
+
+1. **`src/codegen/declarations.ts::collectDeclarations`** — skip
+   `collectInterface` and `collectObjectType` (alias to object) when
+   the source file is a `.d.ts`. This is the primary fix — it
+   prevents the struct types from ever being registered.
+2. **`src/codegen/declarations.ts::collectClassesFromStatements` /
+   `compileClassesFromStatements`** — extend the existing `declare`
+   modifier guard to also catch `.d.ts` source files, so that
+   `export class Foo` in a `.d.ts` is treated as ambient (no body).
+3. **`src/codegen/index.ts::ensureStructForType`** — early skip for
+   types whose declarations are all in `.d.ts` files (defense in
+   depth — catches paths where the type-checker hands us a `.d.ts`
+   type indirectly).
+4. **`src/checker/type-mapper.ts::isDeclareContext`** — also returns
+   true for nodes in `.d.ts` files, so `isExternalDeclaredClass`
+   correctly classifies `.d.ts` `export class` as extern.
+
+The four guards together close every path that previously turned a
+declaration-file shape into a real Wasm struct. Consistent with the
+project rule that types from `.d.ts` describe host JS values; their
+runtime form is `externref`, not a WasmGC struct.
+
+### Test results
+
+- `tests/stress/eslint-tier1.test.ts` Tier 1b unskipped — passes via
+  `WebAssembly.validate(binary)`. Tier 1a/1c continue to pass.
+- The full minimal Linter binary is now 9,814 bytes (was 12,751
+  invalid) and `WebAssembly.validate` returns true.
+- Stub `.d.ts` probes (`class Foo { children: Foo[] }`,
+  `class Foo { list(): Foo[] }`, generic class) all produce valid
+  Wasm.
+- No regressions: identical pass/fail counts vs main on the broader
+  class / interface / extern / multi-file sweep (12 test files,
+  100 tests).
+
+### Note for Tier 1d
+
+Tier 1d (`linter.js` direct compile instantiates) remains BLOCKED on
+**#1289** — an unrelated `array.set` type mismatch in
+`FileReport_addRuleMessage` inside ESLint's actual JS implementation.
+That's a separate codegen issue and out of scope for #1287.

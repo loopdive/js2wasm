@@ -1915,14 +1915,22 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
   // First: collect enum declarations (so enum values are available)
   collectEnumDeclarations(ctx, sourceFile);
 
-  // Second: collect interfaces and type aliases (so struct types are available)
-  for (const stmt of sourceFile.statements) {
-    if (ts.isInterfaceDeclaration(stmt)) {
-      collectInterface(ctx, stmt);
-    } else if (ts.isTypeAliasDeclaration(stmt)) {
-      const aliasType = ctx.checker.getTypeAtLocation(stmt);
-      if (aliasType.flags & ts.TypeFlags.Object) {
-        collectObjectType(ctx, stmt.name.text, aliasType);
+  // Second: collect interfaces and type aliases (so struct types are available).
+  // Skip declarations from `.d.ts` files: those describe shapes of host
+  // values (DOM types, npm package public API). Lowering them to WasmGC
+  // structs registers types whose fields can recursively reference array
+  // types of other declaration-file interfaces, producing forward heap-type
+  // references that fail Wasm validation when the dead-elim pass compacts
+  // the type section. (#1287)
+  if (!sourceFile.isDeclarationFile) {
+    for (const stmt of sourceFile.statements) {
+      if (ts.isInterfaceDeclaration(stmt)) {
+        collectInterface(ctx, stmt);
+      } else if (ts.isTypeAliasDeclaration(stmt)) {
+        const aliasType = ctx.checker.getTypeAtLocation(stmt);
+        if (aliasType.flags & ts.TypeFlags.Object) {
+          collectObjectType(ctx, stmt.name.text, aliasType);
+        }
       }
     }
   }
@@ -1991,11 +1999,20 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
 
   function collectClassesFromStatements(stmts: ts.NodeArray<ts.Statement> | readonly ts.Statement[]): void {
     for (const stmt of stmts) {
-      if (ts.isClassDeclaration(stmt) && stmt.name && !hasDeclareModifier(stmt)) {
+      // `class X` in a `.d.ts` file is implicitly ambient — only the type
+      // declaration is real, there is no JS body to compile. Treating it as
+      // a user-defined class registers a WasmGC struct type whose field
+      // resolution can produce forward heap-type references (e.g.
+      // `children: X[]` → struct ref array ref struct loop) that fail Wasm
+      // validation. The extern collection pass (`collectExternClass` /
+      // `collectExternFromDeclareVar` in `index.ts`) owns the type-only
+      // registration for these shapes. (#1287)
+      const isAmbient = hasDeclareModifier(stmt) || stmt.getSourceFile().isDeclarationFile;
+      if (ts.isClassDeclaration(stmt) && stmt.name && !isAmbient) {
         collectClassDeclaration(ctx, stmt);
         // Register class declaration .name
         ctx.functionNameMap.set(stmt.name.text, stmt.name.text);
-      } else if (ts.isVariableStatement(stmt) && !hasDeclareModifier(stmt)) {
+      } else if (ts.isVariableStatement(stmt) && !isAmbient) {
         for (const decl of stmt.declarationList.declarations) {
           if (ts.isIdentifier(decl.name) && decl.initializer && ts.isClassExpression(decl.initializer)) {
             collectClassDeclaration(ctx, decl.initializer, decl.name.text);
@@ -2945,7 +2962,11 @@ export function compileDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
     insideFunction = false,
   ): void {
     for (const stmt of stmts) {
-      if (ts.isClassDeclaration(stmt) && stmt.name && !hasDeclareModifier(stmt)) {
+      // Mirror the `.d.ts` ambient guard from `collectClassesFromStatements`:
+      // there is no body to compile for classes declared in declaration
+      // files. (#1287)
+      const isAmbient = hasDeclareModifier(stmt) || stmt.getSourceFile().isDeclarationFile;
+      if (ts.isClassDeclaration(stmt) && stmt.name && !isAmbient) {
         if (insideFunction) {
           // Defer body compilation — will be compiled in compileNestedClassDeclaration
           // when the enclosing function is compiled (so captured locals are available)
@@ -2958,7 +2979,7 @@ export function compileDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
             reportError(ctx, stmt, `Internal error compiling class '${stmt.name.text}': ${msg}`);
           }
         }
-      } else if (ts.isVariableStatement(stmt) && !hasDeclareModifier(stmt)) {
+      } else if (ts.isVariableStatement(stmt) && !isAmbient) {
         for (const decl of stmt.declarationList.declarations) {
           if (ts.isIdentifier(decl.name) && decl.initializer && ts.isClassExpression(decl.initializer)) {
             if (insideFunction) {
