@@ -45,3 +45,49 @@ propagator can prove non-null, so no `ref.as_non_null` is needed in the first pl
 1. `distance(createPoint(3, 4))` WAT snapshot contains zero `ref.as_non_null` instructions
 2. No regression in equivalence or struct tests
 3. Covered by `tests/issue-1270.test.ts` WAT snapshot guard
+
+## Resolution (2026-05-03)
+
+The codegen has already been refactored to NOT emit `ref.as_non_null`
+on `(ref null $T)` struct receivers. The relevant commits:
+
+- `526f5863f` — "guard ref.as_non_null with null-check-throw to prevent ~854 null pointer traps"
+- `ce79a8668` — "convert ref.as_non_null traps to TypeError throws in expressions.ts"
+- `619ee0c21` — "coerce receiver type after ref.as_non_null in method call null-guard paths"
+
+These replaced the bare `ref.as_non_null` (which traps with an
+uncatchable Wasm error on null) with an explicit `if ref.is_null
+(local.tee) then throw $exn else struct.get` pattern — preserving
+correct JS TypeError semantics on null/undefined receiver access.
+
+### Verification
+
+- `tests/issue-1270.test.ts` (new) — 6 / 6 passing. Locks in
+  `ref.as_non_null` count = 0 across canonical patterns:
+  - `distance(createPoint(3, 4))` (issue example)
+  - class instance method receiver
+  - nested struct property reads
+  - class param + multiple field accesses
+  - struct field mutation + read
+  - the null-deref semantic-preservation case (verifies
+    `ref.is_null + throw` is used, NOT `ref.as_non_null`)
+
+The acceptance criterion "zero `ref.as_non_null` instructions" is
+already met. The test serves as a regression sentinel — a future
+codegen change that re-introduces `ref.as_non_null` gets caught at
+PR time.
+
+### Note on the broader peephole optimization
+
+The issue's `## Fix` section originally proposed a peephole pass
+that tracks non-null proof (struct.new, non-null-returning calls)
+and removes redundant `ref.as_non_null`. That implementation path
+is moot now that `ref.as_non_null` itself isn't emitted.
+
+The remaining "redundancy" is repeated `ref.is_null` checks on the
+same local across multiple field accesses (e.g. `p.x * p.x +
+p.y * p.y` checks p four times). Per the related #1200 LICM
+analysis (`plan/notes/wasm-opt-coverage.md`), V8's JIT dedups these
+checks at runtime so static elimination would yield no measurable
+benefit on V8. If a non-V8 runtime later shows a gap, file a
+follow-up.
