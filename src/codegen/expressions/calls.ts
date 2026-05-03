@@ -4768,15 +4768,28 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
   if (ts.isIdentifier(expr.expression)) {
     const funcName = expr.expression.text;
 
-    // (#1301) If the identifier resolves to a local/param in the current fctx,
-    // the local lexically shadows any outer function or module-level closure
-    // of the same name. Skip funcMap/closureMap lookups so we fall through to
-    // the local-callable dispatch path. Without this, an arrow with a `next`
-    // parameter whose enclosing scope declares `function next() {...}` would
-    // wrongly direct-call the outer `next` AND prepend the outer's nested
-    // captures using local indices that point to unrelated locals in the
-    // arrow's own frame — producing struct.new validation errors.
-    const isLocallyShadowed = fctx.localMap.has(funcName);
+    // (#1301) If the identifier resolves to a local/param in the current fctx
+    // AND that local has a callable TS type (so it actually shadows an outer
+    // function call site), skip funcMap/closureMap lookups so we fall through
+    // to the local-callable dispatch path. Without this, an arrow with a
+    // `next` parameter whose enclosing scope declares `function next() {...}`
+    // would wrongly direct-call the outer `next` AND prepend the outer's
+    // nested captures using local indices that point to unrelated locals in
+    // the arrow's own frame — producing struct.new validation errors.
+    //
+    // The callable-TS-type guard avoids false positives for locals that
+    // coincidentally share a name with a funcMap entry but aren't callable
+    // (those would route to a now-broken call_ref path and break otherwise-
+    // working calls — observed as ~280 test262 regressions on a broader
+    // localMap.has-only check).
+    let isLocallyShadowed = false;
+    if (fctx.localMap.has(funcName)) {
+      const localCalleeTsType = ctx.checker.getTypeAtLocation(expr.expression);
+      const localCallSigs = localCalleeTsType?.getCallSignatures?.();
+      if (localCallSigs && localCallSigs.length > 0) {
+        isLocallyShadowed = true;
+      }
+    }
 
     // Check if this is a closure call
     let closureInfo = isLocallyShadowed ? undefined : ctx.closureMap.get(funcName);
