@@ -982,6 +982,23 @@ export function isHostCallbackArgument(node: ts.Node, ctx: CodegenContext): bool
         // User-defined function — use closure path, not host callback
         return false;
       }
+      // (#1300) The callee is an identifier but not in funcMap — typically a
+      // function-typed parameter or local. The receiving function expects
+      // the GC-struct closure shape (`__fn_wrap_N_struct`) and will
+      // `ref.cast` the externref it gets. Routing through the host
+      // `__make_callback` path here produces a JS-wrapped externref that
+      // fails the cast and null-derefs at the receiver's `struct.get`.
+      // Detect via TypeScript's call-signature lookup on the identifier's
+      // type and use the closure path if the callee is callable.
+      try {
+        const calleeType = ctx.checker.getTypeAtLocation(parent.expression);
+        const callSigs = calleeType?.getCallSignatures?.();
+        if (callSigs && callSigs.length > 0) {
+          return false;
+        }
+      } catch {
+        // Fall through to host-callback path on any checker error
+      }
     }
     // For method calls (property access), check if the method is known array HOF
     // (filter, map, etc.) — those have dedicated inline compilation and ARE handled
