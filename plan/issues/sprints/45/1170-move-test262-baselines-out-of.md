@@ -1,5 +1,6 @@
 ---
 id: 1170
+sprint: 45
 title: "Move test262 baselines out of Git LFS — eliminate LFS dependency from CI"
 status: done
 created: 2026-04-24

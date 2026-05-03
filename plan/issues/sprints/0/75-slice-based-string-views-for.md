@@ -1,5 +1,6 @@
 ---
 id: 75
+sprint: 0
 title: "Issue 75: Slice-based string views for substring/trim/slice"
 status: done
 created: 2026-03-08

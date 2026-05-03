@@ -1,5 +1,6 @@
 ---
 id: 133
+sprint: 2
 title: "typeof runtime comparison"
 status: done
 created: 2026-03-11

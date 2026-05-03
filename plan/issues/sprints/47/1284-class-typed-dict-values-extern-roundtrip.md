@@ -1,5 +1,6 @@
 ---
 id: 1284
+sprint: 47
 title: "Class-typed values in index-signature dicts lose identity through extern_set/extern_get round-trip"
 status: in-progress
 created: 2026-05-02

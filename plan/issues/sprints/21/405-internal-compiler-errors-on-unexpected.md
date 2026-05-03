@@ -1,5 +1,6 @@
 ---
 id: 405
+sprint: 21
 title: "Internal compiler errors on unexpected AST shapes (64 CE)"
 status: done
 created: 2026-03-16

@@ -1,5 +1,6 @@
 ---
 id: 736
+sprint: 24
 title: "- SyntaxError detection at compile time (316 tests)"
 status: done
 created: 2026-03-22

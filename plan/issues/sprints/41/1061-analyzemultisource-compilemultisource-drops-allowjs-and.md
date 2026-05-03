@@ -1,5 +1,6 @@
 ---
 id: 1061
+sprint: 41
 title: "analyzeMultiSource / compileMultiSource drops allowJs and forces .js → .ts"
 status: done
 created: 2026-04-11

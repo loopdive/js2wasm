@@ -1,5 +1,6 @@
 ---
 id: 385
+sprint: 7
 title: "- Array method argument count errors"
 status: done
 created: 2026-03-13

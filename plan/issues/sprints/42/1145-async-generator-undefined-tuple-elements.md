@@ -1,5 +1,6 @@
 ---
 id: 1145
+sprint: 42
 title: "Async generator: undefined tuple elements promote to f64, corrupting sNaN sentinel"
 status: done
 created: 2026-04-20

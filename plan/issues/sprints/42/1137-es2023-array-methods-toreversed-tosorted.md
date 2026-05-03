@@ -1,5 +1,6 @@
 ---
 id: 1137
+sprint: 42
 title: "ES2023 array methods: toReversed, toSorted, toSpliced, with — not implemented"
 status: done
 created: 2026-04-20

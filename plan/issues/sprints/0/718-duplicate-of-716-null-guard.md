@@ -1,5 +1,6 @@
 ---
 id: 718
+sprint: 0
 title: "Duplicate of #716 — null-guard TypeError regression"
 status: done
 created: 2026-03-21

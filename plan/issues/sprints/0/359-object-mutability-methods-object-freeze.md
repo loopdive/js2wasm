@@ -1,5 +1,6 @@
 ---
 id: 359
+sprint: 0
 title: "- Object mutability methods (Object.freeze/seal/preventExtensions)"
 status: done
 created: 2026-03-13

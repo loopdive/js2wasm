@@ -1,5 +1,6 @@
 ---
 id: 153
+sprint: 0
 title: "- Iterator protocol for destructuring and for-of"
 status: done
 created: 2026-03-11

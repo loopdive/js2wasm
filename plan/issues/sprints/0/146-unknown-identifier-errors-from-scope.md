@@ -1,5 +1,6 @@
 ---
 id: 146
+sprint: 0
 title: "- Unknown identifier errors from scope/hoisting issues"
 status: done
 created: 2026-03-11

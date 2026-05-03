@@ -1,5 +1,6 @@
 ---
 id: 367
+sprint: 7
 title: "- String variable concatenation in comparisons"
 status: done
 created: 2026-03-13

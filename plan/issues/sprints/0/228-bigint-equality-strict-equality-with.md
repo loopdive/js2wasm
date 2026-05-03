@@ -1,5 +1,6 @@
 ---
 id: 228
+sprint: 0
 title: "Issue #228: BigInt equality/strict-equality with Number and Boolean"
 status: done
 created: 2026-03-11

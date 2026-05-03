@@ -1,5 +1,6 @@
 ---
 id: 1108
+sprint: 42
 title: "lodash-es add: export default of HOF closure result not surfaced as Wasm export"
 status: done
 created: 2026-04-12

@@ -1,5 +1,6 @@
 ---
 id: 144
+sprint: 1
 title: "Issue #144: new expression with class expressions"
 status: done
 created: 2026-03-11

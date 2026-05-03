@@ -1,5 +1,6 @@
 ---
 id: 932
+sprint: 36
 title: "Landing page: replace performance score with JS feature coverage percentage"
 status: done
 created: 2026-04-03

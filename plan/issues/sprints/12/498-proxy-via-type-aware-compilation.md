@@ -1,5 +1,6 @@
 ---
 id: 498
+sprint: 12
 title: "Proxy via type-aware compilation with trap inlining (70 tests)"
 status: done
 created: 2026-03-18

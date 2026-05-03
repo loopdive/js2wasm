@@ -1,5 +1,6 @@
 ---
 id: 69
+sprint: 0
 title: "Issue 69: Safe mode — restrict TypeScript to a secure subset"
 status: done
 created: 2026-03-03

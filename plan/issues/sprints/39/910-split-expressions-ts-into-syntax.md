@@ -1,5 +1,6 @@
 ---
 id: 910
+sprint: 39
 title: "Split expressions.ts into syntax-family modules"
 status: done
 created: 2026-04-03

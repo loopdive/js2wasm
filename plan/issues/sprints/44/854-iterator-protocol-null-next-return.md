@@ -1,5 +1,6 @@
 ---
 id: 854
+sprint: 44
 title: "Iterator protocol: null next/return/throw methods (126 tests)"
 status: done
 created: 2026-03-28

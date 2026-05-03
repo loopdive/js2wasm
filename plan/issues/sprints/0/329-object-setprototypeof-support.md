@@ -1,5 +1,6 @@
 ---
 id: 329
+sprint: 0
 title: "- Object.setPrototypeOf support"
 status: done
 created: 2026-03-13

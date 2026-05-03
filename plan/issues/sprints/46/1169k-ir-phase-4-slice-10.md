@@ -1,5 +1,6 @@
 ---
 id: 1169k
+sprint: 46
 title: "IR Phase 4 Slice 10 step C — ArrayBuffer + DataView through IR"
 status: done
 created: 2026-04-28

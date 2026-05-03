@@ -1,5 +1,6 @@
 ---
 id: 244
+sprint: 0
 title: "Issue #244: `in` operator runtime failures"
 status: done
 created: 2026-03-11

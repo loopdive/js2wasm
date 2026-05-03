@@ -1,5 +1,6 @@
 ---
 id: 513
+sprint: 0
 title: "Fix any-typed equality: object/ref identity broken in __any_strict_eq and externref path"
 status: done
 created: 2026-03-18

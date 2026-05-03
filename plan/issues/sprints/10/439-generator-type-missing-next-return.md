@@ -1,5 +1,6 @@
 ---
 id: 439
+sprint: 10
 title: "Generator type missing next/return/throw methods (16 CE)"
 status: done
 created: 2026-03-17

@@ -1,5 +1,6 @@
 ---
 id: 390
+sprint: 0
 title: "- Assignment to non-array types (70 CE)"
 status: done
 created: 2026-03-16

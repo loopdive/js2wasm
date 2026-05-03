@@ -1,5 +1,6 @@
 ---
 id: 510
+sprint: 0
 title: "TS parse errors from test wrapping (78 CE)"
 status: done
 created: 2026-03-18

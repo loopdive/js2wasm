@@ -1,5 +1,6 @@
 ---
 id: 655
+sprint: 22
 title: "- Stack fallthrough errors (671 CE)"
 status: done
 created: 2026-03-20

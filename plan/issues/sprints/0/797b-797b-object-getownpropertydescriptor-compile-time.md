@@ -1,5 +1,6 @@
 ---
 id: 797b
+sprint: 0
 title: "#797b -- Object.getOwnPropertyDescriptor compile-time resolution"
 status: done
 created: 2026-03-26

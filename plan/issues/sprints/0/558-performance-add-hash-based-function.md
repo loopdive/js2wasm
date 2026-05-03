@@ -1,5 +1,6 @@
 ---
 id: 558
+sprint: 0
 title: "Performance: add hash-based function type deduplication"
 status: done
 created: 2026-03-18

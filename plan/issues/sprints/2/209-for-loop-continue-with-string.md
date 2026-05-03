@@ -1,5 +1,6 @@
 ---
 id: 209
+sprint: 2
 title: "- For-loop continue with string concatenation: any-typed += dispatch"
 status: done
 created: 2026-03-11

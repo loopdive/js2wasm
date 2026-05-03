@@ -1,5 +1,6 @@
 ---
 id: 1118
+sprint: 47
 title: "Worker/timeout exits and eval-code null deref (182 tests)"
 status: done
 created: 2026-04-04

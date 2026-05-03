@@ -1,5 +1,6 @@
 ---
 id: 192
+sprint: 0
 title: "Computed property names: compile errors in class and object contexts"
 status: done
 created: 2026-03-11

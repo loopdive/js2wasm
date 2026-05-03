@@ -1,5 +1,6 @@
 ---
 id: 274
+sprint: 0
 title: "Issue #274: Property access on function type -- .name, .length, .call, .apply"
 status: done
 created: 2026-03-11

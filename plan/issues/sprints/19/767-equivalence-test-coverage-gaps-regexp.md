@@ -1,5 +1,6 @@
 ---
 id: 767
+sprint: 19
 title: "- Equivalence test coverage gaps: RegExp, Promise, async iterators"
 status: done
 created: 2026-03-23

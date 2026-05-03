@@ -1,5 +1,6 @@
 ---
 id: 190
+sprint: 0
 title: "Unsupported assignment target patterns"
 status: done
 created: 2026-03-11

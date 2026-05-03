@@ -1,5 +1,6 @@
 ---
 id: 660
+sprint: 0
 title: "Capture first failing assert in test output for returned-0 tests"
 status: done
 created: 2026-03-20

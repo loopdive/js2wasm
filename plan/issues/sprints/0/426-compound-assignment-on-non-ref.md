@@ -1,5 +1,6 @@
 ---
 id: 426
+sprint: 0
 title: "Compound assignment on non-ref element (11 CE)"
 status: done
 created: 2026-03-17

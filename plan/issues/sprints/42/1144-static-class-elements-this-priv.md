@@ -1,5 +1,6 @@
 ---
 id: 1144
+sprint: 42
 title: "Static class elements: this.#priv access inside static methods uses wrong receiver"
 status: done
 created: 2026-04-20

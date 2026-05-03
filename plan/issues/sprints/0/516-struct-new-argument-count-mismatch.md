@@ -1,5 +1,6 @@
 ---
 id: 516
+sprint: 0
 title: "struct.new argument count mismatch in class constructors (1,781 CE)"
 status: done
 created: 2026-03-18

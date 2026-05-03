@@ -1,5 +1,6 @@
 ---
 id: 416
+sprint: 9
 title: "Compound assignment on element access (non-ref targets)"
 status: done
 created: 2026-03-17

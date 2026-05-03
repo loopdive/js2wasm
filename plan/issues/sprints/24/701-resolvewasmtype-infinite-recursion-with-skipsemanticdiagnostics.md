@@ -1,5 +1,6 @@
 ---
 id: 701
+sprint: 24
 title: "resolveWasmType infinite recursion with skipSemanticDiagnostics"
 status: done
 created: 2026-03-21

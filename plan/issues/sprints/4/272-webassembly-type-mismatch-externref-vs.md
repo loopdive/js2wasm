@@ -1,5 +1,6 @@
 ---
 id: 272
+sprint: 4
 title: "Issue #272: WebAssembly type mismatch -- externref vs f64/i32 in compiled output"
 status: done
 created: 2026-03-11

@@ -1,5 +1,6 @@
 ---
 id: 708
+sprint: 26
 title: "Fix: function index out of bounds in Wasm validation (167 CE)"
 status: done
 created: 2026-03-21

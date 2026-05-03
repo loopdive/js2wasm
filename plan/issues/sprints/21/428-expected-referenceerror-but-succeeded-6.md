@@ -1,5 +1,6 @@
 ---
 id: 428
+sprint: 21
 title: "Expected ReferenceError but succeeded (6 fail)"
 status: done
 created: 2026-03-17

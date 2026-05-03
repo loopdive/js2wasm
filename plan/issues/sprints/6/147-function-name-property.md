@@ -1,5 +1,6 @@
 ---
 id: 147
+sprint: 6
 title: "Function.name property"
 status: done
 created: 2026-03-11

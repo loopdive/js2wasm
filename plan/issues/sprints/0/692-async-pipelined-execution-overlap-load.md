@@ -1,5 +1,6 @@
 ---
 id: 692
+sprint: 0
 title: "Async pipelined execution: overlap load/compile/run stages"
 status: done
 created: 2026-03-20

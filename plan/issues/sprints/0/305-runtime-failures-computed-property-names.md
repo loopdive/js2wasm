@@ -1,5 +1,6 @@
 ---
 id: 305
+sprint: 0
 title: "Issue #305: Runtime failures -- computed property names and types/reference"
 status: done
 created: 2026-03-11

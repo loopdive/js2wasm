@@ -1,5 +1,6 @@
 ---
 id: 193
+sprint: 2
 title: "Coalesce operator wasm type mismatch"
 status: done
 created: 2026-03-11

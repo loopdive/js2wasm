@@ -1,5 +1,6 @@
 ---
 id: 815
+sprint: 25
 title: "- Regression: -617 pass from patch-rescue commits"
 status: done
 created: 2026-03-27

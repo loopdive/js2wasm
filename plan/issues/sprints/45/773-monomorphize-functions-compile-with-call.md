@@ -1,5 +1,6 @@
 ---
 id: 773
+sprint: 45
 title: "Monomorphize functions: compile with call-site types, not generic externref"
 status: ready
 created: 2026-03-22

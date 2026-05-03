@@ -1,5 +1,6 @@
 ---
 id: 778
+sprint: 25
 title: "- RuntimeError: illegal cast (135 tests)"
 status: done
 created: 2026-03-23

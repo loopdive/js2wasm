@@ -1,5 +1,6 @@
 ---
 id: 269
+sprint: 0
 title: "Issue #269: Setter return value diagnostic suppression"
 status: done
 created: 2026-03-11

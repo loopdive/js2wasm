@@ -1,5 +1,6 @@
 ---
 id: 945
+sprint: 37
 title: "__vec_get: extern.convert_any fails on integer-typed array elements (780 CE)"
 status: done
 created: 2026-04-04

@@ -1,5 +1,6 @@
 ---
 id: 315
+sprint: 0
 title: "Issue #315: Wasm validation error audit -- systematic fix for type mismatches"
 status: done
 created: 2026-03-11

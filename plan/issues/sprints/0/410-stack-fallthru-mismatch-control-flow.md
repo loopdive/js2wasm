@@ -1,5 +1,6 @@
 ---
 id: 410
+sprint: 0
 title: "Stack fallthru mismatch -- control flow branches leave wrong stack state"
 status: done
 created: 2026-03-17

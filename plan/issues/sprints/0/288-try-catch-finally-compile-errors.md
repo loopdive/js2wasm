@@ -1,5 +1,6 @@
 ---
 id: 288
+sprint: 0
 title: "Issue #288: Try/catch/finally compile errors -- complex patterns"
 status: done
 created: 2026-03-11

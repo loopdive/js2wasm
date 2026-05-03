@@ -1,5 +1,6 @@
 ---
 id: 1120
+sprint: 45
 title: "Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks"
 status: done
 created: 2026-04-15

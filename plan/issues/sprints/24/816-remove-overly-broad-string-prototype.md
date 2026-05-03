@@ -1,5 +1,6 @@
 ---
 id: 816
+sprint: 24
 title: "- Remove overly broad String/prototype skip filter (1,073 tests re-enabled)"
 status: done
 created: 2026-03-27

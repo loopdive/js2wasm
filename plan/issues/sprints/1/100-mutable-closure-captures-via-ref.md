@@ -1,5 +1,6 @@
 ---
 id: 100
+sprint: 1
 title: "Issue #100: Mutable closure captures via ref cells"
 status: done
 created: 2026-03-10

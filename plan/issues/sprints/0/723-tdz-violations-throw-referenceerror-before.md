@@ -1,5 +1,6 @@
 ---
 id: 723
+sprint: 0
 title: "- TDZ violations: throw ReferenceError before let/const init (230 FAIL)"
 status: done
 created: 2026-03-21

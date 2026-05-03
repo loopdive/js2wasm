@@ -1,5 +1,6 @@
 ---
 id: 924
+sprint: 35
 title: "Vite dev server OOMs or consumes 9GB+ loading the playground"
 status: done
 created: 2026-04-03

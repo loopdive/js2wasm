@@ -1,18 +1,19 @@
 name: CI Status Feed
 
 # Writes a per-PR CI status file to .claude/ci-status/pr-{N}.json on main
-# whenever the Test262 Sharded workflow completes for a PR. Devs running in
-# worktrees watch this directory via a FileChanged hook and receive the
+# whenever the Test262 Differential workflow completes for a PR. Devs running
+# in worktrees watch this directory via a FileChanged hook and receive the
 # completion signal without needing SendMessage comms to stay alive.
 #
-# Why this exists: if the team-lead ↔ dev SendMessage channel breaks (OOM,
-# session restart, etc.), devs still receive authoritative "your PR passed/
-# failed CI" signals directly from the repo. This decouples CI notifications
-# from the comms layer.
+# Why Differential (not Sharded): the Differential workflow compares branch
+# vs. fresh main using a src-tree-hash cache — no baseline staleness drift.
+# The Sharded workflow compares against a committed JSONL baseline which goes
+# stale between merges, causing spurious regressions_wasm_change counts on
+# every PR during heavy merge periods.
 
 on:
   workflow_run:
-    workflows: ["Test262 Sharded"]
+    workflows: ["Test262 Differential"]
     types: [completed]
 
 permissions:
@@ -31,19 +32,19 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Download merged report artifact from triggering run
+      - name: Download merged branch report artifact from triggering run
         uses: actions/download-artifact@v7
         with:
-          name: test262-merged-report
+          name: test262-diff-branch-merged
           path: /tmp/merged-report
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
         continue-on-error: true
 
-      - name: Download regressions report artifact from triggering run
+      - name: Download differential regressions report artifact from triggering run
         uses: actions/download-artifact@v7
         with:
-          name: test262-regressions-report
+          name: test262-diff-regressions-report
           path: /tmp/merged-report
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -117,6 +118,11 @@ jobs:
             baseline=$(jq '.summary.pass' benchmarks/results/test262-current.json)
             snapshot_delta=$((pass - baseline))
           fi
+
+          # Differential workflow uploads regressions.txt under a diff-out/ subdir;
+          # flatten the path so the parse logic below works regardless of source.
+          [ -f /tmp/merged-report/diff-out/test262-regressions.txt ] && \
+            cp /tmp/merged-report/diff-out/test262-regressions.txt /tmp/merged-report/test262-regressions.txt
 
           # Regression / improvement counts from the regressions txt if present
           if [ -f /tmp/merged-report/test262-regressions.txt ]; then

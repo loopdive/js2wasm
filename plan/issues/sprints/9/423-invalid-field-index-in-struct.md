@@ -1,5 +1,6 @@
 ---
 id: 423
+sprint: 9
 title: "Invalid field index in struct access (36 CE)"
 status: done
 created: 2026-03-17

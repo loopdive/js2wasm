@@ -1,5 +1,6 @@
 ---
 id: 422
+sprint: 0
 title: "Generator type mismatch errors (19 CE)"
 status: done
 created: 2026-03-17

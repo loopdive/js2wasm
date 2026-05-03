@@ -1,5 +1,6 @@
 ---
 id: 1270
+sprint: 48
 title: "struct field inference Phase 3b: eliminate null-checks on (ref null $T) locals via peephole"
 status: ready
 created: 2026-05-02

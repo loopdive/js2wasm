@@ -1,5 +1,6 @@
 ---
 id: 326
+sprint: 7
 title: "- Array element access out of bounds"
 status: done
 created: 2026-03-13

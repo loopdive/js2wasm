@@ -1,5 +1,6 @@
 ---
 id: 183
+sprint: 2
 title: "Template literal type coercion wasm errors"
 status: done
 created: 2026-03-11

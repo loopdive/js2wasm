@@ -1,5 +1,6 @@
 ---
 id: 1175
+sprint: 45
 title: "String concatenation emits type-mismatched call args (`__str_flatten`, `concat`) failing wasm-validator"
 status: done
 created: 2026-04-27

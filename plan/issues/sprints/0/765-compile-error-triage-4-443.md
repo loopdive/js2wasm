@@ -1,5 +1,6 @@
 ---
 id: 765
+sprint: 0
 title: "- Compile error triage: 4,443 remaining CEs by pattern"
 status: done
 created: 2026-03-23

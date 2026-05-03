@@ -1,5 +1,6 @@
 ---
 id: 222
+sprint: 2
 title: "Issue #222: Unknown identifier errors from unhoisted var declarations"
 status: done
 created: 2026-03-11

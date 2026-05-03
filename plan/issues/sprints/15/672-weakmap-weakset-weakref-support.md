@@ -1,5 +1,6 @@
 ---
 id: 672
+sprint: 15
 title: "WeakMap, WeakSet, WeakRef support"
 status: done
 created: 2026-03-20

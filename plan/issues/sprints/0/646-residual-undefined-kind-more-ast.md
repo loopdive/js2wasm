@@ -1,5 +1,6 @@
 ---
 id: 646
+sprint: 0
 title: "Residual undefined .kind: more AST node handlers (5,329 CE)"
 status: done
 created: 2026-03-19

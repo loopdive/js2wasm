@@ -1,5 +1,6 @@
 ---
 id: 117
+sprint: 2
 title: "Issue 117: String comparison support in test262 harness"
 status: done
 created: 2026-03-11

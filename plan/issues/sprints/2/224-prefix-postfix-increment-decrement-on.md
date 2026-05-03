@@ -1,5 +1,6 @@
 ---
 id: 224
+sprint: 2
 title: "Issue #224: Prefix/postfix increment/decrement on member expressions"
 status: done
 created: 2026-03-11

@@ -1,5 +1,6 @@
 ---
 id: 1054
+sprint: 40
 title: "Derived class indirect-eval supercall does not throw SyntaxError"
 status: done
 created: 2026-04-11

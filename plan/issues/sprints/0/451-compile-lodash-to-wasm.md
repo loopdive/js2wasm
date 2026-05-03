@@ -1,5 +1,6 @@
 ---
 id: 451
+sprint: 0
 title: "Compile lodash to Wasm"
 status: done
 created: 2026-03-17

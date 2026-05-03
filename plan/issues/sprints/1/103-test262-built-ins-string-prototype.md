@@ -1,5 +1,6 @@
 ---
 id: 103
+sprint: 1
 title: "Issue 103: Test262 — built-ins/String prototype methods"
 status: done
 created: 2026-03-10

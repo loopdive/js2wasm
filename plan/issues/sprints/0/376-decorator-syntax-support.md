@@ -1,5 +1,6 @@
 ---
 id: 376
+sprint: 0
 title: "- Decorator syntax support"
 status: done
 created: 2026-03-13

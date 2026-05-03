@@ -1,5 +1,6 @@
 ---
 id: 176
+sprint: 6
 title: "Bug: Unicode escape sequences in property names not resolved"
 status: done
 created: 2026-03-11

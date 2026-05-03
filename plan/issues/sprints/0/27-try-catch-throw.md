@@ -1,5 +1,6 @@
 ---
 id: 27
+sprint: 0
 title: "Issue 27: Try/catch/throw"
 status: done
 created: 2026-02-28

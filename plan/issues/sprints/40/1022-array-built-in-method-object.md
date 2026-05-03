@@ -1,5 +1,6 @@
 ---
 id: 1022
+sprint: 40
 title: "Array built-in method 'object is not a function' (640 FAIL)"
 status: done
 created: 2026-04-11

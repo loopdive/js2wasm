@@ -1,5 +1,6 @@
 ---
 id: 676
+sprint: 15
 title: "RegExp internals: exec groups, lastIndex, named captures"
 status: done
 created: 2026-03-20

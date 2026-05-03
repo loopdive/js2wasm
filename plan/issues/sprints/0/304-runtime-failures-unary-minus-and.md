@@ -1,5 +1,6 @@
 ---
 id: 304
+sprint: 0
 title: "Issue #304: Runtime failures -- unary minus and return edge cases"
 status: done
 created: 2026-03-11

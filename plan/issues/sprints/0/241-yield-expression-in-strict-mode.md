@@ -1,5 +1,6 @@
 ---
 id: 241
+sprint: 0
 title: "Issue #241: Yield expression in strict mode / module context"
 status: done
 created: 2026-03-11

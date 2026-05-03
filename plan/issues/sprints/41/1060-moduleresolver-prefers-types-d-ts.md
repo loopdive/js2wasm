@@ -1,5 +1,6 @@
 ---
 id: 1060
+sprint: 41
 title: "ModuleResolver prefers @types/*/.d.ts over real .js body, dropping npm implementations"
 status: done
 created: 2026-04-11

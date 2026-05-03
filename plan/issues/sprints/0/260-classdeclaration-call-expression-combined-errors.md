@@ -1,5 +1,6 @@
 ---
 id: 260
+sprint: 0
 title: "ClassDeclaration + call expression combined errors"
 status: done
 created: 2026-03-11

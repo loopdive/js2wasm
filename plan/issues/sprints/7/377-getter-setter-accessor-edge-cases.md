@@ -1,5 +1,6 @@
 ---
 id: 377
+sprint: 7
 title: "- Getter/setter accessor edge cases"
 status: done
 created: 2026-03-13

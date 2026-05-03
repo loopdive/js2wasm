@@ -1,5 +1,6 @@
 ---
 id: 16
+sprint: 0
 title: "Issue 16: Optional Chaining and Nullish Coalescing"
 status: done
 created: 2026-02-28

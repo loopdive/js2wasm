@@ -1,5 +1,6 @@
 ---
 id: 1271
+sprint: 47
 title: "for...in / Object.keys enumeration over compiled objects"
 status: in-progress
 created: 2026-05-02

@@ -1,5 +1,6 @@
 ---
 id: 1138
+sprint: 42
 title: "Destructuring: unresolvable defaults throw ReferenceError instead of being undefined"
 status: done
 created: 2026-04-20

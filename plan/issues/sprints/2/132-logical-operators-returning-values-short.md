@@ -1,5 +1,6 @@
 ---
 id: 132
+sprint: 2
 title: "Logical operators returning values (short-circuit)"
 status: done
 created: 2026-03-11

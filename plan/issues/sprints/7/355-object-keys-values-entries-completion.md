@@ -1,5 +1,6 @@
 ---
 id: 355
+sprint: 7
 title: "- Object.keys/values/entries completion"
 status: done
 created: 2026-03-13

@@ -1,5 +1,6 @@
 ---
 id: 957
+sprint: 38
 title: "Peephole: eliminate local.set N + drop dead-store pattern (272 cases, 5% of modules)"
 status: done
 created: 2026-04-04

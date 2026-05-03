@@ -1,5 +1,6 @@
 ---
 id: 294
+sprint: 0
 title: "Issue #294: Runtime failures -- assignment expression evaluation order"
 status: done
 created: 2026-03-11

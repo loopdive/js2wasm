@@ -1,5 +1,6 @@
 ---
 id: 942
+sprint: 36
 title: "Generate JavaScript feature compatibility report ranked by real-world importance"
 status: done
 created: 2026-04-03

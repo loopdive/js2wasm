@@ -1,5 +1,6 @@
 ---
 id: 474
+sprint: 21
 title: "delete operator support (229 skipped tests)"
 status: done
 created: 2026-03-18

@@ -1,5 +1,6 @@
 ---
 id: 5
+sprint: 0
 title: "Issue 5: Enums"
 status: done
 created: 2026-02-27

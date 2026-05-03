@@ -1,5 +1,6 @@
 ---
 id: 764
+sprint: 18
 title: "- 'immutable global' assignment error (240 CE)"
 status: done
 created: 2026-03-22

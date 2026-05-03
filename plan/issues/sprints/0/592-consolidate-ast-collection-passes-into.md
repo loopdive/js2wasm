@@ -1,5 +1,6 @@
 ---
 id: 592
+sprint: 0
 title: "Consolidate AST collection passes into single visitor"
 status: done
 created: 2026-03-19

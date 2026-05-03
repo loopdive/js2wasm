@@ -1,5 +1,6 @@
 ---
 id: 174
+sprint: 0
 title: "Bug: BigInt cross-type comparison and arithmetic failures"
 status: done
 created: 2026-03-11

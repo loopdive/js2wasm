@@ -1,5 +1,6 @@
 ---
 id: 32
+sprint: 0
 title: "Issue 32: Capacity-based array representation with `array.copy`"
 status: done
 created: 2026-03-01

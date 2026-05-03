@@ -1,5 +1,6 @@
 ---
 id: 127
+sprint: 2
 title: "Issue 127: Private class members (#field, #method)"
 status: done
 created: 2026-03-11

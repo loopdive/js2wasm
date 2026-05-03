@@ -1,5 +1,6 @@
 ---
 id: 840
+sprint: 32
 title: "Array.prototype.concat/push/splice require 0-arg support (31 CE)"
 status: done
 created: 2026-03-28

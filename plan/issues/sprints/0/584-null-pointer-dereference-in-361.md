@@ -1,5 +1,6 @@
 ---
 id: 584
+sprint: 0
 title: "Null pointer dereference in 361 tests (unknown function)"
 status: done
 created: 2026-03-19

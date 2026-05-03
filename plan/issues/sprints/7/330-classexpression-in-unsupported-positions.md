@@ -1,5 +1,6 @@
 ---
 id: 330
+sprint: 7
 title: "- ClassExpression in unsupported positions"
 status: done
 created: 2026-03-13

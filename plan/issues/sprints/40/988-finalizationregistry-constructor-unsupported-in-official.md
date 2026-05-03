@@ -1,5 +1,6 @@
 ---
 id: 988
+sprint: 40
 title: "FinalizationRegistry constructor unsupported in official-scope tests (23 CE)"
 status: done
 created: 2026-04-07

@@ -1,5 +1,6 @@
 ---
 id: 683
+sprint: 15
 title: "Runtime type narrowing: emit specialized code for typeof/instanceof guards"
 status: done
 created: 2026-03-20

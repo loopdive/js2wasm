@@ -1,5 +1,6 @@
 ---
 id: 577
+sprint: 21
 title: "- Run test262 in a worktree to avoid mid-run code changes"
 status: done
 created: 2026-03-19

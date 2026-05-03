@@ -1,5 +1,6 @@
 ---
 id: 823
+sprint: 25
 title: "Destructuring initializer not evaluated"
 status: done
 created: 2026-03-27

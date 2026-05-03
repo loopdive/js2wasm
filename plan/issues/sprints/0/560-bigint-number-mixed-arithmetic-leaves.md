@@ -1,5 +1,6 @@
 ---
 id: 560
+sprint: 0
 title: "BigInt + Number mixed arithmetic leaves stack dirty (2 CE)"
 status: done
 created: 2026-03-19

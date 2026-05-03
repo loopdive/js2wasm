@@ -1,5 +1,6 @@
 ---
 id: 1015
+sprint: 40
 title: "Support fixture/includes tests in unified compilation mode (172 CE)"
 status: done
 created: 2026-04-10

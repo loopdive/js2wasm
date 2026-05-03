@@ -1,5 +1,6 @@
 ---
 id: 275
+sprint: 0
 title: "Issue #275: Left side of comma operator warning blocks compilation"
 status: done
 created: 2026-03-11

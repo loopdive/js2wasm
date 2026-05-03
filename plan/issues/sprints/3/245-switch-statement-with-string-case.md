@@ -1,5 +1,6 @@
 ---
 id: 245
+sprint: 3
 title: "Issue #245: Switch statement with string case values"
 status: done
 created: 2026-03-11

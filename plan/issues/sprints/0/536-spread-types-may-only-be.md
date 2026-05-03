@@ -1,5 +1,6 @@
 ---
 id: 536
+sprint: 0
 title: "Spread types may only be created from object types (16 CE)"
 status: done
 created: 2026-03-18

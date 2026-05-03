@@ -1,5 +1,6 @@
 ---
 id: 915
+sprint: 36
 title: "Add CONTRIBUTING.md with the minimum safe contributor workflow"
 status: done
 created: 2026-04-03

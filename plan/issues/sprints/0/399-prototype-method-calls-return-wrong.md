@@ -1,5 +1,6 @@
 ---
 id: 399
+sprint: 0
 title: "Prototype method calls return wrong values (72 FAIL)"
 status: done
 created: 2026-03-16

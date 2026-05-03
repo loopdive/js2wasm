@@ -1,5 +1,6 @@
 ---
 id: 1099
+sprint: 45
 title: "Standalone execution demo — compile and run a program on Wasmtime with zero JS host"
 status: ready
 created: 2026-04-12

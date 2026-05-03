@@ -1,5 +1,6 @@
 ---
 id: 118
+sprint: 2
 title: "Issue 118: compareArray.js test262 harness include"
 status: done
 created: 2026-03-11

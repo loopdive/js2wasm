@@ -1,5 +1,6 @@
 ---
 id: 175
+sprint: 2
 title: "Bug: Negative zero not preserved in arithmetic operations"
 status: done
 created: 2026-03-11

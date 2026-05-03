@@ -1,5 +1,6 @@
 ---
 id: 424
+sprint: 0
 title: "Logical assignment on unresolved struct type (14 CE)"
 status: done
 created: 2026-03-17

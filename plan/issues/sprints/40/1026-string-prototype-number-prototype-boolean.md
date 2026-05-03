@@ -1,5 +1,6 @@
 ---
 id: 1026
+sprint: 40
 title: "String.prototype / Number.prototype / Boolean.prototype globals access"
 status: done
 created: 2026-04-11

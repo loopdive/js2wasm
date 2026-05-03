@@ -1,5 +1,6 @@
 ---
 id: 321
+sprint: 0
 title: "[ts2wasm] Bug: Collection functions don't scan top-level statements (`__module_init`)"
 status: done
 created: 2026-03-12
