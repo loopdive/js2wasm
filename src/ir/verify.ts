@@ -284,6 +284,12 @@ function collectUses(instr: IrBlock["instrs"][number]): readonly IrValueId[] {
       return [instr.receiver, instr.value];
     case "extern.regex":
       return [];
+    // Slice 12 (#1280): while.loop / for.loop. Buffer-internal uses
+    // are not surfaced here (mirrors forof.* convention) — the verify
+    // pass walks them via its own buffer recursion if any.
+    case "while.loop":
+    case "for.loop":
+      return [instr.condValue];
   }
 }
 

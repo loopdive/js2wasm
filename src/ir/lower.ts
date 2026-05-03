@@ -351,6 +351,16 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
         for (const sub of instr.finallyBody) registerInstrDefs(sub, blockId);
       }
     }
+    // Slice 12 (#1280): walk into while/for loop cond + body + update buffers.
+    if (instr.kind === "while.loop") {
+      for (const sub of instr.cond) registerInstrDefs(sub, blockId);
+      for (const sub of instr.body) registerInstrDefs(sub, blockId);
+    }
+    if (instr.kind === "for.loop") {
+      for (const sub of instr.cond) registerInstrDefs(sub, blockId);
+      for (const sub of instr.body) registerInstrDefs(sub, blockId);
+      for (const sub of instr.update) registerInstrDefs(sub, blockId);
+    }
   };
   for (const block of func.blocks) {
     for (const instr of block.instrs) {
@@ -423,6 +433,24 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
           for (const u of collectForOfBodyUses(instr.finallyBody)) recordUse(u, -1);
         }
       }
+      // Slice 12 (#1280): while / for loop cond + body + update buffers.
+      // Same -1 block id convention as forof bodies — uses inside the
+      // loop are treated as cross-block w.r.t. outer-defined values.
+      if (instr.kind === "while.loop") {
+        for (const u of collectForOfBodyUses(instr.cond)) recordUse(u, -1);
+        for (const u of collectForOfBodyUses(instr.body)) recordUse(u, -1);
+        // The cond's SSA result is consumed by the synthesized
+        // i32.eqz / br_if at the loop top. Record the use so the
+        // value is allocated a Wasm local if the cond isn't
+        // re-emitted in place (multi-use across iterations).
+        recordUse(instr.condValue, -1);
+      }
+      if (instr.kind === "for.loop") {
+        for (const u of collectForOfBodyUses(instr.cond)) recordUse(u, -1);
+        for (const u of collectForOfBodyUses(instr.body)) recordUse(u, -1);
+        for (const u of collectForOfBodyUses(instr.update)) recordUse(u, -1);
+        recordUse(instr.condValue, -1);
+      }
     }
     for (const u of collectTerminatorUses(block)) recordUse(u, blockId);
   }
@@ -476,6 +504,16 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
       if (instr.finallyBody) {
         for (const sub of instr.finallyBody) allocLocalForInstr(sub);
       }
+    }
+    // Slice 12 (#1280): walk into while / for loop buffers.
+    if (instr.kind === "while.loop") {
+      for (const sub of instr.cond) allocLocalForInstr(sub);
+      for (const sub of instr.body) allocLocalForInstr(sub);
+    }
+    if (instr.kind === "for.loop") {
+      for (const sub of instr.cond) allocLocalForInstr(sub);
+      for (const sub of instr.body) allocLocalForInstr(sub);
+      for (const sub of instr.update) allocLocalForInstr(sub);
     }
   };
   for (const block of func.blocks) {
@@ -1472,6 +1510,66 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
         out.push({ op: "call", funcIdx: fn });
         return;
       }
+      // Slice 12 (#1280) — generic structured loops. Both kinds emit
+      //   block { loop { <cond>; <push condValue>; i32.eqz; br_if 1;
+      //                  <body>; <update?>; br 0 } }
+      // The body / cond / update buffers each follow the same
+      // SSA-materialisation rules as `forof.vec.body` (cross-block
+      // values get pre-materialised; void / intra-block-only values
+      // are emitted in place).
+      case "while.loop":
+      case "for.loop": {
+        const loopBody: Instr[] = [];
+
+        // Helper: emit a body buffer (cond / body / update) into a
+        // target ops array using the standard SSA materialisation
+        // rules (mirrors the `forof.*` body emission).
+        const emitBodyBuffer = (bodyInstrs: readonly IrInstr[], target: Instr[]): void => {
+          for (const bodyInstr of bodyInstrs) {
+            if (bodyInstr.result === null) {
+              emitInstrTree(bodyInstr, target);
+            } else if (crossBlock.has(bodyInstr.result)) {
+              emitInstrTree(bodyInstr, target);
+              target.push({ op: "local.set", index: localIdx.get(bodyInstr.result)! });
+              materialized.add(bodyInstr.result);
+            }
+            // Intra-block multi-use: handled at use site via tee pattern.
+          }
+        };
+
+        // 1. Cond instructions (re-evaluated each iteration).
+        emitBodyBuffer(instr.cond, loopBody);
+
+        // 2. Push the cond value, invert (i32.eqz), then br_if 1 to exit.
+        emitValue(instr.condValue, loopBody);
+        loopBody.push({ op: "i32.eqz" });
+        loopBody.push({ op: "br_if", depth: 1 });
+
+        // 3. Body instructions.
+        emitBodyBuffer(instr.body, loopBody);
+
+        // 4. Update instructions (for-loop only — empty array for while).
+        if (instr.kind === "for.loop") {
+          emitBodyBuffer(instr.update, loopBody);
+        }
+
+        // 5. Continue back to the loop header.
+        loopBody.push({ op: "br", depth: 0 });
+
+        // 6. Wrap in `block { loop { ... } }`.
+        out.push({
+          op: "block",
+          blockType: { kind: "empty" },
+          body: [
+            {
+              op: "loop",
+              blockType: { kind: "empty" },
+              body: loopBody,
+            },
+          ],
+        });
+        return;
+      }
     }
   };
 
@@ -1706,6 +1804,11 @@ function collectIrUses(instr: IrInstr): readonly IrValueId[] {
       return [instr.receiver, instr.value];
     case "extern.regex":
       return [];
+    // Slice 12 (#1280) — generic structured loops. Body / cond / update
+    // buffer uses are surfaced separately via `collectForOfBodyUses`.
+    case "while.loop":
+    case "for.loop":
+      return [];
   }
 }
 
@@ -1731,6 +1834,18 @@ export function collectForOfBodyUses(body: readonly IrInstr[]): IrValueId[] {
       if (instr.finallyBody) {
         for (const u of collectForOfBodyUses(instr.finallyBody)) uses.push(u);
       }
+    }
+    // Slice 12 (#1280) — recurse into while / for loop buffers.
+    if (instr.kind === "while.loop") {
+      for (const u of collectForOfBodyUses(instr.cond)) uses.push(u);
+      for (const u of collectForOfBodyUses(instr.body)) uses.push(u);
+      uses.push(instr.condValue);
+    }
+    if (instr.kind === "for.loop") {
+      for (const u of collectForOfBodyUses(instr.cond)) uses.push(u);
+      for (const u of collectForOfBodyUses(instr.body)) uses.push(u);
+      for (const u of collectForOfBodyUses(instr.update)) uses.push(u);
+      uses.push(instr.condValue);
     }
   }
   return uses;
