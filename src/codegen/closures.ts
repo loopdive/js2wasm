@@ -14,7 +14,7 @@
  *   - getFuncSignature, getOrCreateFuncRefWrapperTypes, emitFuncRefAsClosure
  */
 
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 import { isVoidType, unwrapPromiseType } from "../checker/type-mapper.js";
 import type { FieldDef, Instr, StructTypeDef, ValType } from "../ir/types.js";
 import { pushBody } from "./context/bodies.js";

@@ -2,7 +2,7 @@
 /**
  * Exception handling statement lowering: throw and try-catch.
  */
-import ts from "typescript";
+import { ts } from "../../ts-api.js";
 import type { Instr } from "../../ir/types.js";
 import { popBody, pushBody } from "../context/bodies.js";
 import { allocLocal, getLocalType } from "../context/locals.js";

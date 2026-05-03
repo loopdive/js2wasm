@@ -2,7 +2,7 @@
 /**
  * Unary operator compilation: prefix/postfix unary, increment/decrement.
  */
-import ts from "typescript";
+import { ts } from "../../ts-api.js";
 import type { Instr, ValType } from "../../ir/types.js";
 import { emitBoundsCheckedArrayGet } from "../array-methods.js";
 import { emitToInt32 } from "../binary-ops.js";

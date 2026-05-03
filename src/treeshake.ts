@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
-import ts from "typescript";
+import { ts } from "./ts-api.js";
 
 /**
  * Perform tree-shaking: given entry exports and a set of source files,

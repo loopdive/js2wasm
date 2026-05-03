@@ -35,7 +35,7 @@
 //     call's return type comes from `callReturnTypes` (same TypeMap),
 //     with arg types validated against the propagated callee param types.
 
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 
 import { evaluateConstantCondition } from "../codegen/statements/control-flow.js";
 import { IrFunctionBuilder } from "./builder.js";
@@ -1250,6 +1250,34 @@ function staticTypeOfFor(t: IrType): string | null {
 }
 
 /**
+ * Optional-chaining gate (#1281). Returns true when the TypeScript type
+ * could carry `null`, `undefined`, `void`, `unknown`, or `any` — i.e.
+ * cases where the IR's eager-evaluation primitives (no short-circuit
+ * `if/else` for property access) cannot safely evaluate the receiver.
+ * Returns false when the type checker has narrowed the union to
+ * non-nullish, in which case `?.` is redundant safety syntax and the
+ * IR can lower it as a regular access.
+ *
+ * `any` is treated as nullable to be safe — the source could carry
+ * a null value at runtime and we have no static guarantee otherwise.
+ */
+function isPossiblyNullable(type: ts.Type, checker: ts.TypeChecker): boolean {
+  if (type.flags & (ts.TypeFlags.Null | ts.TypeFlags.Undefined | ts.TypeFlags.Void)) return true;
+  if (type.flags & ts.TypeFlags.Any) return true;
+  if (type.flags & ts.TypeFlags.Unknown) return true;
+  if (type.isUnion()) {
+    for (const t of type.types) {
+      if (isPossiblyNullable(t, checker)) return true;
+    }
+  }
+  // Non-strict-null-checks setups treat undefined as a member of every
+  // type. `getNonNullableType` strips the implicit nullish portion;
+  // when the result differs from the input, the input was nullable.
+  const nn = checker.getNonNullableType(type);
+  return nn !== type;
+}
+
+/**
  * Lower a property access expression.
  *
  * Slice 1 (#1169a) handles `<string>.length` (the only `.length` form
@@ -1266,11 +1294,19 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, cx: LowerCtx): I
   if (!ts.isIdentifier(expr.name)) {
     throw new Error(`ir/from-ast: computed property access not in slice 2 (${cx.funcName})`);
   }
-  // Slice 11 (#1169n) — optional chaining (`obj?.prop`) is accepted
-  // by the selector but the lowerer doesn't yet emit the null-guard.
-  // Throw cleanly so the function falls back to legacy.
+  // Optional chaining (`obj?.prop`, #1281). For receivers whose TypeScript
+  // type is provably non-null (e.g. `obj: { x: number }` after narrowing),
+  // `?.` is redundant safety syntax and we can emit the regular access.
+  // For genuinely nullable receivers (`T | null | undefined`) the IR has
+  // no short-circuit primitive yet — throw so the function falls back to
+  // legacy, where `compileOptionalPropertyAccess` already emits the
+  // null-guarded `if/else` block.
   if (expr.questionDotToken) {
-    throw new Error(`ir/from-ast: optional chaining (?.) not in slice 11 (${cx.funcName})`);
+    const recvTsType = cx.checker.getTypeAtLocation(expr.expression);
+    if (isPossiblyNullable(recvTsType, cx.checker)) {
+      throw new Error(`ir/from-ast: optional chaining (?.) on nullable receiver not in slice 11 (${cx.funcName})`);
+    }
+    // fall through — treat the access as a regular `.prop` lookup
   }
   const propName = expr.name.text;
 
@@ -1521,11 +1557,19 @@ function phase1PropertyName(name: ts.PropertyName): string | null {
  * ignored — both are bugs.
  */
 function lowerCall(expr: ts.CallExpression, cx: LowerCtx): IrValueId {
-  // Slice 11 (#1169n) — optional call (`fn?.()` / `obj?.method()`).
-  // The lowerer doesn't yet emit the null-guard branch; throw clean
-  // fallback so the function reverts to legacy.
+  // Optional call (`fn?.()` / `obj?.method()`, #1281). Same approach as
+  // optional property access: when the callee's TypeScript type is provably
+  // non-null, `?.()` is redundant safety syntax and we lower it like a
+  // regular call. Genuinely nullable callees still throw to the legacy
+  // path, where `compileOptionalCallExpression` emits the null-guarded
+  // `if/else` block.
   if (expr.questionDotToken) {
-    throw new Error(`ir/from-ast: optional call (?.()) not in slice 11 (${cx.funcName})`);
+    const calleeNode = ts.isPropertyAccessExpression(expr.expression) ? expr.expression.expression : expr.expression;
+    const calleeTsType = cx.checker.getTypeAtLocation(calleeNode);
+    if (isPossiblyNullable(calleeTsType, cx.checker)) {
+      throw new Error(`ir/from-ast: optional call (?.()) on nullable callee not in slice 11 (${cx.funcName})`);
+    }
+    // fall through — treat as a regular call
   }
   // Slice 4 (#1169d): method call — `<recv>.<methodName>(args)`. The
   // receiver must lower to an IrType.class; the method must exist on
@@ -2121,17 +2165,39 @@ function lowerStringMethodCall(
   // emit `ref.null.extern` — the host import shim treats it as undefined.
   // For host-mode f64 args (e.g. slice's end omitted), emit a sentinel
   // that the host knows means "to end" (matches the legacy convention).
+  //
+  // #1248: For `String.slice(start)` (single-arg), the missing `end`
+  // argument MUST default to `s.length`, NOT 0. The host import
+  // `string_slice(s, start, 0)` interprets end=0 literally and returns
+  // an empty string for any non-zero start. The fix is symmetric to the
+  // legacy compiler path in `src/codegen/expressions/calls.ts:4040+` —
+  // when slice is called with only `start`, push `recv.length` as the
+  // implicit `end` arg.
   for (let i = args.length; i < sig.hostArgs.length; i++) {
     const expectedHost = sig.hostArgs[i]!;
     if (useNative) {
-      // Native helpers handle missing args inside the function body via
-      // sentinel values matching the legacy native-helper convention.
-      // For now, throw — Phase 1 only covers fully-specified call sites
-      // for native mode.
+      // #1248 native-mode: slice's missing `end` defaults to `recv.len`.
+      // For other methods we still throw — Phase 1 only covers fully-
+      // specified call sites for native mode.
+      if (methodName === "slice" && i === 1 && expectedHost.kind === "f64") {
+        // emitStringLen returns f64; truncate to i32 for native helpers
+        const f64Len = cx.builder.emitStringLen(recv);
+        const i32Len = cx.builder.emitUnary("i32.trunc_sat_f64_s", f64Len, irVal({ kind: "i32" }));
+        loweredArgs.push(i32Len);
+        continue;
+      }
       throw new Error(
         `ir/from-ast: String.${methodName} optional arg ${i} omitted in nativeStrings mode not in slice 13c (${cx.funcName})`,
       );
     } else {
+      // #1248 host-mode: for `String.slice(start)`, the missing `end`
+      // arg defaults to `recv.length` (as f64). All other missing
+      // optional args fall back to the generic sentinel.
+      if (methodName === "slice" && i === 1 && expectedHost.kind === "f64") {
+        const lenVal = cx.builder.emitStringLen(recv);
+        loweredArgs.push(lenVal);
+        continue;
+      }
       const def = emitDefaultExternArg(cx, expectedHost);
       loweredArgs.push(def);
     }

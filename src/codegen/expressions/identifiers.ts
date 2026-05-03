@@ -2,7 +2,7 @@
 /**
  * Identifier resolution, TDZ analysis, and instanceof handling.
  */
-import ts from "typescript";
+import { ts } from "../../ts-api.js";
 import { isBooleanType, isHeterogeneousUnion, isNumberType, isStringType } from "../../checker/type-mapper.js";
 import type { Instr, ValType } from "../../ir/types.js";
 import { emitFuncRefAsClosure } from "../closures.js";

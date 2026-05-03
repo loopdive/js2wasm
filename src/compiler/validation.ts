@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 import type { CompileError, CompileOptions } from "../index.js";
 
 // Default blocked members on extern classes in safe mode

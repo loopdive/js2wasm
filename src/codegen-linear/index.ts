@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 import type { MultiTypedAST, TypedAST } from "../checker/index.js";
 import type { FuncTypeDef, Instr, ValType, WasmModule } from "../ir/types.js";
 import { createEmptyModule } from "../ir/types.js";

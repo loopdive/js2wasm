@@ -4,7 +4,7 @@
  * Handles string literals, templates, tagged templates, string binary ops,
  * and native string method calls.
  */
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 import { isBooleanType, isStringType, isVoidType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
 import { compileNumericBinaryOp } from "./binary-ops.js";

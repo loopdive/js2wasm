@@ -27,7 +27,7 @@
  * Bail safely on any uncertainty — losing the optimization is correct;
  * a wrong optimization corrupts results.
  */
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 import type { Instr, ValType } from "../ir/types.js";
 import { collectReferencedIdentifiers } from "./closures.js";
 import { allocLocal } from "./context/locals.js";

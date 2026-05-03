@@ -22,7 +22,7 @@
 // `shiftLateImportIndices` pass is a no-op for every body produced here.
 // That's the whole point of the symbolic-ref design — spec #1131 §1.2.
 
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 
 import { addGeneratorImports, addIteratorImports, addStringImports } from "../codegen/index.js";
 import { ensureNativeStringHelpers } from "../codegen/native-strings.js";

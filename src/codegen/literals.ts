@@ -13,7 +13,7 @@
  *   - compileTupleLiteral, compileArrayLiteral, compileArrayConstructorCall
  */
 
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 import { isVoidType, unwrapPromiseType } from "../checker/type-mapper.js";
 import type { FieldDef, Instr, StructTypeDef, ValType, WasmFunction } from "../ir/types.js";
 import { emitMethodParamDefaults, emitObjectMethodAsClosure, promoteAccessorCapturesToGlobals } from "./closures.js";

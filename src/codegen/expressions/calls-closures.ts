@@ -7,7 +7,7 @@
  * - compileCallablePropertyCall — call to a callable struct field
  * - tryExternClassMethodOnAny — resolve method call on any-typed receiver via extern classes
  */
-import ts from "typescript";
+import { ts } from "../../ts-api.js";
 import { isVoidType } from "../../checker/type-mapper.js";
 import type { Instr, ValType } from "../../ir/types.js";
 import { getOrCreateFuncRefWrapperTypes } from "../closures.js";

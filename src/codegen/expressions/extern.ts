@@ -3,7 +3,7 @@
  * Extern class helpers, spread call args, lazy prototype initialization,
  * and dynamic struct patching.
  */
-import ts from "typescript";
+import { ts } from "../../ts-api.js";
 import type { Instr, ValType } from "../../ir/types.js";
 import { emitBoundsCheckedArrayGet } from "../array-methods.js";
 import { reportError } from "../context/errors.js";

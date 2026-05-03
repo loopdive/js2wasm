@@ -4,7 +4,7 @@
  *
  * Extracted from codegen/index.ts (#1013).
  */
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 import type { Instr, ValType } from "../ir/types.js";
 import { allocLocal, getLocalType } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";

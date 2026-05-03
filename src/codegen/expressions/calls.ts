@@ -3,7 +3,7 @@
  * Call expression compilation: direct calls, optional calls, closure calls,
  * property method calls, IIFEs, and conditional callees.
  */
-import ts from "typescript";
+import { ts } from "../../ts-api.js";
 import {
   isBooleanType,
   isExternalDeclaredClass,

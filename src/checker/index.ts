@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 import { getDefaultEnvironment } from "../env.js";
 
 // All Node builtin access goes through the environment adapter (#1096).
