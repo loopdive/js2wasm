@@ -2,7 +2,7 @@
 id: 1299
 sprint: 49
 title: "Virtual dispatch through abstract-base-typed dict values returns first stored subclass's method"
-status: ready
+status: in-progress
 created: 2026-05-03
 updated: 2026-05-03
 priority: medium
@@ -83,3 +83,101 @@ body of their own).
 - Likely affects any code using `Map<K, AbstractBase>` or
   `{ [k: string]: AbstractBase }` patterns — common in framework
   registry tables.
+
+## Investigation (2026-05-03)
+
+The bug has TWO independent root causes that both need fixing for
+virtual dispatch to work:
+
+### Cause A — subclass→base assignment loses identity (FIXED in this PR)
+
+`emitSafeStructConversion` in `src/codegen/type-coercion.ts` falls
+through to `emitStructNarrowBody` for any same-shape struct conversion,
+emitting a `struct.get $field; struct.new $To` field-copy. For
+subclass→base assignments where the subclass is a *declared Wasm
+subtype* of the base (`(sub final $Base ...)`), this destroys the
+subclass identity by constructing a fresh base struct. The runtime
+value loses any way to recover its concrete subclass.
+
+Fix: detect Wasm declared subtype via the `superTypeIdx` chain and
+skip the field-copy. The value on the stack is already valid as the
+wider type under WasmGC subtyping. Verified by inspecting the WAT
+output before/after — the `struct.get/struct.new` pair is replaced by
+`ref.cast null` which preserves identity.
+
+### Cause B — method dispatch is statically resolved (NOT YET FIXED)
+
+In `src/codegen/expressions/calls.ts`, the "walk child classes"
+fallback at line ~3408 picks the FIRST subclass with the method when
+the receiver's static type is abstract / has no own implementation.
+The emitted `call $A_id` is unconditional regardless of the receiver's
+runtime class.
+
+To fix this properly, the call site must emit a virtual dispatch — a
+ref.test cascade against each candidate subclass struct, with the
+right call_ref / call inside each branch. The receiver must be saved
+to a temp local; arguments must be evaluated once and saved to temps
+(side-effect ordering); each branch then loads the temps and calls
+the subclass's method.
+
+Sketch:
+
+```wat
+local.get $receiver
+local.set $tmp_recv
+;; ...evaluate and save args to tmp_arg_i...
+local.get $tmp_recv
+ref.test (ref $A)
+(if (result T)
+  (then
+    local.get $tmp_recv
+    ref.cast (ref $A)
+    local.get $tmp_arg0
+    ...
+    call $A_id
+  )
+  (else
+    local.get $tmp_recv
+    ref.test (ref $B)
+    (if (result T)
+      (then
+        local.get $tmp_recv
+        ref.cast (ref $B)
+        local.get $tmp_arg0
+        ...
+        call $B_id
+      )
+      (else ;; throw or default)
+    )
+  )
+)
+```
+
+Cause B is a substantial inline-emit refactor of the call path
+(needs arg-temp management, careful return-type handling, integration
+with `addUnionImports` index shifting). Filed as Phase 2 follow-up
+within this same issue — the test cases here will start passing once
+Phase 2 lands on top of Phase 1.
+
+## Test Results (Phase 1 — struct subtype fix only)
+
+`tests/issue-1299.test.ts` — 4 cases, all still **failing** because
+Cause B is not yet fixed:
+- dict[k].id() dispatches to runtime subclass
+- baseline plain-local Base = new A() | new B()
+- concrete base + override through dict
+- three subclasses through dict
+
+WAT inspection confirms Cause A is fixed (the subclass→base copy is
+gone, replaced by `ref.cast null` preserving identity). The static
+dispatch remains the blocker.
+
+Regression check: identical pass/fail counts to main on
+`tests/inheritance.test.ts`, `tests/abstract-classes.test.ts`,
+`tests/private-class-members.test.ts`, `tests/nested-class-declarations.test.ts`,
+`tests/class-method-calls.test.ts`, `tests/class-methods.test.ts`,
+`tests/class-static-private-this.test.ts`. No regressions from the
+struct subtype change.
+
+Hono Tier 1-5 stress tests: 21/25 active pass (4 unrelated skipped) —
+no regressions.
