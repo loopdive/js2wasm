@@ -54,7 +54,7 @@
 //     before the IR runs (allocated by `collectClassDeclaration`). The
 //     `localClasses` set drives that exemption.
 
-import { ts } from "../ts-api.js";
+import { ts, forEachChild } from "../ts-api.js";
 
 import type { LatticeType, TypeMap } from "./propagate.js";
 
@@ -1017,9 +1017,9 @@ function bodyReferencesIdentifier(body: ts.Block, name: string): boolean {
     ) {
       return;
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   };
-  ts.forEachChild(body, visit);
+  forEachChild(body, visit);
   return found;
 }
 
@@ -1477,9 +1477,9 @@ function buildLocalCallGraph(
           hasExternalCall.add(callerName);
         }
       }
-      ts.forEachChild(node, visit);
+      forEachChild(node, visit);
     };
-    ts.forEachChild(fn.body, visit);
+    forEachChild(fn.body, visit);
   }
   return { callers, callees, hasExternalCall };
 }
@@ -1548,9 +1548,9 @@ function collectLocalClosureBindings(fn: ts.FunctionDeclaration): Set<string> {
         }
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   };
-  ts.forEachChild(fn.body, visit);
+  forEachChild(fn.body, visit);
   return names;
 }
 

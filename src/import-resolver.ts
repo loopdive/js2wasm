@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
-import { ts } from "./ts-api.js";
+import { ts, forEachChild } from "./ts-api.js";
 
 interface ClassUsageInfo {
   constructorArgCounts: number[];
@@ -326,7 +326,7 @@ export function preprocessImports(source: string): PreprocessResult {
       maxCallArgs.set(name, Math.max(existing, node.arguments.length));
     }
 
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
   visit(sf);

@@ -3,7 +3,7 @@
  * Call expression compilation: direct calls, optional calls, closure calls,
  * property method calls, IIFEs, and conditional callees.
  */
-import { ts } from "../../ts-api.js";
+import { ts, forEachChild } from "../../ts-api.js";
 import {
   isBooleanType,
   isExternalDeclaredClass,
@@ -167,7 +167,7 @@ function usesArguments(node: ts.Node): boolean {
   if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node)) {
     return false;
   }
-  return ts.forEachChild(node, usesArguments) ?? false;
+  return forEachChild(node, usesArguments) ?? false;
 }
 
 /**

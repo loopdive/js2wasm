@@ -27,7 +27,7 @@
  * Bail safely on any uncertainty — losing the optimization is correct;
  * a wrong optimization corrupts results.
  */
-import { ts } from "../ts-api.js";
+import { ts, forEachChild } from "../ts-api.js";
 import type { Instr, ValType } from "../ir/types.js";
 import { collectReferencedIdentifiers } from "./closures.js";
 import { allocLocal } from "./context/locals.js";
@@ -83,11 +83,11 @@ function walkBlocksInScope(scope: ts.Node, visit: (stmts: readonly ts.Statement[
   if (ts.isBlock(scope) || ts.isSourceFile(scope) || ts.isModuleBlock(scope)) {
     visit(scope.statements);
   }
-  ts.forEachChild(scope, (child) => {
+  forEachChild(scope, (child) => {
     if (isFunctionScopeBoundary(child)) return; // don't cross fn boundaries
     if (ts.isBlock(child) || ts.isModuleBlock(child)) {
       visit(child.statements);
-      ts.forEachChild(child, (cc) => walkBlocksInScope(cc, visit));
+      forEachChild(child, (cc) => walkBlocksInScope(cc, visit));
       return;
     }
     walkBlocksInScope(child, visit);
@@ -169,7 +169,7 @@ function validateLoopBody(ctx: CodegenContext, cand: CandidateHead): boolean {
       }
       return;
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
   visit(cand.loop.statement);
 
@@ -254,7 +254,7 @@ function validateNoOtherWrites(ctx: CodegenContext, cand: CandidateHead, scope: 
         }
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
   visit(scope);
   return ok;
@@ -284,16 +284,16 @@ function isCapturedByClosure(ctx: CodegenContext, cand: CandidateHead, scope: ts
               return;
             }
           }
-          ts.forEachChild(n, inner);
+          forEachChild(n, inner);
         }
         inner(node);
         if (found) captured = true;
       }
       return;
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
-  ts.forEachChild(scope, visit);
+  forEachChild(scope, visit);
   return captured;
 }
 

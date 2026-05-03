@@ -14,7 +14,7 @@
  *   - getFuncSignature, getOrCreateFuncRefWrapperTypes, emitFuncRefAsClosure
  */
 
-import { ts } from "../ts-api.js";
+import { ts, forEachChild } from "../ts-api.js";
 import { isVoidType, unwrapPromiseType } from "../checker/type-mapper.js";
 import type { FieldDef, Instr, StructTypeDef, ValType } from "../ir/types.js";
 import { pushBody } from "./context/bodies.js";
@@ -162,7 +162,7 @@ function collectVarAndTopLevelDecls(node: ts.Node, out: Set<string>, atTopLevel:
     out.add(node.name.text);
     return;
   }
-  ts.forEachChild(node, (c) => collectVarAndTopLevelDecls(c, out, false));
+  forEachChild(node, (c) => collectVarAndTopLevelDecls(c, out, false));
 }
 
 /**
@@ -200,10 +200,10 @@ export function collectReferencedIdentifiers(node: ts.Node, names: Set<string>, 
     const merged = new Set<string>(shadowed ?? []);
     collectFunctionOwnLocals(node, merged);
     if (ts.isFunctionExpression(node) && node.name) merged.add(node.name.text);
-    ts.forEachChild(node, (child) => collectReferencedIdentifiers(child, names, merged));
+    forEachChild(node, (child) => collectReferencedIdentifiers(child, names, merged));
     return;
   }
-  ts.forEachChild(node, (child) => collectReferencedIdentifiers(child, names, shadowed));
+  forEachChild(node, (child) => collectReferencedIdentifiers(child, names, shadowed));
 }
 
 /**
@@ -251,10 +251,10 @@ export function collectWrittenIdentifiers(node: ts.Node, names: Set<string>, sha
     const merged = new Set<string>(shadowed ?? []);
     collectFunctionOwnLocals(node, merged);
     if (ts.isFunctionExpression(node) && node.name) merged.add(node.name.text);
-    ts.forEachChild(node, (child) => collectWrittenIdentifiers(child, names, merged));
+    forEachChild(node, (child) => collectWrittenIdentifiers(child, names, merged));
     return;
   }
-  ts.forEachChild(node, (child) => collectWrittenIdentifiers(child, names, shadowed));
+  forEachChild(node, (child) => collectWrittenIdentifiers(child, names, shadowed));
 }
 
 /**
@@ -1267,7 +1267,7 @@ export function compileArrowAsClosure(
                 outerWrites.add(name);
               }
             }
-            ts.forEachChild(node, collectOuterWrites);
+            forEachChild(node, collectOuterWrites);
           };
           if (ts.isBlock(outerBody)) {
             for (const stmt of outerBody.statements) {
@@ -2929,7 +2929,7 @@ function closureBodyUsesArguments(node: ts.Node): boolean {
   }
   // Arrow functions do NOT have their own `arguments` — they inherit
   // the enclosing function's, so we must traverse into them.
-  return ts.forEachChild(node, closureBodyUsesArguments) ?? false;
+  return forEachChild(node, closureBodyUsesArguments) ?? false;
 }
 
 // ── Registration ──────────────────────────────────────────────────────

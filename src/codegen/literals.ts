@@ -13,7 +13,7 @@
  *   - compileTupleLiteral, compileArrayLiteral, compileArrayConstructorCall
  */
 
-import { ts } from "../ts-api.js";
+import { ts, forEachChild } from "../ts-api.js";
 import { isVoidType, unwrapPromiseType } from "../checker/type-mapper.js";
 import type { FieldDef, Instr, StructTypeDef, ValType, WasmFunction } from "../ir/types.js";
 import { emitMethodParamDefaults, emitObjectMethodAsClosure, promoteAccessorCapturesToGlobals } from "./closures.js";
@@ -1619,7 +1619,7 @@ function detectCountedIndexAssignSize(expr: ts.ArrayLiteralExpression): IndexAss
         rhsTouchesBound = true;
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   };
   visit(assignExpr.right);
   if (rhsTouchesArr) return null;
