@@ -39,6 +39,11 @@ Message **specific agents only** — no broadcasts unless claiming a shared file
 2. Update issue frontmatter: `status: in-progress`
 3. Check `plan/method/file-locks.md` — if another dev owns your target file/function, message them directly
 4. Create worktree: `git worktree add /workspace/.claude/worktrees/issue-{N}-{slug} -b issue-{N}-{slug} origin/main`
+   Then write your active status for the tech lead's statusline:
+   ```bash
+   printf '{"name":"issue-{N}-{slug}","state":"active","issue":"#{N}","since":%s}\n' "$(date +%s)" \
+     > "/workspace/.claude/agent-status/issue-{N}-{slug}.json"
+   ```
 5. Implement fix in `src/`, write tests in `tests/issue-{N}.test.ts`
 6. Validate by compiling + running specific failing tests (see patterns below). **No `npm test`, no full test262.**
 
@@ -55,7 +60,13 @@ Message **specific agents only** — no broadcasts unless claiming a shared file
    Then open the PR:
    `gh pr create --base main --title "fix(#N): <description>" --body "..."`
 5. **Wait for CI — IMMEDIATELY after `gh pr create` returns, before doing anything else:**
-   Submit exactly this as a single `Bash` call with `run_in_background: true`:
+   Update your status file to ci-wait so the tech lead's statusline shows you:
+   ```bash
+   _branch=$(git -C /workspace/.claude/worktrees/issue-{N}-{slug} branch --show-current 2>/dev/null | sed 's/^issue-//')
+   printf '{"name":"%s","state":"ci-wait","issue":"#{N}","pr":<PR>,"since":%s}\n' "${_branch:-dev}" "$(date +%s)" \
+     > "/workspace/.claude/agent-status/issue-{N}-{slug}.json"
+   ```
+   Then submit the wait loop as a single `Bash` call with `run_in_background: true`:
    ```bash
    until [ -f /workspace/.claude/ci-status/pr-<N>.json ] && \
      [ "$(jq -r '.head_sha' /workspace/.claude/ci-status/pr-<N>.json)" = "<HEAD_SHA>" ]; \
@@ -67,6 +78,7 @@ Message **specific agents only** — no broadcasts unless claiming a shared file
 7. On MERGE: `gh pr merge <N> --merge --admin`
 8. On ESCALATE: message tech lead with which criterion failed + values
 9. After merge:
+   - `rm -f "/workspace/.claude/agent-status/issue-{N}-{slug}.json"` — clear your status
    - `git worktree remove /workspace/.claude/worktrees/<branch>` — clean up your own worktree
    - `TaskUpdate(status: completed)`
    - `TaskList` → claim next task, or shut down if queue is empty

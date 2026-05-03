@@ -23,6 +23,31 @@ display_cwd=$(basename "${cwd:-$(pwd)}")
 printf '\033[01;34m%s\033[00m' "$display_cwd"
 [ -n "$model" ] && printf ' \033[%sm%s\033[00m' "$model_color" "$model"
 [ -n "$effort" ] && [ "$effort" != "none" ] && [ "$effort" != "disabled" ] && printf ' \033[00;33m%s\033[00m' "$effort"
+
+# Agent idle counters — reads .claude/agent-status/{name}.json
+status_dir="/workspace/.claude/agent-status"
+if [ -d "$status_dir" ]; then
+  now_sec=$(date +%s)
+  for f in "$status_dir"/*.json; do
+    [ -f "$f" ] || continue
+    since=$(jq -r '.since // empty' "$f" 2>/dev/null)
+    [ -z "$since" ] && continue
+    elapsed=$(( now_sec - since ))
+    [ "$elapsed" -lt 0 ] && elapsed=0
+    if [ "$elapsed" -lt 60 ]; then age="${elapsed}s"
+    elif [ "$elapsed" -lt 3600 ]; then age="$((elapsed / 60))m"
+    else age="$((elapsed / 3600))h$((elapsed % 3600 / 60))m"; fi
+    issue=$(jq -r '.issue // empty' "$f" 2>/dev/null)
+    task=$(jq -r '.task // empty' "$f" 2>/dev/null)
+    ref="${issue:-${task}}"
+    [ -n "$ref" ] && label="${ref} ${age}" || label="${age}"
+    if [ "$elapsed" -ge 900 ]; then   color="48;5;196;37"
+    elif [ "$elapsed" -ge 300 ]; then color="43;30"
+    else                              color="100;37"; fi
+    printf ' \033[%sm %s \033[00m' "$color" "$label"
+  done
+fi
+
 if [ -n "$used" ] || [ -n "$weekly" ]; then
   if [ -n "$used" ]; then
     awk -v p="$used" 'BEGIN {
