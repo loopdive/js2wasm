@@ -588,6 +588,134 @@ function tryEmitInlineDynamicCall(
   return { kind: "externref" };
 }
 
+/**
+ * (#1299) Emit a tag-based virtual method dispatch for a base-typed
+ * receiver where multiple subclasses provide overriding implementations.
+ * Mirrors the `instanceof` codegen: load the receiver's `__tag` field
+ * (i32, set in each subclass's constructor) and compare against each
+ * candidate's known `classTag` value, calling the matching subclass's
+ * method body. Receiver and arguments are evaluated once and saved to
+ * temp locals so each branch can reference them.
+ *
+ * Returns the call's IR result type, or undefined if dispatch could not
+ * be emitted (caller falls back to the existing static path).
+ */
+function emitVirtualMethodDispatchByTag(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.CallExpression,
+  propAccess: ts.PropertyAccessExpression,
+  candidates: { className: string; funcIdx: number; classTag: number }[],
+  baseClassName: string,
+): InnerResult | undefined {
+  // Resolve the base struct typeIdx for `struct.get __tag` (field 0).
+  const baseStructIdx = ctx.structMap.get(baseClassName);
+  if (baseStructIdx === undefined) return undefined;
+
+  // Validate first candidate's signature (used as the schema for arg
+  // type hints and return-type lookup; all overrides share the same
+  // user-visible signature).
+  const firstCand = candidates[0]!;
+  const firstParamTypes = getFuncParamTypes(ctx, firstCand.funcIdx);
+  if (!firstParamTypes || firstParamTypes.length === 0) return undefined;
+
+  // Compile the receiver expression — produces a ref-typed value.
+  const recvType = compileExpression(ctx, fctx, propAccess.expression);
+  if (!recvType || (recvType.kind !== "ref" && recvType.kind !== "ref_null")) return undefined;
+
+  const recvLocalType: ValType = { kind: "ref_null", typeIdx: (recvType as { typeIdx: number }).typeIdx };
+  const recvLocal = allocTempLocal(fctx, recvLocalType);
+  fctx.body.push({ op: "local.set", index: recvLocal });
+
+  // Evaluate args and save each to a temp local. Pad missing args with
+  // default values so call sites can omit trailing arguments.
+  const argLocals: { idx: number; type: ValType }[] = [];
+  const userParamCount = firstParamTypes.length - 1; // exclude self
+  const argCount = Math.min(expr.arguments.length, userParamCount);
+  for (let i = 0; i < argCount; i++) {
+    const expectedArgType = firstParamTypes[i + 1];
+    const aType = compileExpression(ctx, fctx, expr.arguments[i]!, expectedArgType);
+    if (!aType) return undefined;
+    const local = allocTempLocal(fctx, aType);
+    fctx.body.push({ op: "local.set", index: local });
+    argLocals.push({ idx: local, type: aType });
+  }
+  for (let i = expr.arguments.length + 1; i < firstParamTypes.length; i++) {
+    const paramType = firstParamTypes[i]!;
+    pushDefaultValue(fctx, paramType, ctx);
+    const local = allocTempLocal(fctx, paramType);
+    fctx.body.push({ op: "local.set", index: local });
+    argLocals.push({ idx: local, type: paramType });
+  }
+
+  // Determine return type from the first candidate's signature.
+  const sig = ctx.checker.getResolvedSignature(expr);
+  let resultType: ValType | typeof VOID_RESULT = VOID_RESULT;
+  if (sig) {
+    const retType = ctx.checker.getReturnTypeOfSignature(sig);
+    const fullName0 = `${firstCand.className}_${propAccess.name.text}`;
+    if (!isEffectivelyVoidReturn(ctx, retType, fullName0)) {
+      const wasmRet = getWasmFuncReturnType(ctx, firstCand.funcIdx);
+      resultType = wasmRet ?? resolveWasmType(ctx, retType);
+    }
+  }
+  if (resultType !== VOID_RESULT && wasmFuncReturnsVoid(ctx, firstCand.funcIdx)) {
+    resultType = VOID_RESULT;
+  }
+
+  const blockType: { kind: "val"; type: ValType } | { kind: "empty" } =
+    resultType === VOID_RESULT ? { kind: "empty" } : { kind: "val", type: resultType };
+
+  // Build the call body for one candidate. We need to ref.cast the
+  // receiver to the candidate's struct type before calling, so the
+  // function-type signature matches.
+  function callBody(cand: { className: string; funcIdx: number; classTag: number }): Instr[] {
+    const candParams = getFuncParamTypes(ctx, cand.funcIdx);
+    if (!candParams || candParams.length === 0) return [];
+    const selfType = candParams[0]!;
+    if (selfType.kind !== "ref" && selfType.kind !== "ref_null") return [];
+    const selfTypeIdx = (selfType as { typeIdx: number }).typeIdx;
+    const body: Instr[] = [];
+    body.push({ op: "local.get", index: recvLocal });
+    // ref.cast_null preserves nullability if the receiver might be null;
+    // ref.cast (non-null) traps on null. Use ref.cast_null since the
+    // receiver could be null at the static type level.
+    body.push({ op: "ref.cast_null", typeIdx: selfTypeIdx } as Instr);
+    for (const a of argLocals) {
+      body.push({ op: "local.get", index: a.idx });
+    }
+    const finalIdx = ctx.funcMap.get(`${cand.className}_${propAccess.name.text}`) ?? cand.funcIdx;
+    body.push({ op: "call", funcIdx: finalIdx });
+    return body;
+  }
+
+  // Build the cascade: load __tag, compare to each candidate's classTag.
+  // Outermost: candidates[0]; deepest else: unreachable.
+  let elseInstrs: Instr[] = [{ op: "unreachable" } as Instr];
+  for (let i = candidates.length - 1; i >= 0; i--) {
+    const cand = candidates[i]!;
+    const branch: Instr[] = [
+      { op: "local.get", index: recvLocal },
+      { op: "struct.get", typeIdx: baseStructIdx, fieldIdx: 0 } as Instr,
+      { op: "i32.const", value: cand.classTag } as Instr,
+      { op: "i32.eq" } as Instr,
+      {
+        op: "if",
+        blockType,
+        then: callBody(cand),
+        else: elseInstrs,
+      } as Instr,
+    ];
+    elseInstrs = branch;
+  }
+  for (const instr of elseInstrs) fctx.body.push(instr);
+
+  for (const a of argLocals) releaseTempLocal(fctx, a.idx);
+  releaseTempLocal(fctx, recvLocal);
+
+  return resultType;
+}
+
 function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr: ts.CallExpression): InnerResult {
   // Optional chaining on calls: obj?.method()
   if (expr.questionDotToken && ts.isPropertyAccessExpression(expr.expression)) {
@@ -3405,19 +3533,76 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           ancestor = ctx.classParentMap.get(ancestor);
         }
       }
-      // Walk child classes (handles abstract class → concrete subclass)
+      // Walk child classes (handles abstract class → concrete subclass).
+      // (#1299) Collect ALL subclass implementations so we can emit a
+      // runtime tag-based dispatch (virtual dispatch) when more than one
+      // exists. Without this, a base-typed receiver would unconditionally
+      // call the first subclass's method regardless of runtime type.
+      let virtualCandidates: { className: string; funcIdx: number; classTag: number }[] | undefined;
       if (funcIdx === undefined) {
+        const candidates: { className: string; funcIdx: number; classTag: number }[] = [];
+        const baseClass = fullName.split("_")[0];
         for (const [childClass, parentClass] of ctx.classParentMap) {
-          if (parentClass === receiverClassName || parentClass === fullName.split("_")[0]) {
+          if (parentClass === receiverClassName || parentClass === baseClass) {
             const childFullName = `${childClass}_${methodName}`;
             const childFuncIdx = ctx.funcMap.get(childFullName);
-            if (childFuncIdx !== undefined) {
-              fullName = childFullName;
-              funcIdx = childFuncIdx;
-              break;
+            const childTag = ctx.classTagMap.get(childClass);
+            if (childFuncIdx !== undefined && childTag !== undefined) {
+              candidates.push({ className: childClass, funcIdx: childFuncIdx, classTag: childTag });
             }
           }
         }
+        if (candidates.length === 1) {
+          fullName = `${candidates[0]!.className}_${methodName}`;
+          funcIdx = candidates[0]!.funcIdx;
+        } else if (candidates.length > 1) {
+          virtualCandidates = candidates;
+          fullName = `${candidates[0]!.className}_${methodName}`;
+          funcIdx = candidates[0]!.funcIdx;
+        }
+      } else {
+        // Method exists on receiver class — also check for subclass overrides.
+        const candidates: { className: string; funcIdx: number; classTag: number }[] = [];
+        const recvTag = ctx.classTagMap.get(receiverClassName);
+        if (recvTag !== undefined) {
+          candidates.push({ className: receiverClassName, funcIdx, classTag: recvTag });
+        }
+        for (const [childClass, parentClass] of ctx.classParentMap) {
+          // Walk full ancestry to capture transitive subclasses.
+          let cur: string | undefined = parentClass;
+          while (cur) {
+            if (cur === receiverClassName) break;
+            cur = ctx.classParentMap.get(cur);
+          }
+          if (cur === receiverClassName && childClass !== receiverClassName) {
+            const childFullName = `${childClass}_${methodName}`;
+            const childFuncIdx = ctx.funcMap.get(childFullName);
+            const childTag = ctx.classTagMap.get(childClass);
+            if (
+              childFuncIdx !== undefined &&
+              childTag !== undefined &&
+              !candidates.some((c) => c.className === childClass)
+            ) {
+              candidates.push({ className: childClass, funcIdx: childFuncIdx, classTag: childTag });
+            }
+          }
+        }
+        if (candidates.length > 1) {
+          virtualCandidates = candidates;
+        }
+      }
+      // Early intercept: emit virtual dispatch (tag-comparison cascade,
+      // same pattern as `instanceof`) if multiple candidates exist.
+      if (virtualCandidates && virtualCandidates.length > 1) {
+        const vresult = emitVirtualMethodDispatchByTag(
+          ctx,
+          fctx,
+          expr,
+          propAccess,
+          virtualCandidates,
+          receiverClassName,
+        );
+        if (vresult !== undefined) return vresult;
       }
       // If no method found, check if the property is a callable struct field
       // (e.g. this.callback() where callback is a function-typed property)
