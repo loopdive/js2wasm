@@ -2,7 +2,7 @@
 id: 1285
 sprint: 47
 title: "Hono Tier 3 stress test — recursive TrieRouter with class-typed Node children"
-status: in-progress
+status: done
 created: 2026-05-02
 updated: 2026-05-03
 priority: high

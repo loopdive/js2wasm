@@ -2,7 +2,7 @@
 id: 1248
 sprint: 47
 title: "compiler: typeof x === 'string' guard breaks String.prototype.substring(start) — returns single char"
-status: ready
+status: done
 priority: medium
 feasibility: medium
 reasoning_effort: medium

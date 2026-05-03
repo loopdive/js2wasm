@@ -1,7 +1,7 @@
 ---
 id: 1247
 title: "compiler: typed `string[]` local with `path.split('/')` initializer triggers struct-type mismatch"
-status: ready
+status: done
 priority: medium
 feasibility: medium
 reasoning_effort: medium

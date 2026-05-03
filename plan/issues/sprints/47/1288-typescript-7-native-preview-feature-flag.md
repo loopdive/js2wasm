@@ -1,7 +1,7 @@
 ---
 id: 1288
 title: "TypeScript 7 (@typescript/native-preview) support under --ts7 feature flag"
-status: in-progress
+status: done
 created: 2026-05-03
 updated: 2026-05-03
 priority: medium
