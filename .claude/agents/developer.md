@@ -66,7 +66,18 @@ Message **specific agents only** — no broadcasts unless claiming a shared file
    printf '{"name":"%s","state":"ci-wait","issue":"#{N}","pr":<PR>,"since":%s}\n' "${_branch:-dev}" "$(date +%s)" \
      > "/workspace/.claude/agent-status/issue-{N}-{slug}.json"
    ```
-   Then submit the wait loop as a single `Bash` call with `run_in_background: true`:
+   **Fast-path for test/docs-only PRs** (no `src/**` changes): Test262 Sharded does not run,
+   so the ci-status file never appears. Instead, poll for basic CI completion:
+   ```bash
+   src_changes=$(gh pr view <N> --json files --jq '[.files[].path | select(startswith("src/"))] | length')
+   ```
+   If `src_changes == 0`, submit this wait loop as a single `Bash` call with `run_in_background: true`:
+   ```bash
+   until gh pr checks <N> --json name,status,conclusion 2>/dev/null | \
+     jq -e '[.[] | select(.conclusion != null)] | length > 0 and ([.[] | select(.conclusion == "FAILURE")] | length == 0)' \
+     > /dev/null 2>&1; do sleep 60; done
+   ```
+   If `src_changes > 0`, submit the standard wait loop instead:
    ```bash
    until [ -f /workspace/.claude/ci-status/pr-<N>.json ] && \
      [ "$(jq -r '.head_sha' /workspace/.claude/ci-status/pr-<N>.json)" = "<HEAD_SHA>" ]; \
