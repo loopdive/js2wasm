@@ -4,7 +4,7 @@
  *
  * Extracted from codegen/index.ts (#1013).
  */
-import { ts } from "../ts-api.js";
+import { ts, forEachChild } from "../ts-api.js";
 import { isVoidType, unwrapPromiseType } from "../checker/type-mapper.js";
 import type { Instr, ValType, WasmFunction } from "../ir/types.js";
 import { popBody, pushBody } from "./context/bodies.js";
@@ -169,9 +169,9 @@ export function collectI32CoercedLocals(decl: ts.FunctionLikeDeclaration): Set<s
         }
       }
     }
-    ts.forEachChild(node, collectDecls);
+    forEachChild(node, collectDecls);
   }
-  ts.forEachChild(decl.body, collectDecls);
+  forEachChild(decl.body, collectDecls);
 
   // Drop shadowed names — they are not safe to promote because the
   // hoist/codegen split would see two scopes with the same name.
@@ -249,15 +249,15 @@ export function collectI32CoercedLocals(decl: ts.FunctionLikeDeclaration): Set<s
         ts.isConstructorDeclaration(node))
     ) {
       // Descend, but mark all identifier references inside as "captured".
-      ts.forEachChild(node, (child) => collectCaptures(child, true));
+      forEachChild(node, (child) => collectCaptures(child, true));
       return;
     }
     if (insideNested && ts.isIdentifier(node) && candidates.has(node.text)) {
       disqualified.add(node.text);
     }
-    ts.forEachChild(node, (child) => collectCaptures(child, insideNested));
+    forEachChild(node, (child) => collectCaptures(child, insideNested));
   }
-  ts.forEachChild(decl.body, (child) => collectCaptures(child, false));
+  forEachChild(decl.body, (child) => collectCaptures(child, false));
 
   // Pass 2: collect every mutation of each candidate
   function collectMutations(node: ts.Node): void {
@@ -322,9 +322,9 @@ export function collectI32CoercedLocals(decl: ts.FunctionLikeDeclaration): Set<s
     ) {
       recordCandidate(node.operand.text, { kind: "incdec" });
     }
-    ts.forEachChild(node, collectMutations);
+    forEachChild(node, collectMutations);
   }
-  ts.forEachChild(decl.body, collectMutations);
+  forEachChild(decl.body, collectMutations);
 
   // Drop disqualified candidates so they cannot be promoted.
   for (const name of disqualified) {

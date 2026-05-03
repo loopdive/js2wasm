@@ -54,7 +54,7 @@
  *   - Read loop reads `arr.length` more than once or after the loop
  *   - Index variables shadow outer scopes in surprising ways
  */
-import { ts } from "../ts-api.js";
+import { ts, forEachChild } from "../ts-api.js";
 import type { CodegenContext } from "./context/types.js";
 
 /**
@@ -374,7 +374,7 @@ function parseReadLoop(
         return;
       }
     }
-    ts.forEachChild(node, visitRhs);
+    forEachChild(node, visitRhs);
   }
   visitRhs(assignExpr.right);
   if (foundOtherArrUse) return null;
@@ -432,7 +432,7 @@ function referencesSymbol(checker: ts.TypeChecker, node: ts.Node, sym: ts.Symbol
         return;
       }
     }
-    ts.forEachChild(n, visit);
+    forEachChild(n, visit);
   }
   visit(node);
   return found;
@@ -545,7 +545,7 @@ function setParents(root: ts.Node, rootParent: ts.Node | undefined): void {
   if (rootParent !== undefined) {
     (root as { parent: ts.Node | undefined }).parent = rootParent;
   }
-  ts.forEachChild(root, (child) => {
+  forEachChild(root, (child) => {
     setParents(child, root);
   });
 }

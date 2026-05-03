@@ -5,7 +5,7 @@
  *
  * Extracted from codegen/index.ts (#1013).
  */
-import { ts } from "../ts-api.js";
+import { ts, forEachChild } from "../ts-api.js";
 import {
   isBigIntType,
   isBooleanType,
@@ -754,11 +754,11 @@ export function unifiedVisitNode(ctx: CodegenContext, state: UnifiedCollectorSta
   // Track computed property name depth for string literal collection
   if (ts.isComputedPropertyName(node)) {
     state.insideComputedPropertyName++;
-    ts.forEachChild(node, (child) => unifiedVisitNode(ctx, state, child));
+    forEachChild(node, (child) => unifiedVisitNode(ctx, state, child));
     state.insideComputedPropertyName--;
     return; // already recursed
   }
-  ts.forEachChild(node, (child) => unifiedVisitNode(ctx, state, child));
+  forEachChild(node, (child) => unifiedVisitNode(ctx, state, child));
 }
 
 /** Run all post-walk finalization (register imports based on collected state) */
@@ -1141,10 +1141,10 @@ export function resolveGenericCallSiteTypes(
         found = { params, results };
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
-  ts.forEachChild(sourceFile, visit);
+  forEachChild(sourceFile, visit);
   return found;
 }
 
@@ -1189,10 +1189,10 @@ export function inferParamTypeFromCallSites(
         }
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
-  ts.forEachChild(sourceFile, visit);
+  forEachChild(sourceFile, visit);
   return conflict ? null : agreed;
 }
 
@@ -1298,9 +1298,9 @@ export function inferParamTypeFromBody(
       }
     }
 
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
-  ts.forEachChild(decl.body, visit);
+  forEachChild(decl.body, visit);
   return foundNumericUse ? { kind: "f64" } : null;
 }
 
@@ -1347,9 +1347,9 @@ export function inferNumericReturnTypes(ctx: CodegenContext, sourceFile: ts.Sour
         candidates.set(node.name.text, node);
       }
     }
-    ts.forEachChild(node, collectFns);
+    forEachChild(node, collectFns);
   }
-  ts.forEachChild(sourceFile, collectFns);
+  forEachChild(sourceFile, collectFns);
   if (candidates.size === 0) return new Map();
 
   // Inference set: starts with all candidates, and shrinks as we eliminate
@@ -1532,9 +1532,9 @@ export function inferNumericReturnTypes(ctx: CodegenContext, sourceFile: ts.Sour
             sawBareReturn = true;
           }
         }
-        ts.forEachChild(node, visit);
+        forEachChild(node, visit);
       };
-      ts.forEachChild(fnDecl.body, visit);
+      forEachChild(fnDecl.body, visit);
     }
     fnInfo.set(fnName, { paramNames, returns, sawBareReturn, paramsAllNumeric });
   }
@@ -1994,7 +1994,7 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
     if (ts.isClassExpression(node)) {
       registerClassExpression(node);
     }
-    ts.forEachChild(node, collectAnonymousClassesInNewExpr);
+    forEachChild(node, collectAnonymousClassesInNewExpr);
   }
 
   function collectClassesFromStatements(stmts: ts.NodeArray<ts.Statement> | readonly ts.Statement[]): void {
@@ -3086,7 +3086,7 @@ export function compileDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
     if (ts.isClassExpression(node)) {
       compileAnonClassIfNeeded(node);
     }
-    ts.forEachChild(node, compileAnonymousClassBodiesInNode);
+    forEachChild(node, compileAnonymousClassBodiesInNode);
   }
 
   compileClassesFromStatements(sourceFile.statements);

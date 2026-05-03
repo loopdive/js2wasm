@@ -124,3 +124,33 @@ function loadTs7Module(): typeof import("typescript") {
  * want the flag to control.
  */
 export const tsRuntime: typeof import("typescript") = isTs7 ? loadTs7Module() : loadTs5Module();
+
+/**
+ * Backend-agnostic `forEachChild` helper (#1290).
+ *
+ * `typescript@5` exposes `forEachChild` as a static function: `ts.forEachChild(node, cb)`.
+ * `@typescript/native-preview` exposes it as an instance method on every AST node:
+ * `node.forEachChild(cb)`. The two forms accept the same signature.
+ *
+ * This helper dispatches automatically: if `node` carries an instance method
+ * (TS7 native-preview), call it; otherwise fall back to the static TS5 form.
+ *
+ * All src tree modules should import this helper instead of calling
+ * `ts.forEachChild` directly so that codegen can iterate over either backend's
+ * AST without per-call-site changes.
+ */
+export function forEachChild<T>(
+  node: ts.Node,
+  cbNode: (node: ts.Node) => T | undefined,
+  cbNodeArray?: (nodes: ts.NodeArray<ts.Node>) => T | undefined,
+): T | undefined {
+  // TS7 native-preview AST nodes carry `forEachChild` as a prototype method.
+  // typescript@5 nodes do NOT have this method on the prototype, so this check
+  // distinguishes the two without a backend-detection round-trip.
+  const inst = (node as unknown as { forEachChild?: (cb: (n: ts.Node) => T | undefined) => T | undefined })
+    .forEachChild;
+  if (typeof inst === "function") {
+    return inst.call(node, cbNode);
+  }
+  return ts.forEachChild(node, cbNode, cbNodeArray);
+}

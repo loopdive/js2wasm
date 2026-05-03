@@ -2,7 +2,7 @@
 /**
  * new/super/class expression compilation.
  */
-import { ts } from "../../ts-api.js";
+import { ts, forEachChild } from "../../ts-api.js";
 import type { FieldDef, Instr, ValType } from "../../ir/types.js";
 import { collectReferencedIdentifiers, collectWrittenIdentifiers } from "../closures.js";
 import { reportError } from "../context/errors.js";
@@ -585,7 +585,7 @@ function inferArrayElementType(ctx: CodegenContext, expr: ts.NewExpression): ts.
       }
     }
 
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
   visit(scope);
@@ -603,7 +603,7 @@ function usesArguments(node: ts.Node): boolean {
   if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node)) {
     return false;
   }
-  return ts.forEachChild(node, usesArguments) ?? false;
+  return forEachChild(node, usesArguments) ?? false;
 }
 
 /**
