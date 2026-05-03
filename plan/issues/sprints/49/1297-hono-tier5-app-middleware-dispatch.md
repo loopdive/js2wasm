@@ -126,25 +126,52 @@ Dispatch extracts params from the trie match and populates `Context.params`.
 
 ## Test Results (2026-05-03)
 
-`tests/stress/hono-tier5.test.ts` — 8 cases total, 4 pass + 4 skipped.
+`tests/stress/hono-tier5.test.ts` — 14 cases total, 10 pass + 4 skipped.
 
-Passing:
+### First describe block (Map<string, Handler> shape — mirrors real Hono)
+
+Passing (4):
 - Tier 5a — unregistered path returns 404 (no handler invocation needed)
 - Tier 5b — chained `.get(...)` calls register all three routes (verified
-  via `routeCount()`, no handler invocation needed)
+  via `routeCount()`)
 - Tier 5c — compose: middleware that does NOT call `next()` short-circuits
 - Tier 5c — compose: empty middleware array returns `"end"` sentinel
 
-Skipped — blocked on compiler gaps surfaced by Tier 5:
+Skipped (4) — blocked on **#1298**: function-typed values stored in
+`Map<string, Handler>`, `{ [k: string]: Handler }`, or `Handler[]` lose
+callability when retrieved by index. The set side correctly emits
+`__fn_wrap_N_struct` boxing; the call side drops the loaded externref
+and pushes `ref.null extern` instead of unwrapping + `call_ref`.
 
-- Tier 5a / Tier 5d (3 cases) — function-typed values stored in
-  `Map<string, Handler>` / `{ [k: string]: Handler }` / `Handler[]` lose
-  callability when retrieved by index, causing null-deref at the call
-  site. **Filed as #1298**.
-- Tier 5c — two arrow middlewares each calling `next()` trigger a
-  Wasm validator error: `struct.new[0] expected type f64, found
-  local.get of type anyref @+1438` in the closure-env emission. Single
-  arrow + non-calling-next middlewares compile fine. **Filed as #1299**.
+### Second describe block (parallel-array workaround — proves contract today)
 
-Tier 1–4 regression check: 19/19 still pass. No regression from the new
-test file.
+End-to-end dispatch validated using `paths: string[] / ids: number[]` +
+module-level `runHandler(id, c)` dispatcher. Same observable behavior
+as the Map shape, different representation. Passing (6):
+
+- Tier 5a' — minimal App dispatches single route to handler body ("A")
+- Tier 5d' — three routes registered, each dispatches correctly + 404
+- Tier 5e — `Context.path` is readable from inside the handler
+- Tier 5f — chain returns same App; all 3 routes accumulate
+- Tier 5c' — middleware compose: 2 layers wrap correctly
+  ("<a><b>end</b></a>")
+- Tier 5c'-3 — middleware compose: 3 layers wrap correctly
+  ("<a><b><c>end</c></b></a>")
+
+### Compiler gaps filed as follow-up issues
+
+- **#1298** — Function-typed fields/arrays/Map values null-deref on
+  call. Set side correctly boxes via `__fn_wrap_N_struct`, call site
+  doesn't unwrap. Repro + fix-location + acceptance criteria documented
+  in `plan/issues/sprints/49/1298-fn-typed-fields-call-drops.md`.
+- **#1299** — Virtual dispatch through abstract-base-typed dict values
+  resolves to first stored subclass's method for ALL stored values.
+  Surfaced while exploring abstract-class workaround for #1298.
+- **#1300** — Closures capturing outer parameter inside an inline
+  lambda passed as a `Next` callback null-deref at call time. Surfaced
+  while exploring inline-compose workaround in middleware. Tier 5
+  works around by hoisting middleware steps to module-level functions.
+
+### Regression check
+
+Hono Tier 1-4 stress tests: 19/19 still pass.

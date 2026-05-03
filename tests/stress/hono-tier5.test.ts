@@ -316,3 +316,201 @@ describe("#1297 Hono Tier 5 — App class + middleware compose + dispatch", () =
     expect(exports.test!()).toBe("end");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Tier 5 (alternate path) — end-to-end dispatch using a parallel-array
+// + numeric-ID workaround for the function-typed-storage gap (#1298).
+//
+// The Map<string, Handler> shape above mirrors real Hono — it's how
+// users WANT to write code — but until #1298 lands those tests stay
+// skipped. The shape below proves the dispatch *contract* end-to-end
+// today by replacing fn-typed storage with a path[]/id[] index +
+// module-level handler dispatcher. Same observable behavior, different
+// representation.
+//
+// This block also documents the gaps found while writing Tier 5:
+//
+//   - #1298 — Function-typed values stored in struct fields, vec
+//     elements, or Map values invoke a no-op (drop + return null) when
+//     called.
+//   - #1299 — Virtual dispatch through abstract-base-typed dict values
+//     resolves to the FIRST stored subclass's method for ALL stored
+//     values. (Surfaced as a candidate workaround for #1298, then
+//     rejected.)
+//   - #1300 — Closures capturing OUTER PARAMETERS inside an inline
+//     lambda passed as a Next callback null-deref at call time.
+//     (Surfaced as a candidate workaround for #1298 in the compose
+//     pattern, then rejected.)
+// ---------------------------------------------------------------------------
+
+const APP_DISPATCH_SRC = `
+class Context {
+  path: string = "";
+  constructor(path: string) {
+    this.path = path;
+  }
+  text(s: string): string { return s; }
+}
+
+class App {
+  // Parallel arrays (workaround for #1298) — each index is one route.
+  paths: string[] = [];
+  ids: number[] = [];
+
+  get(path: string, id: number): App {
+    this.paths.push(path);
+    this.ids.push(id);
+    return this; // method chaining
+  }
+
+  matchId(path: string): number {
+    for (let i: number = 0; i < this.paths.length; i++) {
+      if (this.paths[i] === path) return this.ids[i];
+    }
+    return 0; // 404
+  }
+
+  routeCount(): number { return this.paths.length; }
+}
+
+// Module-level dispatch — workaround for #1298. The runtime's
+// "handler table" lives here, indexed by numeric id.
+function runHandler(id: number, c: Context): string {
+  if (id === 1) return c.text("A");
+  if (id === 2) return c.text("B");
+  if (id === 3) return c.text("C");
+  if (id === 4) return c.text("hello/" + c.path);
+  return "404";
+}
+
+function dispatchPath(app: App, path: string): string {
+  const id = app.matchId(path);
+  const ctx = new Context(path);
+  return runHandler(id, ctx);
+}
+
+// Module-level middleware steps (workaround for #1300). Each named
+// step is a Next-typed callback that the next outer middleware can
+// invoke. The wrapper IDs are passed to runMw which knows how to wrap.
+type Next = () => string;
+function runMw(id: number, next: Next): string {
+  if (id === 1) return "<a>" + next() + "</a>";
+  if (id === 2) return "<b>" + next() + "</b>";
+  if (id === 3) return "<c>" + next() + "</c>";
+  return "end";
+}
+function endNext(): string { return "end"; }
+function step3(): string { return runMw(3, endNext); }
+function step2(): string { return runMw(2, endNext); }
+function step23(): string { return runMw(2, step3); }
+`;
+
+describe("#1297 Hono Tier 5 — end-to-end dispatch (parallel-array workaround)", () => {
+  /**
+   * Tier 5a' — minimal App + Context dispatches a single registered
+   * route end-to-end and reaches the registered handler's body.
+   * Acceptance criterion 2 (using the workaround).
+   */
+  it("Tier 5a' — minimal App dispatches single route to handler body", async () => {
+    const { exports } = await run(`
+      ${APP_DISPATCH_SRC}
+      export function test(): string {
+        const app = new App();
+        app.get("/hello", 1);
+        return dispatchPath(app, "/hello");
+      }
+    `);
+    expect(exports.test!()).toBe("A");
+  });
+
+  /**
+   * Tier 5d' — three registered routes each dispatch to the right
+   * handler body (no cross-bleed) and a missing path returns "404".
+   * Acceptance criterion 5 (using the workaround).
+   */
+  it("Tier 5d' — three routes registered, each dispatches correctly + 404", async () => {
+    const { exports } = await run(`
+      ${APP_DISPATCH_SRC}
+      export function test(): string {
+        const app = new App();
+        app.get("/a", 1).get("/b", 2).get("/c", 3);
+        return dispatchPath(app, "/a") + ":" +
+               dispatchPath(app, "/b") + ":" +
+               dispatchPath(app, "/c") + ":" +
+               dispatchPath(app, "/missing");
+      }
+    `);
+    expect(exports.test!()).toBe("A:B:C:404");
+  });
+
+  /**
+   * Tier 5e — Context.path round-trips through dispatch. The Context
+   * constructed inside dispatch carries the request path, and the
+   * handler body reads it via c.path. Validates that Context state
+   * is reachable INSIDE handlers, not just statically returned.
+   */
+  it("Tier 5e — Context.path is readable from inside the handler", async () => {
+    const { exports } = await run(`
+      ${APP_DISPATCH_SRC}
+      export function test(): string {
+        const app = new App();
+        app.get("/route", 4); // handler 4 echoes c.path
+        return dispatchPath(app, "/route");
+      }
+    `);
+    expect(exports.test!()).toBe("hello//route");
+  });
+
+  /**
+   * Tier 5f — chained registration returns the SAME App instance
+   * (not a fresh one each call). The chain's terminal value must
+   * see all three accumulated routes.
+   */
+  it("Tier 5f — chain returns same App; all 3 routes accumulate", async () => {
+    const { exports } = await run(`
+      ${APP_DISPATCH_SRC}
+      export function test(): number {
+        const app = new App();
+        const same = app.get("/a", 1).get("/b", 2).get("/c", 3);
+        let ok: number = 0;
+        if (dispatchPath(same, "/a") === "A") ok = ok + 1;
+        if (dispatchPath(same, "/b") === "B") ok = ok + 1;
+        if (dispatchPath(same, "/c") === "C") ok = ok + 1;
+        if (same.routeCount() === 3) ok = ok + 1;
+        return ok;
+      }
+    `);
+    expect(exports.test!()).toBe(4);
+  });
+
+  /**
+   * Tier 5c' — middleware compose end-to-end with two layers using
+   * module-level Next callbacks (workaround for #1300). Validates
+   * that the outer middleware sees the inner middleware's result and
+   * wraps it. Same contract as the skipped Tier 5c above.
+   */
+  it("Tier 5c' — middleware compose: 2 layers (workaround for #1300)", async () => {
+    const { exports } = await run(`
+      ${APP_DISPATCH_SRC}
+      export function test(): string {
+        return runMw(1, step2);
+      }
+    `);
+    expect(exports.test!()).toBe("<a><b>end</b></a>");
+  });
+
+  /**
+   * Tier 5c'-3 — three-layer middleware compose. Verifies the chain
+   * scales beyond 2 and the innermost result is correctly bubbled
+   * back through both outer wrappers.
+   */
+  it("Tier 5c'-3 — middleware compose: 3 layers wrap correctly", async () => {
+    const { exports } = await run(`
+      ${APP_DISPATCH_SRC}
+      export function test(): string {
+        return runMw(1, step23);
+      }
+    `);
+    expect(exports.test!()).toBe("<a><b><c>end</c></b></a>");
+  });
+});
