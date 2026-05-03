@@ -15593,8 +15593,8 @@
       "title": "Infer when JavaScript number flows can be safely lowered to int32 or uint32",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
-      "sprint": "48",
+      "raw_status": "in-progress",
+      "sprint": "49",
       "depends_on": [
         "1124"
       ],
@@ -16723,7 +16723,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "48",
+      "sprint": "49",
       "depends_on": [
         "1197"
       ],
@@ -16735,8 +16735,8 @@
       "id": "1200",
       "title": "perf: loop-invariant code motion in optimizer pass (hoist `arr.length` etc. out of `for` conditions)",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "48",
       "depends_on": [],
       "files": [],
@@ -17025,7 +17025,7 @@
       "priority": "medium",
       "status": "blocked",
       "raw_status": "blocked",
-      "sprint": "48",
+      "sprint": "49",
       "depends_on": [
         "1177",
         "1205"
@@ -17257,10 +17257,10 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "48",
+      "sprint": "49",
       "depends_on": [],
       "files": [],
-      "cluster": "sprint-48"
+      "cluster": "sprint-49"
     },
     {
       "id": "1242",
@@ -17643,8 +17643,8 @@
       "id": "1270",
       "title": "struct field inference Phase 3b: eliminate null-checks on (ref null $T) locals via peephole",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "48",
       "depends_on": [
         "1231",
@@ -17908,8 +17908,8 @@
       "id": "1290",
       "title": "perf: test262 runner — TS7 batch-parse via @typescript/native-preview (132× cold speedup)",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "49",
       "depends_on": [],
       "files": [],
@@ -17920,8 +17920,8 @@
       "id": "1291",
       "title": "lodash Tier 1b — upgrade add/clamp stress tests to execution-level assertions",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "48",
       "depends_on": [
         "1276",
@@ -17936,8 +17936,8 @@
       "id": "1292",
       "title": "lodash Tier 2 stress test — memoize, flow, partial application",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "48",
       "depends_on": [
         "1291"
@@ -17950,8 +17950,8 @@
       "id": "1293",
       "title": "Hono Tier 4 — string[][] array-of-arrays type support + #segments field",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "48",
       "depends_on": [],
       "files": [],
@@ -17962,8 +17962,8 @@
       "id": "1294",
       "title": "test262 worker: reclassify WebAssembly.Exception compile-errors as fail + restart fork",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "48",
       "depends_on": [],
       "files": [],
@@ -17974,8 +17974,8 @@
       "id": "1295",
       "title": "compiler.ts: re-throw WebAssembly.Exception from internal catch blocks",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "48",
       "depends_on": [
         "1294"
@@ -17988,9 +17988,143 @@
       "id": "1295",
       "title": "lodash transitive init: start-function throws WebAssembly.Exception during instantiate (clamp/add)",
       "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "48",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1296",
+      "title": "Dogfood: compile dashboard/landing page JS to Wasm using js2wasm",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "49",
+      "depends_on": [
+        "1045"
+      ],
+      "files": [],
+      "goal": "compilable",
+      "cluster": "compilable"
+    },
+    {
+      "id": "1297",
+      "title": "Hono Tier 5 — Application class: route registration + middleware dispatch + Context",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "49",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1298",
+      "title": "Calling a function-typed value stored in a field/array/Map drops the call and returns null",
+      "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "48",
+      "sprint": "49",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1299",
+      "title": "Virtual dispatch through abstract-base-typed dict values returns first stored subclass's method",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "49",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1300",
+      "title": "Closure capturing outer parameter inside an inline lambda passed as a Next callback null-derefs at call time",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "49",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1301",
+      "title": "Closure environment field-type mismatch: struct.new[0] expected f64, got anyref",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "49",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1302",
+      "title": "Wasm validation: closure references invalid global index when compiling lodash flow.js",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "49",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1303",
+      "title": "Wasm validation: f64.trunc emitted on externref operand when compiling lodash partial.js",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "49",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1304",
+      "title": "typeof on externref-wrapped JS function returns 'object' instead of 'function'",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "49",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1305",
+      "title": "Module-level var init leaks externref into bitwise op codegen (legacy path)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "49",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1306",
+      "title": "ElementAccessExpression call on closure-typed array drops call: mws[idx](c, next) emits ref.null",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "49",
       "depends_on": [],
       "files": [],
       "goal": "npm-library-support",
@@ -18775,22 +18909,6 @@
       "target": "1285"
     },
     {
-      "source": "1124",
-      "target": "1126"
-    },
-    {
-      "source": "1197",
-      "target": "1199"
-    },
-    {
-      "source": "1177",
-      "target": "1223"
-    },
-    {
-      "source": "1205",
-      "target": "1223"
-    },
-    {
       "source": "1238",
       "target": "1233"
     },
@@ -18833,6 +18951,26 @@
     {
       "source": "1294",
       "target": "1295"
+    },
+    {
+      "source": "1124",
+      "target": "1126"
+    },
+    {
+      "source": "1197",
+      "target": "1199"
+    },
+    {
+      "source": "1177",
+      "target": "1223"
+    },
+    {
+      "source": "1205",
+      "target": "1223"
+    },
+    {
+      "source": "1045",
+      "target": "1296"
     },
     {
       "source": "321",
@@ -19284,7 +19422,8 @@
         "1178",
         "1180",
         "1186",
-        "1211"
+        "1211",
+        "1296"
       ]
     },
     {
@@ -19923,7 +20062,17 @@
         "1291",
         "1292",
         "1293",
-        "1295"
+        "1295",
+        "1297",
+        "1298",
+        "1299",
+        "1300",
+        "1301",
+        "1302",
+        "1303",
+        "1304",
+        "1305",
+        "1306"
       ],
       "track": "supporting track"
     },
@@ -21937,6 +22086,10 @@
     {
       "goal": "compilable",
       "issue": "1211"
+    },
+    {
+      "goal": "compilable",
+      "issue": "1296"
     },
     {
       "goal": "compiler-architecture",
@@ -23977,6 +24130,46 @@
     {
       "goal": "npm-library-support",
       "issue": "1295"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1297"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1298"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1299"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1300"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1301"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1302"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1303"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1304"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1305"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1306"
     },
     {
       "goal": "observability",
@@ -27949,6 +28142,46 @@
       "issue": "1295"
     },
     {
+      "goal": "core-semantics",
+      "issue": "1297"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1298"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1299"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1300"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1301"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1302"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1303"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1304"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1305"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1306"
+    },
+    {
       "goal": "platform",
       "issue": "111"
     },
@@ -28171,6 +28404,46 @@
     {
       "goal": "platform",
       "issue": "1295"
+    },
+    {
+      "goal": "platform",
+      "issue": "1297"
+    },
+    {
+      "goal": "platform",
+      "issue": "1298"
+    },
+    {
+      "goal": "platform",
+      "issue": "1299"
+    },
+    {
+      "goal": "platform",
+      "issue": "1300"
+    },
+    {
+      "goal": "platform",
+      "issue": "1301"
+    },
+    {
+      "goal": "platform",
+      "issue": "1302"
+    },
+    {
+      "goal": "platform",
+      "issue": "1303"
+    },
+    {
+      "goal": "platform",
+      "issue": "1304"
+    },
+    {
+      "goal": "platform",
+      "issue": "1305"
+    },
+    {
+      "goal": "platform",
+      "issue": "1306"
     },
     {
       "goal": "core-semantics",

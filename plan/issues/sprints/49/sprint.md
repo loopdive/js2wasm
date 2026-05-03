@@ -45,16 +45,18 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | #1199 | perf: linear-memory backing for typed numeric arrays (`Array<number>` with i32-only ops → `i32.load`/`i32.store`) | medium | ready |
 | #1241 | Untitled |  | ready |
 | #1298 | Calling a function-typed value stored in a field/array/Map drops the call and returns null | high | ready |
-| #1301 | Closure environment field-type mismatch: struct.new[0] expected f64, got anyref | medium | ready |
 | #1302 | Wasm validation: closure references invalid global index when compiling lodash flow.js | medium | ready |
 | #1303 | Wasm validation: f64.trunc emitted on externref operand when compiling lodash partial.js | medium | ready |
-| #1304 | typeof on externref-wrapped JS function returns 'object' instead of 'function' | medium | ready |
+| #1305 | Module-level var init leaks externref into bitwise op codegen (legacy path) | medium | ready |
+| #1306 | ElementAccessExpression call on closure-typed array drops call: mws[idx](c, next) emits ref.null | medium | ready |
 
 ### In Progress
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1126 | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | high | in-progress |
+| #1301 | Closure environment field-type mismatch: struct.new[0] expected f64, got anyref | medium | in-progress |
+| #1304 | typeof on externref-wrapped JS function returns 'object' instead of 'function' | medium | in-progress |
 
 ### Done
 

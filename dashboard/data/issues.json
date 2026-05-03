@@ -111,7 +111,7 @@
       ],
       "goal": "crash-free",
       "status": "blocked",
-      "sprint": "48"
+      "sprint": "49"
     },
     {
       "id": "1166",
@@ -186,51 +186,54 @@
   ],
   "ready": [
     {
-      "id": "1295",
-      "title": "compiler.ts: re-throw WebAssembly.Exception from internal catch blocks",
-      "priority": "high",
-      "feasibility": "easy",
-      "depends_on": [
-        "1294"
-      ],
-      "goal": "conformance",
-      "status": "ready",
-      "sprint": "48"
-    },
-    {
-      "id": "1292",
-      "title": "lodash Tier 2 stress test — memoize, flow, partial application",
+      "id": "1306",
+      "title": "ElementAccessExpression call on closure-typed array drops call: mws[idx](c, next) emits ref.null",
       "priority": "medium",
       "feasibility": "medium",
-      "depends_on": [
-        "1291"
-      ],
-      "goal": "npm-library-support",
-      "status": "ready",
-      "sprint": "48"
-    },
-    {
-      "id": "1290",
-      "title": "perf: test262 runner — TS7 batch-parse via @typescript/native-preview (132× cold speedup)",
-      "priority": "high",
-      "feasibility": "medium",
       "depends_on": [],
-      "goal": "performance",
+      "goal": "npm-library-support",
       "status": "ready",
       "sprint": "49"
     },
     {
-      "id": "1270",
-      "title": "struct field inference Phase 3b: eliminate null-checks on (ref null $T) locals via peephole",
+      "id": "1305",
+      "title": "Module-level var init leaks externref into bitwise op codegen (legacy path)",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "ready",
+      "sprint": "49"
+    },
+    {
+      "id": "1303",
+      "title": "Wasm validation: f64.trunc emitted on externref operand when compiling lodash partial.js",
       "priority": "medium",
       "feasibility": "medium",
-      "depends_on": [
-        "1231",
-        "1269"
-      ],
-      "goal": "performance",
+      "depends_on": [],
+      "goal": "npm-library-support",
       "status": "ready",
-      "sprint": "48"
+      "sprint": "49"
+    },
+    {
+      "id": "1302",
+      "title": "Wasm validation: closure references invalid global index when compiling lodash flow.js",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "ready",
+      "sprint": "49"
+    },
+    {
+      "id": "1298",
+      "title": "Calling a function-typed value stored in a field/array/Map drops the call and returns null",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "ready",
+      "sprint": "49"
     },
     {
       "id": "1255",
@@ -260,7 +263,7 @@
       "depends_on": [],
       "goal": "",
       "status": "ready",
-      "sprint": "48"
+      "sprint": "49"
     },
     {
       "id": "1240",
@@ -293,16 +296,6 @@
       "sprint": ""
     },
     {
-      "id": "1200",
-      "title": "perf: loop-invariant code motion in optimizer pass (hoist `arr.length` etc. out of `for` conditions)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "performance",
-      "status": "ready",
-      "sprint": "48"
-    },
-    {
       "id": "1199",
       "title": "perf: linear-memory backing for typed numeric arrays (`Array<number>` with i32-only ops → `i32.load`/`i32.store`)",
       "priority": "medium",
@@ -312,7 +305,7 @@
       ],
       "goal": "performance",
       "status": "ready",
-      "sprint": "48"
+      "sprint": "49"
     },
     {
       "id": "1172",
@@ -456,18 +449,6 @@
       "goal": "core-semantics",
       "status": "ready",
       "sprint": ""
-    },
-    {
-      "id": "1126",
-      "title": "Infer when JavaScript number flows can be safely lowered to int32 or uint32",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [
-        "1124"
-      ],
-      "goal": "core-semantics",
-      "status": "ready",
-      "sprint": "48"
     },
     {
       "id": "1122",
@@ -1584,38 +1565,24 @@
   ],
   "inprogress": [
     {
-      "id": "1294",
-      "title": "test262 worker: reclassify WebAssembly.Exception compile-errors as fail + restart fork",
-      "priority": "high",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "conformance",
-      "status": "in-progress",
-      "sprint": "48"
-    },
-    {
-      "id": "1293",
-      "title": "Hono Tier 4 — string[][] array-of-arrays type support + #segments field",
+      "id": "1304",
+      "title": "typeof on externref-wrapped JS function returns 'object' instead of 'function'",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "npm-library-support",
       "status": "in-progress",
-      "sprint": "48"
+      "sprint": "49"
     },
     {
-      "id": "1291",
-      "title": "lodash Tier 1b — upgrade add/clamp stress tests to execution-level assertions",
+      "id": "1301",
+      "title": "Closure environment field-type mismatch: struct.new[0] expected f64, got anyref",
       "priority": "medium",
       "feasibility": "medium",
-      "depends_on": [
-        "1276",
-        "1277",
-        "1279"
-      ],
+      "depends_on": [],
       "goal": "npm-library-support",
       "status": "in-progress",
-      "sprint": "48"
+      "sprint": "49"
     },
     {
       "id": "1206",
@@ -1636,10 +1603,132 @@
       "goal": "platform",
       "status": "in-progress",
       "sprint": "42"
+    },
+    {
+      "id": "1126",
+      "title": "Infer when JavaScript number flows can be safely lowered to int32 or uint32",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1124"
+      ],
+      "goal": "core-semantics",
+      "status": "in-progress",
+      "sprint": "49"
     }
   ],
   "review": [],
   "done": [
+    {
+      "id": "1300",
+      "title": "Closure capturing outer parameter inside an inline lambda passed as a Next callback null-derefs at call time",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "done",
+      "sprint": "49"
+    },
+    {
+      "id": "1299",
+      "title": "Virtual dispatch through abstract-base-typed dict values returns first stored subclass's method",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "done",
+      "sprint": "49"
+    },
+    {
+      "id": "1297",
+      "title": "Hono Tier 5 — Application class: route registration + middleware dispatch + Context",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "done",
+      "sprint": "49"
+    },
+    {
+      "id": "1296",
+      "title": "Dogfood: compile dashboard/landing page JS to Wasm using js2wasm",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [
+        "1045"
+      ],
+      "goal": "compilable",
+      "status": "done",
+      "sprint": "49"
+    },
+    {
+      "id": "1295",
+      "title": "compiler.ts: re-throw WebAssembly.Exception from internal catch blocks",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [
+        "1294"
+      ],
+      "goal": "conformance",
+      "status": "done",
+      "sprint": "48"
+    },
+    {
+      "id": "1294",
+      "title": "test262 worker: reclassify WebAssembly.Exception compile-errors as fail + restart fork",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "conformance",
+      "status": "done",
+      "sprint": "48"
+    },
+    {
+      "id": "1293",
+      "title": "Hono Tier 4 — string[][] array-of-arrays type support + #segments field",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "done",
+      "sprint": "48"
+    },
+    {
+      "id": "1292",
+      "title": "lodash Tier 2 stress test — memoize, flow, partial application",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [
+        "1291"
+      ],
+      "goal": "npm-library-support",
+      "status": "done",
+      "sprint": "48"
+    },
+    {
+      "id": "1291",
+      "title": "lodash Tier 1b — upgrade add/clamp stress tests to execution-level assertions",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [
+        "1276",
+        "1277",
+        "1279"
+      ],
+      "goal": "npm-library-support",
+      "status": "done",
+      "sprint": "48"
+    },
+    {
+      "id": "1290",
+      "title": "perf: test262 runner — TS7 batch-parse via @typescript/native-preview (132× cold speedup)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "performance",
+      "status": "done",
+      "sprint": "49"
+    },
     {
       "id": "1289",
       "title": "ESLint linter.js direct compile: array.set type mismatch in FileReport_addRuleMessage",
@@ -1839,6 +1928,19 @@
       "goal": "npm-library-support",
       "status": "done",
       "sprint": "47"
+    },
+    {
+      "id": "1270",
+      "title": "struct field inference Phase 3b: eliminate null-checks on (ref null $T) locals via peephole",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [
+        "1231",
+        "1269"
+      ],
+      "goal": "performance",
+      "status": "done",
+      "sprint": "48"
     },
     {
       "id": "1269",
@@ -2420,6 +2522,16 @@
       "goal": "async-model",
       "status": "done",
       "sprint": "46"
+    },
+    {
+      "id": "1200",
+      "title": "perf: loop-invariant code motion in optimizer pass (hoist `arr.length` etc. out of `for` conditions)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "performance",
+      "status": "done",
+      "sprint": "48"
     },
     {
       "id": "1198",
