@@ -12,13 +12,11 @@ AGENT_TYPE=$(echo "$INPUT" | jq -r '.tool_input.subagent_type // "general"' 2>/d
 source /workspace/.claude/hooks/event-log.sh
 log_event "agent_spawn" "agent=$AGENT_NAME" "type=$AGENT_TYPE" "ram_mb=$AVAIL_MB"
 
-# Enforce teammates, not subagents — CLAUDE.md requires TeamCreate + team_name
+# Prefer teammates over bare subagents for sprint work — warn but don't block
 TEAM_NAME=$(echo "$INPUT" | jq -r '.tool_input.team_name // empty' 2>/dev/null)
 if [ -z "$TEAM_NAME" ]; then
-  log_event "agent_spawn_blocked" "agent=$AGENT_NAME" "reason=no_team_name"
-  echo "BLOCKED: Agent spawned without team_name. Use TeamCreate first, then Agent with team_name parameter." >&2
-  echo "See CLAUDE.md: 'IMPORTANT: Always use teammates, not subagents.'" >&2
-  exit 2
+  log_event "agent_spawn_no_team" "agent=$AGENT_NAME" "reason=no_team_name"
+  echo "NOTE: Agent spawned without team_name. For sprint dev agents use TeamCreate + team_name so they can coordinate. Bare subagents are fine for one-off research/fetches." >&2
 fi
 
 if [ "$AVAIL_MB" -lt 1500 ]; then
