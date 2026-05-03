@@ -6026,6 +6026,11 @@ export function registerBuiltinExternClasses(ctx: CodegenContext): void {
     methods.set("includes", methodEntry([{ kind: "externref" }], { kind: "i32" }));
     methods.set("slice", methodEntry([{ kind: "f64" }, { kind: "f64" }], { kind: "externref" }));
     methods.set("join", methodEntry([{ kind: "externref" }], { kind: "externref" }));
+    // #1233 — concat: returns a new array. The fallback signature uses
+    // externref for both the variadic items and the result; the IR's
+    // existing dispatch falls through to the legacy `compileArrayConcat`
+    // when needed, which handles the per-element-type splatting.
+    methods.set("concat", methodEntry([{ kind: "externref" }], { kind: "externref" }));
 
     // Array.length — like String.length, f64-typed in JS engine
     // semantics. **Not** readonly (JS allows `arr.length = 0` to truncate),
