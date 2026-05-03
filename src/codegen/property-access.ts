@@ -2102,8 +2102,32 @@ export function compilePropertyAccess(
           fctx.body.push({ op: "any.convert_extern" } as Instr);
           fctx.body.push({ op: "local.set", index: tmpAnyExt });
 
-          const resultWasm =
-            accessWasm.kind === "f64" || accessWasm.kind === "i32" ? accessWasm : { kind: "externref" as const };
+          // Phase 3 (#1269): consumer-side specialization. When
+          // `accessWasm` is externref (TS `any`-typed receiver) but
+          // every struct candidate has the same Phase-1-inferred
+          // primitive field type, narrow the dispatch result to that
+          // primitive. The struct-then arm reads the field directly
+          // (no `__box_number`); the extern_get-else arm calls
+          // `__unbox_number` once. This eliminates the box→unbox
+          // roundtrip that previously fired on `const p: any =
+          // createPoint(...); p.x + p.y` style code, where Phase 1+2
+          // had already typed the struct's field but Phase 3 had not
+          // taught the consumer-side dispatch to use the typed read.
+          let resultWasm: ValType =
+            accessWasm.kind === "f64" || accessWasm.kind === "i32" ? accessWasm : ({ kind: "externref" } as const);
+          if (resultWasm.kind === "externref") {
+            const fieldKinds = new Set(structCandidates.map((c) => c.fieldType.kind));
+            if (fieldKinds.size === 1) {
+              const k = [...fieldKinds][0];
+              if (k === "f64" || k === "i32") {
+                resultWasm = { kind: k } as ValType;
+                if (unboxIdx === undefined) {
+                  unboxIdx = ensureLateImport(ctx, "__unbox_number", [{ kind: "externref" }], [{ kind: "f64" }]);
+                  flushLateImportShifts(ctx, fctx);
+                }
+              }
+            }
+          }
           const resultLocal = allocLocal(fctx, `__sd_res_${fctx.locals.length}`, resultWasm);
 
           // Build the __extern_get fallback instructions
@@ -2153,12 +2177,15 @@ export function compilePropertyAccess(
 
           fctx.body.push(...buildStructDispatch(0));
           fctx.body.push({ op: "local.get", index: resultLocal });
-          if (accessWasm.kind === "f64") {
-            return { kind: "f64" };
-          }
-          if (accessWasm.kind === "i32") {
-            return { kind: "i32" };
-          }
+          // Phase 3 (#1269): when we narrowed `resultWasm` to the
+          // candidates' shared primitive type, return that — caller
+          // sees f64/i32 directly, no enclosing unbox needed. Falls
+          // back to the legacy accessWasm-based return when no
+          // narrowing was possible.
+          if (resultWasm.kind === "f64") return { kind: "f64" };
+          if (resultWasm.kind === "i32") return { kind: "i32" };
+          if (accessWasm.kind === "f64") return { kind: "f64" };
+          if (accessWasm.kind === "i32") return { kind: "i32" };
           return { kind: "externref" };
         }
 
