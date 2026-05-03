@@ -85,3 +85,41 @@ If wasm-opt already handles this and we add codegen-side hoisting, we may make t
 ## Notes
 
 This is the smaller of the two Tier 2 array-perf wins. May reduce to documentation-only if wasm-opt's existing pass covers our common shapes — which is why **Step 1 (measurement) comes first**.
+
+## Resolution (2026-05-03) — Step 1 alone closes this
+
+Step 1 (measurement) done. Findings:
+
+1. **Static**: `wasm-opt -O3` does NOT statically hoist
+   `struct.get $vec 0 (local.get $arr)` (vec.length read) out of
+   the loop condition. The struct.get stays inside the loop body
+   in both `--optimize` and unoptimized binaries. Reason: hoisting
+   a potentially-trapping op (struct.get on nullable ref) out of
+   a loop that might iterate zero times would change semantics.
+
+2. **Runtime (V8)**: Despite the static "miss", V8's JIT
+   compensates. Microbenchmark on a 1M-element array sum:
+
+   | variant | unopt median | -O3 median |
+   |---------|--------------|------------|
+   | re-eval `arr.length` each iter | 6.51 ms | 6.70 ms |
+   | manually hoisted | 6.60 ms | 6.65 ms |
+
+   The difference is within timing noise (≤ 1%). The JIT pulls the
+   struct.get out of the loop at compile time.
+
+### Decision: close with documentation, do NOT implement Step 2
+
+Adding codegen-side LICM would:
+
+- require mutation analysis to prove `arr` isn't reassigned in the body
+- emit a slightly larger pre-V8 binary (extra local + `local.set`)
+- yield zero measurable wall-clock benefit on V8
+
+The smaller-and-equivalent baseline is preferable. See
+`plan/notes/wasm-opt-coverage.md` (new, this issue) for the full
+write-up — that file is the running record of "things wasm-opt
+does / doesn't do that we should / shouldn't duplicate".
+
+Re-open if a non-V8 runtime (Wasmtime, Wasmer, custom interpreter)
+shows a meaningful gap on the same shape.
