@@ -94,6 +94,53 @@ function emitObjectArgNullGuard(ctx: CodegenContext, fctx: FunctionContext, loca
   });
 }
 
+// ── SameValue f64 helper (ECMA-262 §7.2.10) ───────────────────────────
+
+/**
+ * Push a SameValue(old, new) comparison onto `fctx.body`. Reads two f64
+ * locals and pushes an i32 (1 if SameValue, 0 otherwise).
+ *
+ * SameValue differs from `f64.eq` / `f64.ne` for two cases that matter to
+ * Object.defineProperty on frozen objects (#1127 / #1252):
+ *   - SameValue(NaN, NaN) = true   (f64.eq returns 0)
+ *   - SameValue(+0, -0)   = false  (f64.eq returns 1)
+ *
+ * Implementation:
+ *   SameValue(x, y) =
+ *     (x == y && copysign(1, x) == copysign(1, y))   // distinguishes ±0
+ *     || (x != x && y != y)                          // both NaN
+ *
+ * IMPORTANT: Wasm `f64.copysign(z1, z2)` returns z1 with the sign of z2.
+ * The stack ordering is (..., z1, z2). To get "1 with the sign of v" we
+ * push `1` FIRST, then `v`. Reversing the order yields `copysign(v, 1)` =
+ * `|v|` which always has positive sign — that's the bug #1252 was filed
+ * about.
+ */
+function emitSameValueF64(fctx: { body: Instr[] }, oldValLocal: number, newValLocal: number): void {
+  // Part 1: (old == new) && (copysign(1, old) == copysign(1, new))
+  fctx.body.push({ op: "local.get", index: oldValLocal });
+  fctx.body.push({ op: "local.get", index: newValLocal });
+  fctx.body.push({ op: "f64.eq" });
+  fctx.body.push({ op: "f64.const", value: 1.0 });
+  fctx.body.push({ op: "local.get", index: oldValLocal });
+  fctx.body.push({ op: "f64.copysign" } as unknown as Instr);
+  fctx.body.push({ op: "f64.const", value: 1.0 });
+  fctx.body.push({ op: "local.get", index: newValLocal });
+  fctx.body.push({ op: "f64.copysign" } as unknown as Instr);
+  fctx.body.push({ op: "f64.eq" });
+  fctx.body.push({ op: "i32.and" });
+  // Part 2: (old != old) && (new != new) — both NaN
+  fctx.body.push({ op: "local.get", index: oldValLocal });
+  fctx.body.push({ op: "local.get", index: oldValLocal });
+  fctx.body.push({ op: "f64.ne" });
+  fctx.body.push({ op: "local.get", index: newValLocal });
+  fctx.body.push({ op: "local.get", index: newValLocal });
+  fctx.body.push({ op: "f64.ne" });
+  fctx.body.push({ op: "i32.and" });
+  // SameValue = part1 || part2
+  fctx.body.push({ op: "i32.or" });
+}
+
 // ── Object.defineProperty flag helpers ────────────────────────────────
 
 /**
@@ -885,36 +932,13 @@ export function compileObjectDefineProperty(
       const errMsgGlobal = ctx.stringGlobalMap.get(errMsg)!;
 
       if (fieldType.kind === "f64") {
-        // f64 comparison using SameValue semantics (ECMA-262 §7.2.10):
-        //   SameValue(x, y) = (x == y && copysign(1,x) == copysign(1,y)) || (x != x && y != y)
-        // This correctly handles: SameValue(NaN, NaN) = true, SameValue(+0, -0) = false
         const compareBody: Instr[] = [
           { op: "global.get", index: errMsgGlobal } as Instr,
           { op: "throw", tagIdx } as Instr,
         ];
-        // Part 1: (old == new) && (copysign(1,old) == copysign(1,new))
-        fctx.body.push({ op: "local.get", index: oldValLocal });
-        fctx.body.push({ op: "local.get", index: newValLocal });
-        fctx.body.push({ op: "f64.eq" });
-        fctx.body.push({ op: "local.get", index: oldValLocal });
-        fctx.body.push({ op: "f64.const", value: 1.0 });
-        fctx.body.push({ op: "f64.copysign" } as unknown as Instr);
-        fctx.body.push({ op: "local.get", index: newValLocal });
-        fctx.body.push({ op: "f64.const", value: 1.0 });
-        fctx.body.push({ op: "f64.copysign" } as unknown as Instr);
-        fctx.body.push({ op: "f64.eq" });
-        fctx.body.push({ op: "i32.and" });
-        // Part 2: (old != old) && (new != new)  — both NaN
-        fctx.body.push({ op: "local.get", index: oldValLocal });
-        fctx.body.push({ op: "local.get", index: oldValLocal });
-        fctx.body.push({ op: "f64.ne" });
-        fctx.body.push({ op: "local.get", index: newValLocal });
-        fctx.body.push({ op: "local.get", index: newValLocal });
-        fctx.body.push({ op: "f64.ne" });
-        fctx.body.push({ op: "i32.and" });
-        // SameValue = part1 || part2
-        fctx.body.push({ op: "i32.or" });
-        // If NOT SameValue → throw TypeError
+        // SameValue(old, new) — see emitSameValueF64 for the rationale.
+        // If NOT SameValue → throw TypeError.
+        emitSameValueF64(fctx, oldValLocal, newValLocal);
         fctx.body.push({ op: "i32.eqz" });
         fctx.body.push({
           op: "if",
@@ -1733,9 +1757,10 @@ export function compileObjectDefineProperties(
                 addStringConstantGlobal(ctx, errMsg);
                 const errMsgGlobal = ctx.stringGlobalMap.get(errMsg)!;
                 if (fieldType.kind === "f64") {
-                  fctx.body.push({ op: "local.get", index: oldValLocal });
-                  fctx.body.push({ op: "local.get", index: newValLocal });
-                  fctx.body.push({ op: "f64.ne" });
+                  // Use SameValue (#1252) — f64.ne misses NaN/NaN equal and
+                  // ±0 distinct.
+                  emitSameValueF64(fctx, oldValLocal, newValLocal);
+                  fctx.body.push({ op: "i32.eqz" });
                   fctx.body.push({
                     op: "if",
                     blockType: { kind: "empty" },
@@ -1786,9 +1811,10 @@ export function compileObjectDefineProperties(
                 addStringConstantGlobal(ctx, errMsg);
                 const errMsgGlobal = ctx.stringGlobalMap.get(errMsg)!;
                 if (fieldType.kind === "f64") {
-                  fctx.body.push({ op: "local.get", index: oldValLocal });
-                  fctx.body.push({ op: "local.get", index: newValLocal });
-                  fctx.body.push({ op: "f64.ne" });
+                  // Use SameValue (#1252) — f64.ne misses NaN/NaN equal and
+                  // ±0 distinct.
+                  emitSameValueF64(fctx, oldValLocal, newValLocal);
+                  fctx.body.push({ op: "i32.eqz" });
                   fctx.body.push({
                     op: "if",
                     blockType: { kind: "empty" },
