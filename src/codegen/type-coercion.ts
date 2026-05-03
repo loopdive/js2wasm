@@ -99,11 +99,40 @@ function emitToPrimitiveHostCall(
   targetKind: "f64" | "externref",
   hint: "number" | "string" | "default",
 ): void {
-  // Convert struct ref → externref
-  fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
-  // Push hint string
-  pushStringHint(ctx, fctx, hint);
-  // Call __to_primitive(externref, externref) → externref
+  for (const instr of toPrimitiveHostCallInstrs(ctx, fctx, targetKind, hint)) {
+    fctx.body.push(instr);
+  }
+}
+
+/**
+ * Return the instruction sequence for a host ToPrimitive call. Same effect as
+ * `emitToPrimitiveHostCall`, but as an `Instr[]` so it can be embedded inside
+ * a nested if/else `then` branch (where pushing onto `fctx.body` would emit
+ * to the wrong control region).
+ *
+ * Used by the static-dispatch valueOf code path in
+ * `coerceType` for ref→f64: when an inlined `valueOf()` returns a non-
+ * primitive (an object ref), the spec (§7.1.1.1) requires us to try
+ * `toString()` next and then throw TypeError if that's also non-primitive.
+ * The host helper does both for us. Pre-#1253 we silently pushed NaN.
+ *
+ * The caller must put the struct ref on the (then-branch's) stack BEFORE
+ * the returned instructions execute; the sequence consumes it.
+ */
+function toPrimitiveHostCallInstrs(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  targetKind: "f64" | "externref",
+  hint: "number" | "string" | "default",
+): Instr[] {
+  const out: Instr[] = [];
+  // Convert struct ref → externref.
+  out.push({ op: "extern.convert_any" } as unknown as Instr);
+  // Push hint string. `pushStringHint` writes to fctx.body, so use a tiny
+  // adapter — collect what it would push.
+  const fctxStub = { body: out as Instr[] } as unknown as FunctionContext;
+  pushStringHint(ctx, fctxStub, hint);
+  // Call __to_primitive(externref, externref) → externref.
   const toPrimIdx = ensureLateImport(
     ctx,
     "__to_primitive",
@@ -112,21 +141,19 @@ function emitToPrimitiveHostCall(
   );
   flushLateImportShifts(ctx, fctx);
   if (toPrimIdx !== undefined) {
-    fctx.body.push({ op: "call", funcIdx: toPrimIdx });
+    out.push({ op: "call", funcIdx: toPrimIdx });
   }
-  // Convert result to target type
   if (targetKind === "f64") {
     addUnionImports(ctx);
     const unboxIdx = ctx.funcMap.get("__unbox_number");
     if (unboxIdx !== undefined) {
-      fctx.body.push({ op: "call", funcIdx: unboxIdx });
+      out.push({ op: "call", funcIdx: unboxIdx });
     } else {
-      // Can't unbox — push NaN
-      fctx.body.push({ op: "drop" });
-      fctx.body.push({ op: "f64.const", value: NaN });
+      out.push({ op: "drop" });
+      out.push({ op: "f64.const", value: NaN });
     }
   }
-  // For externref target, result is already externref
+  return out;
 }
 
 /**
@@ -1752,22 +1779,38 @@ export function coerceType(
               if (info.returnType?.kind === "i32") {
                 thenInstrs.push({ op: "f64.convert_i32_s" } as Instr);
               } else if (info.returnType?.kind === "externref" || info.returnType?.kind === "ref_extern") {
-                // valueOf returned a string (externref) — convert to f64 via __unbox_number
-                addUnionImports(ctx);
-                const unboxIdx = ctx.funcMap.get("__unbox_number");
-                if (unboxIdx !== undefined) {
-                  thenInstrs.push({ op: "call", funcIdx: unboxIdx } as Instr);
-                } else {
-                  thenInstrs.push({ op: "drop" } as Instr);
-                  thenInstrs.push({ op: "f64.const", value: NaN } as Instr);
+                // valueOf returned externref — could be a primitive (string,
+                // number, bool) OR an object. Per ECMA-262 §7.1.1.1, if the
+                // result is an object, OrdinaryToPrimitive must continue to
+                // toString and then throw TypeError if that's also non-
+                // primitive. The static `__unbox_number` path silently
+                // returns NaN for objects (it falls through to
+                // Object.prototype.toString = "[object Object]"). Fix #1253:
+                // drop the inlined result and route through the host
+                // __to_primitive helper using the ORIGINAL struct, which
+                // re-runs valueOf, tries toString, and throws TypeError if
+                // appropriate.
+                thenInstrs.push({ op: "drop" } as Instr);
+                thenInstrs.push({ op: "local.get", index: structLocal } as Instr);
+                const hintExtRet = toPrimitiveHint ?? "number";
+                for (const i of toPrimitiveHostCallInstrs(ctx, fctx, "f64", hintExtRet)) {
+                  thenInstrs.push(i);
                 }
               } else if (!info.returnType) {
                 // void return — call was for side effects; push NaN
                 thenInstrs.push({ op: "f64.const", value: NaN } as Instr);
               } else if (info.returnType.kind !== "f64") {
-                // non-f64 return (ref, etc.) — drop and push NaN
+                // valueOf returned a non-primitive (object ref). Per ECMA-262
+                // §7.1.1.1 OrdinaryToPrimitive step 2.b.ii: continue to the
+                // next method (toString); step 3: throw TypeError if neither
+                // returns a primitive. Both behaviours live in the host
+                // __to_primitive helper. Pre-#1253 we silently pushed NaN.
                 thenInstrs.push({ op: "drop" } as Instr);
-                thenInstrs.push({ op: "f64.const", value: NaN } as Instr);
+                thenInstrs.push({ op: "local.get", index: structLocal } as Instr);
+                const hint2 = toPrimitiveHint ?? "number";
+                for (const i of toPrimitiveHostCallInstrs(ctx, fctx, "f64", hint2)) {
+                  thenInstrs.push(i);
+                }
               }
               return [
                 { op: "local.get", index: eqLocal } as Instr,
