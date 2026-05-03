@@ -1,5 +1,6 @@
 ---
 id: 470
+sprint: 0
 title: "Fix f64/i32-to-externref type coercion in arithmetic expressions"
 status: done
 created: 2026-03-18

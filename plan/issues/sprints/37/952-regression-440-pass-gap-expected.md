@@ -1,5 +1,6 @@
 ---
 id: 952
+sprint: 37
 title: "Regression: 440 pass gap — expected 17,688 but getting 17,248 after sprint 37 merges"
 status: done
 created: 2026-04-04

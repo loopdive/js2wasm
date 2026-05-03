@@ -1,5 +1,6 @@
 ---
 id: 1166
+sprint: 46
 title: "Closed-world integer specialization from literal call sites"
 status: blocked
 created: 2026-04-22

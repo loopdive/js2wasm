@@ -1,5 +1,6 @@
 ---
 id: 453
+sprint: 0
 title: "Compile Three.js to Wasm"
 status: done
 created: 2026-03-17

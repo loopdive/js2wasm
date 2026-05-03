@@ -1,5 +1,6 @@
 ---
 id: 1172
+sprint: 45
 title: "Codebase modularity audit — reduce coupling, improve layering, harden interfaces"
 status: ready
 created: 2026-04-25

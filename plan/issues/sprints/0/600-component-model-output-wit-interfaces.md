@@ -1,5 +1,6 @@
 ---
 id: 600
+sprint: 0
 title: "Component Model output: WIT interfaces from TypeScript types"
 status: done
 created: 2026-03-19

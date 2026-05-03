@@ -1,5 +1,6 @@
 ---
 id: 300
+sprint: 0
 title: "Issue #300: Runtime failures -- object to primitive conversion"
 status: done
 created: 2026-03-11

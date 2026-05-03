@@ -1,5 +1,6 @@
 ---
 id: 690
+sprint: 0
 title: "Streaming test results with incremental report updates and zero-copy worker IPC"
 status: done
 created: 2026-03-20

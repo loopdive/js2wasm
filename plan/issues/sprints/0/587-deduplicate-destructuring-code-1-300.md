@@ -1,5 +1,6 @@
 ---
 id: 587
+sprint: 0
 title: "Deduplicate destructuring code (~1,300 lines)"
 status: done
 created: 2026-03-19

@@ -1,5 +1,6 @@
 ---
 id: 1202
+sprint: 45
 title: "credibility: Architecture Decision Records — document the 8 core design choices that define js2wasm"
 status: done
 created: 2026-04-27

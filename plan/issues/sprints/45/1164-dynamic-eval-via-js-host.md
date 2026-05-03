@@ -1,5 +1,6 @@
 ---
 id: 1164
+sprint: 45
 title: "Dynamic eval via JS host import — compile eval string to ad-hoc Wasm module (~416 tests)"
 status: done
 created: 2026-04-22

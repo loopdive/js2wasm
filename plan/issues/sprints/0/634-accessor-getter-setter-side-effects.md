@@ -1,5 +1,6 @@
 ---
 id: 634
+sprint: 0
 title: "Accessor/getter/setter side effects not triggered (118 FAIL)"
 status: done
 created: 2026-03-19

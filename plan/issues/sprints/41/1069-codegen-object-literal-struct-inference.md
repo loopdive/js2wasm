@@ -1,5 +1,6 @@
 ---
 id: 1069
+sprint: 41
 title: "codegen: object literal → struct inference fails on bundled JS config objects"
 status: done
 created: 2026-04-11

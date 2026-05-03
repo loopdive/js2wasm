@@ -1,5 +1,6 @@
 ---
 id: 40
+sprint: 0
 title: "Issue 40: String Enums"
 status: done
 created: 2026-03-01

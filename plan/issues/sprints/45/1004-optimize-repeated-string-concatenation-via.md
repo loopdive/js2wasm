@@ -1,5 +1,6 @@
 ---
 id: 1004
+sprint: 45
 title: "Optimize repeated string concatenation via compile-time folding and counted-loop aggregation"
 status: ready
 created: 2026-04-09

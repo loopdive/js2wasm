@@ -1,5 +1,6 @@
 ---
 id: 1034
+sprint: 41
 title: "Compile prettier to Wasm — parser + AST + printer stress test; self-format smoke test"
 status: done
 created: 2026-04-11

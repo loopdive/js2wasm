@@ -1,5 +1,6 @@
 ---
 id: 496
+sprint: 0
 title: "eval() and new Function() source transform for test262 (533 tests)"
 status: done
 created: 2026-03-18

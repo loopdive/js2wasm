@@ -1,5 +1,6 @@
 ---
 id: 122
+sprint: 2
 title: "Issue 122: arguments object"
 status: done
 created: 2026-03-11

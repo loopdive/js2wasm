@@ -1,5 +1,6 @@
 ---
 id: 80
+sprint: 0
 title: "Issue 80: JS file compilation via `.d.ts` types and TS inference"
 status: done
 created: 2026-03-08

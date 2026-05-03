@@ -1,5 +1,6 @@
 ---
 id: 139
+sprint: 0
 title: "Issue #139: valueOf/toString coercion on arithmetic operators"
 status: done
 created: 2026-03-11

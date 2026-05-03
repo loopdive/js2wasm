@@ -1,5 +1,6 @@
 ---
 id: 50
+sprint: 0
 title: "Issue 50: Nullish and logical assignment operators"
 status: done
 created: 2026-03-02

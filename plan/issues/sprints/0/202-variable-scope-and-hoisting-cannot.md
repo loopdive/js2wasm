@@ -1,5 +1,6 @@
 ---
 id: 202
+sprint: 0
 title: "Variable scope and hoisting: 'Cannot find name' / 'Unknown identifier'"
 status: done
 created: 2026-03-11

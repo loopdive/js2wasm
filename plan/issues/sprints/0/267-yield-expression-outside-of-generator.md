@@ -1,5 +1,6 @@
 ---
 id: 267
+sprint: 0
 title: "Issue #267: Yield expression outside of generator function"
 status: done
 created: 2026-03-11

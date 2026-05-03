@@ -1,5 +1,6 @@
 ---
 id: 61
+sprint: 0
 title: "Issue 61: Object.keys / Object.values / Object.entries"
 status: done
 created: 2026-03-02

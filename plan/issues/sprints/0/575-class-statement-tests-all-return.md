@@ -1,5 +1,6 @@
 ---
 id: 575
+sprint: 0
 title: "Class statement tests all return 0 (651 FAIL)"
 status: done
 created: 2026-03-19

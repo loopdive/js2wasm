@@ -1,5 +1,6 @@
 ---
 id: 973
+sprint: 0
 title: "Incremental compiler state leak — CompilerPool fork produces ~400 false CEs"
 status: done
 created: 2026-04-06

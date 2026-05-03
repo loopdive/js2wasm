@@ -1,5 +1,6 @@
 ---
 id: 230
+sprint: 0
 title: "Issue #230: Object computed property names with variable keys at runtime"
 status: done
 created: 2026-03-11

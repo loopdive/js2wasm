@@ -1,5 +1,6 @@
 ---
 id: 923
+sprint: 37
 title: "Compiler leaks state between compile() calls in the same process"
 status: done
 created: 2026-04-03

@@ -1,5 +1,6 @@
 ---
 id: 261
+sprint: 0
 title: "Issue #261: ClassDeclaration + new expression for anonymous classes"
 status: done
 created: 2026-03-11

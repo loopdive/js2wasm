@@ -1,5 +1,6 @@
 ---
 id: 797d
+sprint: 0
 title: "#797d -- Object.freeze/seal/preventExtensions compile-away"
 status: done
 created: 2026-03-26

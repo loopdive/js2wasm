@@ -1,5 +1,6 @@
 ---
 id: 589
+sprint: 21
 title: "ref.as_non_null on ref.null always traps (expressions.ts:16596)"
 status: done
 created: 2026-03-19

@@ -1,5 +1,6 @@
 ---
 id: 930
+sprint: 37
 title: "Not-a-constructor detection: built-in methods callable with new (68 FAIL)"
 status: done
 created: 2026-04-03

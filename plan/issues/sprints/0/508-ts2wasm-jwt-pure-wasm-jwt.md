@@ -1,5 +1,6 @@
 ---
 id: 508
+sprint: 0
 title: "ts2wasm-jwt: pure Wasm JWT decode + HS256 verify (showcase package)"
 status: done
 created: 2026-03-18

@@ -1,5 +1,6 @@
 ---
 id: 500
+sprint: 0
 title: "Remove cross-realm skip filter (33 tests)"
 status: done
 created: 2026-03-18

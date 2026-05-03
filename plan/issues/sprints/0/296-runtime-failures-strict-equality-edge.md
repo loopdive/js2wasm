@@ -1,5 +1,6 @@
 ---
 id: 296
+sprint: 0
 title: "Issue #296: Runtime failures -- strict equality edge cases"
 status: done
 created: 2026-03-11

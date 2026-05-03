@@ -1,5 +1,6 @@
 ---
 id: 849
+sprint: 31
 title: "Mapped arguments object does not sync with named parameters (200 tests)"
 status: done
 created: 2026-03-28

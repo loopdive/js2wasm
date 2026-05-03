@@ -1,5 +1,6 @@
 ---
 id: 561
+sprint: 21
 title: "Math.hypot closure captures ref instead of f64 (1 CE)"
 status: done
 created: 2026-03-19

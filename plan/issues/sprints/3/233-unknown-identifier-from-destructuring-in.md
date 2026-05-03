@@ -1,5 +1,6 @@
 ---
 id: 233
+sprint: 3
 title: "Issue #233: Unknown identifier from destructuring in catch/for-of patterns"
 status: done
 created: 2026-03-11

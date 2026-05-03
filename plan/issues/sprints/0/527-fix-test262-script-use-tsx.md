@@ -1,5 +1,6 @@
 ---
 id: 527
+sprint: 0
 title: "Fix test262 script: use tsx instead of node"
 status: done
 created: 2026-03-18

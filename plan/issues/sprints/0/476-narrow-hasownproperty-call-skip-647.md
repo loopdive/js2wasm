@@ -1,5 +1,6 @@
 ---
 id: 476
+sprint: 0
 title: "Narrow hasOwnProperty.call skip — 647 tests"
 status: done
 created: 2026-03-18

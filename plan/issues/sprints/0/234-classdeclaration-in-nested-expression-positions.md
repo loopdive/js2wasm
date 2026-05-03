@@ -1,5 +1,6 @@
 ---
 id: 234
+sprint: 0
 title: "Issue #234: ClassDeclaration in nested/expression positions (remaining 681 errors)"
 status: done
 created: 2026-03-11

@@ -1,5 +1,6 @@
 ---
 id: 704
+sprint: 0
 title: "Wasm validation: immutable global set (284 CE)"
 status: done
 created: 2026-03-21

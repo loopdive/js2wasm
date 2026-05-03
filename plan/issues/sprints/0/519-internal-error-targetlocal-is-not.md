@@ -1,5 +1,6 @@
 ---
 id: 519
+sprint: 0
 title: "Internal error: targetLocal is not defined (66 CE)"
 status: done
 created: 2026-03-18

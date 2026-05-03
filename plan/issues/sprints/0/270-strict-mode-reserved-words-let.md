@@ -1,5 +1,6 @@
 ---
 id: 270
+sprint: 0
 title: "Issue #270: Strict mode reserved words -- let, yield, package, etc."
 status: done
 created: 2026-03-11

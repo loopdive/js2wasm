@@ -1,5 +1,6 @@
 ---
 id: 1075
+sprint: 45
 title: "CommonJS module.exports / exports.foo support for compiling .cjs and unmodified npm CJS packages"
 status: ready
 created: 2026-04-11

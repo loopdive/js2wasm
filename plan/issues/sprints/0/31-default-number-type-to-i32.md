@@ -1,5 +1,6 @@
 ---
 id: 31
+sprint: 0
 title: "Issue 31: Default number type to i32, promote to f64 only when needed"
 status: done
 created: 2026-02-28

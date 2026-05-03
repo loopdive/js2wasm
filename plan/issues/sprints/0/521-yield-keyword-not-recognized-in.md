@@ -1,5 +1,6 @@
 ---
 id: 521
+sprint: 0
 title: "Yield keyword not recognized in nested contexts (53 CE)"
 status: done
 created: 2026-03-18

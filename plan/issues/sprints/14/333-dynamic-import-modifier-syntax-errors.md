@@ -1,5 +1,6 @@
 ---
 id: 333
+sprint: 14
 title: "- Dynamic import modifier syntax errors"
 status: done
 created: 2026-03-13

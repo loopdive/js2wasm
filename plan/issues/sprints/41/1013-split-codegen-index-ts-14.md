@@ -1,5 +1,6 @@
 ---
 id: 1013
+sprint: 41
 title: "Split codegen/index.ts (14,344 lines) into focused modules"
 status: done
 created: 2026-04-10

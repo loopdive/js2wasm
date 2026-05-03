@@ -1,5 +1,6 @@
 ---
 id: 1169h
+sprint: 45
 title: "IR Phase 4 Slice 9 — try/catch/finally and throw through the IR path"
 status: done
 created: 2026-04-27

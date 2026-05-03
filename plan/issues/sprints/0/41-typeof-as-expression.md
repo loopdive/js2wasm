@@ -1,5 +1,6 @@
 ---
 id: 41
+sprint: 0
 title: "Issue 41: typeof as Expression"
 status: done
 created: 2026-03-01

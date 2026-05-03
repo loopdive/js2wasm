@@ -1,5 +1,6 @@
 ---
 id: 55
+sprint: 0
 title: "Issue 55: Function expressions"
 status: done
 created: 2026-03-02

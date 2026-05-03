@@ -1,5 +1,6 @@
 ---
 id: 525
+sprint: 0
 title: "RuntimeError: illegal cast (683 FAIL)"
 status: done
 created: 2026-03-18

@@ -1,5 +1,6 @@
 ---
 id: 853
+sprint: 35
 title: "WebAssembly objects are opaque: for-in/Object.create property enumeration (58 tests)"
 status: done
 created: 2026-03-28

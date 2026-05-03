@@ -1,5 +1,6 @@
 ---
 id: 85
+sprint: 0
 title: "Issue 85: Variadic `Math.min` / `Math.max`"
 status: done
 created: 2026-03-08

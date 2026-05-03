@@ -1,5 +1,6 @@
 ---
 id: 97
+sprint: 0
 title: "Issue 97: NaN/undefined/null truthiness in boolean contexts"
 status: done
 created: 2026-03-09

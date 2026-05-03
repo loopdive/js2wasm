@@ -1,5 +1,6 @@
 ---
 id: 1038
+sprint: 42
 title: "Function.prototype.bind not implemented (70 FAIL)"
 status: done
 created: 2026-04-11

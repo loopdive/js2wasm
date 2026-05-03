@@ -1,5 +1,6 @@
 ---
 id: 461
+sprint: 0
 title: "Array of structs: array.new_default fails for non-defaultable ref types"
 status: done
 created: 2026-03-17

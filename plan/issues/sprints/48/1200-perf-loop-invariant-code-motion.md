@@ -1,5 +1,6 @@
 ---
 id: 1200
+sprint: 48
 title: "perf: loop-invariant code motion in optimizer pass (hoist `arr.length` etc. out of `for` conditions)"
 status: ready
 created: 2026-04-27

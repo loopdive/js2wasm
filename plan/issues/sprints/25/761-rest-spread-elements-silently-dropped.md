@@ -1,5 +1,6 @@
 ---
 id: 761
+sprint: 25
 title: "- Rest/spread elements silently dropped in destructuring (5 codegen paths)"
 status: done
 created: 2026-03-22

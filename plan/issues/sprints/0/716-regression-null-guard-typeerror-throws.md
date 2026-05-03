@@ -1,5 +1,6 @@
 ---
 id: 716
+sprint: 0
 title: "Regression: null-guard TypeError throws cause pass-to-fail in struct-path property access"
 status: done
 created: 2026-03-21

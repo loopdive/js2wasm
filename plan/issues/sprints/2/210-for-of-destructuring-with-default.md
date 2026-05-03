@@ -1,5 +1,6 @@
 ---
 id: 210
+sprint: 2
 title: "Issue #210: for-of destructuring with default values"
 status: done
 created: 2026-03-11

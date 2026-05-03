@@ -1,5 +1,6 @@
 ---
 id: 956
+sprint: 38
 title: "Emit i32.const directly instead of f64.const + i32.trunc_sat_f64_s (673 cases, 9% of modules)"
 status: done
 created: 2026-04-04

@@ -1,5 +1,6 @@
 ---
 id: 524
+sprint: 0
 title: "Type '{}' missing Function properties (40 CE)"
 status: done
 created: 2026-03-18

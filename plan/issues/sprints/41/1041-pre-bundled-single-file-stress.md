@@ -1,5 +1,6 @@
 ---
 id: 1041
+sprint: 41
 title: "Pre-bundled single-file stress test scaffold — closed, superseded by #1046"
 status: wont-fix
 created: 2026-04-11

@@ -1,5 +1,6 @@
 ---
 id: 799b
+sprint: 0
 title: "#799b -- Prototype chain walk for property access"
 status: done
 created: 2026-03-26

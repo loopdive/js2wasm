@@ -1,5 +1,6 @@
 ---
 id: 412
+sprint: 9
 title: "Yield outside generator -- generator function body not recognized"
 status: done
 created: 2026-03-17

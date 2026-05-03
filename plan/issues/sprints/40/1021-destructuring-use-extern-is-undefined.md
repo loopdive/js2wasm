@@ -1,5 +1,6 @@
 ---
 id: 1021
+sprint: 40
 title: "Destructuring: use __extern_is_undefined instead of ref.is_null for defaults (~2,000+ FAIL)"
 status: done
 created: 2026-04-11

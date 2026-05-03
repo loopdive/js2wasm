@@ -1,5 +1,6 @@
 ---
 id: 38
+sprint: 0
 title: "Issue 38: Implement `instanceof` operator"
 status: done
 created: 2026-03-01

@@ -1,5 +1,6 @@
 ---
 id: 698
+sprint: 0
 title: "- Call type mismatch residual (1,044 CE)"
 status: done
 created: 2026-03-20

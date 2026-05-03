@@ -1,5 +1,6 @@
 ---
 id: 487
+sprint: 0
 title: "User Symbol as property key via tagged struct variant (~60 tests)"
 status: done
 created: 2026-03-18

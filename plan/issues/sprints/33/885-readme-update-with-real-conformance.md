@@ -1,5 +1,6 @@
 ---
 id: 885
+sprint: 33
 title: "README: update with real conformance numbers, architecture diagram, comparison table"
 status: done
 created: 2026-03-31

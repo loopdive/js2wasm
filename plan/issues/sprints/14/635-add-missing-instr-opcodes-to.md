@@ -1,5 +1,6 @@
 ---
 id: 635
+sprint: 14
 title: "Add missing Instr opcodes to IR types (158 unsafe casts)"
 status: done
 created: 2026-03-19

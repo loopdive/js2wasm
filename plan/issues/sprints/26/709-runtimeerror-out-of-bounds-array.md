@@ -1,5 +1,6 @@
 ---
 id: 709
+sprint: 26
 title: "RuntimeError: out of bounds array access (174 FAIL)"
 status: done
 created: 2026-03-21

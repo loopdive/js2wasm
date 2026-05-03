@@ -1,5 +1,6 @@
 ---
 id: 1169
+sprint: 46
 title: "IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen"
 status: ready
 created: 2026-04-22

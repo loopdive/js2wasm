@@ -1,5 +1,6 @@
 ---
 id: 8
+sprint: 0
 title: "Issue 8: Generics"
 status: done
 created: 2026-02-27

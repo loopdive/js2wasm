@@ -1,5 +1,6 @@
 ---
 id: 206
+sprint: 2
 title: "For-loop with function declarations: 182 compile errors"
 status: done
 created: 2026-03-11

@@ -1,5 +1,6 @@
 ---
 id: 941
+sprint: 37
 title: "Add equivalence tests for global isNaN() and isFinite() functions"
 status: done
 created: 2026-04-03

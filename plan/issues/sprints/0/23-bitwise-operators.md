@@ -1,5 +1,6 @@
 ---
 id: 23
+sprint: 0
 title: "Issue 23: Bitwise operators"
 status: done
 created: 2026-02-28

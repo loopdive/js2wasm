@@ -1,5 +1,6 @@
 ---
 id: 393
+sprint: 0
 title: "- Compound assignment on externref element access (13 CE)"
 status: done
 created: 2026-03-16

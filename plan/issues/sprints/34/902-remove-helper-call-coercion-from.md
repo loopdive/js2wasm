@@ -1,5 +1,6 @@
 ---
 id: 902
+sprint: 34
 title: "Remove helper-call coercion from pure numeric recursive call/return paths"
 status: done
 created: 2026-04-02

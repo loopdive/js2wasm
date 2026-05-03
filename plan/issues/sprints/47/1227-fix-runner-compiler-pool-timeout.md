@@ -1,5 +1,6 @@
 ---
 id: 1227
+sprint: 47
 title: "fix(runner): compiler-pool timeout starts at enqueue time, not dispatch time — causes 156 false compile_timeouts"
 status: done
 created: 2026-05-01

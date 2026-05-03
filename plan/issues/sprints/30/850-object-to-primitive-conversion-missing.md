@@ -1,5 +1,6 @@
 ---
 id: 850
+sprint: 30
 title: "Object-to-primitive conversion missing: valueOf/toString not called (135 tests)"
 status: done
 created: 2026-03-28

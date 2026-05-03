@@ -1,5 +1,6 @@
 ---
 id: 13
+sprint: 0
 title: "Issue 13: Template Literals"
 status: done
 created: 2026-02-28

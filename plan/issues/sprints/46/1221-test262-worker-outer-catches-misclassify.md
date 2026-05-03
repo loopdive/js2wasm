@@ -1,5 +1,6 @@
 ---
 id: 1221
+sprint: 46
 title: "test262-worker: outer catches misclassify WebAssembly.Exception as compile_error — fix harness to reclassify as fail (~256 flaky tests)"
 status: done
 created: 2026-05-01

@@ -1,5 +1,6 @@
 ---
 id: 744
+sprint: 45
 title: "Function monomorphization for polymorphic call sites"
 status: ready
 created: 2026-03-21

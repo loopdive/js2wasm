@@ -1,5 +1,6 @@
 ---
 id: 1169l
+sprint: 46
 title: "IR Phase 4 Slice 10 step D — Date / Error / Map / Set through IR"
 status: done
 created: 2026-04-28

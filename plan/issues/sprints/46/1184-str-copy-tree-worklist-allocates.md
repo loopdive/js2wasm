@@ -1,5 +1,6 @@
 ---
 id: 1184
+sprint: 46
 title: "__str_copy_tree worklist allocates O(node.len) per flatten — bound by depth instead"
 status: done
 created: 2026-04-27

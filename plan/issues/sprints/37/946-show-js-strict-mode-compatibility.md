@@ -1,5 +1,6 @@
 ---
 id: 946
+sprint: 37
 title: "Show JS strict mode compatibility by default on landing, report, and dashboard pages"
 status: done
 created: 2026-04-04

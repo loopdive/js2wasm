@@ -1,5 +1,6 @@
 ---
 id: 282
+sprint: 0
 title: "Issue #282: Variable declaration compile errors -- complex initializers"
 status: done
 created: 2026-03-11

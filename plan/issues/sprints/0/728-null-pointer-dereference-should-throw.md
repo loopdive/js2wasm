@@ -1,5 +1,6 @@
 ---
 id: 728
+sprint: 0
 title: "- Null pointer dereference should throw TypeError, not trap (1,604 tests)"
 status: done
 created: 2026-03-22

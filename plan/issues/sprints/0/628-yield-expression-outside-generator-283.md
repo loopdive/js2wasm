@@ -1,5 +1,6 @@
 ---
 id: 628
+sprint: 0
 title: "Yield expression outside generator (283 CE)"
 status: done
 created: 2026-03-19

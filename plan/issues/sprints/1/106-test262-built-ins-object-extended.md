@@ -1,5 +1,6 @@
 ---
 id: 106
+sprint: 1
 title: "Issue 106: Test262 — built-ins/Object extended + built-ins/Array constructor"
 status: done
 created: 2026-03-10

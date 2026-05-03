@@ -1,5 +1,6 @@
 ---
 id: 240
+sprint: 3
 title: "Issue #240: Setter return value -- allow return in setter bodies"
 status: done
 created: 2026-03-11

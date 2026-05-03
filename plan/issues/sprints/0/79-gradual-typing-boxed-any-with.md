@@ -1,5 +1,6 @@
 ---
 id: 79
+sprint: 0
 title: "Issue 79: Gradual typing — boxed `any` with runtime dispatch"
 status: done
 created: 2026-03-08

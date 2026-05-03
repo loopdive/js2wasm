@@ -1,5 +1,6 @@
 ---
 id: 279
+sprint: 0
 title: "Issue #279: Arrow function compile errors -- parameter and body patterns"
 status: done
 created: 2026-03-11

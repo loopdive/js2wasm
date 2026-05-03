@@ -1,5 +1,6 @@
 ---
 id: 3
+sprint: 0
 title: "Issue 3: Arrays"
 status: done
 created: 2026-02-27

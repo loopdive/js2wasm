@@ -1,5 +1,6 @@
 ---
 id: 455
+sprint: 10
 title: "Compile React to Wasm"
 status: done
 created: 2026-03-17

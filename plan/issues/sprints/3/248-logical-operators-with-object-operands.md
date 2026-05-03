@@ -1,5 +1,6 @@
 ---
 id: 248
+sprint: 3
 title: "Issue #248: Logical operators with object operands returning wrong values"
 status: done
 created: 2026-03-11

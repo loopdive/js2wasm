@@ -1,5 +1,6 @@
 ---
 id: 334
+sprint: 7
 title: "- Private class fields and methods"
 status: done
 created: 2026-03-13

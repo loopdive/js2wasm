@@ -1,5 +1,6 @@
 ---
 id: 533
+sprint: 0
 title: "Wasm validation: struct.get on null ref type (125 CE)"
 status: done
 created: 2026-03-18

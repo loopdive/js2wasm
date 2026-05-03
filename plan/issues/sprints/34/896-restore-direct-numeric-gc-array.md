@@ -1,5 +1,6 @@
 ---
 id: 896
+sprint: 34
 title: "Restore direct numeric GC-array codegen in hot loops"
 status: done
 created: 2026-04-02

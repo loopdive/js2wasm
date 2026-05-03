@@ -1,5 +1,6 @@
 ---
 id: 795
+sprint: 0
 title: "- f64.add on externref — missing unbox coercion (57 CE)"
 status: done
 created: 2026-03-26

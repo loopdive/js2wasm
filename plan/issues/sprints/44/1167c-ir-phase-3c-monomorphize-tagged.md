@@ -1,5 +1,6 @@
 ---
 id: 1167c
+sprint: 44
 title: "IR Phase 3c — monomorphize + tagged-unions (blocked on frontend widening)"
 status: done
 created: 2026-04-22

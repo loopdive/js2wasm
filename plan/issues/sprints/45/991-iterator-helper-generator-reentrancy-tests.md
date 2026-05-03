@@ -1,5 +1,6 @@
 ---
 id: 991
+sprint: 45
 title: "Iterator helper generator-reentrancy tests hit 30s compiler timeout"
 status: done
 created: 2026-04-07

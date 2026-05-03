@@ -1,5 +1,6 @@
 ---
 id: 1282
+sprint: 48
 title: "ESLint Tier 1 stress test — minimal Linter.verify() compilation"
 status: in-progress
 created: 2026-05-02

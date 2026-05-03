@@ -1,5 +1,6 @@
 ---
 id: 811
+sprint: 39
 title: "Extract fixup passes from index.ts → fixups.ts"
 status: done
 created: 2026-03-26

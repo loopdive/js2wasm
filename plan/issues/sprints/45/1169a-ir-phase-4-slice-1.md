@@ -1,5 +1,6 @@
 ---
 id: 1169a
+sprint: 45
 title: "IR Phase 4 Slice 1 — strings, typeof, null/undefined checks through the IR path"
 status: done
 created: 2026-04-25

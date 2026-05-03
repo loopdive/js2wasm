@@ -1,5 +1,6 @@
 ---
 id: 1213
+sprint: 46
 title: "ci: refresh-benchmarks workflow fails on every PR — looks for sidebar baseline at gitignored path"
 status: done
 created: 2026-04-30

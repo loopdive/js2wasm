@@ -1,5 +1,6 @@
 ---
 id: 843
+sprint: 32
 title: "super keyword in object literals and edge cases (20 CE)"
 status: done
 created: 2026-03-28

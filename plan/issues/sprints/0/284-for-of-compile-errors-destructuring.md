@@ -1,5 +1,6 @@
 ---
 id: 284
+sprint: 0
 title: "Issue #284: For-of compile errors -- destructuring and non-array iterables"
 status: done
 created: 2026-03-11

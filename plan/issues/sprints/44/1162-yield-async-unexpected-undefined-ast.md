@@ -1,5 +1,6 @@
 ---
 id: 1162
+sprint: 44
 title: "yield* async — unexpected undefined AST node in compileExpression (~161 tests)"
 status: done
 created: 2026-04-21

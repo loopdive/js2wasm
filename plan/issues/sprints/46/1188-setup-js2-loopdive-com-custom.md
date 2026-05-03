@@ -1,5 +1,6 @@
 ---
 id: 1188
+sprint: 46
 title: "Setup js2.loopdive.com custom domain for GitHub Pages"
 status: done
 created: 2026-04-27

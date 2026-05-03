@@ -1,5 +1,6 @@
 ---
 id: 912
+sprint: 39
 title: "Remove circular dependencies from the core codegen backend"
 status: done
 created: 2026-04-03

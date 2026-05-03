@@ -1,5 +1,6 @@
 ---
 id: 1127
+sprint: 43
 title: "Class method param destructuring: nested array pattern + initializer throws spurious TypeError"
 status: done
 created: 2026-04-18

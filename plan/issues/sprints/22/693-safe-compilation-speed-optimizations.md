@@ -1,5 +1,6 @@
 ---
 id: 693
+sprint: 22
 title: "Safe compilation speed optimizations"
 status: done
 created: 2026-03-20

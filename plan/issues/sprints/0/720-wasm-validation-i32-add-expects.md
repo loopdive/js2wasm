@@ -1,5 +1,6 @@
 ---
 id: 720
+sprint: 0
 title: "Wasm validation: i32.add expects i32, got f64 (96 CE)"
 status: done
 created: 2026-03-21

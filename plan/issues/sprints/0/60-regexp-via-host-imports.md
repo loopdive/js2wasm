@@ -1,5 +1,6 @@
 ---
 id: 60
+sprint: 0
 title: "Issue 60: RegExp via host imports"
 status: done
 created: 2026-03-02

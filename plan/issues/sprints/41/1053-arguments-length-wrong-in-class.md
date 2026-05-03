@@ -1,5 +1,6 @@
 ---
 id: 1053
+sprint: 41
 title: "arguments.length wrong in class methods with trailing-comma call sites"
 status: done
 created: 2026-04-11

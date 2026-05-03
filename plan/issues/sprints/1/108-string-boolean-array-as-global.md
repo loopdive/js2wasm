@@ -1,5 +1,6 @@
 ---
 id: 108
+sprint: 1
 title: "Issue 108: String(), Boolean(), Array() as global conversion functions"
 status: done
 created: 2026-03-10

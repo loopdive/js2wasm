@@ -1,5 +1,6 @@
 ---
 id: 184
+sprint: 2
 title: "- Function arity mismatch: 'not enough arguments on the stack'"
 status: done
 created: 2026-03-11

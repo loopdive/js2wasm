@@ -1,5 +1,6 @@
 ---
 id: 538
+sprint: 0
 title: "PrivateIdentifier + new.target unsupported (19 CE)"
 status: done
 created: 2026-03-18
