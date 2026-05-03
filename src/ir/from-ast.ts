@@ -164,6 +164,8 @@ export interface AstToIrOptions {
    * passes it in.
    */
   readonly resolver?: IrFromAstResolver;
+  /** Optional-chain nullability check (#1281). When absent, `?.` / `?.()` throw to legacy. */
+  readonly checker?: ts.TypeChecker;
 }
 
 /**
@@ -270,6 +272,7 @@ export function lowerFunctionAstToIr(fn: ts.FunctionDeclaration, options: AstToI
     mutatedLets,
     funcKind: isGenerator ? "generator" : "regular",
     generatorBufferSlot,
+    checker: options.checker,
   };
   lowerStatementList(stmts, cx);
 
@@ -634,6 +637,8 @@ interface LowerCtx {
    * `gen.push`; `lowerTail` reads it when emitting `gen.epilogue`.
    */
   readonly generatorBufferSlot?: number;
+  /** Optional-chain nullability check (#1281). When absent, `?.` / `?.()` throw to legacy. */
+  readonly checker?: ts.TypeChecker;
 }
 
 /**
