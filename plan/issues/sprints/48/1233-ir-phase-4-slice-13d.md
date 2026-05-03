@@ -2,7 +2,7 @@
 id: 1233
 sprint: 48
 title: "IR Phase 4 Slice 13d — Array per-element-type methods through IR"
-status: ready
+status: done
 created: 2026-05-01
 updated: 2026-05-02
 priority: medium
