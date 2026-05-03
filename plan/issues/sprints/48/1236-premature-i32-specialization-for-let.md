@@ -2,9 +2,9 @@
 id: 1236
 sprint: 48
 title: "Premature i32 specialization for `let s = 0` accumulators silently saturates on overflow"
-status: ready
+status: done
 created: 2026-05-01
-updated: 2026-05-02
+updated: 2026-05-03
 priority: high
 feasibility: medium
 reasoning_effort: high
@@ -102,3 +102,44 @@ a targeted optimization if #595 regressions appear.
 - #595 — original i32 loop counter inference (this is the soundness gap).
 - #1166 — closed-world integer specialization (different scope).
 - #1197 — i32 element specialization for `number[]` arrays under `| 0` / `& mask`.
+
+## Resolution
+
+Fixed in commit `8122930b6` (PR #151) — `fix(#1236): let s=0 accumulators
+no longer saturate at i32.MAX`. The fix lives in
+`src/codegen/function-body.ts`: the `isI32SafeExpr` and
+`isCompoundI32Safe` helpers no longer treat `+`, `-`, `*` on i32-shaped
+operands as i32-safe (the previous comment "overflow wrap is OK" was
+incorrect — codegen routes those through f64, then the trailing
+`i32.trunc_sat_f64_s` SATURATES at i32.MAX). After the fix, accumulators
+that take arithmetic writes are widened to f64 in the candidate-promotion
+pass, and the trunc_sat round-trip disappears.
+
+The IR Stage 2 inference rules from #1126 (commit `2002f5271`) further
+reinforce this at the IR level by narrowing to i32 only when every
+producer is a proven i32 (`i32.add`, `i32.and`, `| 0`, etc.) — the
+recommended Option (B) route from the implementation plan above.
+
+### Verification
+
+`tests/issue-1236.test.ts` (9 cases, all pass on origin/main):
+
+- **repro from the issue file**:
+  - sum 0..1,000,000 returns `499999500000` (matches V8) instead of i32.MAX
+  - V8 differential — Wasm and host agree
+- **WAT-level proof**: `(local $s f64)` for the accumulator; no
+  `f64.add` followed by `i32.trunc_sat_f64_s` in the function body
+- **compound assignment safety**: `s += i`, `s -= i`, `s *= 2` all
+  preserve f64 semantics (covering all three flagged `+ - *` operators)
+- **#595 regression guard**: `for (let i = 0; i < n; i++)` counter
+  `(local $i i32)` — bounded loop counters still i32
+- **bitwise still i32-safe**: `mask = mask | bit` keeps mask as i32
+
+Manual smoke-tested an additional 7 variations (compound `+=` /
+declared-then-assigned / sum-via-helper / multiplicative product) —
+all match V8 exactly.
+
+The playground "Loop: 1M Int32 sum" benchmark uses `(s + i) | 0` with
+explicit i32 wrap; that path already returns the correct V8-equivalent
+wrapped value (`1783293664`). Both the saturation soundness bug AND
+the explicit-wrap path are working as expected.
