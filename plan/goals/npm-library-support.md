@@ -73,6 +73,7 @@ not.
 | **1289** | ESLint linter.js direct compile: array.set type mismatch in FileReport_addRuleMessage | Backlog | done | medium |
 | **1291** | lodash Tier 1b — upgrade add/clamp stress tests to execution-level assertions | 48 | done | medium |
 | **1292** | lodash Tier 2 stress test — memoize, flow, partial application | 48 | done | medium |
+| **1292** | lodash Tier 2 stress test — memoize, flow, partial application | 49 | ready | medium |
 | **1293** | Hono Tier 4 — string[][] array-of-arrays type support + #segments field | 48 | done | medium |
 | **1295** | lodash transitive init: start-function throws WebAssembly.Exception during instantiate (clamp/add) | 48 | done | medium |
 | **1297** | Hono Tier 5 — Application class: route registration + middleware dispatch + Context | 49 | done | medium |

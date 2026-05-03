@@ -52,7 +52,8 @@ eliminating the externref roundtrip.
 | **1196** | perf: bounds-check elimination via SSA on monotonic indexed array loops | 47 | done | high |
 | **1197** | perf: i32 element specialization for `number[]` arrays under `\| 0` / `& mask` / `>> n` patterns | 47 | done | high |
 | **1198** | perf: pre-size dense arrays at allocation site (`const a = []; for ... a[i] = ...` → `new Array(n)`) | 47 | done | high |
-| **1199** | perf: linear-memory backing for typed numeric arrays (`Array<number>` with i32-only ops → `i32.load`/`i32.store`) | 49 | ready | medium |
+| **1199** | perf: linear-memory backing for typed numeric arrays (`Array<number>` with i32-only ops → `i32.load`/`i32.store`) | Backlog | ready | medium |
+| **1199** | perf: linear-memory backing for typed numeric arrays (`Array<number>` with i32-only ops → `i32.load`/`i32.store`) | 49 | deferred | medium |
 | **1200** | perf: loop-invariant code motion in optimizer pass (hoist `arr.length` etc. out of `for` conditions) | 48 | done | medium |
 | **1209** | labs/benchmarks: js2wasm hosted lane fails — ESM resolver error in run-node-wasm-program.mjs | 46 | done | medium |
 | **1210** | labs/benchmarks: js2wasm string-hash Wasmtime lane hits 20s timeout — WasmGC i16-array GC pressure | 46 | done | high |

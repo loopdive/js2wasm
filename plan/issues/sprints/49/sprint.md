@@ -37,18 +37,13 @@ wrap_checklist:
 
 _Generated from issue files. Update issue `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
 
-### Blocked
-
-| Issue | Title | Priority | Status |
-|---|---|---|---|
-| #1223 | TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up) | medium | blocked |
-
 ### Ready
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1199 | perf: linear-memory backing for typed numeric arrays (`Array<number>` with i32-only ops → `i32.load`/`i32.store`) | medium | ready |
-| #1241 | Untitled |  | ready |
+| #1223 | TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up) | medium | ready |
+| #1292 | lodash Tier 2 stress test — memoize, flow, partial application | medium | ready |
 | #1298 | Calling a function-typed value stored in a field/array/Map drops the call and returns null | high | ready |
 | #1302 | Wasm validation: closure references invalid global index when compiling lodash flow.js | medium | ready |
 | #1303 | Wasm validation: f64.trunc emitted on externref operand when compiling lodash partial.js | medium | ready |
@@ -67,6 +62,7 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #1241 | Untitled |  | done |
 | #1290 | perf: test262 runner — TS7 batch-parse via @typescript/native-preview (132× cold speedup) | high | done |
 | #1296 | Dogfood: compile dashboard/landing page JS to Wasm using js2wasm | medium | done |
 | #1297 | Hono Tier 5 — Application class: route registration + middleware dispatch + Context | medium | done |
