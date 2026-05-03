@@ -2,7 +2,7 @@
 id: 1292
 sprint: 48
 title: "lodash Tier 2 stress test — memoize, flow, partial application"
-status: ready
+status: in-progress
 created: 2026-05-03
 updated: 2026-05-03
 priority: medium
@@ -66,3 +66,75 @@ If any tier fails at compile or instantiate, mark with `it.skip` and an issue re
 - `_.memoize` uses `Map` internally (not `WeakMap`). If `Map` iteration fails,
   document the gap.
 - `_.flow` with a typed `fn[]` array exercises IR Array methods (#1233).
+
+## Test Results (2026-05-03)
+
+`tests/stress/lodash-tier2.test.ts` — 5 cases total, 2 pass + 3 skip
+(stress-test scope only — gaps documented as follow-up issues, not fixed
+inline).
+
+### Tier 2a — memoize ✓ (compile path), ⏳ (instantiate)
+
+- ✓ `compileProject` succeeds, binary validates
+- ✓ Wasm exports `memoize` and `default` as functions
+- ✓ Every Wasm import is satisfied by `buildImports` (none missing)
+- ⏳ Instantiation throws `WebAssembly.Exception` from start function —
+  same gap as Tier 1's clamp/add (lodash transitive feature-detection
+  init throws). Tracked under #1295 on the start-function side.
+
+### Tier 2b — flow ✗ (Wasm validation fails) → **#1302**
+
+```
+Compiling function #945:"__closure_837" failed:
+Invalid global index: 266 @+117088
+```
+
+`compileProject` succeeds, but `new WebAssembly.Module(...)` rejects
+because `__closure_837` references a global slot past the declared
+range. Likely closure-env / global-index allocation bug for modules
+with hundreds of closures. Filed as #1302.
+
+### Tier 2c — partial ✗ (Wasm validation fails) → **#1303**
+
+```
+Compiling function #94:"mergeData" failed:
+f64.trunc[0] expected type f64, found global.get of type externref @+36700
+```
+
+Codegen emits `f64.trunc` on an externref operand without unboxing.
+`coerceType` (in `type-coercion.ts`) is missing on this code path.
+Filed as #1303.
+
+### Tier 2d — negate ✓ (compile + instantiate), ⏳ (call from JS) → **#1304**
+
+- ✓ `compileProject` succeeds, validates, instantiates (no start-function
+  exception — negate has no transitive feature-detection deps)
+- ✓ Exports `negate` and `default` as functions
+- ⏳ Calling `negate(jsPredicate)` throws lodash's own `TypeError:
+  Expected a function`: the compiled `typeof predicate != 'function'`
+  guard receives an externref-wrapped JS callable and classifies it
+  as `"object"`, not `"function"`. Filed as #1304 (related to existing
+  #1275 typeof-guard-narrowing).
+
+### Stress-test ladder progression
+
+| Tier | Compile | Validate | Imports | Instantiate | Callable | Status |
+|------|---------|----------|---------|-------------|----------|--------|
+| 1 identity | ✓ | ✓ | ✓ | ✓ | ✓ | full pass |
+| 1 clamp | ✓ | ✓ | ✓ | ✗ #1295 | — | start-fn gap |
+| 1 add | ✓ | ✓ | ✓ | ✗ #1295 | — | start-fn gap |
+| 2 memoize | ✓ | ✓ | ✓ | ✗ #1295 | — | start-fn gap |
+| 2 flow | ✓ | ✗ #1302 | — | — | — | validation gap |
+| 2 partial | ✓ | ✗ #1303 | — | — | — | validation gap |
+| 2 negate | ✓ | ✓ | ✓ | ✓ | ✗ #1304 | call-surface gap |
+
+negate is the furthest any lodash module has progressed in the ladder.
+
+### Filed follow-up issues (stress-test scope — not fixed inline)
+
+- **#1302** — flow.js: closure references invalid global index past
+  declared range
+- **#1303** — partial.js: f64.trunc emitted on externref operand without
+  coerceType
+- **#1304** — typeof externref-wrapped JS function returns `"object"`
+  instead of `"function"`
