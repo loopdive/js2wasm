@@ -68,32 +68,83 @@ describe("#1031 lodash Tier 1 stress test", () => {
     expect(exports.identity(0)).toBe(0);
   });
 
-  runIfInstalled("compileProject on ESM lodash-es/clamp.js: validates as Wasm module (instantiation gap)", () => {
-    const result = compileProject("node_modules/lodash-es/clamp.js", { allowJs: true });
-    expect(result.success).toBe(true);
+  runIfInstalled(
+    "compileProject on ESM lodash-es/clamp.js: validates + all imports resolve; start function throws (#1291)",
+    async () => {
+      const result = compileProject("node_modules/lodash-es/clamp.js", { allowJs: true });
+      expect(result.success).toBe(true);
 
-    // Wasm validation passes (was the original gap — fixed). Module shape
-    // exposes `clamp` and `default` exports.
-    const mod = new WebAssembly.Module(result.binary);
-    const funcNames = WebAssembly.Module.exports(mod)
-      .filter((e) => e.kind === "function")
-      .map((e) => e.name);
-    expect(funcNames).toContain("clamp");
-    expect(funcNames).toContain("default");
+      // Wasm validation passes. Module shape exposes `clamp` and `default`
+      // as actual function exports (not globals).
+      const mod = new WebAssembly.Module(result.binary);
+      const funcNames = WebAssembly.Module.exports(mod)
+        .filter((e) => e.kind === "function")
+        .map((e) => e.name);
+      expect(funcNames).toContain("clamp");
+      expect(funcNames).toContain("default");
 
-    // Note: instantiation still fails on a missing import; tracked separately.
-  });
+      // #1291 finding: contrary to the original "missing import" theory, every
+      // Wasm import is satisfied by buildImports — the gap is in the start
+      // function (top-level module init), which throws a WebAssembly.Exception
+      // while running lodash's transitive feature-detection deps (`_root.js`,
+      // `_Symbol.js`, etc.). Verify the import-resolution claim explicitly so
+      // a regression there can't slip in disguised as the start-function throw.
+      const imports = (await import("../../src/runtime.ts")).buildImports(result.imports, undefined, result.stringPool);
+      const wasmImports = WebAssembly.Module.imports(mod);
+      const missing = wasmImports.filter((w) => {
+        const m = (imports as Record<string, Record<string, unknown>>)[w.module];
+        return m === undefined || !(w.name in m);
+      });
+      expect(missing).toEqual([]);
 
-  runIfInstalled("compileProject on ESM lodash-es/add.js: validates as Wasm module (HOF gap, #1276)", () => {
-    const result = compileProject("node_modules/lodash-es/add.js", { allowJs: true });
-    expect(result.success).toBe(true);
+      // Instantiation throws because of the start-function gap, not a LinkError.
+      let caught: unknown;
+      try {
+        await WebAssembly.instantiate(result.binary, imports);
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).toBeInstanceOf(WebAssembly.Exception);
+      // Specifically NOT a LinkError — proves the "missing import" theory wrong.
+      expect(caught).not.toBeInstanceOf(WebAssembly.LinkError);
+    },
+  );
 
-    // Wasm validation now passes (was the original undeclared-function-reference gap).
-    // The HOF `createMathOperation(fn, 0)` call doesn't yet surface a Wasm export
-    // for `add` itself — tracked under #1276 (HOF returning closure pattern).
-    // The module shape still validates, which is the win this test now records.
-    expect(() => new WebAssembly.Module(result.binary)).not.toThrow();
-  });
+  runIfInstalled(
+    "compileProject on ESM lodash-es/add.js: validates + exports module shape; start function throws (#1276 + #1291)",
+    async () => {
+      const result = compileProject("node_modules/lodash-es/add.js", { allowJs: true });
+      expect(result.success).toBe(true);
+
+      // Wasm validation passes. Module shape — note `add` and `default` are
+      // emitted as Wasm globals (closure references), not function exports,
+      // because `createMathOperation(fn, 0)` is an HOF returning a closure.
+      // #1276 landed but covers the closure compilation, not the call-site
+      // surface for the resulting closure.
+      const mod = new WebAssembly.Module(result.binary);
+      expect(() => new WebAssembly.Module(result.binary)).not.toThrow();
+
+      // #1291 finding: as with clamp, every import is satisfied; instantiation
+      // still throws due to the start-function gap (lodash transitive init).
+      const imports = (await import("../../src/runtime.ts")).buildImports(result.imports, undefined, result.stringPool);
+      const wasmImports = WebAssembly.Module.imports(mod);
+      const missing = wasmImports.filter((w) => {
+        const m = (imports as Record<string, Record<string, unknown>>)[w.module];
+        return m === undefined || !(w.name in m);
+      });
+      expect(missing).toEqual([]);
+
+      let caught: unknown;
+      try {
+        await WebAssembly.instantiate(result.binary, imports);
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).toBeInstanceOf(WebAssembly.Exception);
+      expect(caught).not.toBeInstanceOf(WebAssembly.LinkError);
+      // Calling exports.add(2,3)===5 is gated on the start-function gap.
+    },
+  );
 
   runIfInstalled("ModuleResolver on `lodash-es/identity.js` resolves to the real .js body (resolver fix)", () => {
     const rootDir = path.resolve(".");
