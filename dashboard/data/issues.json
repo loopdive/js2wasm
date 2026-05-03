@@ -101,19 +101,6 @@
   ],
   "blocked": [
     {
-      "id": "1223",
-      "title": "TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up)",
-      "priority": "medium",
-      "feasibility": "hard",
-      "depends_on": [
-        "1177",
-        "1205"
-      ],
-      "goal": "crash-free",
-      "status": "blocked",
-      "sprint": "49"
-    },
-    {
       "id": "1166",
       "title": "Closed-world integer specialization from literal call sites",
       "priority": "high",
@@ -256,16 +243,6 @@
       "sprint": ""
     },
     {
-      "id": "1241",
-      "title": "Untitled",
-      "priority": "medium",
-      "feasibility": "",
-      "depends_on": [],
-      "goal": "",
-      "status": "ready",
-      "sprint": "49"
-    },
-    {
       "id": "1240",
       "title": "perf: per-iteration eval compile budget for `comments/S7.4_A6.js` (still ~25s with #1229 cache)",
       "priority": "low",
@@ -296,6 +273,19 @@
       "sprint": ""
     },
     {
+      "id": "1223",
+      "title": "TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up)",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [
+        "1177",
+        "1205"
+      ],
+      "goal": "crash-free",
+      "status": "deferred",
+      "sprint": "49"
+    },
+    {
       "id": "1199",
       "title": "perf: linear-memory backing for typed numeric arrays (`Array<number>` with i32-only ops → `i32.load`/`i32.store`)",
       "priority": "medium",
@@ -304,7 +294,7 @@
         "1197"
       ],
       "goal": "performance",
-      "status": "ready",
+      "status": "deferred",
       "sprint": "49"
     },
     {
@@ -2147,6 +2137,16 @@
       "goal": "spec-completeness",
       "status": "done",
       "sprint": "47"
+    },
+    {
+      "id": "1241",
+      "title": "Untitled",
+      "priority": "medium",
+      "feasibility": "",
+      "depends_on": [],
+      "goal": "",
+      "status": "done",
+      "sprint": "49"
     },
     {
       "id": "1238",
