@@ -2,7 +2,7 @@
 id: 1291
 sprint: 48
 title: "lodash Tier 1b — upgrade add/clamp stress tests to execution-level assertions"
-status: in-progress
+status: done
 created: 2026-05-03
 updated: 2026-05-03
 priority: medium

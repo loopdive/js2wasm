@@ -2,7 +2,7 @@
 id: 1300
 sprint: 49
 title: "Closure capturing outer parameter inside an inline lambda passed as a Next callback null-derefs at call time"
-status: ready
+status: done
 created: 2026-05-03
 updated: 2026-05-03
 priority: medium

@@ -2,7 +2,7 @@
 id: 1295
 sprint: 48
 title: "compiler.ts: re-throw WebAssembly.Exception from internal catch blocks"
-status: ready
+status: done
 created: 2026-05-03
 updated: 2026-05-03
 priority: high

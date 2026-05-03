@@ -1,6 +1,6 @@
 ---
 id: 1223
-sprint: 48
+sprint: 49
 title: "TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up)"
 status: blocked
 created: 2026-05-01
