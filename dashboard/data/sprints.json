@@ -2917,13 +2917,13 @@
     ],
     "explicitCarryOver": false,
     "isPlanning": false,
-    "isClosed": false
+    "isClosed": true
   },
   {
     "name": "sprint 47",
     "sprintNumber": 47,
-    "status": "active",
-    "date": "2026-05-01 → TBD",
+    "status": "done",
+    "date": "2026-05-01 → 2026-05-03",
     "baseline": "27,104 / 46,632 = 58.1% pass (at S46 close, after #1177/#1219/#1220/#1221)",
     "result": "",
     "issueCount": 0,
@@ -2963,6 +2963,7 @@
       "1249",
       "1250",
       "1251",
+      "1253",
       "1258",
       "1259",
       "1260",
@@ -2981,7 +2982,9 @@
       "1283",
       "1284",
       "1285",
-      "1286"
+      "1286",
+      "1288",
+      "1289"
     ],
     "completedIssueIds": [
       "1118",
@@ -3008,6 +3011,8 @@
       "1234",
       "1235",
       "1238",
+      "1242",
+      "1243",
       "1244",
       "1245",
       "1246",
@@ -3015,18 +3020,38 @@
       "1248",
       "1249",
       "1250",
+      "1251",
+      "1253",
+      "1258",
+      "1259",
+      "1260",
+      "1267",
       "1268",
+      "1271",
+      "1272",
+      "1273",
       "1274",
-      "1275"
+      "1275",
+      "1276",
+      "1277",
+      "1278",
+      "1279",
+      "1281",
+      "1283",
+      "1284",
+      "1285",
+      "1286",
+      "1288",
+      "1289"
     ],
     "explicitCarryOver": false,
     "isPlanning": false,
-    "isClosed": false
+    "isClosed": true
   },
   {
     "name": "sprint 48",
     "sprintNumber": 48,
-    "status": "planning",
+    "status": "active",
     "date": "TBD (follows S47)",
     "baseline": "",
     "result": "",
@@ -3043,9 +3068,14 @@
       "1280",
       "1282"
     ],
-    "completedIssueIds": [],
+    "completedIssueIds": [
+      "1233",
+      "1269",
+      "1280",
+      "1282"
+    ],
     "explicitCarryOver": false,
-    "isPlanning": true,
+    "isPlanning": false,
     "isClosed": false
   }
 ]
