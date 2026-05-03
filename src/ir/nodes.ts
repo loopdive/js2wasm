@@ -162,7 +162,14 @@ export interface IrClassShape {
 }
 
 export type IrType =
-  | { readonly kind: "val"; readonly val: ValType }
+  // The optional `signed` flag (#1126 Stage 1) is a *value-domain* fact, not
+  // a Wasm-storage fact: both `int32` and `uint32` lower to the same Wasm
+  // `i32` storage but are distinguished at op-selection time (`i32.shr_s`
+  // vs `i32.shr_u`, `f64.convert_i32_s` vs `_u`, signed vs unsigned cmp).
+  // Default (undefined) is "signed" for backward compat — every existing
+  // `val: { kind: "i32" }` callsite preserves its current semantics.
+  // Stage 1 only adds the field; producers / consumers come in Stages 2-3.
+  | { readonly kind: "val"; readonly val: ValType; readonly signed?: boolean }
   // Backend-agnostic string marker (#1169a). The actual Wasm representation
   // is decided at lowering time via `IrLowerResolver.resolveString`:
   //   - host-strings backend  → `externref`
@@ -214,6 +221,20 @@ export function irVal(v: ValType): IrType {
 }
 
 /**
+ * Wrap a ValType as an IrType with an explicit signedness fact (#1126 Stage 1).
+ * Use this only for `i32` ValTypes where the value-domain (signed `int32` vs
+ * unsigned `uint32`) is known. For non-i32 ValTypes the `signed` flag is
+ * meaningless; callers should use `irVal()` instead.
+ *
+ * The flag is read by Stage 3 emit decisions (signed vs unsigned shifts,
+ * comparisons, conversions back to f64). For Stage 1 it is purely additive —
+ * no existing emitter consults it yet.
+ */
+export function irValSigned(v: ValType, signed: boolean): IrType {
+  return { kind: "val", val: v, signed };
+}
+
+/**
  * Return the single underlying ValType for a `val`-kind IrType, else `null`.
  * Call sites that previously did `t.kind === "f64"` against an `IrType` now
  * do `asVal(t)?.kind === "f64"`.
@@ -231,7 +252,17 @@ export function asVal(t: IrType): ValType | null {
  */
 export function irTypeEquals(a: IrType, b: IrType): boolean {
   if (a.kind !== b.kind) return false;
-  if (a.kind === "val" && b.kind === "val") return valTypeEquals(a.val, b.val);
+  if (a.kind === "val" && b.kind === "val") {
+    if (!valTypeEquals(a.val, b.val)) return false;
+    // #1126 Stage 1 — `signed` is a domain fact, not a Wasm-storage fact.
+    // Two `val` types differ if they disagree on signedness (e.g. an
+    // i32 inferred as `int32` in one branch vs `uint32` in another would
+    // join to `f64` in the lattice; we never want them to compare equal
+    // here). `undefined` is treated as "signed" (the legacy default).
+    const aSigned = a.signed ?? true;
+    const bSigned = b.signed ?? true;
+    return aSigned === bSigned;
+  }
   if (a.kind === "string" && b.kind === "string") return true;
   if (a.kind === "boxed" && b.kind === "boxed") return valTypeEquals(a.inner, b.inner);
   if (a.kind === "union" && b.kind === "union") {
