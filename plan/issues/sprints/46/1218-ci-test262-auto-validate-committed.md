@@ -1,5 +1,6 @@
 ---
 id: 1218
+sprint: 46
 title: "ci(test262): auto-validate committed baseline on PR — spot-check 50 random pass entries"
 status: done
 created: 2026-04-30

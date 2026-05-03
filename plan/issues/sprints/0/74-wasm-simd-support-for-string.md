@@ -1,5 +1,6 @@
 ---
 id: 74
+sprint: 0
 title: "Issue 74: WASM SIMD support for string and array operations"
 status: done
 created: 2026-03-08

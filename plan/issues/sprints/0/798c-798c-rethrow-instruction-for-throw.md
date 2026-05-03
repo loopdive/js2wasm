@@ -1,5 +1,6 @@
 ---
 id: 798c
+sprint: 0
 title: "#798c -- Rethrow instruction for throw-of-catch-variable"
 status: done
 created: 2026-03-26

@@ -1,5 +1,6 @@
 ---
 id: 1169p
+sprint: 47
 title: "IR Phase 4 Slice 13 — String + Array prototype methods through IR"
 status: done
 created: 2026-05-01

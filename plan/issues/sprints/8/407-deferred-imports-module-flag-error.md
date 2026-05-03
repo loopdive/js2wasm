@@ -1,5 +1,6 @@
 ---
 id: 407
+sprint: 8
 title: "Deferred imports module flag error"
 status: done
 created: 2026-03-16

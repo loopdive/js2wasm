@@ -1,5 +1,6 @@
 ---
 id: 1124
+sprint: 42
 title: "Audit current codegen IR and, if needed, define a minimal SSA middle-end"
 status: done
 created: 2026-04-16

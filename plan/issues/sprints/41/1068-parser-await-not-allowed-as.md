@@ -1,5 +1,6 @@
 ---
 id: 1068
+sprint: 41
 title: "parser: 'await' not allowed as label identifier — blocks prettier/index.mjs"
 status: done
 created: 2026-04-11

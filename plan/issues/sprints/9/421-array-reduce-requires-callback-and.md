@@ -1,5 +1,6 @@
 ---
 id: 421
+sprint: 9
 title: "Array.reduce requires callback and initial value (23 CE)"
 status: done
 created: 2026-03-17

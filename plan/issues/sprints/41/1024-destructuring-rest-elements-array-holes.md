@@ -1,5 +1,6 @@
 ---
 id: 1024
+sprint: 41
 title: "Destructuring rest elements + array holes drop null vs undefined"
 status: done
 created: 2026-04-11

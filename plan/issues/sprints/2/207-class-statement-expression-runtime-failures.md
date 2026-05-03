@@ -1,5 +1,6 @@
 ---
 id: 207
+sprint: 2
 title: "Issue #207: Class statement/expression runtime failures"
 status: done
 created: 2026-03-11

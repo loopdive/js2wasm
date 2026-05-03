@@ -1,5 +1,6 @@
 ---
 id: 1195
+sprint: 47
 title: "perf: escape-analysis scalarization for non-escaping arrays (eliminate array allocation in array-sum)"
 status: done
 created: 2026-04-27

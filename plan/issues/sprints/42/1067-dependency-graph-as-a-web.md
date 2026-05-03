@@ -1,5 +1,6 @@
 ---
 id: 1067
+sprint: 42
 title: "Dependency graph as a web component adopting the landing page color scheme"
 status: done
 created: 2026-04-11

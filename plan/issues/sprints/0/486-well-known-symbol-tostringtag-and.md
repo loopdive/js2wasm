@@ -1,5 +1,6 @@
 ---
 id: 486
+sprint: 0
 title: "Well-known Symbol.toStringTag and Symbol.hasInstance (22 tests)"
 status: done
 created: 2026-03-18

@@ -1,5 +1,6 @@
 ---
 id: 899
+sprint: 34
 title: "Extend compile-time TDZ elimination to provably safe closure captures"
 status: done
 created: 2026-04-02

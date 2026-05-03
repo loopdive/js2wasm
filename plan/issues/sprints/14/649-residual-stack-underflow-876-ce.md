@@ -1,5 +1,6 @@
 ---
 id: 649
+sprint: 14
 title: "Residual stack underflow (876 CE)"
 status: done
 created: 2026-03-19

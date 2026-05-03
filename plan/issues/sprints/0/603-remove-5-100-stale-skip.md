@@ -1,5 +1,6 @@
 ---
 id: 603
+sprint: 0
 title: "- Remove ~5,100 stale skip filters blocking already-implemented features"
 status: done
 created: 2026-03-19

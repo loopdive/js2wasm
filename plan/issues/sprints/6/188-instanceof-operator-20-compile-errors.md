@@ -1,5 +1,6 @@
 ---
 id: 188
+sprint: 6
 title: "`instanceof` operator: 20 compile errors"
 status: done
 created: 2026-03-11

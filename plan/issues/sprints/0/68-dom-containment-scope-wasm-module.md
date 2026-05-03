@@ -1,5 +1,6 @@
 ---
 id: 68
+sprint: 0
 title: "Issue 68: DOM containment — scope wasm module access to a subtree"
 status: done
 created: 2026-03-03

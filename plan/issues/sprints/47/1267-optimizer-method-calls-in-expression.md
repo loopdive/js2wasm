@@ -1,5 +1,6 @@
 ---
 id: 1267
+sprint: 47
 title: "optimizer: method calls in expression-statement position silently dropped when return value unused"
 status: in-progress
 created: 2026-05-02

@@ -1,5 +1,6 @@
 ---
 id: 273
+sprint: 4
 title: "Issue #273: Unsupported new expression for anonymous class expressions"
 status: done
 created: 2026-03-11

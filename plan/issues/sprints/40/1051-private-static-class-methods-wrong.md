@@ -1,5 +1,6 @@
 ---
 id: 1051
+sprint: 40
 title: "Private static class methods: wrong return value via private-name dispatch"
 status: done
 created: 2026-04-11

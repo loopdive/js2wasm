@@ -1,5 +1,6 @@
 ---
 id: 292
+sprint: 0
 title: "Issue #292: Runtime failures -- for-loop incorrect computed values"
 status: done
 created: 2026-03-11

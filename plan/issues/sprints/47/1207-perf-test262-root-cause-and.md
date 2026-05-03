@@ -1,5 +1,6 @@
 ---
 id: 1207
+sprint: 47
 title: "perf(test262): root-cause and fix the 136 compile_timeout tests (~7.6 min wall-clock cost per run)"
 status: done
 created: 2026-04-27

@@ -1,5 +1,6 @@
 ---
 id: 364
+sprint: 0
 title: "- call/apply on arrow functions"
 status: done
 created: 2026-03-13

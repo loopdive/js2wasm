@@ -1,5 +1,6 @@
 ---
 id: 876
+sprint: 31
 title: "Sprint dashboard — kanban board, burndown, agent status, metrics"
 status: done
 created: 2026-03-30

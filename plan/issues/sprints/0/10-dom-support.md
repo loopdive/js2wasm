@@ -1,5 +1,6 @@
 ---
 id: 10
+sprint: 0
 title: "Issue 10: DOM Support"
 status: done
 created: 2026-02-28

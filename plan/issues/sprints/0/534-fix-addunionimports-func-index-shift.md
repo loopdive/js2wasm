@@ -1,5 +1,6 @@
 ---
 id: 534
+sprint: 0
 title: "Fix addUnionImports func index shift for parent function bodies during nested closure compilation"
 status: done
 created: 2026-03-18

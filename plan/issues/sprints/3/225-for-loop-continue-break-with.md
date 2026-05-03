@@ -1,5 +1,6 @@
 ---
 id: 225
+sprint: 3
 title: "Issue #225: For-loop continue/break with string !== comparison"
 status: done
 created: 2026-03-11

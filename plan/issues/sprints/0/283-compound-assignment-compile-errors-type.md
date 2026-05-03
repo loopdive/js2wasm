@@ -1,5 +1,6 @@
 ---
 id: 283
+sprint: 0
 title: "Issue #283: Compound assignment compile errors -- type coercion gaps"
 status: done
 created: 2026-03-11

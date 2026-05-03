@@ -1,5 +1,6 @@
 ---
 id: 86
+sprint: 0
 title: "Issue 86: `new Array()` constructor expression"
 status: done
 created: 2026-03-08

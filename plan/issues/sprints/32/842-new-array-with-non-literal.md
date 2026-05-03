@@ -1,5 +1,6 @@
 ---
 id: 842
+sprint: 32
 title: "new Array() with non-literal/spread arguments: invalid vec type (14 CE)"
 status: done
 created: 2026-03-28

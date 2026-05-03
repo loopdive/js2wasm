@@ -1,5 +1,6 @@
 ---
 id: 46
+sprint: 0
 title: "Issue 46: Linear-memory compilation backend"
 status: done
 created: 2026-03-01

@@ -1,5 +1,6 @@
 ---
 id: 450
+sprint: 0
 title: "Performance benchmarks: JS runtime vs precompiled Wasm"
 status: done
 created: 2026-03-17

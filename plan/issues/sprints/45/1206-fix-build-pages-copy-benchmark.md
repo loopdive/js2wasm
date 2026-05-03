@@ -1,5 +1,6 @@
 ---
 id: 1206
+sprint: 45
 title: "fix(build-pages): copy benchmark JSONs + frame-nav-sync.js to top-level pages-dist paths (404s on landing page)"
 status: in-progress
 created: 2026-04-27

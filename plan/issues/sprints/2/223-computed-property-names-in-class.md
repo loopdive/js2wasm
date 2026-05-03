@@ -1,5 +1,6 @@
 ---
 id: 223
+sprint: 2
 title: "Issue #223: Computed property names in class declarations"
 status: done
 created: 2026-03-11

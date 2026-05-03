@@ -1,5 +1,6 @@
 ---
 id: 293
+sprint: 0
 title: "Issue #293: Runtime failures -- class method incorrect results"
 status: done
 created: 2026-03-11

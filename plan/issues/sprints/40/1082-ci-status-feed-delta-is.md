@@ -1,5 +1,6 @@
 ---
 id: 1082
+sprint: 40
 title: "ci-status-feed delta is absolute snapshot not per-test regression — lies to dev-self-merge gate"
 status: done
 created: 2026-04-11

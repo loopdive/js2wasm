@@ -1,5 +1,6 @@
 ---
 id: 793
+sprint: 25
 title: "- Infinite compilation loop on private-methods class expressions (5 tests)"
 status: done
 created: 2026-03-26

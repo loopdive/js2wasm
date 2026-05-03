@@ -1,5 +1,6 @@
 ---
 id: 1106
+sprint: 42
 title: "CI baseline-refresh bot wipes plan/ and .claude/memory/ on every run"
 status: done
 created: 2026-04-12

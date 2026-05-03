@@ -1,5 +1,6 @@
 ---
 id: 200
+sprint: 2
 title: "JSON.parse/JSON.stringify: 24 compile errors"
 status: done
 created: 2026-03-11

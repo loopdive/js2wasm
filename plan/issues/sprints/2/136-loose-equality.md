@@ -1,5 +1,6 @@
 ---
 id: 136
+sprint: 2
 title: "Loose equality (== / !=)"
 status: done
 created: 2026-03-11

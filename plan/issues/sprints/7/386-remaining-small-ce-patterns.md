@@ -1,5 +1,6 @@
 ---
 id: 386
+sprint: 7
 title: "- Remaining small CE patterns"
 status: done
 created: 2026-03-13

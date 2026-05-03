@@ -1,5 +1,6 @@
 ---
 id: 1187
+sprint: 46
 title: "test-runtime: add JS-string → native-string coercion helper for dual-run testing in nativeStrings mode"
 status: done
 created: 2026-04-27

@@ -1,5 +1,6 @@
 ---
 id: 1044
+sprint: 45
 title: "Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization)"
 status: ready
 created: 2026-04-11

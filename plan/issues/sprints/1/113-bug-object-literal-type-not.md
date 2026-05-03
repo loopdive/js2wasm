@@ -1,5 +1,6 @@
 ---
 id: 113
+sprint: 1
 title: "Issue 113: Bug — 'Object literal type not mapped to struct'"
 status: done
 created: 2026-03-10

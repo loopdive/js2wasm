@@ -1,5 +1,6 @@
 ---
 id: 362
+sprint: 0
 title: "typeof on member expressions"
 status: done
 created: 2026-03-13

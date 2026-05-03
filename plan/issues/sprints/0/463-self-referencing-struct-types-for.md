@@ -1,5 +1,6 @@
 ---
 id: 463
+sprint: 0
 title: "Self-referencing struct types for linked lists / fiber trees"
 status: done
 created: 2026-03-18

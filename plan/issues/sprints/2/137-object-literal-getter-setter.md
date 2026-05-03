@@ -1,5 +1,6 @@
 ---
 id: 137
+sprint: 2
 title: "Object literal getter/setter"
 status: done
 created: 2026-03-11

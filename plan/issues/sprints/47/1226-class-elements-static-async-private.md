@@ -1,5 +1,6 @@
 ---
 id: 1226
+sprint: 47
 title: "class/elements: static async private method produces invalid Wasm — call missing argument (~104 tests)"
 status: done
 created: 2026-05-01

@@ -1,5 +1,6 @@
 ---
 id: 520
+sprint: 21
 title: "Delete operator: operand must be optional (80 CE)"
 status: done
 created: 2026-03-18

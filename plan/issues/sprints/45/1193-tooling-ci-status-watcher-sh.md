@@ -1,5 +1,6 @@
 ---
 id: 1193
+sprint: 45
 title: "tooling: ci-status-watcher.sh hook doesn't push notifications to dev agents (uses gh @me which resolves to human, not agent)"
 status: done
 created: 2026-04-27

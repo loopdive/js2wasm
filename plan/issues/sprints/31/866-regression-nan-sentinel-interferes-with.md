@@ -1,5 +1,6 @@
 ---
 id: 866
+sprint: 31
 title: "Regression: NaN sentinel interferes with toString/valueOf and explicit NaN arguments"
 status: done
 created: 2026-03-29

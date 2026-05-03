@@ -1,5 +1,6 @@
 ---
 id: 781
+sprint: 0
 title: "- TypeError (null/undefined access) in language constructs (~2,841 tests)"
 status: done
 created: 2026-03-25

@@ -1,5 +1,6 @@
 ---
 id: 381
+sprint: 7
 title: "- Nullish coalescing false positives"
 status: done
 created: 2026-03-13

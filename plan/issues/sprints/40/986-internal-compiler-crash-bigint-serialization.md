@@ -1,5 +1,6 @@
 ---
 id: 986
+sprint: 40
 title: "Internal compiler crash: BigInt serialization in statement/object emit paths (37 CE)"
 status: done
 created: 2026-04-07

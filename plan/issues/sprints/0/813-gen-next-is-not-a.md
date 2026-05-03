@@ -1,5 +1,6 @@
 ---
 id: 813
+sprint: 0
 title: "- gen.next is not a function (1,164 tests)"
 status: done
 created: 2026-03-27

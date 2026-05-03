@@ -1,5 +1,6 @@
 ---
 id: 299
+sprint: 0
 title: "Issue #299: Runtime failures -- equals/does-not-equals loose comparison"
 status: done
 created: 2026-03-11

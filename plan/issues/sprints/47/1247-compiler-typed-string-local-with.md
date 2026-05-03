@@ -1,5 +1,6 @@
 ---
 id: 1247
+sprint: 47
 title: "compiler: typed string[] local with path.split('/') initializer triggers struct-type mismatch"
 status: done
 created: 2026-05-02

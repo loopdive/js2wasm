@@ -1,5 +1,6 @@
 ---
 id: 990
+sprint: 42
 title: "Remaining early-error gaps after detectEarlyErrors(): reserved words, module grammar, using, ASI"
 status: done
 created: 2026-04-07

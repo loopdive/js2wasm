@@ -1,5 +1,6 @@
 ---
 id: 471
+sprint: 0
 title: "Symbol support for test262 conformance (1,485 skipped tests)"
 status: done
 created: 2026-03-18

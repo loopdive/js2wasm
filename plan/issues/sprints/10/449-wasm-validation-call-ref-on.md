@@ -1,5 +1,6 @@
 ---
 id: 449
+sprint: 10
 title: "Wasm validation: call_ref on null function reference (15 CE)"
 status: done
 created: 2026-03-17

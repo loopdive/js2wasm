@@ -1,5 +1,6 @@
 ---
 id: 98
+sprint: 0
 title: "Issue 98: Proper ToInt32 modular arithmetic for bitwise operations"
 status: done
 created: 2026-03-09

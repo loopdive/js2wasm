@@ -1,5 +1,6 @@
 ---
 id: 1093
+sprint: 45
 title: "Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262"
 status: ready
 created: 2026-04-12

@@ -1,5 +1,6 @@
 ---
 id: 863
+sprint: 35
 title: "decodeURI/encodeURI failures: #0-0 error pattern (70 FAIL)"
 status: done
 created: 2026-03-29

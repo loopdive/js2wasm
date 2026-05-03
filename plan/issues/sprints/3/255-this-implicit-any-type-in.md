@@ -1,5 +1,6 @@
 ---
 id: 255
+sprint: 3
 title: "Issue #255: 'this' implicit any type in class methods"
 status: done
 created: 2026-03-11

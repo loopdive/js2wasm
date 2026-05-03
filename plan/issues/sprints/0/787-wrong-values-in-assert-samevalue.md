@@ -1,5 +1,6 @@
 ---
 id: 787
+sprint: 0
 title: "- Wrong values in assert.sameValue and other first-assertion failures (~3,517 tests)"
 status: done
 created: 2026-03-25

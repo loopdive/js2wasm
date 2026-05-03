@@ -1,5 +1,6 @@
 ---
 id: 583
+sprint: 0
 title: "Stack not empty at fallthrough in Wasm:test (82 CE) + stack-related fails"
 status: done
 created: 2026-03-19

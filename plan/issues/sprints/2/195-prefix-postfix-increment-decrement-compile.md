@@ -1,5 +1,6 @@
 ---
 id: 195
+sprint: 2
 title: "Prefix/postfix increment/decrement compile errors"
 status: done
 created: 2026-03-11

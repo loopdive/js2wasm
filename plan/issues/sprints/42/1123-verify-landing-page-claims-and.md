@@ -1,5 +1,6 @@
 ---
 id: 1123
+sprint: 42
 title: "Verify landing page claims and code examples against current compiler behavior"
 status: done
 created: 2026-04-15

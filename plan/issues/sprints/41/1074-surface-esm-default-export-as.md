@@ -1,5 +1,6 @@
 ---
 id: 1074
+sprint: 41
 title: "Surface ESM default export as a named Wasm function export"
 status: done
 created: 2026-04-11

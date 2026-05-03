@@ -1,5 +1,6 @@
 ---
 id: 482
+sprint: 0
 title: "Well-known Symbol.toPrimitive for type coercion (113 tests)"
 status: done
 created: 2026-03-18

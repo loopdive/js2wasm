@@ -1,5 +1,6 @@
 ---
 id: 170
+sprint: 0
 title: "Class expression/declaration edge cases"
 status: done
 created: 2026-03-11

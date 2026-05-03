@@ -1,5 +1,6 @@
 ---
 id: 396
+sprint: 0
 title: "Null pointer dereference in destructuring (118 FAIL)"
 status: done
 created: 2026-03-16

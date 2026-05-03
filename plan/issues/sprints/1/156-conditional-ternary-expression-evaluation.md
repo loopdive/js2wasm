@@ -1,5 +1,6 @@
 ---
 id: 156
+sprint: 1
 title: "Conditional (ternary) expression evaluation"
 status: done
 created: 2026-03-11

@@ -1,5 +1,6 @@
 ---
 id: 733
+sprint: 24
 title: "- RangeError validation in built-ins (442 tests)"
 status: done
 created: 2026-03-22

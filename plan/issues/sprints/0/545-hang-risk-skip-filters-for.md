@@ -1,5 +1,6 @@
 ---
 id: 545
+sprint: 0
 title: "Hang-risk skip filters: for-of generators + throw/try (139 tests)"
 status: done
 created: 2026-03-18

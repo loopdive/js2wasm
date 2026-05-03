@@ -1,5 +1,6 @@
 ---
 id: 165
+sprint: 0
 title: "Issue #165: function statement hoisting and edge cases"
 status: done
 created: 2026-03-11

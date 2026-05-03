@@ -1,5 +1,6 @@
 ---
 id: 963
+sprint: 38
 title: "Runner state leak: 412 false compile errors from CompilerPool fork contamination"
 status: done
 created: 2026-04-05

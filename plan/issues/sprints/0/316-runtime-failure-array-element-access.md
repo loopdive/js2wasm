@@ -1,5 +1,6 @@
 ---
 id: 316
+sprint: 0
 title: "Issue #316: Runtime failure -- array element access out of bounds"
 status: done
 created: 2026-03-11

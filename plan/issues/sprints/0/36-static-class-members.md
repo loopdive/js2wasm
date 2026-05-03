@@ -1,5 +1,6 @@
 ---
 id: 36
+sprint: 0
 title: "Issue #36: Static class members"
 status: done
 created: 2026-03-01

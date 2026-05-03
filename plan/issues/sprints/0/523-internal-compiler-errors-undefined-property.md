@@ -1,5 +1,6 @@
 ---
 id: 523
+sprint: 0
 title: "Internal compiler errors: undefined property access (59 CE)"
 status: done
 created: 2026-03-18

@@ -1,5 +1,6 @@
 ---
 id: 814
+sprint: 0
 title: "- ArrayBuffer 'no dependency provided for extern class' (413 tests)"
 status: done
 created: 2026-03-27

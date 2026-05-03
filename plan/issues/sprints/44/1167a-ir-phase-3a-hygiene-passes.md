@@ -1,5 +1,6 @@
 ---
 id: 1167a
+sprint: 44
 title: "IR Phase 3a — hygiene passes: constant-fold, dead-code, simplify-cfg"
 status: done
 created: 2026-04-22

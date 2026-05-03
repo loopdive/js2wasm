@@ -1,5 +1,6 @@
 ---
 id: 835
+sprint: 27
 title: "Unknown extern class: Error types (32 CE)"
 status: done
 created: 2026-03-28

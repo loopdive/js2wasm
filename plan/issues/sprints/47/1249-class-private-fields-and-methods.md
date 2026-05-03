@@ -1,5 +1,6 @@
 ---
 id: 1249
+sprint: 47
 title: "class private fields and methods (#name syntax) — PrivateIdentifier codegen"
 status: done
 created: 2026-05-02

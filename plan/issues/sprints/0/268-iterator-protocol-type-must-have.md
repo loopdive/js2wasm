@@ -1,5 +1,6 @@
 ---
 id: 268
+sprint: 0
 title: "Issue #268: Iterator protocol -- Type must have a Symbol.iterator method"
 status: done
 created: 2026-03-11

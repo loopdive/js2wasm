@@ -1,5 +1,6 @@
 ---
 id: 15
+sprint: 0
 title: "Issue 15: Ternary / Conditional Expression"
 status: done
 created: 2026-02-28

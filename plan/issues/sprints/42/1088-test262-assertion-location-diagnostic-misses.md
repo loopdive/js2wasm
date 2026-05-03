@@ -1,5 +1,6 @@
 ---
 id: 1088
+sprint: 42
 title: "test262: assertion location diagnostic misses verifyProperty/verifyEqualTo — 273 tests report 'found 0 asserts in source'"
 status: done
 created: 2026-04-12

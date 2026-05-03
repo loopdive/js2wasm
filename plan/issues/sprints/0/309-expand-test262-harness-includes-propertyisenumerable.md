@@ -1,5 +1,6 @@
 ---
 id: 309
+sprint: 0
 title: "Issue #309: Expand test262 harness includes -- propertyIsEnumerable, fnGlobalObject"
 status: done
 created: 2026-03-11

@@ -1,5 +1,6 @@
 ---
 id: 12
+sprint: 0
 title: "Issue 12: VS Code-like IDE layout for playground"
 status: done
 created: 2026-02-28

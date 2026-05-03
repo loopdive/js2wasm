@@ -1,5 +1,6 @@
 ---
 id: 191
+sprint: 2
 title: "`assert` not found: tests using raw `assert()` calls"
 status: done
 created: 2026-03-11

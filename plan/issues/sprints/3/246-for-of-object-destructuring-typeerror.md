@@ -1,5 +1,6 @@
 ---
 id: 246
+sprint: 3
 title: "Issue #246: For-of object destructuring -- TypeError on primitive coercion"
 status: done
 created: 2026-03-11

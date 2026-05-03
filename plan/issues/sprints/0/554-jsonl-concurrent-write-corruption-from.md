@@ -1,5 +1,6 @@
 ---
 id: 554
+sprint: 0
 title: "JSONL concurrent write corruption from parallel workers"
 status: done
 created: 2026-03-18

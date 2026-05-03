@@ -1,5 +1,6 @@
 ---
 id: 535
+sprint: 0
 title: "'delete' cannot be called on identifier in strict mode (20 CE)"
 status: done
 created: 2026-03-18

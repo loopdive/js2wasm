@@ -1,5 +1,6 @@
 ---
 id: 572
+sprint: 21
 title: "Internal compiler errors (152 CE)"
 status: done
 created: 2026-03-19

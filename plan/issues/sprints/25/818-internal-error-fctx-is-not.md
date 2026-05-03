@@ -1,5 +1,6 @@
 ---
 id: 818
+sprint: 25
 title: "Internal error: fctx is not defined during compilation"
 status: done
 created: 2026-03-27

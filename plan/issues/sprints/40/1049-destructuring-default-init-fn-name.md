@@ -1,5 +1,6 @@
 ---
 id: 1049
+sprint: 40
 title: "Destructuring default init fn-name-cover: wrong .name on covered function"
 status: done
 created: 2026-04-11

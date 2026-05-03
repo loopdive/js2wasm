@@ -1,5 +1,6 @@
 ---
 id: 1080
+sprint: 45
 title: "[umbrella] Fix CI baseline-drift regression gate — main is not self-healing"
 status: done
 created: 2026-04-11

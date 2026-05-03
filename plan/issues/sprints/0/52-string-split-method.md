@@ -1,5 +1,6 @@
 ---
 id: 52
+sprint: 0
 title: "Issue 52: String.split() method"
 status: done
 created: 2026-03-02

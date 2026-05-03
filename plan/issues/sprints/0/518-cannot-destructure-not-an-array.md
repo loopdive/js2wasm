@@ -1,5 +1,6 @@
 ---
 id: 518
+sprint: 0
 title: "Cannot destructure: not an array type (74 CE)"
 status: done
 created: 2026-03-18

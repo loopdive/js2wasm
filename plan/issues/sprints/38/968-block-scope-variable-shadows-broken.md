@@ -1,5 +1,6 @@
 ---
 id: 968
+sprint: 38
 title: "Block scope variable shadows broken by #954 dedup locals (25 tests)"
 status: done
 created: 2026-04-05

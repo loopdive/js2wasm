@@ -1,5 +1,6 @@
 ---
 id: 1211
+sprint: 46
 title: "js2wasm hosted fib-recursive: Wasm validator — call param types must match"
 status: done
 created: 2026-04-29

@@ -1,5 +1,6 @@
 ---
 id: 1181
+sprint: 45
 title: "IR Phase 4 Slice 6 part 2 — AST→IR bridge for vec for-of (#1169e follow-up)"
 status: done
 created: 2026-04-27

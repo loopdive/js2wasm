@@ -1,5 +1,6 @@
 ---
 id: 596
+sprint: 0
 title: "Eliminate unnecessary ref.cast when type is statically known"
 status: done
 created: 2026-03-19

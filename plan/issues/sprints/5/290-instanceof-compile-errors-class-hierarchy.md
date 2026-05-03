@@ -1,5 +1,6 @@
 ---
 id: 290
+sprint: 5
 title: "Issue #290: Instanceof compile errors -- class hierarchy and expressions"
 status: done
 created: 2026-03-11

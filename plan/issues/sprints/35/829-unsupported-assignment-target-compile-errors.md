@@ -1,5 +1,6 @@
 ---
 id: 829
+sprint: 35
 title: "Unsupported assignment target compile errors (141 tests)"
 status: done
 created: 2026-03-28

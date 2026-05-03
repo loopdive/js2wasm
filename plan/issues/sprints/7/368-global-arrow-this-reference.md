@@ -1,5 +1,6 @@
 ---
 id: 368
+sprint: 7
 title: "- Global/arrow `this` reference"
 status: done
 created: 2026-03-13

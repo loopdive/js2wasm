@@ -1,5 +1,6 @@
 ---
 id: 836
+sprint: 32
 title: "Tagged templates with non-PropertyAccess tag expressions (20 CE)"
 status: done
 created: 2026-03-28

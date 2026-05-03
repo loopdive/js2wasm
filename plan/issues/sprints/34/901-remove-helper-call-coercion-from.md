@@ -1,5 +1,6 @@
 ---
 id: 901
+sprint: 34
 title: "Remove helper-call coercion from numeric GC-array element access"
 status: done
 created: 2026-04-02

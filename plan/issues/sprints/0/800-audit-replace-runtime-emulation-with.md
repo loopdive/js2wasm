@@ -1,5 +1,6 @@
 ---
 id: 800
+sprint: 0
 title: "- Audit: replace runtime emulation with compile-time resolution"
 status: done
 created: 2026-03-26

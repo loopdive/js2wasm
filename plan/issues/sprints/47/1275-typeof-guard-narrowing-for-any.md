@@ -1,5 +1,6 @@
 ---
 id: 1275
+sprint: 47
 title: "typeof-guard narrowing for any-typed parameters (untyped JS functions)"
 status: done
 created: 2026-05-02

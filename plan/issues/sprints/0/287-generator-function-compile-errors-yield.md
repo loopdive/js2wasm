@@ -1,5 +1,6 @@
 ---
 id: 287
+sprint: 0
 title: "Issue #287: Generator function compile errors -- yield in nested contexts"
 status: done
 created: 2026-03-11

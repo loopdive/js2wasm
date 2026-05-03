@@ -1,5 +1,6 @@
 ---
 id: 135
+sprint: 2
 title: "Ternary/conditional returning non-boolean values"
 status: done
 created: 2026-03-11

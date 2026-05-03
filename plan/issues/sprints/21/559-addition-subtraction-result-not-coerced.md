@@ -1,5 +1,6 @@
 ---
 id: 559
+sprint: 21
 title: "Addition/subtraction result not coerced to externref before call (10 CE)"
 status: done
 created: 2026-03-19

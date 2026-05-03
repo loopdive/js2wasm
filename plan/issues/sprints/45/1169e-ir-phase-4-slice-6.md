@@ -1,5 +1,6 @@
 ---
 id: 1169e
+sprint: 45
 title: "IR Phase 4 Slice 6 — iterators and for-of through the IR path"
 status: done
 created: 2026-04-27

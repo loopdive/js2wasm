@@ -1,5 +1,6 @@
 ---
 id: 654
+sprint: 0
 title: "Missing property diagnostics (1,116 CE)"
 status: done
 created: 2026-03-20

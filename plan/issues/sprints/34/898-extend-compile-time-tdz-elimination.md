@@ -1,5 +1,6 @@
 ---
 id: 898
+sprint: 34
 title: "Extend compile-time TDZ elimination to loop-local accesses"
 status: done
 created: 2026-04-02

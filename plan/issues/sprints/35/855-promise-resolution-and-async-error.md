@@ -1,5 +1,6 @@
 ---
 id: 855
+sprint: 35
 title: "Promise resolution and async error handling (210 tests)"
 status: done
 created: 2026-03-28

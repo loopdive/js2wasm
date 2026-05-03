@@ -1,5 +1,6 @@
 ---
 id: 553
+sprint: 0
 title: "Division by zero missing in constant folding (tryStaticToNumber)"
 status: done
 created: 2026-03-18

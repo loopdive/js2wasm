@@ -1,5 +1,6 @@
 ---
 id: 831
+sprint: 32
 title: "Negative test gaps: expected SyntaxError but compiled (242 failures)"
 status: done
 created: 2026-03-28

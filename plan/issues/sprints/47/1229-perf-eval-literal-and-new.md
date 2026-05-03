@@ -1,5 +1,6 @@
 ---
 id: 1229
+sprint: 47
 title: "perf: eval(literal) and new RegExp(literal) re-compile every iteration in 65k-loop tests"
 status: done
 created: 2026-05-01

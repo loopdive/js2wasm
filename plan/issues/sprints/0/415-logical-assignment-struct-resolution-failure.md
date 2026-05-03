@@ -1,5 +1,6 @@
 ---
 id: 415
+sprint: 0
 title: "Logical assignment struct resolution failure"
 status: done
 created: 2026-03-17

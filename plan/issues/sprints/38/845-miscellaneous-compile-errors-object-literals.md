@@ -1,5 +1,6 @@
 ---
 id: 845
+sprint: 38
 title: "Miscellaneous compile errors: object literals, RegExp-on-X, for-in/of edge cases (340 CE)"
 status: done
 created: 2026-03-28

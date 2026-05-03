@@ -1,5 +1,6 @@
 ---
 id: 828
+sprint: 31
 title: "Unexpected undefined AST node in compileExpression (154 CE)"
 status: done
 created: 2026-03-28

@@ -1,5 +1,6 @@
 ---
 id: 302
+sprint: 0
 title: "Issue #302: Runtime failures -- Math.min/max edge cases"
 status: done
 created: 2026-03-11

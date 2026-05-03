@@ -1,5 +1,6 @@
 ---
 id: 1169q
+sprint: 47
 title: "IR Phase 4 Slice 14 — retire legacy codegen: delete expressions.ts, statements.ts, repair passes"
 status: done
 created: 2026-05-01

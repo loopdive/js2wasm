@@ -1,5 +1,6 @@
 ---
 id: 1132
+sprint: 42
 title: "Publish compiler as @loopdive/js2 on npm + JSR"
 status: in-progress
 created: 2026-04-19

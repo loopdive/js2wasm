@@ -1,5 +1,6 @@
 ---
 id: 920
+sprint: 36
 title: "Recover RegExp feature acceptance regressions relative to the April 1 test262 baseline"
 status: done
 created: 2026-04-03

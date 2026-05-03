@@ -1,5 +1,6 @@
 ---
 id: 197
+sprint: 2
 title: "Statement-level `if` compile errors"
 status: done
 created: 2026-03-11

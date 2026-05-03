@@ -1,5 +1,6 @@
 ---
 id: 454
+sprint: 10
 title: "Compile pako (zlib) to Wasm and benchmark vs JS"
 status: done
 created: 2026-03-17

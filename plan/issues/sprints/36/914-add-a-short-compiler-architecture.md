@@ -1,5 +1,6 @@
 ---
 id: 914
+sprint: 36
 title: "Add a short compiler architecture overview for contributors"
 status: done
 created: 2026-04-03

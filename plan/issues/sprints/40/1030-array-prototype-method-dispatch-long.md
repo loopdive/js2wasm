@@ -1,5 +1,6 @@
 ---
 id: 1030
+sprint: 40
 title: "Array.prototype method dispatch long tail — 372 'object is not a function'"
 status: done
 created: 2026-04-11

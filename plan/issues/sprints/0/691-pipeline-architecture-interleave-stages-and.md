@@ -1,5 +1,6 @@
 ---
 id: 691
+sprint: 0
 title: "Pipeline architecture: interleave stages and minimize memory pressure"
 status: done
 created: 2026-03-20
