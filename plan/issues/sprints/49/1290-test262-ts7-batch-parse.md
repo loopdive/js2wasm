@@ -2,7 +2,7 @@
 id: 1290
 title: "perf: test262 runner — TS7 batch-parse via @typescript/native-preview (132× cold speedup)"
 sprint: 49
-status: ready
+status: done
 created: 2026-05-03
 updated: 2026-05-03
 priority: high
