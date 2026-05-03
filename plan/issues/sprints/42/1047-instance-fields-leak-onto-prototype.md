@@ -1,5 +1,6 @@
 ---
 id: 1047
+sprint: 42
 title: "Instance fields leak onto prototype via _wrapForHost struct-field enumeration"
 status: done
 created: 2026-04-11

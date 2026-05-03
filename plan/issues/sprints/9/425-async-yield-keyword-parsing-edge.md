@@ -1,5 +1,6 @@
 ---
 id: 425
+sprint: 9
 title: "Async/yield keyword parsing edge cases (12 CE)"
 status: done
 created: 2026-03-17

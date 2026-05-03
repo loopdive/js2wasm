@@ -1,5 +1,6 @@
 ---
 id: 617
+sprint: 0
 title: "Wasm validation: not enough arguments for drop (109 CE)"
 status: done
 created: 2026-03-19

@@ -1,5 +1,6 @@
 ---
 id: 295
+sprint: 0
 title: "Issue #295: Runtime failures -- comparison operators with type coercion"
 status: done
 created: 2026-03-11

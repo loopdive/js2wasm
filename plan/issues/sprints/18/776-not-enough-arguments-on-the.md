@@ -1,5 +1,6 @@
 ---
 id: 776
+sprint: 18
 title: "- 'not enough arguments on the stack for call' (362 CE)"
 status: done
 created: 2026-03-22

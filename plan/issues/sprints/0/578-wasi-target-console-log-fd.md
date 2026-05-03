@@ -1,5 +1,6 @@
 ---
 id: 578
+sprint: 0
 title: "WASI target: console.log -> fd_write, process.exit -> proc_exit"
 status: done
 created: 2026-03-19

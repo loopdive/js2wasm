@@ -1,5 +1,6 @@
 ---
 id: 1167b
+sprint: 44
 title: "IR Phase 3b — inline-small: inline direct IR calls before lowering"
 status: done
 created: 2026-04-22

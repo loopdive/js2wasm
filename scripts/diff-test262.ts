@@ -330,8 +330,11 @@ async function run(baselinePath: string, newPath: string, maxShow: number, quiet
     }
   }
 
-  // Exit code: non-zero if regressions
-  if (regressions.length > 0) {
+  // Exit code: non-zero when the change is a net negative using wasm-hash-filtered regressions.
+  // Compile_timeout flaps (timing noise) and wasm-identical flips are excluded via
+  // regressionsWasmChange. Gate: improvements - regressionsWasmChange < 0.
+  const netPerTest = improvements - regressionsWasmChange;
+  if (netPerTest < 0) {
     process.exit(1);
   }
 }

@@ -1,5 +1,6 @@
 ---
 id: 473
+sprint: 0
 title: "Array.prototype method .call/.apply support (852 skipped tests)"
 status: done
 created: 2026-03-18

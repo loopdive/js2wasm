@@ -1,5 +1,6 @@
 ---
 id: 166
+sprint: 1
 title: "`in` operator runtime failures"
 status: done
 created: 2026-03-11

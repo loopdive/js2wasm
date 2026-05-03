@@ -1,5 +1,6 @@
 ---
 id: 732
+sprint: 0
 title: "- hasOwnProperty correctness (520 tests)"
 status: done
 created: 2026-03-22

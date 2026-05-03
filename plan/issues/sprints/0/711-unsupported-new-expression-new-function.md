@@ -1,5 +1,6 @@
 ---
 id: 711
+sprint: 0
 title: "Unsupported new expression: new Function() (106 CE)"
 status: done
 created: 2026-03-21

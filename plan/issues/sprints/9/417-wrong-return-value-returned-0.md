@@ -1,5 +1,6 @@
 ---
 id: 417
+sprint: 9
 title: "Wrong return value (returned 0) -- broad runtime correctness failures"
 status: done
 created: 2026-03-17

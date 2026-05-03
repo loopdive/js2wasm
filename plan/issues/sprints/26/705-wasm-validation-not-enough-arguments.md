@@ -1,5 +1,6 @@
 ---
 id: 705
+sprint: 26
 title: "Wasm validation: not enough arguments on the stack (361 CE)"
 status: done
 created: 2026-03-21

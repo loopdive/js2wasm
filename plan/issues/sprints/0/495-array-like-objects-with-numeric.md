@@ -1,5 +1,6 @@
 ---
 id: 495
+sprint: 0
 title: "Array-like objects with numeric keys (77 tests)"
 status: done
 created: 2026-03-18

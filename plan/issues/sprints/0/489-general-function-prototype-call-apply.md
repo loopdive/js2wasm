@@ -1,5 +1,6 @@
 ---
 id: 489
+sprint: 0
 title: "General Function.prototype.call/apply (822 tests)"
 status: done
 created: 2026-03-18

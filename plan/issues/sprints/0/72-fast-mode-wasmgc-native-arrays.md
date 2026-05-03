@@ -1,5 +1,6 @@
 ---
 id: 72
+sprint: 0
 title: "Issue 72: Fast mode — WasmGC-native arrays"
 status: done
 created: 2026-03-09

@@ -1,5 +1,6 @@
 ---
 id: 403
+sprint: 0
 title: "import.source meta-property errors"
 status: done
 created: 2026-03-16

@@ -1,5 +1,6 @@
 ---
 id: 1057
+sprint: 42
 title: "String.prototype.split result constructor !== Array"
 status: done
 created: 2026-04-11

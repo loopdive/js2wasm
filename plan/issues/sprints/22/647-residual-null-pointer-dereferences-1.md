@@ -1,5 +1,6 @@
 ---
 id: 647
+sprint: 22
 title: "Residual null pointer dereferences (1,374 FAIL)"
 status: done
 created: 2026-03-19

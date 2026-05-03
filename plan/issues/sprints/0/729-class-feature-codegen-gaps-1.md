@@ -1,5 +1,6 @@
 ---
 id: 729
+sprint: 0
 title: "- Class feature codegen gaps (1,161 tests)"
 status: done
 created: 2026-03-22

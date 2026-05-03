@@ -1,5 +1,6 @@
 ---
 id: 1169b
+sprint: 45
 title: "IR Phase 4 Slice 2 — object literals and property access through IR path"
 status: done
 created: 2026-04-26

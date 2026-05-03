@@ -1,5 +1,6 @@
 ---
 id: 724
+sprint: 26
 title: "Object.defineProperty: throw TypeError for invalid operations (150 FAIL)"
 status: done
 created: 2026-03-21

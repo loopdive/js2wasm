@@ -1,5 +1,6 @@
 ---
 id: 819
+sprint: 26
 title: "Multi-file compilation: resolve imports and compile module graphs"
 status: done
 created: 2026-03-27

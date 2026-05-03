@@ -1,5 +1,6 @@
 ---
 id: 1111
+sprint: 45
 title: "Wrapper object constructors: new Number/String/Boolean (648 tests)"
 status: done
 created: 2026-04-11

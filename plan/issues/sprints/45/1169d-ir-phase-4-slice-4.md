@@ -1,5 +1,6 @@
 ---
 id: 1169d
+sprint: 45
 title: "IR Phase 4 Slice 4 — class instantiation and method calls through the IR path"
 status: done
 created: 2026-04-27

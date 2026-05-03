@@ -1,5 +1,6 @@
 ---
 id: 66
+sprint: 0
 title: "Issue 66: Security design doc — runtime import hardening"
 status: done
 created: 2026-03-03

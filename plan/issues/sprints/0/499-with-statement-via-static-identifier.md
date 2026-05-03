@@ -1,5 +1,6 @@
 ---
 id: 499
+sprint: 0
 title: "with statement via static identifier dispatch (94 tests)"
 status: done
 created: 2026-03-18

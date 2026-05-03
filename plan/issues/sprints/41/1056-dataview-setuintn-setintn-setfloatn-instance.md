@@ -1,5 +1,6 @@
 ---
 id: 1056
+sprint: 41
 title: "DataView setUintN / setIntN / setFloatN instance methods missing"
 status: done
 created: 2026-04-11

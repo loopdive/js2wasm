@@ -1,5 +1,6 @@
 ---
 id: 782
+sprint: 0
 title: "- Destructuring binding patterns produce wrong values (~3,487 tests)"
 status: done
 created: 2026-03-25

@@ -1,5 +1,6 @@
 ---
 id: 783
+sprint: 0
 title: "- assert.throws failures: missing exception throwing (~3,293 tests)"
 status: done
 created: 2026-03-25

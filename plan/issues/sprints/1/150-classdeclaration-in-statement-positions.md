@@ -1,5 +1,6 @@
 ---
 id: 150
+sprint: 1
 title: "ClassDeclaration in statement positions"
 status: done
 created: 2026-03-11

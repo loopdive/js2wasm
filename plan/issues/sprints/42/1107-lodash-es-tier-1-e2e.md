@@ -1,5 +1,6 @@
 ---
 id: 1107
+sprint: 42
 title: "lodash-es Tier 1 E2E harness — identity, clamp, add compile and run"
 status: done
 created: 2026-04-12

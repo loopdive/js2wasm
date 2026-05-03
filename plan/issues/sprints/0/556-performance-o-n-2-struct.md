@@ -1,5 +1,6 @@
 ---
 id: 556
+sprint: 0
 title: "Performance: O(n^2) struct deduplication in ensureStructForType"
 status: done
 created: 2026-03-18

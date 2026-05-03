@@ -1,5 +1,6 @@
 ---
 id: 922
+sprint: 36
 title: "Add a reproducible test262 baseline-diff workflow so regressions are compared against current clean HEAD"
 status: done
 created: 2026-04-03

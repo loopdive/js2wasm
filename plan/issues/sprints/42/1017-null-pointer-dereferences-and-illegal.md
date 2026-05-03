@@ -1,5 +1,6 @@
 ---
 id: 1017
+sprint: 42
 title: "Null pointer dereferences and illegal casts in compiled code (504 FAIL)"
 status: done
 created: 2026-04-10

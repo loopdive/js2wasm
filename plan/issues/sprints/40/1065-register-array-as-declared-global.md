@@ -1,5 +1,6 @@
 ---
 id: 1065
+sprint: 40
 title: "Register `Array` as declared global so `x.constructor === Array` compares real refs"
 status: done
 created: 2026-04-11

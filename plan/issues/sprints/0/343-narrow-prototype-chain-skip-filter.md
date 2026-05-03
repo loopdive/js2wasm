@@ -1,5 +1,6 @@
 ---
 id: 343
+sprint: 0
 title: "Narrow prototype chain skip filter in test262 runner"
 status: done
 created: 2026-03-13

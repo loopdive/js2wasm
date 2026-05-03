@@ -1,5 +1,6 @@
 ---
 id: 9
+sprint: 0
 title: "Issue 9: for-in loops"
 status: done
 created: 2026-02-27

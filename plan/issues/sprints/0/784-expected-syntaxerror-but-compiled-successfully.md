@@ -1,5 +1,6 @@
 ---
 id: 784
+sprint: 0
 title: "- Expected SyntaxError but compiled successfully (~2,657 tests)"
 status: done
 created: 2026-03-25

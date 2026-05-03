@@ -1,5 +1,6 @@
 ---
 id: 123
+sprint: 1
 title: "Wrapper object constructors (new Number/String/Boolean)"
 status: wont-fix
 created: 2026-03-11

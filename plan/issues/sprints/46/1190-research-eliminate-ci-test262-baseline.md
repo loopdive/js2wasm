@@ -1,5 +1,6 @@
 ---
 id: 1190
+sprint: 46
 title: "research: eliminate CI test262 baseline drift (umbrella for #1189, #1191, #1192)"
 status: done
 created: 2026-04-27

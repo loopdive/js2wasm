@@ -1,5 +1,6 @@
 ---
 id: 173
+sprint: 0
 title: "Computed property names in class declarations"
 status: done
 created: 2026-03-11

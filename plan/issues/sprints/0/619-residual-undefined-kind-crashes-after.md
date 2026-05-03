@@ -1,5 +1,6 @@
 ---
 id: 619
+sprint: 0
 title: "Residual undefined .kind crashes after null guard (4,230 CE)"
 status: done
 created: 2026-03-19

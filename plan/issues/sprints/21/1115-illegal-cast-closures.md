@@ -1,5 +1,6 @@
 ---
 id: 1115
+sprint: 21
 title: "Fix illegal cast when closures are passed as callable parameters"
 status: done
 created: 2026-03-18

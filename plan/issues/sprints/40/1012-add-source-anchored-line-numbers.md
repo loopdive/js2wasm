@@ -1,5 +1,6 @@
 ---
 id: 1012
+sprint: 40
 title: "Add source-anchored line numbers to all runtime error patterns"
 status: done
 created: 2026-04-10

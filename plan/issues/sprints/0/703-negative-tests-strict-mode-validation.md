@@ -1,5 +1,6 @@
 ---
 id: 703
+sprint: 0
 title: "Negative tests: strict-mode validation for ES-spec parse errors"
 status: done
 created: 2026-03-21

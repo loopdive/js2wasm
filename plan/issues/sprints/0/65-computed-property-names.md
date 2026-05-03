@@ -1,5 +1,6 @@
 ---
 id: 65
+sprint: 0
 title: "Issue 65: Computed property names"
 status: done
 created: 2026-03-02

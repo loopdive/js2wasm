@@ -1,5 +1,6 @@
 ---
 id: 1222
+sprint: 47
 title: "ci: wasm-hash noise filter — exclude byte-identical regressions from PR gate"
 status: done
 created: 2026-05-01

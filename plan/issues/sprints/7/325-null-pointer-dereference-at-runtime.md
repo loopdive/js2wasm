@@ -1,5 +1,6 @@
 ---
 id: 325
+sprint: 7
 title: "- Null pointer dereference at runtime"
 status: done
 created: 2026-03-13

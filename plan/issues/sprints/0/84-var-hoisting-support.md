@@ -1,5 +1,6 @@
 ---
 id: 84
+sprint: 0
 title: "Issue 84: `var` hoisting support"
 status: done
 created: 2026-03-08

@@ -1,5 +1,6 @@
 ---
 id: 1048
+sprint: 40
 title: "async-generator destructuring: illegal cast inside __closure_N"
 status: done
 created: 2026-04-11

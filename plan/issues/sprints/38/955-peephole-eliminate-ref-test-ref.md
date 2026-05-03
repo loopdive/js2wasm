@@ -1,5 +1,6 @@
 ---
 id: 955
+sprint: 38
 title: "Peephole: eliminate ref.test + ref.cast redundant type checks (8,642 pairs, 36% of modules)"
 status: done
 created: 2026-04-04

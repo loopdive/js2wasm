@@ -1,5 +1,6 @@
 ---
 id: 308
+sprint: 0
 title: "Issue #308: Addition operator compile errors -- string/number coercion"
 status: done
 created: 2026-03-11

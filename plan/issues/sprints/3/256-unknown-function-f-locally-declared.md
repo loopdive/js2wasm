@@ -1,5 +1,6 @@
 ---
 id: 256
+sprint: 3
 title: "Issue #256: Unknown function: f -- locally declared functions not found"
 status: done
 created: 2026-03-11

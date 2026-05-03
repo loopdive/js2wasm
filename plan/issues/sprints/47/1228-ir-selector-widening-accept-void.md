@@ -1,5 +1,6 @@
 ---
 id: 1228
+sprint: 47
 title: "IR selector widening: accept void return + any params"
 status: done
 created: 2026-05-01

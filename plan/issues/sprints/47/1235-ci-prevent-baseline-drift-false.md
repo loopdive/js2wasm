@@ -1,5 +1,6 @@
 ---
 id: 1235
+sprint: 47
 title: "ci: prevent baseline drift false-positive regressions after admin-merges"
 status: done
 created: 2026-05-02

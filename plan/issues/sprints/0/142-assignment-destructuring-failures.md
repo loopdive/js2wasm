@@ -1,5 +1,6 @@
 ---
 id: 142
+sprint: 0
 title: "Assignment destructuring failures"
 status: done
 created: 2026-03-11

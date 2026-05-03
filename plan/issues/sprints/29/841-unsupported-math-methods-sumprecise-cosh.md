@@ -1,5 +1,6 @@
 ---
 id: 841
+sprint: 29
 title: "Unsupported Math methods: sumPrecise, cosh, sinh, tanh, f16round (19 CE)"
 status: done
 created: 2026-03-28

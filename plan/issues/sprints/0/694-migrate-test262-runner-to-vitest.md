@@ -1,5 +1,6 @@
 ---
 id: 694
+sprint: 0
 title: "Migrate test262 runner to vitest with per-test disk cache"
 status: done
 created: 2026-03-20

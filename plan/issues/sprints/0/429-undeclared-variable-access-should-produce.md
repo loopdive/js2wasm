@@ -1,5 +1,6 @@
 ---
 id: 429
+sprint: 0
 title: "Undeclared variable access should produce ReferenceError (71 tests)"
 status: done
 created: 2026-03-17

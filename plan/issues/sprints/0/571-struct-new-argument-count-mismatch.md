@@ -1,5 +1,6 @@
 ---
 id: 571
+sprint: 0
 title: "- struct.new argument count mismatch (231 CE)"
 status: done
 created: 2026-03-19

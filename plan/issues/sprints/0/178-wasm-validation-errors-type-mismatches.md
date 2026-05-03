@@ -1,5 +1,6 @@
 ---
 id: 178
+sprint: 0
 title: "Wasm validation errors: type mismatches in emitted binary"
 status: done
 created: 2026-03-11

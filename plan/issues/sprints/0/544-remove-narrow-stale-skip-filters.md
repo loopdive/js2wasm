@@ -1,5 +1,6 @@
 ---
 id: 544
+sprint: 0
 title: "Remove/narrow stale skip filters"
 status: done
 created: 2026-03-18

@@ -1,5 +1,6 @@
 ---
 id: 475
+sprint: 0
 title: "Narrow negative test skip — 892 tests improperly classified"
 status: done
 created: 2026-03-18

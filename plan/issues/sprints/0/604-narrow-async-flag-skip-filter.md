@@ -1,5 +1,6 @@
 ---
 id: 604
+sprint: 0
 title: "Narrow async flag skip filter (1,311 tests)"
 status: done
 created: 2026-03-19

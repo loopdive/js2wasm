@@ -1,5 +1,6 @@
 ---
 id: 481
+sprint: 0
 title: "Well-known Symbol.iterator as compile-time struct field (1,327 tests)"
 status: done
 created: 2026-03-18

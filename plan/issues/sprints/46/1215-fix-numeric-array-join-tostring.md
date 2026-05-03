@@ -1,5 +1,6 @@
 ---
 id: 1215
+sprint: 46
 title: "fix: numeric-array .join() / .toString() must register number_toString — Wasm validation error"
 status: done
 created: 2026-04-30

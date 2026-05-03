@@ -1,5 +1,6 @@
 ---
 id: 413
+sprint: 9
 title: "Parameter self-reference -- default param validation too strict"
 status: done
 created: 2026-03-17

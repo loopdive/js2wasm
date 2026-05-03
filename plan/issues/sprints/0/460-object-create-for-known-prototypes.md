@@ -1,5 +1,6 @@
 ---
 id: 460
+sprint: 0
 title: "Object.create for known prototypes"
 status: done
 created: 2026-03-17

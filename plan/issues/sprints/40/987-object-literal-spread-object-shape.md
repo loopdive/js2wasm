@@ -1,5 +1,6 @@
 ---
 id: 987
+sprint: 40
 title: "Object-literal spread/object-shape fallbacks still fail in generator and spread call sites (40 CE)"
 status: done
 created: 2026-04-07

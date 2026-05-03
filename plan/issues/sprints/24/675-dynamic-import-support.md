@@ -1,5 +1,6 @@
 ---
 id: 675
+sprint: 24
 title: "Dynamic import() support"
 status: done
 created: 2026-03-20

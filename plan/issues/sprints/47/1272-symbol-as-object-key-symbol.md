@@ -1,5 +1,6 @@
 ---
 id: 1272
+sprint: 47
 title: "Symbol as object key — Symbol.for(), well-known Symbols as property keys"
 status: in-progress
 created: 2026-05-02

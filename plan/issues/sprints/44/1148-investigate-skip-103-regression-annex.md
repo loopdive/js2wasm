@@ -1,5 +1,6 @@
 ---
 id: 1148
+sprint: 44
 title: "Investigate skip:103 regression — Annex B eval-code skip filter"
 status: done
 created: 2026-04-20

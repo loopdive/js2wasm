@@ -1,5 +1,6 @@
 ---
 id: 967
+sprint: 38
 title: "Array.prototype.some/every/map not resolving after #799 prototype chain (30 tests)"
 status: done
 created: 2026-04-05

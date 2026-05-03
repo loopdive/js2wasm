@@ -1,5 +1,6 @@
 ---
 id: 1135
+sprint: 45
 title: "`__make_iterable` breaks Wasm-to-Wasm vec→externref destructuring after setExports"
 status: done
 created: 2026-04-18

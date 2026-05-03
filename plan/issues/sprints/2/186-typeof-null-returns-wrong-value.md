@@ -1,5 +1,6 @@
 ---
 id: 186
+sprint: 2
 title: "`typeof null` returns wrong value"
 status: done
 created: 2026-03-11

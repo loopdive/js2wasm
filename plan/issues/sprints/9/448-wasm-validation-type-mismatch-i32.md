@@ -1,5 +1,6 @@
 ---
 id: 448
+sprint: 9
 title: "Wasm validation: type mismatch i32 expected (47 CE)"
 status: done
 created: 2026-03-17

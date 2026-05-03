@@ -1,5 +1,6 @@
 ---
 id: 1182
+sprint: 45
 title: "IR Phase 4 Slice 6 part 3 — host iterator protocol through the IR (`iter.*` instrs, Map/Set/generator iteration)"
 status: done
 created: 2026-04-27

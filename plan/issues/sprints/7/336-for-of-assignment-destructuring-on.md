@@ -1,5 +1,6 @@
 ---
 id: 336
+sprint: 7
 title: "- For-of assignment destructuring on non-struct refs"
 status: done
 created: 2026-03-13

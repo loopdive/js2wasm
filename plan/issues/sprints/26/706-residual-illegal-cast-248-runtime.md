@@ -1,5 +1,6 @@
 ---
 id: 706
+sprint: 26
 title: "Residual illegal cast: 248 runtime failures"
 status: done
 created: 2026-03-21

@@ -1,5 +1,6 @@
 ---
 id: 938
+sprint: 37
 title: "Add equivalence tests for Number static methods and constants"
 status: done
 created: 2026-04-03

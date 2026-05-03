@@ -1,5 +1,6 @@
 ---
 id: 950
+sprint: 37
 title: "Compile error on calls with fewer arguments than TS signature expects"
 status: done
 created: 2026-04-04

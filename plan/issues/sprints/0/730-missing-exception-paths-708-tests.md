@@ -1,5 +1,6 @@
 ---
 id: 730
+sprint: 0
 title: "- Missing exception paths: 708 tests expect throws but code runs to completion"
 status: done
 created: 2026-03-22

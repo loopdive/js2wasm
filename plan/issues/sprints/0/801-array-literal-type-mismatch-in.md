@@ -1,5 +1,6 @@
 ---
 id: 801
+sprint: 0
 title: "- Array literal type mismatch in nested destructuring defaults (537 fail)"
 status: done
 created: 2026-03-26

@@ -1,5 +1,6 @@
 ---
 id: 391
+sprint: 0
 title: "Numeric index signature on object types"
 status: done
 created: 2026-03-16

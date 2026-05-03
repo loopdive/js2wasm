@@ -1,5 +1,6 @@
 ---
 id: 921
+sprint: 37
 title: "Fix class destructuring generator/private-method codegen that now yields Wasm type mismatches"
 status: done
 created: 2026-04-03

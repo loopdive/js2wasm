@@ -1,5 +1,6 @@
 ---
 id: 409
+sprint: 0
 title: "Unsupported call expression -- spread, optional chaining, super, property methods"
 status: done
 created: 2026-03-17

@@ -1,5 +1,6 @@
 ---
 id: 1203
+sprint: 46
 title: "credibility: differential testing harness — compare js2wasm output vs V8/SpiderMonkey on 1000+ programs"
 status: done
 created: 2026-04-27

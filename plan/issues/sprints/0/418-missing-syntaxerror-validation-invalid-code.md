@@ -1,5 +1,6 @@
 ---
 id: 418
+sprint: 0
 title: "Missing SyntaxError validation -- invalid code compiles successfully"
 status: done
 created: 2026-03-17

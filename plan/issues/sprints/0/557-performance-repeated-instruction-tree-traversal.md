@@ -1,5 +1,6 @@
 ---
 id: 557
+sprint: 0
 title: "Performance: repeated instruction tree traversal for index shifting"
 status: done
 created: 2026-03-18

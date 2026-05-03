@@ -1,5 +1,6 @@
 ---
 id: 625
+sprint: 0
 title: "Wasm local.set type mismatch (552 CE)"
 status: done
 created: 2026-03-19

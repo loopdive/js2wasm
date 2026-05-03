@@ -1,5 +1,6 @@
 ---
 id: 1178
+sprint: 45
 title: "string-hash benchmark hits `wasm trap: call stack exhausted` at runtime after #1175 fix"
 status: done
 created: 2026-04-27

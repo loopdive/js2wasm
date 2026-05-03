@@ -1,5 +1,6 @@
 ---
 id: 791
+sprint: 0
 title: "- SyntaxError detection gaps: code compiles when it should not"
 status: done
 created: 2026-03-26

@@ -1,5 +1,6 @@
 ---
 id: 797
+sprint: 37
 title: "- Property descriptor subsystem (~5,000 tests)"
 status: done
 created: 2026-03-26

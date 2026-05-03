@@ -1,5 +1,6 @@
 ---
 id: 1219
+sprint: 46
 title: "ArrayBindingPattern iter-close: destructuring hangs when iterator never sets done:true (26 compile_timeout tests)"
 status: done
 created: 2026-05-01

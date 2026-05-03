@@ -1,5 +1,6 @@
 ---
 id: 289
+sprint: 0
 title: "Issue #289: For-in compile errors -- property enumeration edge cases"
 status: done
 created: 2026-03-11

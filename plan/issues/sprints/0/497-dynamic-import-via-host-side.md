@@ -1,5 +1,6 @@
 ---
 id: 497
+sprint: 0
 title: "Dynamic import() via host-side module loading (442 tests)"
 status: done
 created: 2026-03-18

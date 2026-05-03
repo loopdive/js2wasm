@@ -1,5 +1,6 @@
 ---
 id: 882
+sprint: 40
 title: "Test262 runner: sharded parallel execution with merged reports"
 status: done
 created: 2026-03-31

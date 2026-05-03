@@ -1,5 +1,6 @@
 ---
 id: 722
+sprint: 26
 title: "Class private methods: hasOwnProperty check fails (484 FAIL)"
 status: done
 created: 2026-03-21

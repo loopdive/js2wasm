@@ -308,6 +308,26 @@
       "sprint": ""
     },
     {
+      "id": "1248",
+      "title": "compiler: typeof x === 'string' guard breaks String.prototype.substring(start) — returns single char",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
+      "id": "1247",
+      "title": "compiler: typed `string[]` local with `path.split('/')` initializer triggers struct-type mismatch",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "ready",
+      "sprint": ""
+    },
+    {
       "id": "1241",
       "title": "Untitled",
       "priority": "medium",
@@ -1924,26 +1944,6 @@
     {
       "id": "1249",
       "title": "class private fields and methods (#name syntax) — PrivateIdentifier codegen",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "npm-library-support",
-      "status": "done",
-      "sprint": ""
-    },
-    {
-      "id": "1248",
-      "title": "compiler: typeof x === 'string' guard breaks String.prototype.substring(start) — returns single char",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "npm-library-support",
-      "status": "done",
-      "sprint": ""
-    },
-    {
-      "id": "1247",
-      "title": "compiler: typed string[] local with path.split('/') initializer triggers struct-type mismatch",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],

@@ -1,5 +1,6 @@
 ---
 id: 834
+sprint: 32
 title: "ES2025 Set methods: union, intersection, difference, symmetricDifference, isSubsetOf, isSupersetOf, isDisjointFrom"
 status: done
 created: 2026-03-28

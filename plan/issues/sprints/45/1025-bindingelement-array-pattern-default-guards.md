@@ -1,5 +1,6 @@
 ---
 id: 1025
+sprint: 45
 title: "BindingElement array-pattern default guards still use ref.is_null"
 status: done
 created: 2026-04-11

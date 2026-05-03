@@ -1,5 +1,6 @@
 ---
 id: 395
+sprint: 0
 title: "- Runtime 'fn is not a function' errors (70 FAIL)"
 status: done
 created: 2026-03-16

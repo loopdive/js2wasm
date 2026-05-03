@@ -1,5 +1,6 @@
 ---
 id: 931
+sprint: 37
 title: "Error location reporting: 83% of compile errors lack real line numbers"
 status: done
 created: 2026-04-03

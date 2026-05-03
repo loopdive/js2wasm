@@ -1,5 +1,6 @@
 ---
 id: 797a
+sprint: 0
 title: "#797a -- Per-shape property flags table (compile-time)"
 status: done
 created: 2026-03-26

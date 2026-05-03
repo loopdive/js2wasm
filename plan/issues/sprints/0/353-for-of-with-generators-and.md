@@ -1,5 +1,6 @@
 ---
 id: 353
+sprint: 0
 title: "- For-of with generators and custom iterators"
 status: done
 created: 2026-03-13

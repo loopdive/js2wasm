@@ -1,5 +1,6 @@
 ---
 id: 1161
+sprint: 44
 title: "Cannot destructure null/undefined in private class method params (~429 dstr tests)"
 status: done
 created: 2026-04-21

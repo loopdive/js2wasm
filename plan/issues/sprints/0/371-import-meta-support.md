@@ -1,5 +1,6 @@
 ---
 id: 371
+sprint: 0
 title: "- import.meta support"
 status: done
 created: 2026-03-13

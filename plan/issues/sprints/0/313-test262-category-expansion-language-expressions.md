@@ -1,5 +1,6 @@
 ---
 id: 313
+sprint: 0
 title: "Issue #313: Test262 category expansion -- language/expressions new categories"
 status: done
 created: 2026-03-11

@@ -1,5 +1,6 @@
 ---
 id: 1092
+sprint: 41
 title: "Wrong error type — 69 tests throw Test262Error instead of expected TypeError"
 status: done
 created: 2026-04-12

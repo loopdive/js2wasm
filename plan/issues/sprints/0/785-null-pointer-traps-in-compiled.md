@@ -1,5 +1,6 @@
 ---
 id: 785
+sprint: 0
 title: "- Null pointer traps in compiled Wasm code (~1,604 tests)"
 status: done
 created: 2026-03-25

@@ -1,5 +1,6 @@
 ---
 id: 181
+sprint: 2
 title: "Unsupported `new Object()` and `new Function()` constructor calls"
 status: done
 created: 2026-03-11

@@ -1,5 +1,6 @@
 ---
 id: 947
+sprint: 37
 title: "Calendar WAT analysis: 6 codegen inefficiencies found in the default playground example"
 status: done
 created: 2026-04-04

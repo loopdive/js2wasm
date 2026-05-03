@@ -1,5 +1,6 @@
 ---
 id: 522
+sprint: 0
 title: "Object.keys() requires struct type argument (43 CE)"
 status: done
 created: 2026-03-18

@@ -1,5 +1,6 @@
 ---
 id: 1062
+sprint: 41
 title: "compileProject emits invalid Wasm for lodash-es/clamp.js (toNumber type mismatch)"
 status: done
 created: 2026-04-11

@@ -1,5 +1,6 @@
 ---
 id: 452
+sprint: 0
 title: "Compile TypeScript compiler to Wasm"
 status: done
 created: 2026-03-17

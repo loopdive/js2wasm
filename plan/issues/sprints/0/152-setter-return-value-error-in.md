@@ -1,5 +1,6 @@
 ---
 id: 152
+sprint: 0
 title: "Setter return value error in allowJs mode"
 status: done
 created: 2026-03-11

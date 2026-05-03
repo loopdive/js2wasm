@@ -1,5 +1,6 @@
 ---
 id: 57
+sprint: 0
 title: "Issue 57: Class expressions"
 status: done
 created: 2026-03-02

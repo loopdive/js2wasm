@@ -1,5 +1,6 @@
 ---
 id: 799a
+sprint: 0
 title: "#799a -- __proto__ field on structs"
 status: done
 created: 2026-03-26

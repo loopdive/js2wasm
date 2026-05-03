@@ -1,5 +1,6 @@
 ---
 id: 972
+sprint: 38
 title: "Landing page: JavaScript feature support tables (implemented + not yet implemented)"
 status: done
 created: 2026-04-05

@@ -1,5 +1,6 @@
 ---
 id: 958
+sprint: 38
 title: "String concat: batch N-operand chains into multi-arg concat (531 chains, 5% of modules)"
 status: done
 created: 2026-04-04

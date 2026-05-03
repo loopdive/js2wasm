@@ -1,5 +1,6 @@
 ---
 id: 1169f
+sprint: 45
 title: "IR Phase 4 Slice 7 — generators and async/await through the IR path"
 status: done
 created: 2026-04-27

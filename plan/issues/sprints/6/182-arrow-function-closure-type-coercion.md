@@ -1,5 +1,6 @@
 ---
 id: 182
+sprint: 6
 title: "Arrow function closure type coercion errors"
 status: done
 created: 2026-03-11

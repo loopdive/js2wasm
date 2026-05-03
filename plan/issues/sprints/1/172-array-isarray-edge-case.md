@@ -1,5 +1,6 @@
 ---
 id: 172
+sprint: 1
 title: "Array.isArray edge case"
 status: done
 created: 2026-03-11

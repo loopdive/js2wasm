@@ -1,5 +1,6 @@
 ---
 id: 124
+sprint: 1
 title: "delete operator"
 status: wont-fix
 created: 2026-03-11

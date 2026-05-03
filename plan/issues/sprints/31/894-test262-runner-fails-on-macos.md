@@ -1,5 +1,6 @@
 ---
 id: 894
+sprint: 31
 title: "test262 runner fails on macOS due to Linux assumptions and missing direct esbuild dependency"
 status: done
 created: 2026-04-01
