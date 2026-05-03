@@ -6,7 +6,7 @@
  * Contains: coerceType, pushDefaultValue, defaultValueInstrs, coercionInstrs.
  */
 
-import type { ArrayTypeDef, Instr, StructTypeDef, ValType } from "../ir/types.js";
+import type { ArrayTypeDef, Instr, StructTypeDef, TypeDef, ValType } from "../ir/types.js";
 import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
 import type { ClosureInfo, CodegenContext, FunctionContext, OptionalParamInfo } from "./context/types.js";
 import { addUnionImports, ensureAnyHelpers, isAnyValue } from "./index.js";
@@ -702,7 +702,7 @@ function isDeclaredStructSubtype(ctx: CodegenContext, fromTypeIdx: number, toTyp
   let depth = 0;
   while (cur !== undefined && depth < 64) {
     if (cur === toTypeIdx) return true;
-    const def = ctx.mod.types[cur];
+    const def: TypeDef | undefined = ctx.mod.types[cur];
     if (!def || def.kind !== "struct") return false;
     cur = (def as StructTypeDef).superTypeIdx;
     depth++;
