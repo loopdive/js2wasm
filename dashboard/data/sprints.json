@@ -3050,19 +3050,15 @@
   {
     "name": "sprint 48",
     "sprintNumber": 48,
-    "status": "active",
-    "date": "TBD (follows S47)",
+    "status": "done",
+    "date": "2026-05-03 (single-day sprint, drained → S49)",
     "baseline": "",
     "result": "",
     "issueCount": 0,
     "issueIds": [
-      "1126",
-      "1199",
       "1200",
-      "1223",
       "1233",
       "1236",
-      "1241",
       "1269",
       "1270",
       "1280",
@@ -3074,15 +3070,22 @@
       "1295"
     ],
     "completedIssueIds": [
+      "1200",
       "1233",
       "1236",
       "1269",
+      "1270",
       "1280",
-      "1282"
+      "1282",
+      "1291",
+      "1292",
+      "1293",
+      "1294",
+      "1295"
     ],
     "explicitCarryOver": false,
     "isPlanning": false,
-    "isClosed": false
+    "isClosed": true
   },
   {
     "name": "sprint 49",
@@ -3093,9 +3096,30 @@
     "result": "",
     "issueCount": 0,
     "issueIds": [
-      "1290"
+      "1126",
+      "1199",
+      "1223",
+      "1241",
+      "1290",
+      "1296",
+      "1297",
+      "1298",
+      "1299",
+      "1300",
+      "1301",
+      "1302",
+      "1303",
+      "1304",
+      "1305",
+      "1306"
     ],
-    "completedIssueIds": [],
+    "completedIssueIds": [
+      "1290",
+      "1296",
+      "1297",
+      "1299",
+      "1300"
+    ],
     "explicitCarryOver": false,
     "isPlanning": true,
     "isClosed": false

@@ -2,7 +2,7 @@
 id: 1294
 sprint: 48
 title: "test262 worker: reclassify WebAssembly.Exception compile-errors as fail + restart fork"
-status: in-progress
+status: done
 created: 2026-05-03
 updated: 2026-05-03
 priority: high

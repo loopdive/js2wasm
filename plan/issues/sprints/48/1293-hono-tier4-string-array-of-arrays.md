@@ -2,7 +2,7 @@
 id: 1293
 sprint: 48
 title: "Hono Tier 4 — string[][] array-of-arrays type support + #segments field"
-status: in-progress
+status: done
 created: 2026-05-03
 updated: 2026-05-03
 priority: medium
