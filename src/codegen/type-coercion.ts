@@ -782,8 +782,21 @@ function emitVecToVecBody(
   fctx.body.push({ op: "struct.get", typeIdx: fromTypeIdx, fieldIdx: 1 });
   fctx.body.push({ op: "local.get", index: iLocal });
   fctx.body.push({ op: "array.get", typeIdx: srcVec.arrTypeIdx });
-  // Coerce element type
-  if (srcVec.elemType.kind !== dstVec.elemType.kind) {
+  // Coerce element type. Important: comparing only `.kind` is insufficient
+  // when both sides are `ref` / `ref_null` to DIFFERENT struct types — e.g.
+  // a vec of `IncompatibleKeyError` being copied into a vec of `__anon_24`
+  // (#1289 — ESLint `FileReport.addRuleMessage` failure). Both have
+  // `kind: "ref"`, so the old check skipped the coercion and the
+  // `array.set` below saw a value of the wrong element type, failing Wasm
+  // validation. Force a coercion when the typeIdx differs too.
+  const srcKind = srcVec.elemType.kind;
+  const dstKind = dstVec.elemType.kind;
+  const srcRefIdx =
+    srcKind === "ref" || srcKind === "ref_null" ? (srcVec.elemType as { typeIdx: number }).typeIdx : undefined;
+  const dstRefIdx =
+    dstKind === "ref" || dstKind === "ref_null" ? (dstVec.elemType as { typeIdx: number }).typeIdx : undefined;
+  const needsCoerce = srcKind !== dstKind || srcRefIdx !== dstRefIdx;
+  if (needsCoerce) {
     coerceType(ctx, fctx, srcVec.elemType, dstVec.elemType);
   }
   // Write to destination

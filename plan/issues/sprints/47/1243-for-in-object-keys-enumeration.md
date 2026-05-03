@@ -2,7 +2,7 @@
 id: 1243
 sprint: 47
 title: "for...in / Object.keys enumeration of compiled-object properties (lodash Tier 3)"
-status: in-progress
+status: done
 created: 2026-05-02
 updated: 2026-05-02
 priority: high
