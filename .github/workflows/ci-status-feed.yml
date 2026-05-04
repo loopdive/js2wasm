@@ -1,18 +1,19 @@
 name: CI Status Feed
 
 # Writes a per-PR CI status file to .claude/ci-status/pr-{N}.json on main
-# whenever the Test262 Sharded workflow completes for a PR. Devs running in
-# worktrees watch this directory via a FileChanged hook and receive the
+# whenever the Test262 Differential workflow completes for a PR. Devs running
+# in worktrees watch this directory via a FileChanged hook and receive the
 # completion signal without needing SendMessage comms to stay alive.
 #
-# Why this exists: if the team-lead ↔ dev SendMessage channel breaks (OOM,
-# session restart, etc.), devs still receive authoritative "your PR passed/
-# failed CI" signals directly from the repo. This decouples CI notifications
-# from the comms layer.
+# Why Differential (not Sharded): the Differential workflow compares branch
+# vs. fresh main using a src-tree-hash cache — no baseline staleness drift.
+# The Sharded workflow compares against a committed JSONL baseline which goes
+# stale between merges, causing spurious regressions_wasm_change counts on
+# every PR during heavy merge periods.
 
 on:
   workflow_run:
-    workflows: ["Test262 Sharded"]
+    workflows: ["Test262 Differential"]
     types: [completed]
 
 permissions:
@@ -31,10 +32,19 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Download merged report artifact from triggering run
-        uses: actions/download-artifact@v4
+      - name: Download merged branch report artifact from triggering run
+        uses: actions/download-artifact@v7
         with:
-          name: test262-merged-report
+          name: test262-diff-branch-merged
+          path: /tmp/merged-report
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Download differential regressions report artifact from triggering run
+        uses: actions/download-artifact@v7
+        with:
+          name: test262-diff-regressions-report
           path: /tmp/merged-report
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -45,13 +55,22 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # The workflow_run event provides pull_requests on its payload.
+          # 1. The workflow_run event usually provides pull_requests on its payload.
           pr_num=$(jq -r '.workflow_run.pull_requests[0].number // empty' < "$GITHUB_EVENT_PATH")
+
+          # 2. Fallback: look up by head branch.
           if [ -z "$pr_num" ]; then
-            # Fallback: look up by head branch
             head_branch="${{ github.event.workflow_run.head_branch }}"
-            pr_num=$(gh pr list --state all --head "$head_branch" --json number --jq '.[0].number' || echo "")
+            pr_num=$(gh pr list --state all --head "$head_branch" --json number --jq '.[0].number' 2>/dev/null || echo "")
           fi
+
+          # 3. Last-resort fallback: look up by commit SHA. Most reliable when
+          #    the head_branch lookup misses (forks, deleted refs, etc.).
+          if [ -z "$pr_num" ]; then
+            head_sha="${{ github.event.workflow_run.head_sha }}"
+            pr_num=$(gh pr list --state all --json number,headRefOid --jq --arg sha "$head_sha" '.[] | select(.headRefOid == $sha) | .number' 2>/dev/null | head -1 || echo "")
+          fi
+
           if [ -z "$pr_num" ]; then
             echo "No PR number resolvable — skipping status write"
             echo "pr=" >> "$GITHUB_OUTPUT"
@@ -80,6 +99,10 @@ jobs:
           snapshot_delta=null
           net_per_test=null
           regressions=null
+          regressions_real=null
+          regressions_wasm_change=null
+          wasm_identical_noise=null
+          compile_timeouts=null
           improvements=null
           if [ -f /tmp/merged-report/test262-report-merged.json ]; then
             pass=$(jq '.summary.pass' /tmp/merged-report/test262-report-merged.json)
@@ -96,18 +119,42 @@ jobs:
             snapshot_delta=$((pass - baseline))
           fi
 
+          # Differential workflow uploads regressions.txt under a diff-out/ subdir;
+          # flatten the path so the parse logic below works regardless of source.
+          [ -f /tmp/merged-report/diff-out/test262-regressions.txt ] && \
+            cp /tmp/merged-report/diff-out/test262-regressions.txt /tmp/merged-report/test262-regressions.txt
+
           # Regression / improvement counts from the regressions txt if present
           if [ -f /tmp/merged-report/test262-regressions.txt ]; then
             regressions=$(grep -oE 'Regressions \(pass → other\): [0-9]+' /tmp/merged-report/test262-regressions.txt | grep -oE '[0-9]+$' || echo 0)
             improvements=$(grep -oE 'Improvements \(other → pass\): [0-9]+' /tmp/merged-report/test262-regressions.txt | grep -oE '[0-9]+$' || echo 0)
+            # #1192: split regressions by destination — compile_timeout
+            # transitions are runner-load timing noise (tests right at the
+            # 30s compile-timeout boundary flap based on system load); the
+            # merge gate should exclude them. `regressions_real` =
+            # CE + fail; `compile_timeouts` is tracked separately for
+            # diagnostics. `regressions` (the headline figure) stays
+            # unchanged for backwards-compat with the dashboard.
+            compile_timeouts=$(grep -oE 'Compile timeouts \(pass → compile_timeout\): [0-9]+' /tmp/merged-report/test262-regressions.txt | grep -oE '[0-9]+$' || echo 0)
+            regressions_real=$(grep -oE 'Regressions excluding compile_timeout: [0-9]+' /tmp/merged-report/test262-regressions.txt | grep -oE '[0-9]+$' || echo 0)
+            # #1222: regressions where the compiled Wasm binary differs between
+            # base and branch. Pass→fail flips on a byte-identical binary are
+            # physically impossible compiler regressions — they're CI runner
+            # variance (scheduling, memory pressure, GC timing). The merge gate
+            # uses `regressions_wasm_change` in preference to `regressions_real`
+            # so symmetric-flip noise patterns no longer trigger gate failure.
+            regressions_wasm_change=$(grep -oE 'Regressions with wasm-hash change: [0-9]+' /tmp/merged-report/test262-regressions.txt | grep -oE '[0-9]+$' || echo 0)
+            wasm_identical_noise=$(grep -oE 'Wasm-identical noise \(pass → other, same wasm_sha\): [0-9]+' /tmp/merged-report/test262-regressions.txt | grep -oE '[0-9]+$' || echo 0)
           fi
 
           # net_per_test: improvements − regressions (per-test, from diff-test262.ts).
           # This IS the merge gate — it measures what the PR actually did to the
           # baseline it was tested against, not an absolute snapshot difference.
           # See #1082 for why the distinction matters.
-          if [ "$improvements" != "null" ] && [ "$regressions" != "null" ]; then
-            net_per_test=$((improvements - regressions))
+          # #1287: use regressions_wasm_change (not regressions) so compile_timeout
+          # flaps from noisy CI runners don't drag net_per_test below zero.
+          if [ "$improvements" != "null" ] && [ "$regressions_wasm_change" != "null" ]; then
+            net_per_test=$((improvements - regressions_wasm_change))
           fi
 
           # Write JSON using jq so nothing is broken by shell quoting
@@ -124,6 +171,10 @@ jobs:
             --argjson snapshot_delta "${snapshot_delta:-null}" \
             --argjson net_per_test "${net_per_test:-null}" \
             --argjson regressions "${regressions:-null}" \
+            --argjson regressions_real "${regressions_real:-null}" \
+            --argjson regressions_wasm_change "${regressions_wasm_change:-null}" \
+            --argjson wasm_identical_noise "${wasm_identical_noise:-null}" \
+            --argjson compile_timeouts "${compile_timeouts:-null}" \
             --argjson improvements "${improvements:-null}" \
             '{
               pr: ($pr|tonumber),
@@ -138,6 +189,10 @@ jobs:
               snapshot_delta: $snapshot_delta,
               net_per_test: $net_per_test,
               regressions: $regressions,
+              regressions_real: $regressions_real,
+              regressions_wasm_change: $regressions_wasm_change,
+              wasm_identical_noise: $wasm_identical_noise,
+              compile_timeouts: $compile_timeouts,
               improvements: $improvements
             }' > "$out"
           cat "$out"

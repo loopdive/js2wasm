@@ -1,0 +1,36 @@
+---
+id: 443
+sprint: 0
+title: "Expected ReferenceError but execution succeeded (6 fail)"
+status: done
+created: 2026-03-17
+updated: 2026-04-14
+completed: 2026-04-14
+priority: low
+goal: error-model
+test262_fail: 6
+complexity: XS
+files:
+  src/codegen/expressions.ts:
+    breaking:
+      - "variable resolution -- undeclared variable access should throw ReferenceError"
+---
+# #443 -- Expected runtime ReferenceError but execution succeeded (6 fail)
+
+## Problem
+
+6 tests expect a ReferenceError to be thrown at runtime (e.g., accessing an undeclared variable) but the compiled Wasm code executes successfully without error.
+
+This means the compiler is silently resolving references that should be unresolvable at runtime, likely by:
+- Defaulting undeclared variables to undefined/0 instead of throwing
+- Resolving TDZ (temporal dead zone) variables as if they were initialized
+- Not implementing ReferenceError for missing global properties
+
+## Priority: low (6 tests)
+
+## Complexity: XS
+
+## Acceptance criteria
+- [ ] Undeclared variable access produces a runtime trap or error
+- [ ] TDZ violations produce appropriate errors
+- [ ] All 6 expected-ReferenceError tests pass

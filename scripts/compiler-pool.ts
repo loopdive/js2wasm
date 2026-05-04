@@ -60,6 +60,9 @@ interface ForkState {
 type QueueItem = {
   id: number;
   msg: Record<string, any>;
+  /** Timeout ceiling in ms — applied from dispatch time, not enqueue time (#1227). */
+  timeoutMs: number;
+  label?: string;
   resolve: (r: any) => void;
 };
 
@@ -192,34 +195,12 @@ export class CompilerPool {
   private enqueue(msg: Record<string, any>, timeoutMs: number, label?: string): Promise<any> {
     return new Promise((resolve) => {
       const id = this.nextId++;
-      const timer = setTimeout(() => {
-        console.error(`[pool] TIMEOUT: exceeded ${timeoutMs / 1000}s${label ? ` [${label}]` : ""}, killing worker`);
-        this.pending.delete(id);
-        resolve(
-          msg.execute
-            ? ({
-                status: "compile_timeout",
-                error: `timeout (${timeoutMs / 1000}s)`,
-                compileMs: timeoutMs,
-              } as TestResult)
-            : ({ ok: false, error: `compilation timeout (${timeoutMs / 1000}s)`, compileMs: timeoutMs } as PoolResult),
-        );
-        const stuck = this.forks.find((w) => w.busy);
-        if (stuck) {
-          stuck.busy = false;
-          stuck.ready = false;
-          stuck.proc.kill("SIGKILL");
-          this.respawnFork(stuck);
-        }
-      }, timeoutMs);
-      this.queue.push({
-        id,
-        msg,
-        resolve: (r: any) => {
-          clearTimeout(timer);
-          resolve(r);
-        },
-      });
+      // #1227: do NOT start the timeout timer here. We only know the user-
+      // observable wall-clock budget once a fork has accepted the job —
+      // otherwise queue-wait time on a saturated pool gets counted against
+      // the user's timeout, producing false `compile_timeout` results for
+      // tests that compile in <1 s in isolation.
+      this.queue.push({ id, msg, timeoutMs, label, resolve });
       this.dispatch();
     });
   }
@@ -231,7 +212,47 @@ export class CompilerPool {
 
       const job = this.queue.shift()!;
       free.busy = true;
-      this.pending.set(job.id, { id: job.id, resolve: job.resolve });
+
+      // #1227: start the timeout timer now, after the fork has accepted the
+      // job. The timer measures only worker execution time — queue-wait time
+      // is not counted against it. On expiry we know exactly which fork was
+      // running this job (`free`), so we kill it specifically rather than
+      // guessing via `forks.find(w => w.busy)`.
+      const timer = setTimeout(() => {
+        console.error(
+          `[pool] TIMEOUT: exceeded ${job.timeoutMs / 1000}s${job.label ? ` [${job.label}]` : ""}, killing worker`,
+        );
+        this.pending.delete(job.id);
+        job.resolve(
+          job.msg.execute
+            ? ({
+                status: "compile_timeout",
+                error: `timeout (${job.timeoutMs / 1000}s)`,
+                compileMs: job.timeoutMs,
+              } as TestResult)
+            : ({
+                ok: false,
+                error: `compilation timeout (${job.timeoutMs / 1000}s)`,
+                compileMs: job.timeoutMs,
+              } as PoolResult),
+        );
+        free.busy = false;
+        free.ready = false;
+        free.proc.kill("SIGKILL");
+        this.respawnFork(free);
+      }, job.timeoutMs);
+
+      // Wrap the resolve so the worker's response clears the timer before
+      // the result is delivered. The fork's `message` handler invokes this
+      // wrapper via `pending.get(msg.id).resolve(msg)` (see createFork).
+      this.pending.set(job.id, {
+        id: job.id,
+        resolve: (r: any) => {
+          clearTimeout(timer);
+          job.resolve(r);
+        },
+      });
+
       free.proc.send({ id: job.id, ...job.msg });
     }
   }

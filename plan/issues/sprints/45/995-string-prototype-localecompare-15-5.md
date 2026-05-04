@@ -1,0 +1,51 @@
+---
+id: 995
+sprint: 45
+title: "String.prototype.localeCompare 15.5.4.9_CE hits 30s compiler timeout"
+status: done
+created: 2026-04-07
+updated: 2026-04-27
+completed: 2026-04-27
+priority: low
+feasibility: medium
+reasoning_effort: medium
+goal: iterator-protocol
+resolved_by: "#1085 (iterative bodyUsesArguments, PR #127)"
+test262_ct: 1
+---
+# #995 -- String.prototype.localeCompare 15.5.4.9_CE hits 30s compiler timeout
+
+## Problem
+
+The last full recheck (`benchmarks/results/test262-results-20260407-005506.jsonl`)
+shows a **30s compile timeout** for:
+
+- `test/built-ins/String/prototype/localeCompare/15.5.4.9_CE.js`
+
+This is a singleton, but it still costs a full worker timeout every run.
+
+## Why separate issue
+
+This does not obviously belong to the Iterator or `try` timeout clusters. It
+likely involves string built-in lowering or host import plumbing specific to
+`localeCompare`.
+
+## Acceptance criteria
+
+- the test compiles in <5s locally
+- no `compile_timeout` remains for this test in a full recheck
+
+## Test Results
+
+After scope-aware fix:
+- `String/prototype/localeCompare/15.5.4.9_CE.js` — compiles in 349 ms, runs in 6 ms and PASSES (returns 1).
+
+The 30-second compile_timeout was actually a runtime hang in a `for (i = 0; ...)` loop where outer `i` was being treated as captured by an inner `function toU(s) { var i; ... }`. The inner `var i;` shadows correctly per JS scoping, but the closure analysis walked nested scopes blindly and added `i` to the captured-as-mutable set, then boxed `i` mid-call (at the first `toU(...)` call site). The for-loop condition was already compiled to read the unboxed local, while `i++` wrote to the new ref cell — infinite loop.
+
+Fix: scope-aware `collectReferencedIdentifiers` / `collectWrittenIdentifiers` honour function-scope shadowing. New helper `collectFunctionOwnLocals` collects params + body `var`/top-level `function`/`class` decls; the collectors take an optional `shadowed` set, and key call sites in `compileArrowAsClosure` / `compileArrowAsCallback` / `compileNestedFunctionDeclaration` pre-compute and pass it.
+
+**Bonus fix:** `compileNewFunctionExpression` in
+`src/codegen/expressions/new-super.ts` now honours the `alreadyBoxed`
+case for mutable captures — previously it double-wrapped a pre-boxed
+local in a fresh ref cell type and produced illegal casts in
+`new function(){...}(...)` patterns.

@@ -4,7 +4,7 @@
  *
  * Extracted from codegen/index.ts (#1013).
  */
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 import { isVoidType, unwrapPromiseType } from "../checker/type-mapper.js";
 import type { FieldDef, Instr, StructTypeDef, ValType } from "../ir/types.js";
 import { popBody, pushBody } from "./context/bodies.js";
@@ -17,7 +17,7 @@ import {
   destructureParamObject,
   isNullOrUndefinedLiteral,
 } from "./destructuring-params.js";
-import { bodyUsesArguments } from "./function-body.js";
+import { bodyUsesArguments } from "./helpers/body-uses-arguments.js";
 import { cacheStringLiterals, hasAbstractModifier, hasStaticModifier, resolveWasmType } from "./index.js";
 import { ensureExnTag, nextModuleGlobalIdx } from "./registry/imports.js";
 import { addFuncType, getArrTypeIdxFromVec, getOrRegisterVecType } from "./registry/types.js";
@@ -977,7 +977,16 @@ export function compileClassBodies(
         const param = member.parameters[pi]!;
         const paramName = ts.isIdentifier(param.name) ? param.name.text : `__param${pi}`;
         const paramType = ctx.checker.getTypeAtLocation(param);
-        let wasmType = resolveWasmType(ctx, paramType);
+        // Unannotated binding-pattern method params route through the
+        // externref destructure path so the iterator protocol drives element
+        // extraction — same rule as function declarations (#862) and arrows
+        // (closures.ts:905). NOTE: explicitly scoped to methods only; the
+        // constructor path (class-bodies.ts:680-696) is left unchanged.
+        const bindingPatternNeedsWiden =
+          !param.type &&
+          !param.dotDotDotToken &&
+          (ts.isArrayBindingPattern(param.name) || ts.isObjectBindingPattern(param.name));
+        let wasmType = bindingPatternNeedsWiden ? ({ kind: "externref" } as ValType) : resolveWasmType(ctx, paramType);
         // Widen ref to ref_null for params with defaults or optional params
         // (caller passes ref.null as sentinel). Must match collection phase (#702)
         if ((param.initializer || param.questionToken) && wasmType.kind === "ref") {

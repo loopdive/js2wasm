@@ -57,6 +57,13 @@ function issueIdFromPath(file) {
   return path.basename(file, ".md");
 }
 
+function sprintFromPath(file) {
+  const m = file.match(/\/sprints\/(\d+)\//);
+  if (m) return m[1];
+  if (/\/backlog\//.test(file)) return "Backlog";
+  return "";
+}
+
 const files = walk(ISSUES_DIR).filter(isIssueFile);
 
 const grouped = new Map();
@@ -70,7 +77,7 @@ for (const file of files) {
   grouped.get(goal).push({
     id: String(fm.id || issueIdFromPath(file)),
     title: String(fm.title || "").replace(/\|/g, "\\|"),
-    sprint: String(fm.sprint || ""),
+    sprint: sprintFromPath(file),
     status: String(fm.status || ""),
     priority: String(fm.priority || ""),
     file: path.relative(ROOT, file),

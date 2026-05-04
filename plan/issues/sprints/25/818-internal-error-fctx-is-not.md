@@ -1,0 +1,42 @@
+---
+id: 818
+sprint: 25
+title: "Internal error: fctx is not defined during compilation"
+status: done
+created: 2026-03-27
+updated: 2026-04-14
+completed: 2026-04-14
+priority: medium
+feasibility: easy
+goal: error-model
+test262_fail: ~1
+---
+# #818 -- Internal error: fctx is not defined during compilation
+
+## Problem
+
+Test262 tests fail with `Internal error compiling expression: fctx is not defined`. This means the compiler accesses `fctx` (FunctionContext) in a code path where it's not in scope.
+
+## Root Cause
+
+`buildClosureCallInstrs` in `src/codegen/array-methods.ts` referenced `fctx` on lines 2277, 2293, 2298, and 2302 without having it as a parameter. This is a standalone function (not a closure), so `fctx` was a ReferenceError at runtime. The same issue existed in `buildCallAndCheck` which called `buildClosureCallInstrs`.
+
+The bug manifested when array methods (forEach, filter, map, find, findIndex, some, every) were used with closure callbacks that needed type coercion for their parameters or had funcref casts.
+
+## Fix
+
+Added `fctx: FunctionContext` parameter to:
+- `buildClosureCallInstrs` (line 2266)
+- `buildCallAndCheck` (line 2418)
+
+Updated all 5 call sites to pass `fctx` through from the calling function.
+
+## Files Changed
+
+- `src/codegen/array-methods.ts` -- added fctx parameter to buildClosureCallInstrs and buildCallAndCheck
+- `tests/issue-818.test.ts` -- 7 equivalence tests covering forEach, filter, map, find, some, every with closure callbacks
+
+## Verification
+
+- All 7 new tests pass
+- 1200 existing equivalence tests: 1145 pass, 55 fail (all pre-existing failures unrelated to this change)

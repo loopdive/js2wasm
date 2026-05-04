@@ -1,0 +1,15 @@
+{
+  "pr": 67,
+  "conclusion": "failure",
+  "head_branch": "issue-1181-forof-ir-bridge",
+  "head_sha": "0a9c6ebba7ba6baccf9ee209002ef4ba50c02cc6",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24980263101",
+  "timestamp": "2026-04-27T06:49:14Z",
+  "pass": 25840,
+  "fail": 13907,
+  "compile_error": 1851,
+  "snapshot_delta": 5,
+  "net_per_test": 4,
+  "regressions": 120,
+  "improvements": 124
+}

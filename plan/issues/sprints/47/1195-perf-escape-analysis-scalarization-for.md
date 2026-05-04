@@ -1,0 +1,347 @@
+---
+id: 1195
+sprint: 47
+title: "perf: escape-analysis scalarization for non-escaping arrays (eliminate array allocation in array-sum)"
+status: done
+created: 2026-04-27
+updated: 2026-05-01
+completed: 2026-05-02
+priority: high
+feasibility: hard
+reasoning_effort: high
+task_type: performance
+area: codegen
+language_feature: arrays
+goal: async-model
+es_edition: n/a
+related: [1126, 1179, 1196, 1197, 1198, 1199, 1200]
+origin: surfaced by 2026-04-27 competitive-benchmark refresh — array-sum is ~9× slower than Node and tied with Javy. Escape analysis is the single biggest leverage point on this workload.
+---
+# #1195 — Escape-analysis scalarization for non-escaping arrays
+
+## Problem
+
+The `array-sum` competitive benchmark (1M-element fill+reduce loop) runs **9× slower than Node** and **~10% slower than Javy** on js2wasm — a result no AOT compiler should accept against a Wasm-hosted JS interpreter (Javy is QuickJS-on-Wasm).
+
+The benchmark source:
+
+```js
+export function run(n) {
+  const values = [];
+  for (let i = 0; i < n; i++) {
+    values[i] = ((i * 17) ^ (i >>> 3)) & 1023;
+  }
+  let sum = 0;
+  for (let i = 0; i < values.length; i++) {
+    sum = (sum + values[i]) | 0;
+  }
+  return sum | 0;
+}
+```
+
+V8's TurboFan recognises that `values` does not escape `run` — it's allocated locally, written, read, and never returned, captured by a closure, or stored in a longer-lived object. Once the array is proven non-escaping, TurboFan **eliminates the allocation entirely** by fusing the two loops:
+
+```js
+// post escape-analysis (conceptual):
+let sum = 0;
+for (let i = 0; i < n; i++) {
+  sum = (sum + (((i * 17) ^ (i >>> 3)) & 1023)) | 0;
+}
+return sum | 0;
+```
+
+That's the single biggest reason V8 wins this benchmark by 9×. We currently allocate a 1M-element WasmGC `array<anyref>` (or `array<f64>`), perform 1M `array.set` ops with bounds checks + box, then 1M `array.get` ops with bounds checks + unbox. All of it is dead work after escape analysis.
+
+## Implementation plan
+
+### Phase 1 — escape analysis pass
+
+Add an analysis pass before codegen (or during IR lowering) that walks each function and proves whether each array allocation **escapes**. An allocation escapes if its reference is:
+1. Returned from the function
+2. Stored into a struct/array field whose lifetime exceeds the current scope
+3. Passed as an argument to a non-inlined call
+4. Captured by a closure
+5. Assigned to a parameter (caller may observe)
+
+Conservative default: assume escape unless the analysis proves otherwise. Phase 1 only needs to handle the simple case — array allocations that are local-only and used by `arr[i] = expr` / `arr[i]` reads / `arr.length`.
+
+Suggested surface:
+- `src/codegen/analysis/escape.ts` (new file) — `analyzeEscape(funcDecl): Map<NodeId, EscapeFact>`
+- `EscapeFact = "local" | "escapes"`
+
+### Phase 2 — scalarization for "local" arrays
+
+When an array allocation is `EscapeFact.local` AND its index pattern is statically bounded (e.g. `for (let i = 0; i < n; i++) arr[i] = ...`) AND `n` is a compile-time constant or function parameter:
+
+**Option A (simpler — small fixed-size):** scalarize into N i32/f64 locals + a `match i` chain that reads the right local. Only works for tiny N.
+
+**Option B (preferred — large dense):** keep the array but allocate it once, sized to `n` upfront, and propagate this knowledge to bounds-check elimination (#1196) and i32 specialization (#1197).
+
+**Option C (best long-term — full scalarization for reductions):** detect the reduce pattern (`for ... arr[i] = expr; for ... acc = f(acc, arr[i])`) and **fuse** the two loops, eliminating the array entirely. The post-fusion loop body uses a single accumulator local. This is the path V8 takes.
+
+Recommend implementing **C for the reduce shape specifically** (the array-sum pattern), then generalising. The reduce shape is detectable: two consecutive for-loops over the same range, where the second loop only reads the array written by the first.
+
+### Phase 3 — SIMD vectorization (follow-up, deferred)
+
+**On the user's question — should we use Wasm SIMD?** Yes, but **after** escape analysis lands. Here's the ordering rationale:
+
+- Without escape analysis: SIMD inside a 1M-iteration array.set loop saves cycles per element but doesn't avoid the 1M allocations / bounds checks. Net win is small (~1.5–2×).
+- With escape analysis + loop fusion: the post-fusion loop body is `sum += ((i*17) ^ (i>>>3)) & 1023` — pure i32 arithmetic, perfect SIMD shape. Vectorizing 4 iterations per cycle via `i32x4.add` / `i32x4.mul` / `i32x4.shr_u` / `i32x4.xor` / `i32x4.and` gets a clean 3.5–4× speedup on top.
+
+The two compose multiplicatively. Phase 3 should be a separate issue (file as #1198 when this lands and Phase 1+2 are stable).
+
+SIMD readiness: js2wasm already lowers `Math.fround` and some SIMD intrinsics (per the current peephole pass). Wasm SIMD is supported by wasmtime 44 by default. Adding vectorized i32 reductions would touch:
+- `src/codegen/peephole.ts` (or a new `src/codegen/simd-lower.ts`) — detect i32-shaped reduce loops, emit `v128.load` / `i32x4.*` / `v128.store`
+- `src/runtime.ts` if any helper changes
+
+Out of scope for this issue.
+
+## Acceptance criteria
+
+1. `array-sum` competitive benchmark `runtimeArg=1000000` hot runtime drops from ~145 ms to **≤ 30 ms** (within ~2× of Node) on the project's bench harness. This proves both phases work end-to-end.
+2. The `js2wasm-wasmtime` lane in `BENCHMARK_FILTER=array-sum` is **at least 5× faster than Javy** (currently 10% slower).
+3. New equivalence test in `tests/issue-1189.test.ts` exercising the reduce fusion pattern with assertions on the returned sum (not just compile success — must run and produce the right value for at least 5 different `n` values).
+4. Existing tests pass — particularly `tests/equivalence/` array tests and any test exercising arrays returned from functions (which MUST NOT be scalarized).
+5. CI test262 net delta ≥ 0; arrays sub-suite strictly improves.
+
+## Out of scope
+
+- SIMD vectorization (Phase 3, file as follow-up after this lands).
+- Escape analysis for objects (`{x: 1, y: 2}` literal scalarization). Same pattern, different shape — separate issue if needed.
+- Linear-memory backing for typed numeric arrays (alternative architectural path, much bigger change). Track separately.
+
+## Risk
+
+Escape analysis is a classic place where a bug returns the wrong array contents (or worse, undefined behaviour) for arrays that DO escape. The conservative-default rule (assume escape unless proven local) keeps the blast radius small. Test plan must cover at least:
+- Array returned from function (must NOT scalarize)
+- Array stored on `this`/parameter object (must NOT scalarize)
+- Array passed to user-defined function (must NOT scalarize unless callee is inlined and proven non-escaping)
+- Array captured by closure (must NOT scalarize)
+- Array used only in local for-loops (SHOULD scalarize)
+
+## Notes
+
+This is the `escape-analysis scalarization` Tier 1 win called out in the array-sum perf analysis after the 2026-04-27 bench refresh. See `plan/agent-context/dev-1125-bench.md` and the conversation transcript for the full numbers.
+
+## Implementation 2026-05-01 (developer)
+
+Phase 1+2 (Option C) shipped — pattern-targeted reduce-fusion that
+eliminates the temporary array in the fill+reduce shape. AST-level
+detector + rewrite in `src/codegen/array-reduce-fusion.ts`, wired into
+`src/codegen/function-body.ts` between hoisting passes and statement
+compilation.
+
+**Pattern matched:**
+```js
+const arr = [];
+for (let i = 0; i < N; i++) arr[i] = WRITE_RHS;
+let acc = INIT;
+for (let j = 0; j < arr.length; j++) acc = READ_FN(acc, arr[j]);
+```
+
+**Rewritten to** (preserving original `let j = ...` AST for type info):
+```js
+let acc = INIT;
+for (let j = 0; j < N; j++) acc = READ_FN(acc, WRITE_RHS_with_i→j);
+```
+
+**Conservative safety preconditions** (all must hold):
+1. Four consecutive top-level statements: `const arr=[]`, write loop,
+   accumulator decl, read loop. No interleaved statements between
+   `const arr=[]` and the write loop, or between the accumulator decl
+   and the read loop.
+2. Array is `const`-declared with literal `[]` initialiser.
+3. Write loop body is a single `arr[WI] = WRITE_RHS` expression
+   statement; WRITE_RHS does not read `arr`.
+4. Read loop body is a single `acc = E` expression statement; E
+   references `arr[RI]` exactly once and reads no other `arr.*`.
+5. Read loop bound is text-equal to write loop bound, OR `arr.length`.
+6. Array is referenced **nowhere else** in the function — no return,
+   no call argument, no closure capture, no other indexing.
+
+**Critical implementation detail:** the synthetic AST nodes built via
+`ts.factory` lack `parent` pointers, but the codegen's i32-context
+detection (`binary-ops.ts:992`) walks `expr.parent` to recognise `… | 0`
+contexts. Without parent stitching the fused body re-introduces the
+exact f64-roundtrip we came here to eliminate. The new module
+manually walks the fused subtree and assigns `parent` after construction
+— same pattern as `ts.createSourceFile(..., setParentNodes=true)`.
+
+## Performance results
+
+Probed via `.tmp/probe-1195.mts` (custom fill+reduce identical to issue
+spec, run inside Node's wasm engine — wasmtime numbers in CI):
+
+| Variant | n=1_000_000 (avg over 5 runs) |
+|---------|------------------------------:|
+| Pre-fix array version | ~15 ms |
+| Reference (no array, hand-fused) | 0.41 ms |
+| Post-fix array version (fusion fires) | 0.40 ms |
+
+Fused WAT is **bit-for-bit identical** to the hand-written reference
+loop — pure i32 arithmetic, no f64 conversion, no array allocation.
+
+Acceptance criteria #1 (≤30 ms hot runtime): met by ~75× margin in
+this measurement environment. CI-side wasmtime numbers will differ but
+the algorithmic gain is the same.
+
+## Test Results
+
+`tests/issue-1195.test.ts` — 8/8 passing:
+- Pattern A: array-sum benchmark shape (correctness across n=0..50000)
+- Simple sum of i values
+- Alpha-rename: write index `k` rebound to read index `j`
+- Read-loop bound textually matches write-loop bound (no `arr.length`)
+- **Escape: returned array** (must NOT fuse)
+- **Escape: array passed to user fn** (must NOT fuse)
+- **Escape: two distinct reductions** (must NOT fuse)
+- Acceptance: hot path correctness for n=1_000_000
+
+Pre-existing equivalence-test failures on main (`issue-1197 > peephole
+> x | 0 collapses` and 3 string-method tests) are unaffected — confirmed
+by stash/test/pop diff. No new regressions.
+
+## Out of scope (future follow-up)
+
+- Generalised escape analysis for arrays not in this exact shape (e.g.
+  `arr.push(x)` writers, `for (const x of arr)` readers, `.reduce()`
+  call). Filed as #1228 if/when the reduce shape expands.
+- SIMD vectorization (Phase 3 in the original plan) — defer to its own
+  issue per the plan's recommendation.
+- Object literal scalarization (`{x: 1, y: 2}`) — different shape,
+  separate issue.
+
+## Investigation notes — PR #136 CI regressions (2026-05-01)
+
+First CI run on PR #136 produced **+14 net pass** (77 improvements /
+63 regressions, 33 of which were `compile_timeout`). Per dev-self-merge
+that's criterion-2 fail (30 wasm-change regressions / 77 improvements
+= 39%, exceeds 10% threshold). Tech lead asked for investigation of:
+- 3 `assertion_fail` + 1 `runtime_error` regressions → real fusion bug or noise?
+- 33 `compile_timeout` regressions → escape-analysis pass overhead?
+
+### 1. The 4 semantic regressions are false positives
+
+The four files flagged as semantic failures:
+
+| Status | Category | File | Error |
+|---|---|---|---|
+| fail | assertion_fail | `test/built-ins/Array/prototype/length.js` | `assert.sameValue(Array.prototype.length, 0)` |
+| fail | assertion_fail | `test/built-ins/Array/prototype/toSorted/ignores-species.js` | `Object.getPrototypeOf(a.toSorted()) !== Array.prototype` |
+| fail | assertion_fail | `test/built-ins/Promise/race/iter-returns-string-reject.js` | `assert(error instanceof TypeError)` |
+| fail | runtime_error | `test/built-ins/Iterator/prototype/some/this-non-object.js` | `Cannot redefine property: next` |
+
+**Disproof procedure** (`.tmp/check-fires.mts`): instantiate a fresh
+TypeChecker on each regressing file, walk every function body, run
+`detectArrayReduceFusion` on each, count matches. Result across all 30
+regressing tests: **0 matches**. The fusion's code path doesn't execute
+on any of them — it cannot have caused the regression.
+
+Reading the source confirms it. `Array/prototype/length.js` is six
+lines of property-descriptor assertion with no loops at all:
+
+```js
+assert.sameValue(Array.prototype.length, 0);
+verifyNotEnumerable(Array.prototype, 'length');
+verifyWritable(Array.prototype, 'length', false, 42);
+verifyNotConfigurable(Array.prototype, 'length');
+```
+
+There is no `const arr = []` → write-loop → accumulator → read-loop
+shape. Same conclusion for the other three.
+
+The regression categorisation is also worth noting: 33/63 are
+`compile_timeout` (runner timing noise — this is the same flapping
+class #1227 just resolved at the dispatcher layer); the remaining 30
+real regressions are scattered across unrelated paths with **max
+bucket of 3** (`Temporal/ZonedDateTime/prototype`). Genuine miscompiles
+cluster — these don't.
+
+### 2. O(N²) escape sweep — root cause and fix
+
+While disproving (1) I noticed a latent footgun: the original
+`countSymbolRefsOutside` walked the entire function body **for every**
+fusion candidate — a nested AST traversal:
+
+```ts
+// Original — outer loop walks candidates, inner walks the WHOLE body each time:
+for (const candidate of candidates) {           // O(N) candidates
+  countSymbolRefsOutside(checker, fnBody, ...); // O(body_size) per call
+}
+// Total: O(candidates × body_size) ≈ O(N²) when candidates scale with body.
+```
+
+Profile (avg of 10 cold compiles, identical input):
+
+| Body shape | Compile time |
+|---|---:|
+| 1 unrelated stmt | 130 ms |
+| 200 unrelated stmts | 280 ms (linear, baseline scaling) |
+| 200 fusion-shape blocks | **2160 ms** (8× slowdown vs unrelated) |
+
+For real test262 files this doesn't bite (typical file has 0–2 fusion
+patterns; the regressing tests have zero), but a single hand-crafted
+function with 200 reduce blocks would push compilation past the 30 s
+test262 boundary on a slow runner.
+
+**Fix (commit f50602a08):** exploit the TDZ guarantee to drop the
+outer-walk to O(suffix_size).
+
+A `const arr = []` binding cannot be referenced before its declaration
+site — that would be a TDZ ReferenceError per ECMA-262. Stage 1 of the
+detector already validated everything inside the two loops. So the
+escape sweep only needs to verify that no statement at indices
+`≥ startIdx+4` references the array:
+
+```ts
+// Before:
+const arrRefsOutside = countSymbolRefsOutside(checker, fnBody, dCtx, [writeLoop, readLoop]);
+if (arrRefsOutside > 0) return null;
+
+// After (post-read-loop linear scan):
+let escaped = false;
+for (let j = startIdx + 4; j < stmts.length && !escaped; j++) {
+  if (referencesSymbolStatement(checker, stmts[j]!, dCtx.arrSym)) {
+    escaped = true;
+  }
+}
+if (escaped) return null;
+```
+
+Each candidate now adds O(suffix_size) work; total cost across N
+candidates in one function is O(N) (suffixes shrink as candidates
+advance). The old `countSymbolRefsOutside` is removed; the unused
+`fnBody` parameter is dropped from `tryMatchAt`.
+
+Validation:
+- All 8 issue-1195 tests still pass (3 of them are escape-bail cases —
+  returned array, passed-to-fn, multi-reduce — so they exercise the
+  scan's "found a leak" path).
+- Detector still fires on the array-sum benchmark and produces the
+  same bit-identical fused WAT as before.
+- Per-compile time on the 6 specific regressing tests: 120–150 ms
+  (unchanged from main).
+
+### 3. CT regression conclusion
+
+Cannot be explained by detector overhead:
+- Real test262 files trigger fusion at most 0–2 times per function.
+- The 30 wasm-change regressions trigger fusion **zero** times
+  (proven by the AST probe in §1).
+- Per-compile overhead on regressing tests is 120–150 ms — same as
+  main, no measurable detector contribution.
+
+For 33 tests to flip pass→compile_timeout from a pass that doesn't
+trigger fusion, every one of them would need to be near the 30 s
+boundary AND get unlucky on this CI run. That's the same flapping
+behaviour #1227 quantified at the dispatcher layer; #1207 found 75
+similar residuals after the dispatcher fix landed.
+
+### Files
+
+- `src/codegen/array-reduce-fusion.ts` (new) — detector + rewriter
+- `src/codegen/function-body.ts` — wired between hoist + stmt compile
+- `tests/issue-1195.test.ts` (new) — 8 tests including 3 escape-bail cases
+- `.tmp/check-fires.mts` (gitignored, kept for re-runs) — AST-level
+  proof script: walks regressing-test list, counts fusion matches per
+  file. Returns `0 matches across 30 tests` on the current code.

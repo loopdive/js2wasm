@@ -20,8 +20,8 @@ Distinct from:
 ## Step 1: Download the merged report artifact
 
 ```bash
-mkdir -p /tmp/regressions-$(date +%s)
-gh run download <RUN_ID> -n test262-merged-report -D /tmp/regressions-<TIMESTAMP>
+mkdir -p output/regressions-$(date +%s)
+gh run download <RUN_ID> -n test262-merged-report -D output/regressions-<TIMESTAMP>
 ```
 
 Files: `test262-report-merged.json`, `test262-regressions.txt`, `test262-results-merged.jsonl`.

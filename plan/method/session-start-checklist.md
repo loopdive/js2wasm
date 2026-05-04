@@ -30,10 +30,16 @@
 
 ## Before starting a new sprint
 
-14. [ ] **Review stale/orphaned work**: check for unmerged branches, old worktrees, suspended issues, stale tasks. Report to user and ask before cleaning up.
+14. [ ] **Check previous sprint is fully closed** — run the deterministic check:
+   ```bash
+   node scripts/check-sprint-closed.mjs <N-1>
+   ```
+   Must exit 0 (all ✅) before starting a new sprint. If it exits 1, run `/sprint-wrap-up` and fix the failing items, then re-run the check.
+
+15. [ ] **Review stale/orphaned work**: check for unmerged branches, old worktrees, suspended issues, stale tasks. Report to user and ask before cleaning up.
    - Unmerged branches: `git branch | grep -v main`
    - Orphan worktrees: `git worktree list`
    - Suspended issues: `grep -l "status: suspended" plan/issues/*.md`
    - Stale task list: check if previous sprint's tasks are resolved
-15. [ ] **Smoke-test candidate issues**: for each issue you plan to dispatch, compile 1-2 sample test files from the issue description against current main. If they pass, close the issue — it's already fixed.
-16. [ ] Shut down all dev agents before running final test262 with multiple forks
+16. [ ] **Smoke-test candidate issues**: for each issue you plan to dispatch, compile 1-2 sample test files from the issue description against current main. If they pass, close the issue — it's already fixed.
+17. [ ] Shut down all dev agents before running final test262 with multiple forks

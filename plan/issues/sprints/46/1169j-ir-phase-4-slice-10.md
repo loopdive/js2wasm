@@ -1,0 +1,115 @@
+---
+id: 1169j
+sprint: 46
+title: "IR Phase 4 Slice 10 step B — TypedArray construction + index access through IR"
+status: done
+created: 2026-04-28
+updated: 2026-04-30
+completed: 2026-05-01
+priority: medium
+feasibility: easy
+reasoning_effort: medium
+task_type: feature
+area: codegen
+language_feature: compiler-internals
+goal: compiler-architecture
+depends_on: [1169i]
+---
+## Implementation status (2026-04-30, dev-2)
+
+Step A's scaffolding (`KNOWN_EXTERN_CLASSES`, `extern.new` / `extern.call`
+/ `extern.prop` / `extern.propSet` instrs, builder helpers, lowerer
+emission) is sufficient to make `new <TypedArray>(N)` and
+`arr.length` compile correctly. `tests/equivalence/ir-slice10-typed-array.test.ts`
+covers all 5 acceptance criteria (TypedArray construction, length
+access, element read, element write) with both `experimentalIR: true`
+and `experimentalIR: false` producing identical observable results
+and byte-identical Wasm binaries.
+
+Test results (5/5 pass on both paths):
+- (a) `new Uint8Array(8); a.length` → 8
+- (b) `new Int32Array(4); a.length` → 4
+- (c) `new Float64Array(3); a.length` → 3
+- (d) `new Uint8Array(4); a[0]` → 0 (newly-allocated, zeroed)
+- (e) `new Uint8Array(4); a[2] = 42; a[2]` → 42
+
+Cases (a)–(c) are the core acceptance criteria 1+2 (construction +
+`.length` lowered through `extern.new` / `extern.prop`). Cases (d)
+and (e) currently fall back to the legacy direct-emit path because
+`isPhase1Expr`'s `ElementAccessExpression` arm in `src/ir/select.ts`
+only accepts string-literal keys — numeric-keyed element access is
+out of scope for the current selector. The legacy path emits
+`__extern_get` / `__extern_set` host calls that produce correct
+results, hence the byte-identical output.
+
+Acceptance criterion 3+4 ("`arr[i]` lowers to the host `<className>_at`
+call OR the legacy fast path") is met via the legacy fast-path leg.
+Routing element access through the IR (introducing
+`extern.indexGet` / `extern.indexSet` instrs lowering to
+`__extern_get` / `__extern_set`) is **deferred to a follow-up issue
+(#1169j-followup)** — the current state is already test-equivalent
+and Wasm-equivalent.
+
+# #1169j — IR Slice 10 step B: TypedArray through IR
+
+## Goal
+
+Extend the IR path's extern-class support (#1169i scaffolding) to cover
+**TypedArray construction** (`new Uint8Array(N)`, `new Int32Array(N)`,
+`new Float64Array(N)`, …) and **index access patterns**
+(`arr[i]`, `arr[i] = v`, `arr.length`).
+
+This is **Step B of #1169i**'s staging plan. Step A (RegExp) shipped in
+#1169i; the IR scaffolding (`IrType.extern`, `extern.new` / `extern.call`
+/ `extern.prop` / `extern.propSet` instrs, builder helpers, resolver
+wiring, lower emission) is already in place. Step B adds TypedArray
+classes to the selector's allow-list and routes index access through
+the existing `extern.call` path.
+
+## Acceptance criteria
+
+1. `new Uint8Array(16)` (and Int8/Uint16/Int16/Uint32/Int32/Float32/
+   Float64/BigInt64/BigUint64Array) compiles through IR and produces
+   the same Wasm shape as legacy.
+2. `arr.length` for a TypedArray-typed receiver lowers to
+   `<className>_get_length` via the existing `extern.prop` instr.
+3. `arr[i]` element read on a TypedArray-typed receiver lowers to
+   the host `<className>_at` call (or the legacy fast path —
+   investigate which is correct for IR claims).
+4. `arr[i] = v` element write lowers to the corresponding setter.
+5. Equivalence tests pass (file:
+   `tests/equivalence/ir-slice10-typed-array.test.ts`).
+6. Test262 net delta non-negative — the `built-ins/Uint8Array/`,
+   `built-ins/Int32Array/`, etc. categories must not regress.
+
+## Implementation notes
+
+- The selector's `KNOWN_EXTERN_CLASSES` allow-list (in
+  `src/ir/select.ts`) already contains all TypedArray names —
+  shipped with #1169i. Selector should already accept
+  `new Uint8Array(16)` shapes.
+- `lowerNewExpression`'s extern path already pads missing args with
+  default sentinels, so `new Uint8Array(16)` (one arg vs the legacy
+  3-overload constructor) works without extra logic.
+- Index access (`arr[i]`) is `ts.ElementAccessExpression`. The current
+  `lowerElementAccess` (in `src/ir/from-ast.ts`) only handles
+  string-literal keys (object-shape access). Numeric-key element
+  access on extern receivers is the new shape.
+- Dispatch for `arr[i]` on `IrType.extern` receiver — emit an
+  `extern.call` to a synthetic `<className>_at` method, OR emit a
+  raw Wasm `call` to a host helper. Investigate which the legacy
+  uses (`src/codegen/property-access.ts:941+`).
+
+## Files to modify
+
+- `src/ir/from-ast.ts` — `lowerElementAccess` extends to extern
+  receivers, both read and assign halves.
+- (Possibly) `src/ir/select.ts` — `isPhase1Expr`'s element-access
+  arm currently rejects non-string-literal keys. Widen to accept
+  numeric-keyed element access on extern receivers.
+- New equivalence test file.
+
+## Sub-issue of
+
+\#1169 — IR Phase 4: full compiler migration  
+\#1169i — Slice 10 (parent)

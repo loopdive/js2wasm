@@ -4,9 +4,16 @@
  * Handles binary expression compilation including numeric, i32, i64,
  * bitwise, modulo, boolean, and any-typed binary operations.
  */
-import ts from "typescript";
-import { isBigIntType, isBooleanType, isNumberType, isStringType } from "../checker/type-mapper.js";
+import { ts } from "../ts-api.js";
+import {
+  isBigIntType,
+  isBooleanType,
+  isNumberType,
+  isStringType,
+  isWrapperObjectType,
+} from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
+import { isAnyValue } from "./any-helpers.js";
 import { reportError } from "./context/errors.js";
 import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
@@ -208,15 +215,22 @@ export function compileBinaryExpression(
   // compiling the right operand entirely and just emit ToInt32 on the left.
   // This avoids the expensive double-ToInt32 + i32.or + f64.convert sequence
   // that compileBitwiseBinaryOp would generate.
+  //
+  // #1120: when the left operand is already i32 (e.g. an i32-coerced
+  // local from collectI32CoercedLocals, or another `| 0` expression),
+  // return i32 directly — the f64.convert_i32_s round-trip would be
+  // immediately undone by the receiving local's ToInt32 coercion.
+  // Callers that need an f64 (function args, f64 locals, etc.) still go
+  // through coerceType which handles the i32 → f64 widening.
   if (op === ts.SyntaxKind.BarToken && ts.isNumericLiteral(expr.right) && expr.right.text === "0") {
     const leftType = compileExpression(ctx, fctx, expr.left);
     if (!leftType) return null;
     if (leftType.kind === "f64") {
       emitToInt32(fctx);
-      fctx.body.push({ op: "f64.convert_i32_s" });
+      return { kind: "i32" };
     } else if (leftType.kind === "i32") {
-      // Already i32 — `x | 0` is identity, just convert to f64 for JS number semantics
-      fctx.body.push({ op: "f64.convert_i32_s" });
+      // Already i32 — `x | 0` is identity, no work to do.
+      return { kind: "i32" };
     } else if (leftType.kind === "externref") {
       // externref → coerce to f64 first, then ToInt32
       const pfIdx = ctx.funcMap.get("parseFloat");
@@ -228,14 +242,13 @@ export function compileBinaryExpression(
         fctx.body.push({ op: "call", funcIdx: unboxIdx });
       }
       emitToInt32(fctx);
-      fctx.body.push({ op: "f64.convert_i32_s" });
+      return { kind: "i32" };
     } else {
       // ref/ref_null — coerce to f64 via valueOf, then ToInt32
       coerceType(ctx, fctx, leftType, { kind: "f64" }, "number");
       emitToInt32(fctx);
-      fctx.body.push({ op: "f64.convert_i32_s" });
+      return { kind: "i32" };
     }
-    return { kind: "f64" };
   }
 
   // Comma operator: (a, b) — evaluate a, drop its value, evaluate b
@@ -735,7 +748,19 @@ export function compileBinaryExpression(
     op === ts.SyntaxKind.LessThanEqualsToken ||
     op === ts.SyntaxKind.GreaterThanToken ||
     op === ts.SyntaxKind.GreaterThanEqualsToken;
+  // Equality ops involving a wrapper object (Number/String/Boolean) are not
+  // simple string/number ops — they have object-identity / ToPrimitive
+  // semantics. Route them through the externref/wrapper path below (#1111).
+  const isEqualityOp =
+    op === ts.SyntaxKind.EqualsEqualsToken ||
+    op === ts.SyntaxKind.ExclamationEqualsToken ||
+    op === ts.SyntaxKind.EqualsEqualsEqualsToken ||
+    op === ts.SyntaxKind.ExclamationEqualsEqualsToken;
+  const leftIsWrapperObj = isWrapperObjectType(leftTsType);
+  const rightIsWrapperObj = isWrapperObjectType(rightTsType);
+  const wrapperEquality = isEqualityOp && (leftIsWrapperObj || rightIsWrapperObj);
   if (
+    !wrapperEquality &&
     isStringType(leftTsType) &&
     (isStringType(rightTsType) ||
       op === ts.SyntaxKind.PlusToken ||
@@ -743,7 +768,7 @@ export function compileBinaryExpression(
   ) {
     return compileStringBinaryOp(ctx, fctx, expr, op);
   }
-  if (op === ts.SyntaxKind.PlusToken && isStringType(rightTsType) && !isBigIntType(leftTsType)) {
+  if (!wrapperEquality && op === ts.SyntaxKind.PlusToken && isStringType(rightTsType) && !isBigIntType(leftTsType)) {
     return compileStringBinaryOp(ctx, fctx, expr, op);
   }
 
@@ -926,25 +951,168 @@ export function compileBinaryExpression(
   // Use i32 hint for relational comparisons where one operand is a known i32 local.
   // This avoids f64 conversion churn in for-loop conditions like `i < 10000` where
   // detectI32LoopVar already promoted the loop variable to i32.
-  const hasI32LocalOperand =
-    isRelational &&
-    !isDivOrPow &&
-    (() => {
-      const isI32Local = (e: ts.Expression): boolean => {
-        if (!ts.isIdentifier(e)) return false;
-        const idx = fctx.localMap.get(e.text);
-        if (idx === undefined) return false;
-        const entry = idx < fctx.params.length ? fctx.params[idx] : fctx.locals[idx - fctx.params.length];
-        const type =
-          entry && typeof entry === "object" && "type" in entry
-            ? (entry as { type: ValType }).type
-            : (entry as ValType | undefined);
-        return type?.kind === "i32";
-      };
-      return isI32Local(expr.left) || isI32Local(expr.right);
-    })();
+  const isI32LocalRef = (e: ts.Expression): boolean => {
+    if (!ts.isIdentifier(e)) return false;
+    const idx = fctx.localMap.get(e.text);
+    if (idx === undefined) return false;
+    const entry = idx < fctx.params.length ? fctx.params[idx] : fctx.locals[idx - fctx.params.length];
+    const type =
+      entry && typeof entry === "object" && "type" in entry
+        ? (entry as { type: ValType }).type
+        : (entry as ValType | undefined);
+    return type?.kind === "i32";
+  };
+  const hasI32LocalOperand = isRelational && !isDivOrPow && (isI32LocalRef(expr.left) || isI32LocalRef(expr.right));
+  // #1120: when an arithmetic expression is the operand of `expr | 0`
+  // (ToInt32 coercion), AND both operands are already i32 locals, hint
+  // i32 so we emit native i32 arithmetic. The i32-overflow wrap is
+  // semantically identical to f64 + ToInt32 here because the receiving
+  // context is i32 by construction. This is what lets the iterative
+  // Fibonacci body collapse to `i32.add` + `i32.add` + `local.set` in
+  // the hot loop instead of the heavy f64-ToInt32 round-trip.
+  //
+  // #1179: extend to ANY bitwise op as parent (not just `| 0`) and to
+  // recursive subtrees of i32-pure operands (literals, nested arith /
+  // bitwise expressions on i32 leaves), and add a parallel i32 fast
+  // path for bitwise ops themselves. Together these collapse the hot
+  // body of `((i*17) ^ (i>>>3)) & 1023` to a clean i32 chain instead
+  // of the per-op double-ToInt32 + f64 round-trip currently emitted.
+  const isArithOp =
+    op === ts.SyntaxKind.PlusToken || op === ts.SyntaxKind.MinusToken || op === ts.SyntaxKind.AsteriskToken;
+  const isBitwiseOpKind = (k: ts.SyntaxKind): boolean =>
+    k === ts.SyntaxKind.AmpersandToken ||
+    k === ts.SyntaxKind.BarToken ||
+    k === ts.SyntaxKind.CaretToken ||
+    k === ts.SyntaxKind.LessThanLessThanToken ||
+    k === ts.SyntaxKind.GreaterThanGreaterThanToken ||
+    k === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken;
+  // Skip past parens / `as` casts / non-null asserts when looking for the
+  // enclosing context — `((a + b)) | 0` is the same shape as `(a + b) | 0`
+  // for our purposes.
+  let walk: ts.Node = expr;
+  let parent: ts.Node | undefined = expr.parent;
+  while (
+    parent &&
+    (ts.isParenthesizedExpression(parent) ||
+      ts.isAsExpression(parent) ||
+      ts.isTypeAssertionExpression(parent) ||
+      ts.isNonNullExpression(parent))
+  ) {
+    walk = parent;
+    parent = parent.parent;
+  }
+  // Parent ToInt32-coerces our result iff the parent is a bitwise op.
+  // All bitwise ops apply ToInt32 to both operands per JS spec, so an
+  // arith op nested inside a bitwise op can wrap mod 2^32 safely without
+  // changing observable semantics. `| 0` is the canonical case but `^`,
+  // `&`, `<<`, `>>`, `>>>` all share this property.
+  const parentIsToInt32Bitwise =
+    !!parent && ts.isBinaryExpression(parent) && isBitwiseOpKind(parent.operatorToken.kind);
+  const wrappedInToInt32 = isArithOp && parentIsToInt32Bitwise;
+  // Helper: peel parens/as/non-null wrappers off `e`.
+  const peel = (e: ts.Expression): ts.Expression => {
+    let inner: ts.Expression = e;
+    while (
+      ts.isParenthesizedExpression(inner) ||
+      ts.isAsExpression(inner) ||
+      ts.isTypeAssertionExpression(inner) ||
+      ts.isNonNullExpression(inner)
+    ) {
+      inner = ts.isParenthesizedExpression(inner)
+        ? inner.expression
+        : ts.isAsExpression(inner)
+          ? inner.expression
+          : ts.isNonNullExpression(inner)
+            ? inner.expression
+            : (inner as ts.TypeAssertion).expression;
+    }
+    return inner;
+  };
+  // #1179-followup: a "small" integer literal — magnitude strictly below 2^21.
+  // Used to guard the i32 multiplication fast path (see `isI32MulSafe`).
+  // The exact bound is `1 << 21` = 2097152; we accept |n| ≤ 2097151. Two
+  // i32 values where one's magnitude is ≤ 2^21 produce a true product
+  // bounded by 2^21 × 2^31 = 2^52 < 2^53, which is exactly representable
+  // in f64. f64.mul of these inputs equals the true integer product, and
+  // ToInt32 of the f64 result equals i32.mul of the inputs — so the i32
+  // fast path matches the JS spec value bit-for-bit.
+  const isSmallIntLit = (e: ts.Expression): boolean => {
+    const inner = peel(e);
+    if (!ts.isNumericLiteral(inner)) return false;
+    const n = Number(inner.text.replace(/_/g, ""));
+    return Number.isInteger(n) && Math.abs(n) < 1 << 21;
+  };
+  // #1179-followup: spec-faithful i32 multiplication is safe iff at least
+  // one operand is provably small (|n| < 2^21). Without this guard the
+  // i32.mul fast path can deviate from JS spec when the true integer
+  // product exceeds 2^53 — f64 (53-bit mantissa) loses precision, so
+  // f64.mul + ToInt32 disagrees with i32.mul on the low bits.
+  // Example divergence: `(0x7FFFFFFF * 0x7FFFFFFF) | 0` is `0` per spec,
+  // `1` via i32.mul. Guarding `*` with this check preserves the array-sum
+  // win (`i * 17` etc. — the small-literal multiplier is the common case)
+  // while restoring spec conformance for unbounded inputs.
+  const isI32MulSafe = (l: ts.Expression, r: ts.Expression): boolean => {
+    return isSmallIntLit(l) || isSmallIntLit(r);
+  };
+  // #1179: predicate for "this expression compiles to i32 cheaply with
+  // an i32 hint" — leaves are i32 locals or i32-range integer literals,
+  // and internal nodes are bitwise / `| 0` (always i32) or arithmetic
+  // (i32 IF the result is ToInt32-wrapped, which our caller guarantees
+  // by only invoking this from a bitwise / `| 0` context).
+  //
+  // #1179-followup: the multiplication arm is guarded by `isI32MulSafe`
+  // — see comment on that helper for the rationale.
+  const isI32PureExpr = (e: ts.Expression): boolean => {
+    const inner = peel(e);
+    if (ts.isIdentifier(inner)) return isI32LocalRef(inner);
+    if (ts.isNumericLiteral(inner)) {
+      const n = Number(inner.text.replace(/_/g, ""));
+      return Number.isInteger(n) && n >= -2147483648 && n <= 2147483647;
+    }
+    if (ts.isBinaryExpression(inner)) {
+      const k = inner.operatorToken.kind;
+      // `expr | 0` always produces i32 cleanly when its operand does.
+      if (k === ts.SyntaxKind.BarToken && ts.isNumericLiteral(inner.right) && inner.right.text === "0") {
+        return isI32PureExpr(inner.left);
+      }
+      // Bitwise ops always produce i32 (their own ToInt32 covers operands).
+      if (isBitwiseOpKind(k)) {
+        return isI32PureExpr(inner.left) && isI32PureExpr(inner.right);
+      }
+      // Arith add/sub: i32 wrap is correct under the parent's ToInt32
+      // guarantee — f64 add/sub of two i32 values is exact (|a±b| ≤ 2^32
+      // < 2^53), so ToInt32 of the f64 result equals i32.add/sub mod 2^32.
+      if (k === ts.SyntaxKind.PlusToken || k === ts.SyntaxKind.MinusToken) {
+        return isI32PureExpr(inner.left) && isI32PureExpr(inner.right);
+      }
+      // Arith mul: i32 wrap is only spec-faithful when the true product
+      // stays within 2^53. Without range tracking, the cheap proof is
+      // "at least one operand is a small integer literal" — see
+      // `isI32MulSafe`. Without this guard, large-input multiplications
+      // would observably deviate from JS spec.
+      if (k === ts.SyntaxKind.AsteriskToken) {
+        return isI32PureExpr(inner.left) && isI32PureExpr(inner.right) && isI32MulSafe(inner.left, inner.right);
+      }
+    }
+    return false;
+  };
+  // Arith op with ToInt32-wrapping parent: fire if both operands are i32-pure.
+  // Subsumes the original i32-locals-only check; literals and nested chains now apply too.
+  // #1179-followup: when the OUTER op is `*`, additionally require the
+  // small-literal guard — same rationale as the recursive case above.
+  const outerMulI32Safe = op !== ts.SyntaxKind.AsteriskToken || isI32MulSafe(expr.left, expr.right);
+  const arithI32WithToInt32Wrap =
+    wrappedInToInt32 && isI32PureExpr(expr.left) && isI32PureExpr(expr.right) && outerMulI32Safe;
+  // Bitwise op with i32-pure operands: emit native i32 op directly,
+  // skipping the f64-ToInt32 round-trip in compileBitwiseBinaryOp.
+  const bitwiseI32 = isBitwiseOpKind(op) && isI32PureExpr(expr.left) && isI32PureExpr(expr.right);
   const numericHint: ValType | undefined = isNumericOp
-    ? { kind: (ctx.fast || bothNativeI32 || hasI32LocalOperand) && !isDivOrPow ? "i32" : "f64" }
+    ? {
+        kind:
+          (ctx.fast || bothNativeI32 || hasI32LocalOperand || arithI32WithToInt32Wrap || bitwiseI32) && !isDivOrPow
+            ? "i32"
+            : "f64",
+      }
     : undefined;
 
   let leftType = compileExpression(ctx, fctx, expr.left, numericHint);
@@ -1027,11 +1195,18 @@ export function compileBinaryExpression(
     }
   }
 
-  // i32 numeric operations: fast mode, native type annotations, or known i32 local comparison
+  // i32 numeric operations: fast mode, native type annotations, known i32 local
+  // comparison, — #1120 — arithmetic of two i32 locals whose result is
+  // ToInt32-coerced by an enclosing `| 0`, or — #1179 — a bitwise op with
+  // i32-pure operands (skip the f64 round-trip entirely).
   if (
     leftType.kind === "i32" &&
     rightType.kind === "i32" &&
-    ((ctx.fast && isNumberType(leftTsType)) || bothNativeI32 || hasI32LocalOperand)
+    ((ctx.fast && isNumberType(leftTsType)) ||
+      bothNativeI32 ||
+      hasI32LocalOperand ||
+      arithI32WithToInt32Wrap ||
+      bitwiseI32)
   ) {
     return compileI32BinaryOp(ctx, fctx, op, expr);
   }
@@ -1102,6 +1277,18 @@ export function compileBinaryExpression(
       releaseTempLocal(fctx, tmpR);
       return compileNumericBinaryOp(ctx, fctx, op, expr);
     }
+    // For arithmetic / bitwise ops on two i32 operands, use compileI32BinaryOp
+    // which emits the matching i32 instruction (i32.add, i32.sub, …).
+    // compileBooleanBinaryOp only handles comparison/equality — its `default:`
+    // arm falls through silently on `+ - * %` etc., leaving both operands on
+    // the stack with no combining op (#1211: caused recursive `f(n - 1)` in
+    // any-typed fast-mode functions to be miscompiled into `f(1)` because the
+    // TS-checker types the recursive param as `any`, so the i32-arith guard at
+    // line ~1202 above (which requires `isNumberType(leftTsType)`) doesn't
+    // fire and the dispatch falls into this branch instead).
+    if (leftType.kind === "i32" && rightType.kind === "i32" && isNumericOp) {
+      return compileI32BinaryOp(ctx, fctx, op, expr);
+    }
     return compileBooleanBinaryOp(ctx, fctx, op);
   }
 
@@ -1134,6 +1321,37 @@ export function compileBinaryExpression(
     const rightIsNumber = isNumberType(rightTsType);
     const leftIsBool = isBooleanType(leftTsType);
     const rightIsBool = isBooleanType(rightTsType);
+
+    // Wrapper object semantics (#1111): `new Number(n)`, `new String(s)`,
+    // `new Boolean(b)` are OBJECTS (typeof x === "object"), not primitives.
+    // Strict equality between a wrapper and any primitive is always false.
+    // Equality between two wrappers is reference identity.
+    // Route through JS host == / === with NO numeric fallback so the answer
+    // matches JS spec exactly (the numeric fallback below is only safe when
+    // both operands are boxed primitives, not when either is a real JS object).
+    const leftIsWrapper = isWrapperObjectType(leftTsType);
+    const rightIsWrapper = isWrapperObjectType(rightTsType);
+    if (leftIsWrapper || rightIsWrapper) {
+      // Coerce operands to externref (right is on top of stack).
+      if (rightType.kind !== "externref") {
+        coerceType(ctx, fctx, rightType, { kind: "externref" });
+      }
+      if (leftType.kind !== "externref") {
+        const tmpR = allocTempLocal(fctx, { kind: "externref" });
+        fctx.body.push({ op: "local.set", index: tmpR });
+        coerceType(ctx, fctx, leftType, { kind: "externref" });
+        fctx.body.push({ op: "local.get", index: tmpR });
+        releaseTempLocal(fctx, tmpR);
+      }
+      const hostFn = isStrict ? "__host_eq" : "__host_loose_eq";
+      const hostIdx = ensureLateImport(ctx, hostFn, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "i32" }]);
+      flushLateImportShifts(ctx, fctx);
+      const finalHostIdx = ctx.funcMap.get(hostFn) ?? hostIdx;
+      if (finalHostIdx === undefined) throw new Error(`Missing import after ensureLateImport: ${hostFn}`);
+      fctx.body.push({ op: "call", funcIdx: finalHostIdx });
+      if (isNeqOp) fctx.body.push({ op: "i32.eqz" });
+      return { kind: "i32" };
+    }
 
     // Strict equality: different JS types → always false (===) or true (!==)
     if (isStrict) {
@@ -1225,8 +1443,14 @@ export function compileBinaryExpression(
                   { op: "ref.eq" },
                 ],
                 else: [
-                  // Right is not eqref — cannot be equal to a GC ref
-                  { op: "i32.const", value: 0 },
+                  // Right is not eqref. For STRICT equality (===), a GC eqref
+                  // and a non-eqref host externref cannot be ===, so 0 is
+                  // definitive. For LOOSE equality (==), JS coercion may still
+                  // make them equal — e.g. `0 == -0` where the i31ref +0 is
+                  // eqref and the HeapNumber -0 is not. Push -1 sentinel so
+                  // the outer `if (i32.ne result -1)` branches into the host
+                  // fallback (`__host_loose_eq`) which calls JS `==`. (#1134)
+                  { op: "i32.const", value: isStrict ? 0 : -1 },
                 ],
               },
             ];
@@ -1235,7 +1459,7 @@ export function compileBinaryExpression(
           })(),
         ],
         else: [
-          // Left is not eqref — fall through to numeric comparison
+          // Left is not eqref — fall through to numeric / host comparison
           // by pushing -1 as sentinel to indicate "not handled"
           { op: "i32.const", value: -1 },
         ],
@@ -1462,10 +1686,24 @@ function compileAnyBinaryDispatch(
   const funcIdx = ctx.funcMap.get(helperName);
   if (funcIdx === undefined) return null;
 
-  // Compile both operands without numeric hint so they produce ref $AnyValue
+  // Compile both operands. The helpers (`__any_add`, `__any_eq`, …) all take
+  // `(ref null $AnyValue, ref null $AnyValue)` parameters, so any operand
+  // that didn't naturally produce an AnyValue must be boxed before the call.
+  // Without this coercion, recursive `any`-typed functions whose body
+  // contains `f(...) + f(...)` validate as "call param types must match"
+  // because the recursive call returns f64 (or i32) while the helper
+  // expects ref $AnyValue (#1211).
+  const anyValueTarget: ValType = { kind: "ref_null", typeIdx: ctx.anyValueTypeIdx };
   const leftType = compileExpression(ctx, fctx, expr.left);
+  if (!leftType) return null;
+  if (!isAnyValue(leftType, ctx)) {
+    coerceType(ctx, fctx, leftType, anyValueTarget);
+  }
   const rightType = compileExpression(ctx, fctx, expr.right);
-  if (!leftType || !rightType) return null;
+  if (!rightType) return null;
+  if (!isAnyValue(rightType, ctx)) {
+    coerceType(ctx, fctx, rightType, anyValueTarget);
+  }
 
   fctx.body.push({ op: "call", funcIdx });
 

@@ -1,0 +1,25 @@
+---
+id: 93
+sprint: 0
+title: "Issue 93: Test262 coverage — built-ins/Object"
+status: done
+created: 2026-03-09
+updated: 2026-04-14
+completed: 2026-03-09
+goal: test-infrastructure
+---
+# Issue 93: Test262 coverage — built-ins/Object
+
+## Status: DONE
+
+## Summary
+
+Added `built-ins/Object/keys`, `built-ins/Object/values`, `built-ins/Object/entries` to the test262 runner.
+
+## Results
+
+Most Object tests are skipped due to unsupported features (prototype chain, Object.defineProperty, getter/setter, property introspection). Object.keys/values/entries result array construction has a compiler limitation (array.new_fixed) that needs future work.
+
+## Tests
+
+6773 test262 tests total, 412 pass, 0 fail

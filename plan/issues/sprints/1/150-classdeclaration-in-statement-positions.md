@@ -1,0 +1,38 @@
+---
+id: 150
+sprint: 1
+title: "ClassDeclaration in statement positions"
+status: done
+created: 2026-03-11
+updated: 2026-04-14
+completed: 2026-04-14
+priority: low
+goal: compilable
+files:
+  src/codegen/statements.ts:
+    new:
+      - "compileNestedClassDeclaration() — handle ClassDeclaration in statement positions"
+    breaking: []
+  src/codegen/index.ts:
+    new: []
+    breaking:
+      - "collectClassDeclaration: export for use from statements.ts"
+      - "compileClassBodies: export for use from statements.ts"
+---
+# #150 — ClassDeclaration in statement positions
+
+## Problem
+Classes declared inside `for` loops, `if` blocks, or other statement positions
+caused "Unsupported statement: ClassDeclaration" errors because `compileStatement`
+did not handle `ClassDeclaration` nodes.
+
+## Fix
+- Exported `collectClassDeclaration` and `compileClassBodies` from `src/codegen/index.ts`
+- Added `compileNestedClassDeclaration` handler in `src/codegen/statements.ts`
+  that collects the class struct/methods and compiles their bodies immediately
+- Skips if the class was already collected (e.g., top-level hoisted)
+
+## Tests
+- Added "class inside if block" equivalence test
+
+## Status: Done

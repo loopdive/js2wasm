@@ -1,0 +1,278 @@
+---
+id: 1245
+title: "Investigate #1177 Stage 1 regressions — 59 compile_timeouts + 81 real regressions in PR#125"
+status: done
+sprint: 47
+created: 2026-05-02
+updated: 2026-05-02
+completed: 2026-05-02
+priority: high
+feasibility: hard
+reasoning_effort: max
+task_type: investigation
+area: codegen
+language_feature: closures, TDZ
+goal: test262-conformance
+depends_on: []
+related: [1177, 1205, 1223, 1258, 1259, 1260]
+pr: 155
+---
+
+## Outcome (2026-05-02 close)
+
+Investigation closed as **done** — deliverable is the 252-line writeup below
+plus three follow-up issues:
+
+- **#1258** — `compileForOfAssignDestructuringExternref` box-awareness
+  (~30-test cluster, blocks Stage 1 landing)
+- **#1259** — async-gen yield-star sync-fallback unboxed ref-cell leak
+  (~50-test cluster)
+- **#1260** — destructuring of null/undefined must throw TypeError per §13.15.5.5
+  (~10-test cluster)
+
+PR#155 (type-guarded Stage 1 attempt) was **closed without merge**: CI
+confirmed the type-guard refinement is strictly worse than the unguarded
+form (net −38 vs −16, same 81 real regressions, fewer improvements
+124→76). The refinement cut compile_timeout flap (66→33) but the regressions
+are systematic spec-bugs unmasked by *any* Stage 1, not addressable at the
+substitution site.
+
+Stage 1 of #1177 will be re-attempted only after #1258 (and ideally #1259)
+land. Expected net at that point: ≥ +90.
+
+
+
+## Investigation findings (2026-05-02, dev-1245)
+
+### Finding 1 — the 59 compile_timeouts are CI flakiness, NOT compiler hangs
+
+I cherry-picked PR#125's exact Stage 1 commit (`8b34d909`) onto a fresh branch
+from `origin/main`, then **compiled all 66 pass→compile_timeout tests locally**
+through the same `wrapTest` + `compileMulti` path used by the test262 runner.
+
+**All 66 tests compiled in ≤ 500 ms each** (median ≈ 65 ms). None of them are
+"compiler hangs". They are simple property-existence tests like
+`test/built-ins/Math/abs/length.js` (32 lines, single `verifyProperty` call)
+that should never approach a 30 s compile budget.
+
+**Why CI sees them as `compile_timeout`:** the precompile pool runs
+`availableParallelism() - 2` workers per shard × 16 shards in CI; under
+contention, slow harness compiles (`propertyHelper.js` is 371 lines / 32
+helper functions) occasionally hit the 30 s timer. Each PR run sees a
+*different* set of 50–70 tests timeout. The transition matrix on PR#125 confirms
+this:
+
+```
+pass → compile_timeout: 66    compile_timeout → pass: 24
+fail → compile_timeout: 49    compile_timeout → fail: 25
+                              compile_timeout → compile_error: 8
+                              compile_error → compile_timeout: 4
+                              compile_timeout NET: 156 → 129 = -27 (improvement)
+```
+
+The total `compile_timeout` count *decreased* from 156 to 129 on PR#125. The
+"59 compile_timeout regressions" header is purely the diff direction — it
+counts each individual test that flapped from pass→timeout, not the population
+delta. The acceptance criterion "zero compile_timeouts" cannot be hit in any
+PR; the flap floor is structural.
+
+**Action:** `dev-self-merge` Step 4 should *exclude* `pass → compile_timeout`
+transitions from the regression bucket (or treat them as zero-weight).
+Ratio/bucket gates already give them pass-through if the population is stable.
+
+### Finding 2 — the 81 real regressions are pre-existing spec-bugs unmasked by Stage 1
+
+The 81 non-timeout regressions cluster as:
+
+- ~50× `language/expressions/object/method-definition/async-gen-yield-star-*` —
+  "L60:3 dereferencing a null pointer". `yield*` over an iterator whose
+  `@@asyncIterator` is undefined goes through the sync iterator fallback. The
+  callee fn-decl reads its captured iter via cap-prepend; with the unguarded
+  Stage 1 substitution, `localMap` re-aimed the slot to a boxed/different-type
+  ref cell, and the lifted body unwrapped it as the original value type → null.
+
+- ~20× `language/statements/for-await-of/async-{func,gen}-decl-dstr-*` —
+  "returned 2 — assert #1 ... sameValue(x.y, 4)" or "illegal cast". The
+  destructure-assign-target path (`compileForOfAssignDestructuringExternref`,
+  `loops.ts:1503`) does direct `local.set` on `targetLocal` and **does not
+  route through `boxedCaptures.struct.set`**. When Stage 1 makes the
+  outer-fctx capture flow through a ref cell, the for-await write-back
+  silently writes to a stale value slot rather than mutating the captured
+  object — so the next read sees the pre-write value. This is *exactly* the
+  case the architect spec at `nested-declarations.ts:240–260` already
+  flagged as "out of scope ... `.todo` until that follow-up lands".
+
+- ~10× `language/expressions/assignment/dstr/array-elem-nested-*-null` —
+  "assert.throws(TypeError ...) returned 2". The wrapped function captures the
+  outer test scope; with the wrong-slot read, `null` was `null` and threw on
+  property access (test passed by accident). With the correct slot, the actual
+  destructure source is `null`, but the codegen path doesn't emit the
+  spec-mandated `TypeError`. Pre-existing destructuring-null bug.
+
+- 1× `language/expressions/object/method-definition/name-invoke-fn-strict.js` —
+  function-name binding (the function's own name as a TDZ-tracked self-ref).
+
+### Root cause
+
+The Stage 1 substitution **`fctx.localMap.get(cap.name) ?? cap.outerLocalIdx`**
+is correct *for the specific TDZ-through-arrow case it targets*, but reading
+"the right slot" surfaces three independent pre-existing bugs:
+
+1. The destructure-assign write-back path is not box-aware (architect-noted).
+2. Async-gen yield-star sync-fallback iter capture has an unboxed-ref-cell
+   leak (new finding).
+3. Destructuring `[null]`/`[undefined]` does not emit the spec-mandated
+   TypeError (pre-existing).
+
+Each of these is its own issue. Stage 1 alone cannot land cleanly until at
+least #1 is fixed (largest cluster, ~30 tests).
+
+### Approach for this PR — type-guarded Stage 1
+
+I refined the unguarded `fctx.localMap.get(cap.name) ?? cap.outerLocalIdx` to
+a **type-matched preference**:
+
+```ts
+const candidateIdx = fctx.localMap.get(cap.name);
+let sourceLocalIdx = cap.outerLocalIdx;
+if (candidateIdx !== undefined) {
+  const candidateType = getLocalType(fctx, candidateIdx);
+  if (candidateType && cap.valType && valTypesMatch(candidateType, cap.valType)) {
+    sourceLocalIdx = candidateIdx;
+  }
+}
+```
+
+This guards against the failure mode where `localMap` was re-aimed at a
+boxed/differently-typed slot (which produced the illegal-cast and null-deref
+clusters). When the localMap entry has the *same* type as the capture, the
+substitution applies and recovers the +24-net improvements that Stage 1
+unblocks. When the type differs, we fall back to the legacy `cap.outerLocalIdx`
+read, preserving main's behavior on the surfaced-bug clusters.
+
+Sites updated (4):
+- `src/codegen/expressions/calls.ts:5097` (mutable fresh-box branch)
+- `src/codegen/expressions/calls.ts:5133` (non-mutable branch — also uses
+  `expectedCapType` from `captureParamTypes` for an even stricter guard)
+- `src/codegen/closures.ts:2747` (mutable branch, fn-decl→closure-wrapping)
+- `src/codegen/closures.ts:2765` (non-mutable branch)
+
+### Local validation
+
+- `tests/issue-1177.test.ts` — 7/7 pass (Stage 1's own targeted equivalence)
+- `tests/issue-1016.test.ts` — 4/4 pass (parameter-destructuring closures)
+- `tests/issue-1128-dstr-tdz.test.ts` — 8/8 pass
+- 5 previously-failing async-gen / for-await tests compile cleanly (cannot
+  validate runtime locally without the wasm-exec-worker harness)
+- `tests/equivalence/tdz-reference-error.test.ts` — 3/9 pass; the 6 failures
+  pre-date my changes (verified by `git stash` re-run on cherry-pick HEAD)
+
+### Acceptance criteria progress
+
+1. ☑ The 59 compile_timeouts root cause identified (CI flap, not real hangs)
+2. ☑ The 81 regressions classified into 4 distinct pre-existing bug clusters
+3. ☑ Type-guarded Stage 1 fix proposed (this PR)
+4. ☐ CI net ≥ +90 with no single bucket > 50 (validated by CI on push)
+
+If CI shows net < +90 after the type-guard refinement, the residual gap is
+addressed by follow-up issues:
+- New issue: make `compileForOfAssignDestructuringExternref` box-aware (the
+  ~30-test cluster #1 above)
+- New issue: async-gen yield-star sync-fallback unboxed-ref-cell leak
+- New issue: destructuring null/undefined TypeError emission
+
+---
+
+# #1245 — Investigate #1177 Stage 1 regressions
+
+## Background
+
+#1177 Stage 1 is the capture-index correction in `closures.ts` and `calls.ts`:
+
+```ts
+// Before (stale index):
+fctx.body.push({ op: "local.get", index: cap.outerLocalIdx });
+
+// After (correct index):
+const sourceLocalIdx = fctx.localMap.get(cap.name) ?? cap.outerLocalIdx;
+fctx.body.push({ op: "local.get", index: sourceLocalIdx });
+```
+
+This 2-line change appears twice in `calls.ts` and twice in `closures.ts`. It was originally
+reverted (`37d40dae7`) because async-gen bodies hit null_deref without the Stage 2/3
+infrastructure. Stages 2 and 3 landed in #1205. PR#125 re-attempted Stage 1 on top of #1205.
+
+## PR#125 CI results
+
+```
+pass:              25,901  (was 25,785 on main → +116 improvements)
+regressions_real:     81
+compile_timeouts:     59  ← primary signal
+net_per_test:        -16
+```
+
+Expected: +1,159 net. Got: -16. The dev PR description said "safe now that Stages 2&3 are in
+place" — but 59 compile_timeouts say otherwise.
+
+## What needs investigation
+
+**1. Root-cause the 59 compile_timeouts.**
+
+The timeouts are the dominant cost. Compile_timeouts in the test262 runner mean the compiler
+itself hung for > 30s on those test files. This is NOT a runtime infinite loop — it's a
+compiler-phase hang. The localMap substitution should not cause a compile hang; the question
+is whether it interacts with some recursive codegen path (e.g., circular capture chains, or
+triggering a previously-unreachable branch in `emitFuncRefAsClosure` that loops).
+
+Reproduce locally:
+```bash
+cd /workspace/.claude/worktrees/issue-1245-stage1-investigation
+# Cherry-pick just the Stage 1 change from PR#125 (SHA 8b34d909)
+git cherry-pick 8b34d909374997d7d7c8e32cd2e0d0af6f0495f0
+
+# Run with a timeout to find hanging tests:
+TEST262_WORKERS=1 pnpm run test:262 --recheck 2>&1 | grep -E "compile_timeout|TIMEOUT"
+```
+
+Alternatively, reproduce without cherry-pick: apply the 4-line change manually to a fresh
+branch and run targeted tests.
+
+**2. Identify the 81 real regressions.**
+
+81 tests changed from pass → fail (non-wasm-identical). Classify:
+- Are they in the same test category as the 59 timeouts, or different?
+- Do they share a pattern (specific feature, specific codegen path)?
+
+Check the CI run artifact at:
+`https://github.com/loopdive/js2wasm/actions/runs/25219534735`
+
+**3. Form a hypothesis.**
+
+Given the original Stage 1 was safe before `37d40dae7` reverted it, and that reversion
+happened due to async-gen null_deref (now fixed), the question is:
+
+> Is the localMap substitution safe for ALL closure-emit paths, or only for the arrow-wraps-fn
+> path that Stages 2/3 fixed? Are there other paths (e.g., generator closures, method closures,
+> IIFE captures) where the substitution produces wrong output or triggers a compiler loop?
+
+**4. Produce a minimal fix or a staged approach.**
+
+Options:
+- A: Gate the substitution on a specific capture shape (e.g., only for `transitivelyCapturing`
+  arrows) to avoid the timeout-triggering path
+- B: Apply the substitution only in `calls.ts`, not `closures.ts` (separate the risk surface)
+- C: Identify the exact path causing timeouts, fix that path, then re-land Stage 1 whole
+
+## Acceptance criteria
+
+1. The 59 compile_timeouts are reproduced locally and their root cause is identified.
+2. The 81 real regressions are classified by feature/path.
+3. A fix proposal (or staged sub-fix) is written into this issue file.
+4. A new PR re-lands Stage 1 (or a safe subset) with net ≥ +90 and zero compile_timeouts.
+
+## Related
+
+- `plan/issues/sprints/45/1177.md` — full impl spec with Stage 1 diff locations
+- PR#125 CI run: https://github.com/loopdive/js2wasm/actions/runs/25219534735
+- #1205 — Stages 2+3 (already landed, prerequisite)
+- #1223 — blocked on Stage 1 landing

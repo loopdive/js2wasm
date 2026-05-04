@@ -1,0 +1,39 @@
+---
+id: 520
+sprint: 21
+title: "Delete operator: operand must be optional (80 CE)"
+status: done
+created: 2026-03-18
+updated: 2026-04-14
+completed: 2026-03-18
+priority: medium
+feasibility: medium
+goal: test-infrastructure
+test262_ce: 80
+files:
+  src/compiler.ts:
+    new: []
+    breaking: []
+---
+# #520 — Delete operator: operand must be optional (80 CE)
+
+## Status: review
+
+80 tests fail with "The operand of a 'delete' operator must be optional" (62) or "cannot be a read-only property" (18). TypeScript's strict mode rejects `delete obj.prop` unless the property is optional.
+
+## Approach
+
+For test262 compilation (allowJs mode), suppress these TypeScript diagnostics. The `delete` operator should compile to setting the field to a sentinel value (see #492).
+
+## Complexity: S
+
+## Implementation Summary
+
+Added two TS diagnostic codes to `DOWNGRADE_DIAG_CODES` in `src/compiler.ts`:
+- **2790** - "The operand of a 'delete' operator must be optional" (62 CE)
+- **2704** - "The operand of a 'delete' operator cannot be a read-only property" (18 CE)
+
+Code 2703 ("must be a property reference") was already suppressed. These two additional codes complete the set of delete-operator diagnostics that block valid JS from compiling.
+
+### Files changed
+- `src/compiler.ts` -- added codes 2704, 2790 to `DOWNGRADE_DIAG_CODES`

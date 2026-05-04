@@ -19,7 +19,7 @@
 
 ## Commit verification
 
-Include the code word **CHECKLIST-FOXTROT** in your commit message (anywhere in the message body). The pre-commit hook will reject commits without it.
+Include the phrase **Checklist completed.** in your commit message (anywhere in the message body). The pre-commit hook will reject commits without it.
 
 ## Red flags (stop and ask tech lead)
 

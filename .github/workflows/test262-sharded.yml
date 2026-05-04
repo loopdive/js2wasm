@@ -3,25 +3,66 @@ name: Test262 Sharded
 on:
   pull_request:
     branches: [main]
+    paths:
+      - ".github/workflows/test262-sharded.yml"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "tsconfig.json"
+      - "scripts/tsconfig.json"
+      - "vitest.config.ts"
+      - "src/**"
+      - "scripts/build-test262-report.mjs"
+      - "scripts/compiler-fork-worker.mjs"
+      - "scripts/compiler-pool.ts"
+      - "scripts/diff-test262.ts"
+      - "scripts/generate-editions.ts"
+      - "scripts/test262-worker.mjs"
+      - "tests/test262-chunk*.test.ts"
+      - "tests/test262-runner.ts"
+      - "tests/test262-scope-classification.test.ts"
+      - "tests/test262-shared.ts"
   push:
     branches: [main]
+    paths:
+      - ".github/workflows/test262-sharded.yml"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "tsconfig.json"
+      - "scripts/tsconfig.json"
+      - "vitest.config.ts"
+      - "src/**"
+      - "scripts/build-test262-report.mjs"
+      - "scripts/compiler-fork-worker.mjs"
+      - "scripts/compiler-pool.ts"
+      - "scripts/diff-test262.ts"
+      - "scripts/generate-editions.ts"
+      - "scripts/test262-worker.mjs"
+      - "tests/test262-chunk*.test.ts"
+      - "tests/test262-runner.ts"
+      - "tests/test262-scope-classification.test.ts"
+      - "tests/test262-shared.ts"
   workflow_dispatch:
     inputs:
       include_proposals:
         description: "Include proposal tests"
         required: false
-        default: false
+        default: true
         type: boolean
       compiler_pool_size:
         description: "Compiler workers per shard runner"
         required: false
-        default: "4"
+        default: "2"
         type: string
-      allow_regressions:
-        description: "Allow regressions and continue anyway"
+      force_baseline_refresh:
+        description: "Force promote merged report to baseline regardless of regressions. Requires confirm_force=YES."
         required: false
         default: false
         type: boolean
+      confirm_force:
+        description: "Type YES to confirm force baseline refresh (prevents accidental runs)"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: write
@@ -45,8 +86,8 @@ jobs:
         chunk: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
 
     env:
-      COMPILER_POOL_SIZE: ${{ inputs.compiler_pool_size || '4' }}
-      TEST262_INCLUDE_PROPOSALS: ${{ inputs.include_proposals && '1' || '0' }}
+      COMPILER_POOL_SIZE: ${{ inputs.compiler_pool_size || '2' }}
+      TEST262_INCLUDE_PROPOSALS: ${{ github.event_name != 'workflow_dispatch' && '1' || (inputs.include_proposals && '1' || '0') }}
       RUN_TIMESTAMP: ${{ github.run_id }}-chunk${{ matrix.chunk }}
 
     steps:
@@ -75,9 +116,12 @@ jobs:
           path: |
             .test262-cache
             benchmarks/results/test262-cache.json
-          key: test262-cache-v2-${{ hashFiles('src/**/*.ts', 'scripts/test262-worker.mjs', 'scripts/compiler-fork-worker.mjs') }}-chunk-${{ matrix.chunk }}
+          # vitest.config.ts is part of the hash so any change to concurrency,
+          # timeouts, or pool config busts the cache and forces a clean run
+          # instead of replaying stale `compile_timeout` results (issue #1171).
+          key: test262-cache-v2-${{ hashFiles('src/**/*.ts', 'scripts/test262-worker.mjs', 'scripts/compiler-fork-worker.mjs', 'vitest.config.ts') }}-chunk-${{ matrix.chunk }}
           restore-keys: |
-            test262-cache-v2-${{ hashFiles('src/**/*.ts', 'scripts/test262-worker.mjs', 'scripts/compiler-fork-worker.mjs') }}-
+            test262-cache-v2-${{ hashFiles('src/**/*.ts', 'scripts/test262-worker.mjs', 'scripts/compiler-fork-worker.mjs', 'vitest.config.ts') }}-
 
       - name: Build compiler bundles
         run: |
@@ -152,7 +196,7 @@ jobs:
             --output merged-reports/test262-report-merged.json \
             --baseline-sha "${{ github.sha }}" \
             --baseline-generated-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            ${{ inputs.include_proposals && '--include-proposals' || '' }}
+            ${{ github.event_name != 'workflow_dispatch' && '--include-proposals' || (inputs.include_proposals && '--include-proposals' || '') }}
 
       - name: Upload merged reports
         uses: actions/upload-artifact@v6
@@ -186,6 +230,67 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Fetch fresh baseline from baselines repo
+        id: fetch_baseline
+        if: github.event_name == 'pull_request'
+        run: |
+          # Clone the baselines repo to get the current baseline JSONL.
+          # This avoids LFS bandwidth on the main repo (all jsonl files are
+          # now stored in loopdive/js2wasm-baselines, not LFS-tracked here).
+          # Use depth=2 so we can read the most recent commit's timestamp for
+          # the #1235 staleness warning.
+          git clone --depth=2 https://github.com/loopdive/js2wasm-baselines.git /tmp/js2wasm-baselines 2>/dev/null || true
+          if [ -f /tmp/js2wasm-baselines/test262-current.jsonl ]; then
+            mkdir -p benchmarks/results
+            cp /tmp/js2wasm-baselines/test262-current.jsonl benchmarks/results/test262-current.jsonl
+            echo "Baseline fetched from js2wasm-baselines repo."
+            # #1235 — capture baseline commit timestamp + sha for the staleness
+            # check below. The PR gate will warn if the baseline is older than
+            # the most recent main commit by more than a small threshold.
+            BASELINE_TS=$(git -C /tmp/js2wasm-baselines log -1 --format=%ct HEAD 2>/dev/null || echo 0)
+            BASELINE_SHA=$(git -C /tmp/js2wasm-baselines log -1 --format=%h HEAD 2>/dev/null || echo unknown)
+            echo "baseline_ts=$BASELINE_TS" >> "$GITHUB_OUTPUT"
+            echo "baseline_sha=$BASELINE_SHA" >> "$GITHUB_OUTPUT"
+            echo "Baseline commit: $BASELINE_SHA (unix=$BASELINE_TS)"
+          else
+            # Baselines repo not yet seeded — write empty JSONL so diff-test262
+            # gets a valid (empty) baseline and reports 0 regressions / N improvements.
+            # The fallback avoids LFS pointer text which would cause a parse error.
+            echo "Warning: baselines repo has no jsonl yet — using empty baseline."
+            mkdir -p benchmarks/results
+            echo -n "" > benchmarks/results/test262-current.jsonl
+            echo "baseline_ts=0" >> "$GITHUB_OUTPUT"
+            echo "baseline_sha=unknown" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check baseline staleness (#1235)
+        id: staleness
+        if: github.event_name == 'pull_request' && steps.fetch_baseline.outputs.baseline_ts != '0'
+        run: |
+          # If the baselines-repo JSONL hasn't been refreshed since several
+          # commits landed on main, the regression-gate's wasm_change count
+          # is contaminated by drift — tests that flipped on main since the
+          # last baseline refresh appear as PR regressions even though the
+          # PR didn't cause them. Emit a warning so devs/tech-lead can read
+          # the regression report skeptically.
+          MAIN_HEAD_TS=$(git log -1 --format=%ct origin/main 2>/dev/null || git log -1 --format=%ct main 2>/dev/null || echo 0)
+          BASELINE_TS="${{ steps.fetch_baseline.outputs.baseline_ts }}"
+          BASELINE_SHA="${{ steps.fetch_baseline.outputs.baseline_sha }}"
+          if [ "$MAIN_HEAD_TS" = "0" ] || [ "$BASELINE_TS" = "0" ]; then
+            echo "stale_minutes=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          DIFF_S=$(( MAIN_HEAD_TS - BASELINE_TS ))
+          DIFF_M=$(( DIFF_S / 60 ))
+          # Threshold: baseline older than main HEAD by ≥ 30 minutes. Tunable.
+          if [ "$DIFF_M" -ge 30 ]; then
+            echo "::warning::Baseline drift: js2wasm-baselines JSONL is ${DIFF_M}m older than main HEAD (baseline=${BASELINE_SHA}). Some 'regressions' below may be drift, not real PR-caused failures. See #1235."
+            echo "stale_minutes=$DIFF_M" >> "$GITHUB_OUTPUT"
+          else
+            echo "Baseline freshness OK: ${DIFF_M}m behind main HEAD."
+            echo "stale_minutes=$DIFF_M" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Download merged reports
         uses: actions/download-artifact@v7
         with:
@@ -201,8 +306,20 @@ jobs:
             echo "Missing baseline JSONL: $BASELINE"
             exit 2
           fi
+          # Prefer the committed baseline JSON (test262-current.json) for age/SHA
+          # metadata; fall back to test262-report.json if the first doesn't exist.
+          BASELINE_META=""
+          if [ -f "benchmarks/results/test262-current.json" ]; then
+            BASELINE_META="benchmarks/results/test262-current.json"
+          elif [ -f "benchmarks/results/test262-report.json" ]; then
+            BASELINE_META="benchmarks/results/test262-report.json"
+          fi
+          META_ARGS=""
+          if [ -n "$BASELINE_META" ]; then
+            META_ARGS="--baseline-meta $BASELINE_META"
+          fi
           set +e
-          npx tsx scripts/diff-test262.ts "$BASELINE" merged-reports/test262-results-merged.jsonl --quiet \
+          npx tsx scripts/diff-test262.ts "$BASELINE" merged-reports/test262-results-merged.jsonl --quiet $META_ARGS \
             > merged-reports/test262-regressions.txt
           exit_code=$?
           set -e
@@ -217,11 +334,33 @@ jobs:
             echo "regressions=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Upload regressions report
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: test262-regressions-report
+          path: merged-reports/test262-regressions.txt
+          if-no-files-found: warn
+
       - name: Fail on regressions
-        if: steps.regression_diff.outputs.regressions == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.allow_regressions)
+        if: steps.regression_diff.outputs.regressions == 'true' && !(github.event_name == 'workflow_dispatch' && inputs.force_baseline_refresh == true && inputs.confirm_force == 'YES')
         run: |
           echo "test262 regressions detected relative to benchmarks/results/test262-current.jsonl"
           cat merged-reports/test262-regressions.txt
+          # #1235 — append staleness footer so devs reading the failed-job log
+          # see the warning even when not scrolling up to the workflow-level
+          # ::warning::. The footer is informational; the gate still fails.
+          STALE_M="${{ steps.staleness.outputs.stale_minutes || '0' }}"
+          if [ "$STALE_M" -ge 30 ]; then
+            echo ""
+            echo "==============================================================="
+            echo "  ⚠️  BASELINE DRIFT WARNING (#1235)"
+            echo "  The js2wasm-baselines JSONL is ${STALE_M}m older than main HEAD."
+            echo "  Some 'regressions' above may be drift, not real PR-caused"
+            echo "  failures. Cross-check against another open PR's regression"
+            echo "  list — overlapping clusters across unrelated PRs are drift."
+            echo "==============================================================="
+          fi
           exit 1
 
   promote-baseline:
@@ -237,6 +376,11 @@ jobs:
           submodules: recursive
           fetch-depth: 1
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 25
 
       - name: Download merged reports
         uses: actions/download-artifact@v7
@@ -261,12 +405,41 @@ jobs:
           cp shard-artifacts/test262-report-merged.json public/benchmarks/results/test262-report.json
           cp shard-artifacts/test262-results-merged.jsonl public/benchmarks/results/test262-results.jsonl
 
-      - name: Append to runs/index.json (trend graph data)
+      - name: Regenerate edition buckets
+        run: node --experimental-strip-types scripts/generate-editions.ts --results benchmarks/results/test262-current.jsonl
+
+      - name: Push baseline artifacts to js2wasm-baselines repo
+        env:
+          BASELINE_DEPLOY_KEY: ${{ secrets.BASELINE_DEPLOY_KEY }}
         run: |
+          PASS=$(node -e "console.log(JSON.parse(require('fs').readFileSync('shard-artifacts/test262-report-merged.json','utf8')).summary.pass)")
+          TOTAL=$(node -e "console.log(JSON.parse(require('fs').readFileSync('shard-artifacts/test262-report-merged.json','utf8')).summary.total)")
+          # Sanity check: reject corrupt reports
+          if [ "$PASS" -lt 1000 ] || [ "$TOTAL" -lt 40000 ]; then
+            echo "ABORT: report looks corrupt (pass=$PASS total=$TOTAL). Not pushing."
+            exit 0
+          fi
+
+          # Set up SSH deploy key for baselines repo push
+          eval "$(ssh-agent -s)"
+          echo "$BASELINE_DEPLOY_KEY" | ssh-add -
+          mkdir -p ~/.ssh
+          ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null
+
+          # Clone baselines repo (shallow — only need latest state)
+          git clone --depth=1 git@github.com:loopdive/js2wasm-baselines.git /tmp/js2wasm-baselines
+
+          # Copy fresh artifacts
+          cp shard-artifacts/test262-results-merged.jsonl /tmp/js2wasm-baselines/test262-current.jsonl
+          cp shard-artifacts/test262-report-merged.json   /tmp/js2wasm-baselines/test262-current.json
+          cp shard-artifacts/test262-results-merged.jsonl /tmp/js2wasm-baselines/test262-results.jsonl
+
+          # Update runs/index.json (trend graph history)
           node -e "
           const fs = require('fs');
-          const report = JSON.parse(fs.readFileSync('benchmarks/results/test262-current.json', 'utf8'));
-          const indexPath = 'benchmarks/results/runs/index.json';
+          const report = JSON.parse(fs.readFileSync('/tmp/js2wasm-baselines/test262-current.json', 'utf8'));
+          const indexPath = '/tmp/js2wasm-baselines/runs/index.json';
+          fs.mkdirSync('/tmp/js2wasm-baselines/runs', { recursive: true });
           const idx = fs.existsSync(indexPath) ? JSON.parse(fs.readFileSync(indexPath, 'utf8')) : [];
           const entry = {
             timestamp: new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').substring(0, 15),
@@ -279,7 +452,6 @@ jobs:
             strict_total: (report.strict_summary || {}).total || 0,
             gitHash: '${{ github.sha }}'.substring(0, 8),
           };
-          // Deduplicate: skip if last entry has same pass+total (same compiler state)
           const last = idx[idx.length - 1];
           if (!last || last.pass !== entry.pass || last.total !== entry.total) {
             idx.push(entry);
@@ -290,44 +462,61 @@ jobs:
           }
           "
 
-      - name: Commit refreshed baseline
+          # Commit and push to baselines repo
+          cd /tmp/js2wasm-baselines
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No baseline changes to push."
+          else
+            git commit -m "chore(test262): refresh baseline — ${PASS}/${TOTAL} pass (${{ github.sha }})"
+            git push
+          fi
+
+      - name: Commit small artifacts to main repo (json + editions)
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f benchmarks/results/test262-current.jsonl benchmarks/results/test262-current.json benchmarks/results/test262-report.json benchmarks/results/test262-results.jsonl public/benchmarks/results/test262-report.json public/benchmarks/results/test262-results.jsonl benchmarks/results/runs/index.json
-          if git diff --cached --quiet; then
-            echo "No baseline changes to commit."
-            exit 0
-          fi
           PASS=$(node -e "console.log(JSON.parse(require('fs').readFileSync('benchmarks/results/test262-current.json','utf8')).summary.pass)")
           TOTAL=$(node -e "console.log(JSON.parse(require('fs').readFileSync('benchmarks/results/test262-current.json','utf8')).summary.total)")
-          # Sanity check: reject corrupt reports (e.g. double-appended JSONL producing 11 pass)
           if [ "$PASS" -lt 1000 ] || [ "$TOTAL" -lt 40000 ]; then
             echo "ABORT: report looks corrupt (pass=$PASS total=$TOTAL). Not committing."
             exit 0
           fi
+          # Stage only the small JSON files (not the large jsonl — those live in baselines repo)
+          git add -f benchmarks/results/test262-current.json \
+            benchmarks/results/test262-report.json \
+            public/benchmarks/results/test262-report.json \
+            public/benchmarks/results/test262-editions.json
+          if git diff --cached --quiet; then
+            echo "No JSON changes to commit."
+            exit 0
+          fi
           git commit -m "chore(test262): refresh sharded baseline — ${PASS}/${TOTAL} pass [skip ci]"
-          # Pull latest main. If rebase conflicts (common when baseline files
-          # were updated by a concurrent run), abort and force-push our fresh
-          # results — the just-computed baseline is always authoritative.
-          if ! git pull --rebase origin main; then
+          if ! GIT_LFS_SKIP_SMUDGE=1 git pull --rebase --autostash origin main; then
             git rebase --abort 2>/dev/null || true
             git fetch origin main
-            # Hard-reset to origin/main so the working tree and index match main
-            # exactly. This avoids the bug where --soft left plan/ deletions staged.
-            git reset --hard origin/main
-            # Re-copy our fresh baseline files on top of main's working tree
-            cp shard-artifacts/test262-results-merged.jsonl benchmarks/results/test262-current.jsonl
+            GIT_LFS_SKIP_SMUDGE=1 git reset --hard origin/main
             cp shard-artifacts/test262-report-merged.json benchmarks/results/test262-current.json
             cp shard-artifacts/test262-report-merged.json benchmarks/results/test262-report.json
-            cp shard-artifacts/test262-results-merged.jsonl benchmarks/results/test262-results.jsonl
             cp shard-artifacts/test262-report-merged.json public/benchmarks/results/test262-report.json
-            cp shard-artifacts/test262-results-merged.jsonl public/benchmarks/results/test262-results.jsonl
-            # Stage ONLY the benchmark files — nothing else
-            git add -f benchmarks/results/test262-current.jsonl benchmarks/results/test262-current.json benchmarks/results/test262-report.json benchmarks/results/test262-results.jsonl public/benchmarks/results/test262-report.json public/benchmarks/results/test262-results.jsonl benchmarks/results/runs/index.json
+            node --experimental-strip-types scripts/generate-editions.ts --results /tmp/js2wasm-baselines/test262-current.jsonl
+            git add -f benchmarks/results/test262-current.json \
+              benchmarks/results/test262-report.json \
+              public/benchmarks/results/test262-report.json \
+              public/benchmarks/results/test262-editions.json
             git commit -m "chore(test262): refresh sharded baseline — ${PASS}/${TOTAL} pass [skip ci]" --allow-empty
           fi
-          git push
+          GIT_LFS_SKIP_SMUDGE=1 git push
+
+      - name: Audit forced baseline refresh
+        if: github.event_name == 'workflow_dispatch' && inputs.force_baseline_refresh == true && inputs.confirm_force == 'YES'
+        run: |
+          echo "FORCED baseline refresh by ${{ github.actor }} at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          PASS=$(node -e "console.log(JSON.parse(require('fs').readFileSync('benchmarks/results/test262-current.json','utf8')).summary.pass)")
+          TOTAL=$(node -e "console.log(JSON.parse(require('fs').readFileSync('benchmarks/results/test262-current.json','utf8')).summary.total)")
+          echo "::warning::FORCED baseline refresh by ${{ github.actor }} — pass=$PASS total=$TOTAL"
 
       - name: Trigger Pages deploy after baseline refresh
         if: success()

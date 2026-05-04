@@ -6,11 +6,11 @@
  * This module imports compileExpression and compileArrowAsClosure from
  * shared.ts (NOT expressions.ts) to avoid circular dependencies.
  */
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 import { isStringType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
 import { reportError } from "./context/errors.js";
-import { allocLocal } from "./context/locals.js";
+import { allocLocal, getLocalType } from "./context/locals.js";
 import type { ClosureInfo, CodegenContext, FunctionContext } from "./context/types.js";
 import { addArrayIteratorImports, addStringImports, resolveWasmType } from "./index.js";
 import { addStringConstantGlobal, ensureExnTag, localGlobalIdx } from "./registry/imports.js";
@@ -1798,6 +1798,12 @@ export function compileArrayMethodCall(
   if (!arrInfo) return undefined;
 
   let { vecTypeIdx, arrTypeIdx, elemType } = arrInfo;
+  // #1286: tracks whether the probe found the receiver to be externref at
+  // runtime (e.g., the result of `Object.keys(any)`, which goes through the
+  // `__object_keys` host import). The `case "join":` dispatch below routes
+  // through `compileArrayJoinExtern` whenever this is set so the WasmGC-
+  // native loop doesn't try to extract a vec struct from a JS array.
+  let receiverIsExternref = false;
 
   // The receiver's actual Wasm type may differ from the TS type — e.g.
   // `[0, true].lastIndexOf(...)` infers i32 elements during construction,
@@ -1811,7 +1817,13 @@ export function compileArrayMethodCall(
       const name = receiverExpr.text;
       const localIdx = fctx.localMap.get(name);
       if (localIdx !== undefined) {
-        actualType = fctx.locals[localIdx]?.type;
+        // #1247: localIdx is the wasm-level index (params + locals);
+        // `fctx.locals` indexes only locals (no params). Use getLocalType
+        // to handle the offset correctly. Without this, in functions with
+        // params, `paths.shift()` looks up the wrong local and dispatches
+        // through a stale vec type idx, producing struct-type mismatches
+        // at instantiation.
+        actualType = getLocalType(fctx, localIdx);
       } else {
         const gIdx = ctx.moduleGlobals.get(name);
         if (gIdx !== undefined) {
@@ -1833,7 +1845,21 @@ export function compileArrayMethodCall(
         (probeResult as any).typeIdx !== undefined
       ) {
         actualType = probeResult;
+      } else if (probeResult && probeResult.kind === "externref") {
+        // Capture externref-shaped receivers too — `Object.keys(any).join(...)` and
+        // similar host-import-returning calls hit this branch (#1286). The
+        // existing struct-vec dispatch below ignores this case (it only updates
+        // vecTypeIdx for known ref types), but `case "join":` consults this flag
+        // to route through the host-import fallback.
+        actualType = probeResult;
+        receiverIsExternref = true;
       }
+    }
+    // Catch the fast-path case too: an identifier whose declared local/global
+    // type is externref (e.g., a parameter typed `any`). The slow-path probe
+    // above only runs when the fast-path lookup is ambiguous.
+    if (actualType && actualType.kind === "externref") {
+      receiverIsExternref = true;
     }
     if (
       actualType &&
@@ -1902,7 +1928,13 @@ export function compileArrayMethodCall(
       result = compileArrayConcat(ctx, fctx, methodAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType);
       break;
     case "join":
-      result = compileArrayJoin(ctx, fctx, methodAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType);
+      // #1286: when the probe found the receiver to be externref at runtime,
+      // route through the host-import fallback. The WasmGC-native path expects
+      // a vec struct; trying to extract one from a JS array via ref.cast
+      // would trap with "illegal cast".
+      result = receiverIsExternref
+        ? compileArrayJoinExtern(ctx, fctx, methodAccess, callExpr)
+        : compileArrayJoin(ctx, fctx, methodAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType);
       break;
     case "splice":
       result = compileArraySplice(ctx, fctx, methodAccess, callExpr, vecTypeIdx, arrTypeIdx, elemType);
@@ -3456,6 +3488,53 @@ function compileArrayConcatExtern(
 }
 
 /**
+ * #1286: arr.join(sep?) fallback for externref receivers (e.g., the result of
+ * `Object.keys(any)` via the `__object_keys` host import, which returns a real
+ * JS array). The native `compileArrayJoin` path expects a WasmGC vec struct;
+ * trying to extract one from an externref via `ref.cast` traps with "illegal
+ * cast". Instead, delegate to the host's `Array.prototype.join` via the
+ * `__array_join_any` import, which handles JS arrays and WasmGC vecs.
+ */
+function compileArrayJoinExtern(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  propAccess: ts.PropertyAccessExpression,
+  callExpr: ts.CallExpression,
+): ValType | null {
+  const joinAnyIdx = ensureLateImport(
+    ctx,
+    "__array_join_any",
+    [{ kind: "externref" }, { kind: "externref" }],
+    [{ kind: "externref" }],
+  );
+  flushLateImportShifts(ctx, fctx);
+  if (joinAnyIdx === undefined) return null;
+
+  // Compile receiver, coerce to externref if needed.
+  const recvType = compileExpression(ctx, fctx, propAccess.expression);
+  if (recvType && recvType.kind !== "externref") {
+    fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+  }
+
+  // Separator argument. Pass `undefined` (ref.null.extern) when no argument was
+  // given so the runtime falls back to the spec's default `,` separator —
+  // explicit `undefined` matches Array.prototype.join semantics.
+  if (callExpr.arguments.length >= 1) {
+    const argType = compileExpression(ctx, fctx, callExpr.arguments[0]!, { kind: "externref" });
+    if (argType === null) {
+      fctx.body.push({ op: "ref.null.extern" } as unknown as Instr);
+    } else if (argType.kind !== "externref") {
+      fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+    }
+  } else {
+    fctx.body.push({ op: "ref.null.extern" } as unknown as Instr);
+  }
+
+  fctx.body.push({ op: "call", funcIdx: joinAnyIdx });
+  return { kind: "externref" };
+}
+
+/**
  * arr.join(sep?) -> convert elements to strings and concatenate.
  * Receiver is a vec struct.
  */
@@ -3468,6 +3547,10 @@ function compileArrayJoin(
   arrTypeIdx: number,
   elemType: ValType,
 ): ValType | null {
+  // #1286: dispatch to compileArrayJoinExtern when the receiver evaluates to
+  // externref at runtime is handled in compileArrayMethodCall via the
+  // `receiverIsExternref` flag set by the probe. By the time we get here, the
+  // receiver is known to be a vec struct.
   const concatIdx = ctx.jsStringImports.get("concat");
   const toStrIdx = ctx.funcMap.get("number_toString");
   if (concatIdx === undefined) {

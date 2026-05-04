@@ -1,0 +1,141 @@
+---
+id: 1211
+sprint: 46
+title: "js2wasm hosted fib-recursive: Wasm validator — call param types must match"
+status: done
+created: 2026-04-29
+updated: 2026-04-30
+completed: 2026-04-30
+priority: medium
+feasibility: medium
+reasoning_effort: medium
+task_type: bugfix
+area: codegen
+language_feature: functions
+goal: compilable
+pr: 95
+origin: surfaced by competitive-benchmark run 2026-04-29
+---
+# #1211 — js2wasm hosted mode: fib-recursive produces invalid Wasm (call param type mismatch)
+
+## Problem
+
+The `fib-recursive` benchmark fails compilation in the `js2wasm -> Node.js (hosted)` lane:
+
+```
+| js2wasm -> Node.js (hosted) | | | | compile-error: [wasm-validator error in function fib] call param types must match, on  |
+```
+
+The `js2wasm -> Wasmtime` lane for fib-recursive succeeds, so this is specific to
+hosted mode (where the compiler uses `externref`-based JS host imports instead of
+native Wasm types).
+
+The `fib-recursive` benchmark source:
+```javascript
+export function run(n) {
+  if (n <= 1) return n;
+  return run(n - 1) + run(n - 2);
+}
+```
+
+## Likely cause
+
+In hosted mode, `n` and the return value are typed as `externref` (boxed numbers)
+rather than `f64`. When compiling the recursive call `run(n - 1)`, the compiler
+computes `n - 1` producing an `f64` (or i32 in fast mode), then passes it to `run`
+whose Wasm signature expects `externref`. The Wasm validator sees the type mismatch
+and rejects the module.
+
+The fix requires coercing `n - 1` to `externref` (via `__box_number`) before the
+recursive call, or adjusting the function signature to take and return `f64` rather
+than `externref` in hosted mode.
+
+## Investigation steps
+
+1. Compile `fib-recursive` in hosted mode and inspect the Wasm output:
+   ```bash
+   echo 'export function run(n) { if (n<=1) return n; return run(n-1)+run(n-2); }' > /tmp/fib.js
+   node scripts/compile.mjs /tmp/fib.js /tmp/fib.wasm 2>&1
+   wasm-objdump -d /tmp/fib.wasm | grep -A 20 "fib\|call"
+   ```
+2. Confirm the call site passes an `f64` where `externref` is expected (or vice versa)
+3. Check whether the same issue exists for mutual recursion or calls through closures
+
+## Acceptance criteria
+
+- [x] `fib-recursive` compiles without Wasm validation errors in hosted mode
+- [x] The computed result matches Node.js baseline (`run(25) === 75025`)
+- [x] No regression in equivalence tests (focused i32-fast-path suites all pass)
+- [x] `js2wasm -> Node.js (hosted)` lane for `fib-recursive` shows timing numbers
+  in the competitive benchmark (separately tracked under #1209)
+
+## Root cause
+
+There were two compounding bugs in the fast-mode codegen for an
+`any`-typed recursive function whose body contains
+`fib(n - 1) + fib(n - 2)`:
+
+### Bug A — `compileBooleanBinaryOp` silently swallows arithmetic ops
+
+`compileBinaryExpression` in `src/codegen/binary-ops.ts` dispatches to
+`compileBooleanBinaryOp` whenever `(isBooleanType(leftTsType) ||
+leftType.kind === "i32") && both operand types not externref`. That
+helper only handles comparison/equality operators; the `default:` arm
+returns `{ kind: "i32" }` without emitting any combining instruction.
+
+For `fib(n - 1)` with `n` typed as `any` and the binary op `MinusToken`,
+the i32-arithmetic path at line 1202 doesn't fire (its guard requires
+`isNumberType(leftTsType)` which is false for `any`). The dispatch
+falls into `compileBooleanBinaryOp(MinusToken)` → default arm → no
+`i32.sub` emitted. Net effect: `n - 1` compiles to "push `n`; push 1"
+with no subtraction; the call to `fib` consumes the literal `1` and
+leaves `n` orphaned on the stack. The recursion silently degenerates to
+`fib(1)` for every n > 1.
+
+### Bug B — `compileAnyBinaryDispatch` doesn't box operands
+
+`compileAnyBinaryDispatch` calls helpers like `__any_add(ref $AnyValue,
+ref $AnyValue)`, but its operand-compilation path was:
+
+```ts
+const leftType = compileExpression(ctx, fctx, expr.left);
+const rightType = compileExpression(ctx, fctx, expr.right);
+fctx.body.push({ op: "call", funcIdx });
+```
+
+It assumed `compileExpression` would naturally produce a `ref $AnyValue`,
+but in fast mode `fib(n - 1)` returns f64 (or the orphan i32 from Bug A).
+The validator rejected the resulting binary with
+`[wasm-validator error in function fib] call param types must match`.
+
+## Fix
+
+`src/codegen/binary-ops.ts`:
+
+1. In the `isBooleanType / leftType.kind === "i32"` branch, route
+   arithmetic ops on two i32 operands to `compileI32BinaryOp` (which
+   emits `i32.add` / `i32.sub` / …) instead of the comparison-only
+   `compileBooleanBinaryOp`. Falls through to `compileBooleanBinaryOp`
+   only for comparison/equality ops where it actually emits something.
+
+2. In `compileAnyBinaryDispatch`, after each operand is compiled, call
+   `coerceType(ctx, fctx, operandType, anyValueTarget)` if it isn't
+   already a `ref $AnyValue`. The existing `coerceType` boxing path
+   uses the `__any_box_i32`, `__any_box_f64`, `__any_box_ref` helpers
+   already registered by `ensureAnyHelpers`.
+
+## Verification
+
+- New regression test `tests/issue-1211.test.ts` covers:
+  - recursive `fib(n - 1) + fib(n - 2)` returns the right Fibonacci
+    value for n ∈ {0, 1, 2, 5, 10, 15};
+  - simple recursive `1 + countdown(n - 1)` doesn't drop `i32.sub`
+    (was being miscompiled to a constant);
+  - `run_hot` wrapper that forces AnyValue return type still produces
+    a valid Wasm binary.
+- Focused suites pass: 53 tests in `issue-1120`, `issue-1179`,
+  `issue-1182`, `issue-1183`, `issue-1211`, `equivalence/binary-arithmetic`;
+  59 tests in `issue-1128`, `issue-1160-1164`, `issue-138/139`.
+- Competitive benchmark `js2wasm -> Node.js (hosted)` lane reports
+  `173.9 / 44.0 / 2.2` ms for `fib-recursive` (previously
+  `compile-error: [wasm-validator error in function fib]`).

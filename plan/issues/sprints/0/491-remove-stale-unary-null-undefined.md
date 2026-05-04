@@ -1,0 +1,41 @@
+---
+id: 491
+sprint: 0
+title: "Remove stale unary +/- null/undefined skip filter (480 tests)"
+status: done
+created: 2026-03-18
+updated: 2026-04-14
+completed: 2026-04-14
+priority: medium
+feasibility: easy
+goal: maintainability
+test262_skip: 480
+files:
+  src/codegen/expressions.ts:
+    new: []
+    breaking: []
+  tests/test262-runner.ts:
+    new:
+      - "remove stale null/undefined arithmetic skip filter"
+    breaking: []
+---
+# #491 — Remove stale unary +/- null/undefined skip filter (480 tests)
+
+## Status: open
+
+480 tests skipped for "unary +/- on null/undefined" but #348 already fixed this. The skip filter is stale and should be removed or significantly narrowed.
+
+## Approach
+
+1. Remove or narrow the skip filter in test262-runner.ts
+2. Run the tests — most should pass or fail with specific errors (not compiler hangs)
+3. Create follow-up issues for any new failure patterns discovered
+
+This is purely a skip filter cleanup — no compiler changes needed.
+
+## Complexity: XS
+
+## Acceptance criteria
+- [ ] Skip filter removed
+- [ ] Tests that now pass are counted
+- [ ] Any remaining failures have specific issues filed

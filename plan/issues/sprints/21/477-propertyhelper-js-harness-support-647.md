@@ -1,0 +1,24 @@
+---
+id: 477
+sprint: 21
+title: "propertyHelper.js harness support — 647 tests"
+status: done
+created: 2026-03-18
+updated: 2026-04-14
+completed: 2026-03-18
+priority: medium
+goal: property-model
+---
+# #477 — propertyHelper.js harness support (647 tests)
+
+647 tests are skipped because they require `propertyHelper.js`. Issue #309 added stubs for some harness includes but propertyHelper.js was not included. Add no-op stubs for `verifyProperty`, `verifyEnumerable`, `verifyWritable`, `verifyConfigurable` etc. — tests that also check values will still be meaningful even without descriptor verification.
+
+## Implementation Summary
+
+Most of the propertyHelper.js stubs were already in place (verifyProperty, verifyEnumerable, verifyNotEnumerable, verifyWritable, verifyNotWritable, verifyConfigurable, verifyNotConfigurable) and propertyHelper.js was already in the allowed includes set. The missing stubs were `verifyEqualTo` and `verifyNotEqualTo`.
+
+**What was done:**
+- Added no-op stubs for `verifyEqualTo(a, b, c)` and `verifyNotEqualTo(a, b, c)` following the existing conditional-include pattern in `wrapTest()`
+
+**Files changed:**
+- `tests/test262-runner.ts` — added verifyEqualTo and verifyNotEqualTo stubs

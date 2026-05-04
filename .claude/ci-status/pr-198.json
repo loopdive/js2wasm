@@ -1,0 +1,19 @@
+{
+  "pr": 198,
+  "conclusion": "success",
+  "head_branch": "issue-1290-ts7-batch-parse",
+  "head_sha": "47be9510e28083b5c5622fdd9b92839258d4d0a6",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25267151482",
+  "timestamp": "2026-05-03T02:33:51Z",
+  "pass": 26269,
+  "fail": 13878,
+  "compile_error": 1534,
+  "snapshot_delta": 22,
+  "net_per_test": 41,
+  "regressions": 44,
+  "regressions_real": 11,
+  "regressions_wasm_change": 11,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 33,
+  "improvements": 52
+}

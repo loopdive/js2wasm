@@ -1,0 +1,30 @@
+---
+id: 137
+sprint: 2
+title: "Object literal getter/setter"
+status: done
+created: 2026-03-11
+updated: 2026-04-14
+completed: 2026-03-11
+goal: class-system
+---
+# #137 — Object literal getter/setter
+
+## Problem
+Object literals with `get`/`set` syntax (`{ get x() { return 1; } }`) are not supported. Only class-based getters/setters work.
+
+## Scope
+- `{ get prop() { ... }, set prop(v) { ... } }`
+- Object literal methods: `{ method() { ... } }`
+- Computed property getters/setters
+
+## Implementation
+- During struct type creation for object literals, detect getter/setter declarations
+- Compile getter/setter as separate functions (like class accessors)
+- Wire up property access/assignment to call getter/setter functions
+- Object literal methods already partially work via closures; ensure they work for all cases
+
+## Tests blocked
+~60 test262 tests
+
+## Complexity: M

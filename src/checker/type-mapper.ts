@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 import type { ValType } from "../ir/types.js";
 
 /** Types with built-in wasm GC handling that should NOT be treated as extern classes */
@@ -165,6 +165,13 @@ function isDeclareContext(node: ts.Node): boolean {
       return isDeclareContext(node.parent.parent);
     }
   }
+  // Top-level declarations in `.d.ts` files are implicitly ambient (#1287).
+  // Without this, `export class Foo { children: Foo[] }` in a `.d.ts` would
+  // be classified as a regular user class by `isExternalDeclaredClass` →
+  // `ensureStructForType` registers a WasmGC struct with a self-referencing
+  // field, producing a forward-reference heap type that fails Wasm validation.
+  const sf = node.getSourceFile();
+  if (sf && sf.isDeclarationFile) return true;
   return false;
 }
 
@@ -208,6 +215,34 @@ export function isNumberWrapperType(type: ts.Type): boolean {
     if (sym && sym.name === "Number") return true;
   }
   return false;
+}
+
+/** Check if a ts.Type represents the String wrapper object (e.g. `new String("x")`) */
+export function isStringWrapperType(type: ts.Type): boolean {
+  if ((type.flags & ts.TypeFlags.Object) !== 0) {
+    const sym = type.getSymbol();
+    if (sym && sym.name === "String") return true;
+  }
+  return false;
+}
+
+/** Check if a ts.Type represents the Boolean wrapper object (e.g. `new Boolean(false)`) */
+export function isBooleanWrapperType(type: ts.Type): boolean {
+  if ((type.flags & ts.TypeFlags.Object) !== 0) {
+    const sym = type.getSymbol();
+    if (sym && sym.name === "Boolean") return true;
+  }
+  return false;
+}
+
+/**
+ * Check if a ts.Type is any of Number/String/Boolean wrapper object types (#1111).
+ * These are JS objects (typeof x === "object") even though they wrap primitives.
+ * Used to route equality through JS host == / === with no numeric fallback,
+ * since wrappers have object identity semantics, not value semantics.
+ */
+export function isWrapperObjectType(type: ts.Type): boolean {
+  return isNumberWrapperType(type) || isStringWrapperType(type) || isBooleanWrapperType(type);
 }
 
 /**

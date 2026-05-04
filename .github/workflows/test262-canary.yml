@@ -1,0 +1,210 @@
+name: Test262 canary (drift detector)
+
+# Runs main HEAD's test262 conformance suite TWICE with fresh caches and
+# diffs the two results. The diff = "flip count" — tests that flipped
+# pass↔non-pass between two identical runs of the same compiler. Any
+# non-zero flip count is engine non-determinism (vitest concurrency,
+# wasmtime/V8 jitter, host import races, GC scheduler noise, etc.) — NOT
+# a compiler regression.
+#
+# Why: after #1171 / #1192 / #1191 closed the major drift sources, residual
+# non-deterministic flips still cause false positives in the dev-self-merge
+# regression gate (PR #104 audit found 48 non-CT regressions on a docs-only
+# change). We don't have a continuous mechanism to know whether drift
+# is getting WORSE — a future change to vitest config, node version, or
+# test infrastructure could silently regress determinism without anyone
+# noticing until the gate starts producing more false positives.
+#
+# This canary closes that observability gap.
+#
+# Cost: 2 × 16 chunks ≈ 32 parallel runners, ~5–10 min wall-clock,
+# ~160 CPU-min per run. Acceptable for nightly.
+#
+# Threshold rationale:
+#   N=10 initial. Picked deliberately above the floor we expect on a
+#   well-behaved run (~0–5 flips driven by wasmtime startup jitter and
+#   vitest worker non-determinism) but below the sprint-45-era drift
+#   levels (~30–50 flips). Tune after the first 2–3 nightly runs once
+#   we have a real distribution. See acceptance criteria of #1217.
+
+on:
+  workflow_dispatch:
+    inputs:
+      flip_threshold:
+        description: "Fail the run if flip count exceeds this. Default 10."
+        required: false
+        default: "10"
+        type: string
+  schedule:
+    # Daily at 03:30 UTC — picked to land before the workday starts and
+    # avoid colliding with the test262-nightly schedule (which runs the
+    # main suite, not the canary).
+    - cron: "30 3 * * *"
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  FLIP_THRESHOLD: ${{ inputs.flip_threshold || '10' }}
+
+concurrency:
+  group: test262-canary
+  cancel-in-progress: false
+
+jobs:
+  canary-shard:
+    name: canary run ${{ matrix.run }} chunk ${{ matrix.chunk }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        # Two independent runs of the same SHA, each sharded across 16 chunks.
+        run: [a, b]
+        chunk: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+
+    env:
+      COMPILER_POOL_SIZE: "4"
+      TEST262_INCLUDE_PROPOSALS: "1"
+      RUN_TIMESTAMP: ${{ github.run_id }}-${{ matrix.run }}-chunk${{ matrix.chunk }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 25
+
+      - name: Setup pnpm via Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.30.2 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Deliberately NO `actions/cache` step here — the whole point of the
+      # canary is to measure non-determinism on a cold cache, so each run
+      # must compile every test from scratch.
+
+      - name: Build compiler bundles
+        run: |
+          pnpm run build:compiler-bundle
+          ./node_modules/.bin/esbuild src/runtime.ts --bundle --platform=node --format=esm \
+            --outfile=scripts/runtime-bundle.mjs --external:typescript --external:binaryen
+
+      - name: Run shard
+        run: |
+          mkdir -p vitest-blob
+          set +e
+          node node_modules/vitest/dist/cli.js run tests/test262-chunk${{ matrix.chunk }}.test.ts \
+            --reporter=blob \
+            --outputFile=vitest-blob/blob-${{ matrix.run }}-${{ matrix.chunk }}.json
+          exit_code=$?
+          set -e
+          # Vitest exit codes 0 (all-pass) and 1 (any test failure) are both
+          # success signals for the canary — we only care about producing a
+          # JSONL artifact. Any other code (crash, OOM, etc.) is a real fail.
+          if [ "$exit_code" -ne 0 ] && [ "$exit_code" -ne 1 ]; then
+            echo "Vitest exited with unexpected code $exit_code"
+            exit "$exit_code"
+          fi
+
+      - name: Upload shard artifact
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: canary-${{ matrix.run }}-shard-${{ matrix.chunk }}
+          path: |
+            benchmarks/results/test262-results-${{ env.RUN_TIMESTAMP }}.jsonl
+          if-no-files-found: warn
+
+  compare:
+    name: canary compare runs
+    needs: canary-shard
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 25
+
+      - name: Setup pnpm via Corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.30.2 --activate
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Download canary run-a shards
+        uses: actions/download-artifact@v7
+        with:
+          path: shards/run-a
+          pattern: canary-a-shard-*
+          merge-multiple: false
+
+      - name: Download canary run-b shards
+        uses: actions/download-artifact@v7
+        with:
+          path: shards/run-b
+          pattern: canary-b-shard-*
+          merge-multiple: false
+
+      - name: Merge run-a JSONL
+        run: |
+          mkdir -p merged
+          find shards/run-a -name 'test262-results-*.jsonl' -print0 | sort -z | xargs -0 cat > merged/run-a.jsonl
+          test -s merged/run-a.jsonl
+
+      - name: Merge run-b JSONL
+        run: |
+          find shards/run-b -name 'test262-results-*.jsonl' -print0 | sort -z | xargs -0 cat > merged/run-b.jsonl
+          test -s merged/run-b.jsonl
+
+      - name: Compute flip count
+        id: diff
+        run: |
+          npx tsx scripts/test262-canary-diff.ts merged/run-a.jsonl merged/run-b.jsonl > canary-report.txt
+          cat canary-report.txt
+          # Extract the flip count for the gate step (last line is "FLIP_COUNT=N")
+          flip=$(grep '^FLIP_COUNT=' canary-report.txt | tail -1 | cut -d= -f2)
+          echo "flip_count=$flip" >> "$GITHUB_OUTPUT"
+
+      - name: Upload canary report
+        uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: test262-canary-report
+          path: |
+            canary-report.txt
+            merged/run-a.jsonl
+            merged/run-b.jsonl
+          if-no-files-found: error
+
+      - name: Fail if flip count exceeds threshold
+        if: steps.diff.outputs.flip_count != ''
+        run: |
+          flip="${{ steps.diff.outputs.flip_count }}"
+          threshold="${FLIP_THRESHOLD}"
+          if [ "$flip" -gt "$threshold" ]; then
+            echo "::error::test262 canary detected $flip flips between two identical runs (threshold: $threshold)"
+            echo "This indicates engine non-determinism above the acceptable baseline."
+            echo "See canary-report artifact for which tests flipped, and #1217 for context."
+            exit 1
+          else
+            echo "::notice::test262 canary detected $flip flips (threshold: $threshold) — within tolerance"
+          fi

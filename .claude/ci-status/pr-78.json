@@ -1,14 +1,15 @@
 {
   "pr": 78,
   "conclusion": "failure",
-  "head_branch": "worktree-issue-990-early-errors",
-  "head_sha": "6a216e43d404298831bdae185baa08b06a9402ab",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24282983357",
-  "timestamp": "2026-04-11T13:05:21Z",
-  "pass": 21471,
-  "fail": 18940,
-  "compile_error": 1398,
-  "delta": 281,
-  "regressions": 17,
-  "improvements": 298
+  "head_branch": "issue-1202-adrs",
+  "head_sha": "cda88b7bc1246d024aefd5f55253aa0d768894d9",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25018364159",
+  "timestamp": "2026-04-27T20:46:29Z",
+  "pass": 25833,
+  "fail": 13921,
+  "compile_error": 1844,
+  "snapshot_delta": 18,
+  "net_per_test": 23,
+  "regressions": 135,
+  "improvements": 158
 }

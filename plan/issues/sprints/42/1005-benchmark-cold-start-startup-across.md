@@ -1,0 +1,124 @@
+---
+id: 1005
+sprint: 42
+title: "Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js"
+status: done
+created: 2026-04-09
+updated: 2026-04-09
+completed: 2026-04-28
+priority: medium
+feasibility: medium
+reasoning_effort: medium
+task_type: test
+language_feature: benchmark-cold-start
+goal: ci-hardening
+es_edition: n/a
+---
+# #1005 -- Benchmark cold-start startup across Wasmtime, Wasm in Node.js, and native JS in Node.js
+
+## Status: open
+
+The project now has browser-facing runtime and loading-speed comparisons, but it
+still lacks a clear cold-start benchmark for server-side and CLI-style startup
+paths.
+
+For adoption questions like:
+
+- how fast does a precompiled `.wasm` module start in `wasmtime`?
+- how does that compare to the same `.wasm` module in Node.js?
+- how does both compare to running the equivalent JS directly in Node.js?
+
+we currently do not have one consistent benchmark suite and reporting path.
+
+## Goal
+
+Create a reproducible cold-start benchmark that compares:
+
+1. precompiled Wasm in `wasmtime`
+2. precompiled Wasm in Node.js
+3. native JS in Node.js
+
+for the same benchmark programs and the same measurement protocol.
+
+## Scope
+
+1. Define one or more startup-oriented benchmark programs
+   - small pure compute example
+   - moderate host-free real-world example
+   - optional larger app-shaped example
+2. Measure cold start with cache-resistant methodology
+   - process startup
+   - module load / instantiate
+   - first call to exported entrypoint
+3. Separate:
+   - module startup cost
+   - first execution cost
+4. Ensure the Wasm paths use precompiled artifacts, not source compilation
+5. Emit machine-readable results for:
+   - dashboard/report page use
+   - CI regression comparison
+
+## Suggested methodology
+
+- Node.js JS baseline:
+  - spawn fresh Node process
+  - import/require benchmark module
+  - invoke entry once
+- Node.js Wasm path:
+  - spawn fresh Node process
+  - load precompiled `.wasm`
+  - instantiate
+  - invoke entry once
+- Wasmtime path:
+  - spawn fresh `wasmtime`
+  - run the same precompiled `.wasm`
+  - capture startup + first execution timing
+
+Where possible, report:
+
+- process startup overhead
+- instantiate/load time
+- first-run completion time
+- total wall time
+
+## Acceptance criteria
+
+- benchmark script exists and is reproducible from the repo
+- compares `wasmtime`, Wasm-in-Node, and JS-in-Node on the same examples
+- does not include TS/JS-to-Wasm source compilation in the timed section
+- outputs machine-readable JSON results
+- methodology is documented so cold vs warm behavior is not conflated
+
+## Notes
+
+This benchmark is intentionally different from the landing-page browser loading
+metric:
+
+- landing page: browser incremental module loading
+- this issue: fresh-process cold start in server/runtime environments
+
+It should eventually feed reporting that answers startup questions for
+standalone Wasm deployment targets, not just browser embedding.
+
+## Test Results
+
+Local cold-start benchmark results (5 runs each, no wasmtime available in container):
+
+| Program | JS-in-Node (median wall) | Wasm-in-Node (median wall) |
+|---------|-------------------------|---------------------------|
+| array-sum | 21.4ms | 23.8ms |
+| fib-recursive | 30.3ms | 36.2ms |
+| fib (loop) | 22.4ms | 19.8ms |
+| object-ops | 22.4ms | 21.6ms |
+| string-hash | 30.0ms | FAILED (wasm:js-string interop) |
+
+4/5 programs pass both paths. Wasm-in-Node is competitive with JS-in-Node — sometimes faster (fib loop, object-ops), sometimes slightly slower (fib-recursive, array-sum). String-hash fails due to wasm:js-string builtin interop with host string_charAt import — a known limitation of mixing string backends.
+
+## Implementation Notes
+
+- `benchmarks/cold-start/run-cold-start.mjs` — main orchestrator, discovers programs from `benchmarks/competitive/programs/`, compiles to .wasm, spawns fresh child processes
+- `benchmarks/cold-start/child-js.mjs` — JS-in-Node child process, measures load + exec phases
+- `benchmarks/cold-start/child-wasm-node.mjs` — Wasm-in-Node child, builds minimal imports inline, uses `wasm:js-string` builtins
+- `benchmarks/cold-start/README.md` — methodology documentation
+- Results output to `benchmarks/results/cold-start-<timestamp>.json`
+- Wasmtime path included but gracefully skipped when not installed

@@ -20,8 +20,25 @@ import type { CodegenContext } from "./context/types.js";
  * in the Wasm binary encoding. This pass finds struct types that participate in
  * subtyping (have superTypeIdx set) but are never referenced as a parent by any
  * other type, and marks them as final so the emitter uses sub_final (0x4F).
+ *
+ * Caveat (#1173): emitting `(sub final $T)` causes Binaryen ≥ 124 (when run
+ * with `--all-features`, e.g. `wasm-opt --all-features -O4`) to convert
+ * `(ref $T)` references into `(ref exact $T)` in the re-emitted binary. The
+ * exact-reference encoding is part of the WasmGC custom-descriptors proposal
+ * and is rejected by wasmtime ≤ 44 with:
+ *   "custom descriptors required for exact reference types"
+ *
+ * The benchmark/standalone path (`--target wasi` → `wasm-opt --all-features`
+ * → `wasmtime`) is the canonical victim. Browsers (V8) accept the exact
+ * encoding, so the devirtualization optimization is preserved there.
+ *
+ * `skipFinal` is intended for callers who know their output will go through a
+ * runtime that doesn't support custom-descriptors (today: wasmtime / standalone
+ * Wasm consumers). Pass `true` to leave subtypes as plain `(sub $parent ...)`
+ * so wasm-opt has nothing to convert into an exact ref.
  */
-export function markLeafStructsFinal(mod: WasmModule): void {
+export function markLeafStructsFinal(mod: WasmModule, skipFinal = false): void {
+  if (skipFinal) return;
   // Collect all type indices that are used as a supertype
   const hasSubtypes = new Set<number>();
 

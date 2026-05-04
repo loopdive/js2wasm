@@ -1,0 +1,39 @@
+---
+id: 199
+sprint: 6
+title: "Labeled statements: 5 compile errors"
+status: done
+created: 2026-03-11
+updated: 2026-04-14
+completed: 2026-04-14
+priority: low
+goal: test-infrastructure
+files:
+  src/codegen/statements.ts:
+    new: []
+    breaking:
+      - "compileLabeledStatement: support labels on block statements and labeled function declarations"
+---
+# #199 — Labeled statements: 5 compile errors
+
+## Status: backlog
+
+## Summary
+5 test262 compile errors in `language/statements/labeled`. While 0 pass, labeled statement support exists for break/continue but more complex patterns fail.
+
+## Motivation
+5 compile errors in labeled statements. These likely involve:
+- Labels on blocks (not just loops)
+- Labeled function declarations
+- Element access on struct (1 error)
+- Type issues in labeled blocks
+
+## Scope
+- `src/codegen/statements.ts` — labeled statement codegen
+
+## Complexity
+S
+
+## Acceptance criteria
+- [ ] Labels on block statements compile
+- [ ] 3+ test262 labeled statement compile errors fixed

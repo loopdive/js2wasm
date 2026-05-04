@@ -1,0 +1,21 @@
+---
+id: 547
+sprint: 0
+title: "Restore search/filter UI in report.html"
+status: done
+created: 2026-03-18
+updated: 2026-04-14
+completed: 2026-04-14
+priority: low
+goal: developer-experience
+---
+# Issue #547: Restore search/filter UI in report.html
+
+The filter UI was lost when conformance-report.html was merged into report.html. Add back:
+
+- Text search box to filter categories by name
+- Status toggle cards (pass/fail/CE/skip) to filter by status
+- Click-to-expand category rows showing individual test results (already present)
+
+## Key files
+- `benchmarks/report.html`

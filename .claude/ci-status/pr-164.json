@@ -1,0 +1,19 @@
+{
+  "pr": 164,
+  "conclusion": "failure",
+  "head_branch": "issue-1267-optimizer-side-effect-calls",
+  "head_sha": "70fa18782f311cf97b2e0581553061aaa81759f5",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25251305023",
+  "timestamp": "2026-05-02T12:14:20Z",
+  "pass": 26071,
+  "fail": 13883,
+  "compile_error": 1728,
+  "snapshot_delta": -6,
+  "net_per_test": -7,
+  "regressions": 64,
+  "regressions_real": 28,
+  "regressions_wasm_change": 28,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 36,
+  "improvements": 57
+}

@@ -1,0 +1,22 @@
+---
+id: 614
+sprint: 0
+title: "Unsupported new expression for ArrayBuffer/DataView (203+ CE)"
+status: done
+created: 2026-03-19
+updated: 2026-04-14
+completed: 2026-04-14
+priority: medium
+goal: compilable
+---
+# Issue #614: Unsupported new expression for ArrayBuffer/DataView
+
+## Problem
+203 tests fail with "Unsupported new expression for class: ArrayBuffer" and ~118 with DataView.
+TypedArray constructors (Uint8Array, Int32Array, etc.) also hit the same error.
+
+## Fix
+Add constructor handling in `compileNewExpression` for:
+1. ArrayBuffer - vec struct with i32 elements (byte buffer)
+2. DataView - wraps an ArrayBuffer reference
+3. TypedArray constructors (Uint8Array, Int8Array, Int16Array, etc.) - vec struct with f64 elements

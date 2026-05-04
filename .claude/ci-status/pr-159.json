@@ -1,0 +1,19 @@
+{
+  "pr": 159,
+  "conclusion": "failure",
+  "head_branch": "issue-1247-typed-string-split",
+  "head_sha": "c8d2dc83bba29c0341e451b7643e47f372912831",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25248517147",
+  "timestamp": "2026-05-02T09:16:31Z",
+  "pass": 26235,
+  "fail": 13931,
+  "compile_error": 1512,
+  "snapshot_delta": 182,
+  "net_per_test": 231,
+  "regressions": 41,
+  "regressions_real": 11,
+  "regressions_wasm_change": 11,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 30,
+  "improvements": 272
+}

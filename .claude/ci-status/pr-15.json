@@ -1,0 +1,15 @@
+{
+  "pr": 15,
+  "conclusion": "success",
+  "head_branch": "issue-1079-ci-baseline-age-badge",
+  "head_sha": "9ee48b6ec6ba253cfae5ba5991eccd3e7f6fd16d",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24876329827",
+  "timestamp": "2026-04-24T06:53:01Z",
+  "pass": 25356,
+  "fail": 13958,
+  "compile_error": 2392,
+  "snapshot_delta": -47,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}

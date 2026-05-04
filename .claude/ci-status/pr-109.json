@@ -1,15 +1,17 @@
 {
   "pr": 109,
   "conclusion": "failure",
-  "head_branch": "issue-1034-prettier-stress",
-  "head_sha": "1c0f8f4f6b572c4f23f380d400b26d50087ee6a2",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24301071644",
-  "timestamp": "2026-04-12T07:06:11Z",
-  "pass": 2262,
-  "fail": 1884,
-  "compile_error": 37684,
-  "snapshot_delta": -19923,
-  "net_per_test": -19923,
-  "regressions": 19934,
-  "improvements": 11
+  "head_branch": "issue-1215-array-wasm-validation",
+  "head_sha": "046c10af7cc306c294879ee3df7a43a0f4c9a36b",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25189490197",
+  "timestamp": "2026-04-30T21:17:09Z",
+  "pass": 25815,
+  "fail": 13927,
+  "compile_error": 1849,
+  "snapshot_delta": 2,
+  "net_per_test": 8,
+  "regressions": 154,
+  "regressions_real": 37,
+  "compile_timeouts": 117,
+  "improvements": 162
 }

@@ -1,0 +1,36 @@
+---
+id: 24
+sprint: 0
+title: "Issue 24: Exponentiation operator"
+status: done
+created: 2026-02-28
+updated: 2026-04-14
+completed: 2026-02-28
+goal: core-semantics
+---
+# Issue 24: Exponentiation operator
+
+## Status: done
+
+## Summary
+Support the `**` operator and `**=` compound assignment.
+
+## Motivation
+`x ** 2` is common for squaring values, computing powers, etc. Currently unsupported.
+
+## Design
+`a ** b` maps to a host-imported `Math.pow(a, b)` call since Wasm has no native power instruction for f64. The import should be auto-registered like other Math builtins.
+
+Special case: `x ** 2` could be optimized to `x * x` (but not required for correctness).
+
+## Scope
+- `src/codegen/expressions.ts` — add `ExponentiationToken` case
+- Ensure `Math.pow` is registered as a host import
+- Tests: add to existing `tests/equivalence.test.ts`
+
+## Complexity: XS
+
+## Acceptance criteria
+- `2 ** 10 === 1024`
+- `9 ** 0.5 === 3` (square root)
+- `let x = 2; x **= 3; // x === 8`

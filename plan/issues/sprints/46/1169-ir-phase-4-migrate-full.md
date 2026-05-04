@@ -1,0 +1,116 @@
+---
+id: 1169
+sprint: 46
+title: "IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen"
+status: ready
+created: 2026-04-22
+updated: 2026-05-01
+priority: high
+feasibility: hard
+reasoning_effort: max
+task_type: feature
+area: codegen
+language_feature: compiler-internals
+goal: async-model
+depends_on: [1167c, 1168]
+required_by: [1169a]
+---
+# #1169 — IR Phase 4: full compiler migration, retire legacy codegen
+
+## Goal
+
+The legacy `src/codegen/` path (expressions.ts, statements.ts, type-coercion.ts,
+fixups.ts, stack-balance.ts) is retired. Every language feature compiles through
+the IR. The selector (`src/ir/select.ts`) claims the whole module.
+
+## Current state
+
+The IR path is additive: `planIrCompilation` claims only functions whose
+entire call-graph satisfies `isPhase1Expr` — currently numeric/bool
+tail-shaped functions. Everything else falls through to the legacy
+AST→Wasm path unchanged. The legacy path handles:
+
+- String operations, template literals
+- Object literals, property access, prototype chain
+- Closures, captured variables, ref cells
+- Classes, `this`, `super`
+- Iterators, generators, async/await
+- Destructuring, rest/spread
+- RegExp, TypedArray, DataView
+- `try`/`catch`/`finally`, `throw`
+- `switch`, labeled break/continue
+- `delete`, `in`, `instanceof`, `typeof`
+- Dynamic imports, `eval`
+- All repair passes: `stackBalance`, `fixupStructNewArgCounts`,
+  `fixupStructNewResultCoercion`, most of `peepholeOptimize`
+
+## Migration strategy
+
+Migration happens incrementally through selector widening — each slice adds
+new expression/statement shapes to `isPhase1Expr` and corresponding IR
+lowering in `from-ast.ts` and `lower.ts`. The legacy path shrinks as each
+slice ships.
+
+### Slice sequence (rough ordering by dependency and impact)
+
+1. **String ops** — string literals, `+` concatenation, `===`/`!==`, `.length`,
+   template literals. Requires `LatticeType` string (from #1168 Slice 1).
+2. **`typeof` / null-checks** — already in #1168 Slice 1.
+3. **Object literals + property access** — `{ a: 1 }`, `obj.prop`, `obj[key]`.
+   Requires shape inference in `LatticeType` (#1168 Slice 2).
+4. **Closures** — captured variable ref cells. Requires `struct.new` in `IrInstr`
+   and escape analysis (#1167c / Phase 3d).
+5. **Classes** — `this`, method dispatch, prototype chain.
+6. **Iterators + `for-of`** — iterator protocol, `Symbol.iterator`.
+7. **Generators + async/await** — coroutine transform.
+8. **Destructuring, rest/spread**.
+9. **`try`/`catch`/`finally`** — exception tags, Wasm `try`/`catch` blocks.
+10. **Remaining builtins** — RegExp, TypedArray, DataView, `eval` (#1163/#1164).
+
+Each slice is its own sub-issue. This issue is the tracker.
+
+## Retirement criteria
+
+The legacy path is retired when:
+- `isPhase1Expr` accepts all syntactic forms that appear in test262
+- `compileIrPathFunctions` covers 100% of functions in a typical module
+- `stackBalance`, `fixupStructNewArgCounts`, `fixupStructNewResultCoercion`
+  have zero functions to check (or are removed)
+- `src/codegen/expressions.ts`, `statements.ts`, `type-coercion.ts` are
+  deleted or reduced to thin shims
+
+## What this unlocks
+
+- Single coherent compilation pipeline — no legacy/IR split in `integration.ts`
+- Repair passes (`stackBalance`, fixups) eliminated — IR lowerer emits correct
+  code by construction
+- Optimization passes (CF, DCE, inline, mono, tagged-unions, escape) apply to
+  the whole module, not just the narrow IR-path slice
+- Wasm output quality improves uniformly across all language features
+
+## Acceptance criteria
+
+1. `planIrCompilation` claims 100% of functions in `tests/equivalence.test.ts`
+   inputs — verified by asserting no function falls through to the legacy path
+2. All equivalence tests pass
+3. test262 pass rate does not regress
+4. `src/codegen/stack-balance.ts`, `fixups.ts` removed or gated to no-op
+5. `src/codegen/expressions.ts` and `statements.ts` removed
+
+## Related
+
+- #1131 — Phase 1 + Phase 2 (IR scaffold + propagation)
+- #1167a/b/c — Phase 3 (optimization passes)
+- #1168 — IR frontend widening (selector + lattice, prerequisite for slices 1–3)
+- #744 — monomorphization (addressed by Phase 3c)
+- #745 — tagged unions (addressed by Phase 3c)
+- #747 — escape analysis (prerequisite for closure slice)
+
+## Remaining slices (S47)
+
+| Slice | Issue | Description | Blocked by |
+|---|---|---|---|
+| 11 | #1169n | switch + missing binary/unary operators | — |
+| 12 | #1169o | dynamic element access + array literals | #1169n |
+| 13 | #1169p | String + Array prototype methods | #1169o |
+| 14 | #1169q | Retire legacy codegen (delete expressions.ts/statements.ts) | #1169n + #1169o + #1169p |

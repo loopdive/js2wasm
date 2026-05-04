@@ -29,6 +29,31 @@ jobs:
           submodules: recursive
           fetch-depth: 0
           fetch-tags: true
+          # Smudge LFS-tracked files. Without this, .wasm/.log files arrive as
+          # pointer stubs and any binary served from public/ ships as text —
+          # e.g. loadtime wasm modules failing with `expected magic word 00 61
+          # 73 6d, found 76 65 72 73`. Loadtime artifacts are also opted out
+          # of LFS via .gitattributes for safety.
+          lfs: true
+
+      - name: Fetch baseline data from baselines repo
+        run: |
+          # Baseline JSONL and summary JSON now live in js2wasm-baselines,
+          # not in LFS on the main repo, to avoid LFS bandwidth exhaustion.
+          git clone --depth=1 https://github.com/loopdive/js2wasm-baselines.git /tmp/js2wasm-baselines 2>/dev/null || true
+          if [ -f /tmp/js2wasm-baselines/test262-current.json ]; then
+            mkdir -p public/benchmarks/results benchmarks/results/runs
+            cp /tmp/js2wasm-baselines/test262-current.json   public/benchmarks/results/test262-report.json
+            cp /tmp/js2wasm-baselines/test262-current.json   benchmarks/results/test262-current.json
+            cp /tmp/js2wasm-baselines/test262-current.json   benchmarks/results/test262-report.json
+            [ -f /tmp/js2wasm-baselines/test262-current.jsonl ] && \
+              cp /tmp/js2wasm-baselines/test262-current.jsonl public/benchmarks/results/test262-results.jsonl
+            [ -f /tmp/js2wasm-baselines/runs/index.json ] && \
+              cp /tmp/js2wasm-baselines/runs/index.json benchmarks/results/runs/index.json
+            echo "Fetched baseline data from js2wasm-baselines."
+          else
+            echo "Warning: baselines repo not available — pages will build with stale/empty baseline."
+          fi
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -41,7 +66,7 @@ jobs:
           corepack prepare pnpm@10.30.2 --activate
 
       - name: Setup Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -50,9 +75,9 @@ jobs:
         run: pnpm build:pages
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
-          path: pages-dist
+          path: dist/pages
 
   deploy:
     if: github.repository == 'loopdive/js2wasm'

@@ -1,0 +1,15 @@
+{
+  "pr": 73,
+  "conclusion": "failure",
+  "head_branch": "issue-1169f-7b-ir-generators-non-numeric",
+  "head_sha": "5e8ff0a8168909c994374b2337f1b44ca5d705a2",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25002864045",
+  "timestamp": "2026-04-27T15:30:55Z",
+  "pass": 25809,
+  "fail": 13921,
+  "compile_error": 1846,
+  "snapshot_delta": 7,
+  "net_per_test": 1202,
+  "regressions": 145,
+  "improvements": 1347
+}

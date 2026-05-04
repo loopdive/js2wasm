@@ -1,15 +1,17 @@
 {
   "pr": 121,
   "conclusion": "failure",
-  "head_branch": "issue-1091-early-errors",
-  "head_sha": "a1e4a2b0a73e7582c78a17345a6c77aaa3269928",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24302805256",
-  "timestamp": "2026-04-12T08:50:31Z",
-  "pass": 2265,
-  "fail": 1881,
-  "compile_error": 37684,
-  "snapshot_delta": -19920,
-  "net_per_test": -19920,
-  "regressions": 19934,
-  "improvements": 14
+  "head_branch": "issue-1197-i32-elem-spec",
+  "head_sha": "9c2e6170de0e24beb53f46ace6f20659c618acd9",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25210381067",
+  "timestamp": "2026-05-01T10:06:08Z",
+  "pass": 25821,
+  "fail": 13914,
+  "compile_error": 1767,
+  "snapshot_delta": 203,
+  "net_per_test": -17,
+  "regressions": 142,
+  "regressions_real": 33,
+  "compile_timeouts": 109,
+  "improvements": 125
 }

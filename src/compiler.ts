@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
-import ts from "typescript";
+import { ts } from "./ts-api.js";
 import {
   analyzeFiles,
   analyzeMultiSource,
@@ -29,6 +29,7 @@ import { WasmEncoder } from "./emit/encoder.js";
 import { generateSourceMap } from "./emit/sourcemap.js";
 import { emitWat } from "./emit/wat.js";
 import { applyDefineSubstitutions } from "./compiler/define-substitution.js";
+import { rewriteCjsRequire } from "./cjs-rewrite.js";
 import { preprocessImports } from "./import-resolver.js";
 import type { CompileError, CompileOptions, CompileResult } from "./index.js";
 import { optimizeBinary } from "./optimize.js";
@@ -137,14 +138,21 @@ export function compileSource(
   // Step 0a: Apply compile-time define substitutions (#1043)
   const definedSource = options.define ? applyDefineSubstitutions(source, options.define) : source;
 
+  // Step 0a.5: Rewrite CommonJS `const X = require('Y')` patterns to ESM `import`
+  // declarations (#1279). This must run before preprocessImports so the resulting
+  // import statements get the same declare-stub treatment as user-written imports,
+  // and before `detectNodeFsImports` so `const fs = require('node:fs')` is picked
+  // up as a node:fs import for WASI mode.
+  const cjsRewritten = rewriteCjsRequire(definedSource);
+
   // Step 0b: Pre-process imports (replace import * as X with declare namespace)
   // #1054: rewrite eval("...super()...") to a throwing IIFE so early-error
   // rules for PerformEval fire at runtime.
   //
   // Before preprocessing strips import declarations, detect node:fs imports
   // for WASI mode (preprocessing replaces them with declare stubs).
-  const wasiNodeFsFuncs = options.target === "wasi" ? detectNodeFsImports(definedSource) : undefined;
-  const preprocessed = preprocessImports(rewriteEvalSuperCall(definedSource));
+  const wasiNodeFsFuncs = options.target === "wasi" ? detectNodeFsImports(cjsRewritten) : undefined;
+  const preprocessed = preprocessImports(rewriteEvalSuperCall(cjsRewritten));
   const processedSource = preprocessed.source;
 
   // Step 1: Parse and type-check
@@ -329,6 +337,7 @@ export function compileSource(
         sourceMap: emitSourceMap,
         fast: options.fast,
         nativeStrings: options.nativeStrings,
+        testRuntime: options.testRuntime,
         wasi: options.target === "wasi",
         // Phase 2 (#1131): default experimentalIR to on so recursive
         // numeric kernels (fib, factorial, etc.) compile without the
@@ -365,6 +374,12 @@ export function compileSource(
       }
     }
   } catch (e) {
+    if (
+      typeof WebAssembly !== "undefined" &&
+      (WebAssembly as unknown as { Exception?: Function }).Exception &&
+      e instanceof (WebAssembly as unknown as { Exception: Function }).Exception
+    )
+      throw e;
     pushSourceAnchoredDiagnostic(
       errors,
       ast.sourceFile,
@@ -424,6 +439,12 @@ export function compileSource(
       binary = emitBinary(mod);
     }
   } catch (e) {
+    if (
+      typeof WebAssembly !== "undefined" &&
+      (WebAssembly as unknown as { Exception?: Function }).Exception &&
+      e instanceof (WebAssembly as unknown as { Exception: Function }).Exception
+    )
+      throw e;
     pushSourceAnchoredDiagnostic(
       errors,
       ast.sourceFile,
@@ -515,9 +536,14 @@ export function compileMultiSource(
   const emitWatOutput = options.emitWat !== false;
 
   // Apply define substitutions to all source files (#1043)
-  const processedFiles = options.define
+  const definedFiles = options.define
     ? Object.fromEntries(Object.entries(files).map(([k, v]) => [k, applyDefineSubstitutions(v, options.define!)]))
     : files;
+
+  // Rewrite CJS `const X = require('Y')` to ESM `import X from 'Y'` (#1279) across
+  // every input file. This runs before TypeScript's analyzer so the require() calls
+  // are seen as proper module imports during cross-file resolution.
+  const processedFiles = Object.fromEntries(Object.entries(definedFiles).map(([k, v]) => [k, rewriteCjsRequire(v)]));
 
   const multiAst = analyzeMultiSource(processedFiles, entryFile, undefined, {
     allowJs: options.allowJs,
@@ -604,6 +630,7 @@ export function compileMultiSource(
         sourceMap: emitSourceMap,
         fast: options.fast,
         nativeStrings: options.nativeStrings,
+        testRuntime: options.testRuntime,
         wasi: options.target === "wasi",
       });
       mod = result.module;
@@ -632,6 +659,12 @@ export function compileMultiSource(
       }
     }
   } catch (e) {
+    if (
+      typeof WebAssembly !== "undefined" &&
+      (WebAssembly as unknown as { Exception?: Function }).Exception &&
+      e instanceof (WebAssembly as unknown as { Exception: Function }).Exception
+    )
+      throw e;
     pushSourceAnchoredDiagnostic(
       errors,
       multiAst.entryFile,
@@ -683,6 +716,12 @@ export function compileMultiSource(
       binary = emitBinary(mod);
     }
   } catch (e) {
+    if (
+      typeof WebAssembly !== "undefined" &&
+      (WebAssembly as unknown as { Exception?: Function }).Exception &&
+      e instanceof (WebAssembly as unknown as { Exception: Function }).Exception
+    )
+      throw e;
     pushSourceAnchoredDiagnostic(
       errors,
       multiAst.entryFile,
@@ -835,6 +874,7 @@ export function compileFilesSource(entryPath: string, options: CompileOptions = 
         sourceMap: emitSourceMap,
         fast: options.fast,
         nativeStrings: options.nativeStrings,
+        testRuntime: options.testRuntime,
         wasi: options.target === "wasi",
       });
       mod = result.module;
@@ -862,6 +902,12 @@ export function compileFilesSource(entryPath: string, options: CompileOptions = 
       }
     }
   } catch (e) {
+    if (
+      typeof WebAssembly !== "undefined" &&
+      (WebAssembly as unknown as { Exception?: Function }).Exception &&
+      e instanceof (WebAssembly as unknown as { Exception: Function }).Exception
+    )
+      throw e;
     pushSourceAnchoredDiagnostic(
       errors,
       multiAst.entryFile,
@@ -907,6 +953,12 @@ export function compileFilesSource(entryPath: string, options: CompileOptions = 
       binary = emitBinary(mod);
     }
   } catch (e) {
+    if (
+      typeof WebAssembly !== "undefined" &&
+      (WebAssembly as unknown as { Exception?: Function }).Exception &&
+      e instanceof (WebAssembly as unknown as { Exception: Function }).Exception
+    )
+      throw e;
     pushSourceAnchoredDiagnostic(
       errors,
       multiAst.entryFile,

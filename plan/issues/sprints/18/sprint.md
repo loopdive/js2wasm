@@ -26,12 +26,13 @@ _Issues not completed in this sprint were returned to the backlog._
 <!-- GENERATED_ISSUE_TABLES_START -->
 ## Issue Tables
 
-_Generated from issue frontmatter. Update issue `sprint` / `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
+_Generated from issue files. Update issue `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
 
 ### Done
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #688 | Refactor codebase into smaller modules per language feature | medium | done |
 | #764 | - 'immutable global' assignment error (240 CE) | low | done |
 | #768 | - throwOnNull default regression: ~6400 tests fail with TypeError (null/undefined access) | critical | done |
 | #776 | - 'not enough arguments on the stack for call' (362 CE) | medium | done |

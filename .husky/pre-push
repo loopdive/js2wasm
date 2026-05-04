@@ -1,33 +1,103 @@
 #!/bin/sh
-# Refresh landing-page benchmarks locally when pushing a version tag.
-# Benchmarks are tied to releases, not every push — CI runners are too
-# noisy for display-quality numbers.
+# Pre-push hook with two responsibilities:
 #
-# Triggers on: git push origin v1.2.3 (or any v{major}.{minor}.{patch} tag)
-# Skip with: git push --no-verify
+#   1. (safety) Refuse to push anything under `labs/` to the public remote.
+#      The `labs/` top-level directory holds private content that must
+#      only ship to `loopdive/js2wasm-labs` (the `labs` remote).
+#
+#   2. (convenience) Refresh landing-page benchmarks locally when pushing
+#      a version tag. Benchmarks are tied to releases, not every push —
+#      CI runners are too noisy for display-quality numbers.
+#
+# Skip the entire hook with: git push --no-verify  (only do this when you
+# *know* you are not pushing private content to public).
 
 remote="$1"
-if [ "$remote" != "origin" ]; then
-  exit 0
+remote_url=$(git remote get-url "$remote" 2>/dev/null || echo "")
+
+# ---------- (1) labs/ safety check ---------------------------------------
+#
+# Classify the remote by URL rather than by name. Anyone can rename their
+# remotes locally; the URL is the authoritative signal.
+
+case "$remote_url" in
+  *loopdive/js2wasm.git|*loopdive/js2wasm)
+    is_public=1
+    ;;
+  *)
+    is_public=0
+    ;;
+esac
+
+if [ "$is_public" = "1" ]; then
+  while read local_ref local_oid remote_ref remote_oid; do
+    # Skip deletes (no labs/ paths in a delete diff).
+    if [ "$local_oid" = "0000000000000000000000000000000000000000" ]; then
+      continue
+    fi
+
+    # Determine the diff range and list the changed paths.
+    if [ "$remote_oid" = "0000000000000000000000000000000000000000" ]; then
+      # New branch on the remote — compare against the remote's main if we
+      # can find a merge-base; otherwise scan all commits the new branch
+      # introduces.
+      base=$(git merge-base "$local_oid" "${remote}/main" 2>/dev/null || echo "")
+      if [ -z "$base" ]; then
+        diff_paths=$(git log --name-only --pretty=format: "$local_oid" 2>/dev/null | sort -u)
+      else
+        diff_paths=$(git diff --name-only "$base..$local_oid" 2>/dev/null)
+      fi
+    else
+      diff_paths=$(git diff --name-only "$remote_oid..$local_oid" 2>/dev/null)
+    fi
+
+    forbidden=$(printf '%s\n' "$diff_paths" | grep -E '^labs/' || true)
+    if [ -n "$forbidden" ]; then
+      echo ""
+      echo "==========================================================================="
+      echo "ERROR: Refusing to push labs/ paths to a public remote."
+      echo "       remote: $remote ($remote_url)"
+      echo "---------------------------------------------------------------------------"
+      echo "The following paths are private and may not appear in the public repo:"
+      echo ""
+      printf '%s\n' "$forbidden" | sed 's/^/  /' | head -30
+      remaining=$(printf '%s\n' "$forbidden" | wc -l)
+      if [ "$remaining" -gt 30 ]; then
+        echo "  ... and $((remaining - 30)) more."
+      fi
+      echo ""
+      echo "Push to the private 'labs' remote instead:"
+      echo "  git push labs $local_ref"
+      echo ""
+      echo "If this push is intentionally public AND your diff includes labs/ paths,"
+      echo "split the change so the labs/ paths land separately on the labs remote."
+      echo "==========================================================================="
+      exit 1
+    fi
+  done
 fi
 
-while read local_ref local_oid remote_ref remote_oid; do
-  case "$remote_ref" in
-    refs/tags/v[0-9]*)
-      echo "Pre-push: version tag detected ($remote_ref) — refreshing benchmarks..."
-      pnpm run refresh:benchmarks 2>&1 | tail -5
-      git add -f \
-        benchmarks/results/playground-benchmark-sidebar.json \
-        benchmarks/results/size-benchmarks.json \
-        benchmarks/results/latest.json \
-        benchmarks/results/history.json \
-        public/benchmarks/results/playground-benchmark-sidebar.json \
-        public/benchmarks/results/size-benchmarks.json \
-        playground/public/benchmarks/results/playground-benchmark-sidebar.json 2>/dev/null
-      if ! git diff --cached --quiet 2>/dev/null; then
-        git commit --no-verify -m "chore(benchmarks): refresh for $remote_ref"
-        echo "Pre-push: benchmark data committed."
-      fi
-      ;;
-  esac
-done
+# ---------- (2) version-tag benchmark refresh ----------------------------
+
+if [ "$remote" = "origin" ]; then
+  while read local_ref local_oid remote_ref remote_oid; do
+    case "$remote_ref" in
+      refs/tags/v[0-9]*)
+        echo "Pre-push: version tag detected ($remote_ref) — refreshing benchmarks..."
+        pnpm run refresh:benchmarks 2>&1 | tail -5
+        git add -f \
+          benchmarks/results/playground-benchmark-sidebar.json \
+          benchmarks/results/size-benchmarks.json \
+          benchmarks/results/latest.json \
+          benchmarks/results/history.json \
+          public/benchmarks/results/playground-benchmark-sidebar.json \
+          public/benchmarks/results/size-benchmarks.json \
+          playground/public/benchmarks/results/playground-benchmark-sidebar.json 2>/dev/null
+        if ! git diff --cached --quiet 2>/dev/null; then
+          git commit --no-verify -m "chore(benchmarks): refresh for $remote_ref"
+          echo "Pre-push: benchmark data committed."
+        fi
+        ;;
+    esac
+  done
+fi

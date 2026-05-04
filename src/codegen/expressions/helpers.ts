@@ -9,7 +9,7 @@
  *   - wasmFuncReturnsVoid / wasmFuncTypeReturnsVoid: void-return predicates
  *   - getWasmFuncReturnType: get the actual Wasm return type of a function
  */
-import ts from "typescript";
+import { ts } from "../../ts-api.js";
 import { isVoidType, unwrapPromiseType } from "../../checker/type-mapper.js";
 import type { Instr, ValType } from "../../ir/types.js";
 import { getLocalType } from "../context/locals.js";

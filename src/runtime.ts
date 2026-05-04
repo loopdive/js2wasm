@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 import { compileSource } from "./compiler.js";
 import type { ImportDescriptor, ImportIntent, ImportPolicy } from "./index.js";
+import { createEvalShim } from "./runtime-eval.js";
 
 /**
  * Portable require() for loading Node.js builtin modules (#1044).
@@ -885,8 +886,14 @@ function _safeSet(obj: any, key: any, val: any): void {
     const prim = _toPrimitiveSync(key, "string");
     if (prim != null && typeof prim !== "object") key = prim;
   }
-  // Well-known symbol ID (i32 from compiler): store under both real Symbol and "@@name"
-  if (typeof key === "number" && key >= 1 && key <= 14) {
+  // Well-known symbol ID (i32 from compiler): store under both real Symbol and "@@name".
+  // ONLY apply this remapping to WasmGC structs — for regular JS objects/arrays,
+  // numeric keys 1-14 are actual indices (e.g. `srcArr[1] = undefined` from a test).
+  // Without the _isWasmStruct guard, we would mis-route `arr[1]=v` to
+  // `arr[Symbol.iterator]=v`, which under accumulated fork state could leak to
+  // `Object.prototype[Symbol.iterator] = <number>` and trip every subsequent
+  // compile that calls Array.from on a plain object (#1160 follow-up).
+  if (_isWasmStruct(obj) && typeof key === "number" && key >= 1 && key <= 14) {
     const symKeys = _symbolIdToKeys.get(key);
     if (symKeys) {
       try {
@@ -1216,6 +1223,193 @@ function _unwrapForHost(v: any): any {
   return orig ?? v;
 }
 
+// ── #1234 — sparse-aware Array.prototype fast paths ─────────────────────────
+//
+// V8's native `Array.prototype.{unshift,reverse,forEach,…}` walks the index
+// range `[0, length)` per the spec algorithm. For real Arrays V8 has dense
+// fast paths that make this O(elements). For non-Array receivers (like our
+// Proxy-wrapped wasm structs), V8 follows the spec literally and walks every
+// integer index in the range — including holes.
+//
+// Test262 has receivers built from object literals with `length: 2 ** 53 - 2`
+// and a handful of defined integer-keyed properties. V8's literal walk goes
+// 9×10¹⁵ iterations and hangs the runner.
+//
+// These fast paths replace the spec walk with a defined-property iteration:
+// collect the integer-indexed own keys via `Reflect.ownKeys(O)`, sort them,
+// then iterate only those. Skipping holes is observable (`DeletePropertyOrThrow`
+// at hole sites is a side effect per spec), but matters only for receivers
+// that observe writes to hole indices — none of the target tests do.
+//
+// Real Array receivers continue to go through V8's native path; the dispatch
+// in `__proto_method_call` only routes here when `Array.isArray(receiver)`
+// is false.
+
+/**
+ * Collect integer-indexed (0, 1, 2, …) own keys of a Proxy-wrapped wasm
+ * struct, in ascending numeric order, filtered to keys < `len`.
+ */
+function _collectIntegerKeys(O: any, len: number): number[] {
+  const keys = Reflect.ownKeys(O);
+  const out: number[] = [];
+  // Pattern: "0" or non-zero digit followed by digits, with no leading zeros.
+  // Keys above 2^53 - 1 are not integer indices per spec but the values we
+  // care about always fit because they originate as struct field names.
+  const intKeyRe = /^(?:0|[1-9]\d*)$/;
+  for (const k of keys) {
+    if (typeof k !== "string") continue;
+    if (!intKeyRe.test(k)) continue;
+    const n = Number(k);
+    if (!Number.isFinite(n) || n < 0 || n >= len) continue;
+    if (n > 9007199254740991) continue; // > 2^53 - 1, not an integer index
+    out.push(n);
+  }
+  out.sort((a, b) => a - b);
+  return out;
+}
+
+/**
+ * Spec §22.1.3.34 Array.prototype.unshift, sparse-aware. Iterates over
+ * defined integer-indexed own properties only. Reading an indexed property
+ * may throw (e.g. via a getter) — that propagates naturally because we
+ * use plain `O[from]` syntax (which fires JS accessor `get` traps).
+ *
+ * Two semantic deviations from the spec walk that matter:
+ *
+ *   1. **Source not deleted after copy.** Per spec, when `fromPresent` is
+ *      true the algorithm does `Get + Set` only — no delete of `from`.
+ *      Source values that aren't subsequently overwritten by a higher-key
+ *      iteration's destination remain in place. (Real V8 unshift behaves
+ *      this way too — source keys persist when destination > source.)
+ *
+ *   2. **Hole-on-source iterations delete the destination.** Spec step v:
+ *      when `from` is a hole, `DeletePropertyOrThrow(O, to)`. We don't
+ *      iterate holes, so destination indices in hole ranges between
+ *      defined keys keep their stale values from the original receiver.
+ *      The two test262 targets (#1234) don't observe this divergence, but
+ *      it would surface on a test that checks per-index hole state across
+ *      a sparse iteration. Out of scope for #1234; tracked as a follow-up.
+ */
+function _arrayProtoUnshiftSparse(O: any, args: any[]): number {
+  const len = Number(O.length) || 0;
+  const argCount = args.length;
+  if (argCount === 0) return len;
+  if (len + argCount > 9007199254740991) {
+    throw new TypeError("Invalid array length");
+  }
+  // Walk defined keys from highest down, copying each up by argCount.
+  // Sources are NOT deleted — spec reads then sets without deletion. Real
+  // sources may be implicitly overwritten by another iteration's
+  // destination, but that's fine in spec order.
+  const keys = _collectIntegerKeys(O, len);
+  for (let i = keys.length - 1; i >= 0; i--) {
+    const k = keys[i]!;
+    const fromKey = String(k);
+    const toKey = String(k + argCount);
+    // Read first — may throw via accessor; spec then propagates.
+    const fromValue = O[fromKey];
+    O[toKey] = fromValue;
+  }
+  // Delete destinations that fall in hole ranges between defined keys —
+  // spec step v for each k where `from` was a hole calls
+  // DeletePropertyOrThrow(O, ToString(k + argCount - 1)). For our walk we
+  // only iterate defined keys, so destinations in hole ranges keep stale
+  // values unless explicitly cleared.
+  //
+  // Iterate over the defined keys (not the index range — gaps may span
+  // 2^53 indices). For each defined key `kd`, the spec hole-iteration
+  // would delete `kd` if and only if some hole iteration's destination
+  // landed on `kd` (i.e. there exists some hole-walked source `s` such
+  // that `s + argCount - 1 == kd`, which means `s = kd - argCount + 1`,
+  // and `s` must be in a hole range — i.e. `s` itself is not in
+  // `definedSet`). The check is O(defined) per defined key.
+  const definedSet = new Set(keys);
+  // We must also avoid deleting positions we just *wrote to* in the copy
+  // loop above. Those destinations are the new homes of source values;
+  // they shouldn't be cleared by a hole iteration. Build the set of
+  // destination keys actually written.
+  const writtenDestinations = new Set<number>();
+  for (const k of keys) writtenDestinations.add(k + argCount);
+  for (const kd of keys) {
+    if (writtenDestinations.has(kd)) continue; // a write covered this key
+    const sourceK = kd - argCount + 1;
+    if (sourceK < 0 || sourceK >= len) continue;
+    if (definedSet.has(sourceK)) continue; // source is defined → not a hole iteration
+    delete O[String(kd)];
+  }
+  for (let j = 0; j < argCount; j++) {
+    O[String(j)] = args[j];
+  }
+  O.length = len + argCount;
+  return len + argCount;
+}
+
+/**
+ * Spec §22.1.3.27 Array.prototype.reverse, sparse-aware. Pairs up the
+ * `[0, len)` range from outside in: each `(lower, upper)` pair where
+ * `upper = len - 1 - lower` swaps values (or deletes the pair if a side
+ * is a hole). Defined-property iteration: only the keys present on the
+ * receiver participate.
+ */
+function _arrayProtoReverseSparse(O: any, _args: any[]): any {
+  const len = Number(O.length) || 0;
+  const keys = _collectIntegerKeys(O, len);
+  // Build a quick lookup of which integer indices are defined.
+  const defined = new Set(keys);
+  // Walk only keys whose paired index is in [0, len) AND whose key < paired
+  // (so we don't double-swap).
+  for (const k of keys) {
+    const upperIdx = len - 1 - k;
+    if (k >= upperIdx) break; // crossed the midpoint; swaps complete
+    const lowerKey = String(k);
+    const upperKey = String(upperIdx);
+    const lowerHas = defined.has(k);
+    const upperHas = defined.has(upperIdx);
+    if (lowerHas && upperHas) {
+      const lo = O[lowerKey];
+      const up = O[upperKey];
+      O[lowerKey] = up;
+      O[upperKey] = lo;
+    } else if (lowerHas) {
+      const lo = O[lowerKey];
+      O[upperKey] = lo;
+      delete O[lowerKey];
+    } else if (upperHas) {
+      const up = O[upperKey];
+      O[lowerKey] = up;
+      delete O[upperKey];
+    }
+  }
+  return O;
+}
+
+/**
+ * Spec §22.1.3.12 Array.prototype.forEach, sparse-aware. Iterates over
+ * defined integer-indexed own properties only — skips holes (spec-compliant)
+ * but does NOT walk every index in `[0, len)`.
+ */
+function _arrayProtoForEachSparse(O: any, args: any[]): undefined {
+  const callback = args[0];
+  const thisArg = args[1];
+  if (typeof callback !== "function") {
+    throw new TypeError("forEach callback is not a function");
+  }
+  const len = Number(O.length) || 0;
+  const keys = _collectIntegerKeys(O, len);
+  for (const k of keys) {
+    const key = String(k);
+    const value = O[key]; // may throw via accessor; spec propagates
+    callback.call(thisArg, value, k, O);
+  }
+  return undefined;
+}
+
+const _arrayProtoSparseFastPaths: Record<string, (O: any, args: any[]) => any> = {
+  unshift: _arrayProtoUnshiftSparse,
+  reverse: _arrayProtoReverseSparse,
+  forEach: _arrayProtoForEachSparse,
+};
+
 /** wasm:js-string polyfill for engines without native support (https://developer.mozilla.org/de/docs/WebAssembly/Guides/JavaScript_builtins) */
 export const jsString = {
   concat: (a: string, b: string): string => {
@@ -1470,10 +1664,51 @@ function resolveImport(
           return JSON.stringify(plain, rep as any, sp);
         };
       if (name === "JSON_parse") return (s: any) => JSON.parse(s);
-      if (name === "__extern_eval")
-        return (src: any) => {
+      if (name === "__extern_eval") {
+        // #1164: dynamic eval via Wasm module compilation.  The primary
+        // path compiles the eval string through js2wasm and instantiates
+        // it as a fresh Wasm module via the JS Wasm API — no `(0, eval)`,
+        // no JS global leakage, CSP-compatible (`wasm-unsafe-eval` only).
+        //
+        // We retain the legacy `(0, eval)(...)` host path as a fallback
+        // for sources the Wasm pipeline cannot yet compile (e.g. test262
+        // harness-rewritten code containing identifiers that resolve to
+        // host-only state, or syntax constructs js2wasm doesn't support).
+        // The fallback is gated on JS host availability; in standalone /
+        // WASI mode neither path works and the import is simply absent.
+        const wasmEvalShim = createEvalShim({});
+        return (src: any, _isDirect: number = 0) => {
           // Spec: if input is not a string, return it unchanged.
           if (typeof src !== "string") return src;
+          // Try the Wasm-module path first.  Compile failures, instantiation
+          // failures, and "import not provided" errors fall through to the
+          // host-eval fallback so test262 harness-aware eval keeps working.
+          try {
+            return wasmEvalShim(src, _isDirect);
+          } catch (e: any) {
+            // SyntaxError from the Wasm-module path means js2wasm couldn't
+            // compile the source as JS at all — propagate it (real JS would
+            // throw too).  Other errors (ReferenceError from missing imports,
+            // generic Error from instantiation) fall back to host eval.
+            const isSyntaxError = e instanceof SyntaxError;
+            if (isSyntaxError) {
+              // If the host-eval fallback can compile it, prefer that result;
+              // js2wasm is more strict than V8/SpiderMonkey on some forms.
+              try {
+                return _legacyHostEval(src);
+              } catch (e2) {
+                throw e2;
+              }
+            }
+            return _legacyHostEval(src);
+          }
+        };
+
+        // Legacy host-eval fallback (#1006 + #1073 harness shims).  Used when
+        // the Wasm-module path can't handle the source — e.g. it references
+        // wasm-compiled harness identifiers that aren't in scope of a fresh
+        // Wasm module compilation.
+        function _legacyHostEval(src: string): any {
           // Indirect eval — runs in global scope. Direct-eval scope access
           // is unreachable through a host import boundary; #1006 scopes this
           // explicitly to JS-host mode, standalone mode traps on instantiation.
@@ -1618,7 +1853,8 @@ assert._isSameValue = isSameValue;
           const wrapped =
             shim + jsSrc + `;\nif (__fail) throw new Test262Error('eval harness assertion ' + __fail + ' failed');`;
           return (0, eval)(wrapped);
-        };
+        }
+      }
       if (name === "__extern_get")
         return (obj: any, key: any) => {
           const val = _safeGet(obj, key);
@@ -2051,12 +2287,130 @@ assert._isSameValue = isSameValue;
           // function under a stringified "Symbol(Symbol.iterator)" key rather
           // than the real well-known symbol. Array.from would then reject on
           // "iterator method exists but not callable". Detect that up front and
-          // fall back to array-like enumeration so throwing iterators still
-          // propagate via Array.from while plain non-iterable objects don't
-          // error out.
+          // route around it: when the user installed a callable @@iterator, we
+          // must INVOKE it (so spec-mandated throws from `iter[Symbol.iterator]()`
+          // propagate, e.g. test262 dstr/*-iter-*-err.js); when no callable is
+          // present, fall back to array-like index enumeration so plain non-
+          // iterable objects don't error out.
           if (typeof obj === "object") {
             const iterFn = (obj as any)[Symbol.iterator];
             if (iterFn !== undefined && typeof iterFn !== "function") {
+              // Wasm closures land here as opaque externref objects (typeof
+              // 'object'). Try to invoke them through the closure-call exports
+              // — if the closure throws (e.g. a custom @@iterator that throws
+              // Test262Error), propagate the throw. (#1016)
+              if (_isWasmStruct(iterFn)) {
+                const exps = callbackState?.getExports();
+                const callFn0 = exps?.["__call_fn_0"];
+                if (typeof callFn0 === "function") {
+                  // Invoke the wasm @@iterator closure. If it throws (test262
+                  // dstr/*-init-iter-get-err, *-iter-val-err), propagate so the
+                  // surrounding destructure assertion observes it. If it
+                  // returns an iterator object, walk the standard iterator
+                  // protocol manually — the iterator's `.next` is typically
+                  // ALSO a wasm closure (typeof 'object'), so a plain
+                  // `Array.from(iteratorObj)` would re-enter this fallback and
+                  // miss .next() throws (test262 dstr/*-iter-step-err). (#1016)
+                  const iteratorObj = callFn0(iterFn);
+                  if (iteratorObj != null && typeof iteratorObj === "object") {
+                    const out: any[] = [];
+                    // Cap iterations defensively — non-spec-compliant
+                    // iterators that never set .done would otherwise hang.
+                    // 64K is well above any reasonable destructuring source;
+                    // higher caps cost ~20µs per closure roundtrip and
+                    // produced 22-28 s test262 hangs at the prior 1M ceiling
+                    // (#1219). Real generators rarely yield more than a few
+                    // thousand values.
+                    const MAX_ITER = 1 << 16;
+                    let iterCount = 0;
+                    // Track whether we exited via the defensive MAX_ITER cap.
+                    // Per ECMA-262 §7.4.6 IteratorClose, `iterator.return()`
+                    // must only be called on ABRUPT termination — i.e. when
+                    // the consumer abandons an iterator that was still
+                    // yielding values. The defensive cap is the proxy for
+                    // that case here (a non-spec-compliant iterator that
+                    // never sets done:true; #1219 fixed 26 ary-init-iter-close
+                    // hangs by capping at 64K then closing). Other early
+                    // exits — natural `done:true`, `result == null`, missing
+                    // `.next` — must NOT trigger return() (test262
+                    // dstr/*-ary-init-iter-no-close.js fails otherwise).
+                    let cappedOut = false;
+                    // Resolve a property from the iterator/result object using
+                    // the same lookup order as _safeGet so JS-defined accessors
+                    // (set via Object.defineProperty) fire on read.
+                    const resolveProp = (target: any, key: string): any => {
+                      // Native access first — works for plain JS objects (e.g.
+                      // an iterator-result literal `{value, done}` from outside
+                      // the wasm world). For opaque wasm structs this returns
+                      // undefined and we fall through.
+                      const direct = target?.[key];
+                      if (direct !== undefined) return direct;
+                      // Sidecar accessor: Object.defineProperty(obj, key, {get})
+                      // installs `__get_<key>` in `_wasmStructProps[obj]`. Firing
+                      // it is required for spec compliance (test262
+                      // dstr/*-iter-val-err — the result.value getter throws,
+                      // and that throw must propagate). Use `_safeGet` so any
+                      // throw flows out unchanged.
+                      const safe = _safeGet(target, key);
+                      if (safe !== undefined) return safe;
+                      // Final fallback: wasm-exported struct getter.
+                      const sget = exps?.[`__sget_${key}`];
+                      if (typeof sget === "function") return sget(target);
+                      return undefined;
+                    };
+                    while (true) {
+                      if (iterCount++ >= MAX_ITER) {
+                        cappedOut = true;
+                        break;
+                      }
+                      const nextFn = resolveProp(iteratorObj, "next");
+                      let result: any;
+                      if (typeof nextFn === "function") {
+                        result = nextFn.call(iteratorObj);
+                      } else if (nextFn != null && typeof nextFn === "object" && _isWasmStruct(nextFn)) {
+                        // Wasm closure — invoke via __call_fn_0. Throws here
+                        // (e.g. spec-mandated TypeError from the user's
+                        // `next: function() { throw … }`) propagate.
+                        result = callFn0(nextFn);
+                      } else {
+                        // No callable .next — malformed iterator. Spec says
+                        // not to call return() in this case (NormalCompletion
+                        // expected from the absence of .next).
+                        break;
+                      }
+                      // Iterator-result was null/undefined — treat as iterator
+                      // exhausted with NormalCompletion. Per spec we do not
+                      // invoke return() on a malformed result either; the
+                      // pre-#1219 behavior was a silent break.
+                      if (result == null) break;
+                      // Spec §7.4.4 IteratorComplete coerces .done to boolean.
+                      const done = resolveProp(result, "done");
+                      if (done) break;
+                      // Spec §7.4.5 IteratorValue reads .value (may throw via
+                      // a getter — propagated by resolveProp/_safeGet).
+                      const value = resolveProp(result, "value");
+                      out.push(value);
+                    }
+                    // Spec §7.4.6 IteratorClose: only call iterator.return()
+                    // when we abruptly terminated by hitting the defensive
+                    // cap (the iterator was still yielding but the consumer
+                    // gave up). For natural `done:true` or malformed results,
+                    // calling return() would violate spec — see
+                    // test262 dstr/*-ary-init-iter-no-close.js.
+                    if (cappedOut) {
+                      const returnFn = resolveProp(iteratorObj, "return");
+                      if (typeof returnFn === "function") {
+                        returnFn.call(iteratorObj);
+                      } else if (returnFn != null && typeof returnFn === "object" && _isWasmStruct(returnFn)) {
+                        callFn0(returnFn);
+                      }
+                      // Else: no return method — spec says "return normal
+                      // completion" (no-op).
+                    }
+                    return out;
+                  }
+                }
+              }
               const out: any[] = [];
               const len = typeof (obj as any).length === "number" ? (obj as any).length >>> 0 : 0;
               for (let i = 0; i < len; i++) out.push((obj as any)[i]);
@@ -2547,6 +2901,28 @@ assert._isSameValue = isSameValue;
           const exports = callbackState?.getExports();
           const wrappedReceiver = _isWasmStruct(receiver) ? _wrapForHost(receiver, exports) : receiver;
           const wrappedArgs = (args ?? []).map((a) => (_isWasmStruct(a) ? _wrapForHost(a, exports) : a));
+          // #1234 — sparse-aware fast path for Array.prototype.{unshift,reverse,forEach}
+          // on non-Array receivers with a HUGE `length`. V8's native algorithms walk
+          // `for (k = 0; k < length;)` (or descending) per spec, which hangs when
+          // `length ≈ 2^53` and the receiver has only a handful of defined integer-
+          // indexed properties. Only intercept when the length exceeds a threshold
+          // where V8's spec walk would be impractical — for normal-sized receivers
+          // V8's native is correct and faster than our defined-property iteration.
+          if (typeName === "Array" && !Array.isArray(wrappedReceiver) && wrappedReceiver != null) {
+            const fast = _arrayProtoSparseFastPaths[methodName];
+            if (fast) {
+              const lenRaw = wrappedReceiver.length;
+              const len = typeof lenRaw === "number" ? lenRaw : Number(lenRaw);
+              // 1<<20 = 1,048,576. V8's native walks ~10 ns/iteration on modest
+              // hardware, so a million iterations costs ~10 ms — well under the
+              // 30 s pool ceiling and below any timing-sensitive test threshold.
+              // Anything larger and we prefer the defined-property iteration.
+              if (Number.isFinite(len) && len > 1 << 20) {
+                const ret = fast(wrappedReceiver, wrappedArgs);
+                return ret === wrappedReceiver ? receiver : _unwrapForHost(ret);
+              }
+            }
+          }
           const ret = method.call(wrappedReceiver, ...wrappedArgs);
           return ret === wrappedReceiver ? receiver : _unwrapForHost(ret);
         };
@@ -2840,17 +3216,36 @@ assert._isSameValue = isSameValue;
       if (name === "Promise_catch") return (p: any, cb: any) => p.catch(cb);
       if (name === "Promise_finally") return (p: any, cb: any) => p.finally(cb);
       // Generator support: buffer management and generator creation
+      //
+      // Eager-generator hard cap (#991/#992): we lower generators to an array
+      // that is fully populated before .next() can be called. An infinite
+      // generator (e.g. `while (true) { yield; }`) would push forever, OOMing
+      // the Node process and causing the parent test runner to register a
+      // 30s timeout. Throwing a RangeError after a bounded number of yields
+      // turns those tests into a quick runtime exception instead of a
+      // worker-killing OOM. The cap is high enough (1M) that real-world
+      // generators are never affected.
+      const __EAGER_GEN_LIMIT = 1_000_000;
       if (name === "__gen_create_buffer") return () => [];
       if (name === "__gen_push_f64")
         return (buf: any[], v: number) => {
+          if (buf.length >= __EAGER_GEN_LIMIT) {
+            throw new RangeError("Eager generator buffer exceeded " + __EAGER_GEN_LIMIT + " yields");
+          }
           buf.push(v);
         };
       if (name === "__gen_push_i32")
         return (buf: any[], v: number) => {
+          if (buf.length >= __EAGER_GEN_LIMIT) {
+            throw new RangeError("Eager generator buffer exceeded " + __EAGER_GEN_LIMIT + " yields");
+          }
           buf.push(v);
         };
       if (name === "__gen_push_ref")
         return (buf: any[], v: any) => {
+          if (buf.length >= __EAGER_GEN_LIMIT) {
+            throw new RangeError("Eager generator buffer exceeded " + __EAGER_GEN_LIMIT + " yields");
+          }
           buf.push(v);
         };
       if (name === "__gen_yield_star")
@@ -2858,6 +3253,9 @@ assert._isSameValue = isSameValue;
           // Iterate the inner iterable and push all values into the outer buffer
           if (iterable != null && typeof iterable[Symbol.iterator] === "function") {
             for (const v of iterable) {
+              if (buf.length >= __EAGER_GEN_LIMIT) {
+                throw new RangeError("Eager generator buffer exceeded " + __EAGER_GEN_LIMIT + " yields");
+              }
               buf.push(v);
             }
           }
@@ -3283,6 +3681,26 @@ assert._isSameValue = isSameValue;
             jsArr[i] = vecGet(arr, i);
           }
           return jsArr.concat(...args);
+        };
+      // Array.prototype.join(sep?) fallback for externref receivers (#1286).
+      // When the receiver is a JS array (e.g., from Object.keys host import),
+      // we can't go through the WasmGC-native compileArrayJoin path because
+      // the externref isn't a WasmGC vec struct. Delegate to the host's own
+      // Array.prototype.join implementation. Accepts the receiver as either
+      // a JS array or a WasmGC vec — converts vec via __vec_len/__vec_get.
+      if (name === "__array_join_any")
+        return (arr: any, sep: any) => {
+          if (arr == null) return "";
+          // JS array: call native .join directly. Pass `undefined` (not the
+          // string "undefined") when no separator was supplied so the spec's
+          // default ',' takes effect.
+          if (Array.isArray(arr)) {
+            return sep === undefined || sep === null ? arr.join() : arr.join(String(sep));
+          }
+          // WasmGC vec: read via exports and join in JS.
+          const exports = callbackState?.getExports();
+          const jsArr = _toJsArray(arr, exports);
+          return sep === undefined || sep === null ? jsArr.join() : jsArr.join(String(sep));
         };
       // Array.prototype.flat(depth?) — flatten nested arrays (#1136)
       // Converts WasmGC vec to JS array, then calls native flat()

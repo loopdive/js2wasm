@@ -1,0 +1,201 @@
+---
+id: 1207
+sprint: 47
+title: "perf(test262): root-cause and fix the 136 compile_timeout tests (~7.6 min wall-clock cost per run)"
+status: done
+created: 2026-04-27
+updated: 2026-04-27
+completed: 2026-05-02
+priority: high
+feasibility: medium
+reasoning_effort: high
+task_type: performance
+area: codegen
+language_feature: misc
+goal: ci-hardening
+required_by: [1227]
+es_edition: n/a
+related: [1171]
+origin: surfaced 2026-04-27 during a test262-runtime parallelism analysis. The 9-fork CompilerPool is fully saturated, but 136 tests hit the 30 s `compile_timeout` ceiling each run, adding ~7.6 min of wall-clock at 9-way parallelism — roughly doubling the total run time.
+---
+# #1207 — Root-cause the 136 test262 `compile_timeout` tests
+
+## Problem
+
+The current test262 baseline (`benchmarks/results/test262-current.jsonl`,
+43,168 tests) shows **136 tests with `status: compile_timeout`**. Each
+of these occupies a CompilerPool fork for the full 30 s timeout
+ceiling — that's:
+
+- 4,080 fork-seconds of wasted compile time per run
+- ~**7.6 minutes** of additional wall-clock at 9-way parallelism
+- Roughly doubles the total wall-clock run time (healthy work is ~7-8 min)
+
+A separate observation that strengthens this issue: the per-test
+compile-time distribution is **bimodal** — almost every test compiles
+in well under 1 second, and the tail jumps straight to the 30 s
+timeout wall. There are zero compiles in the 1-30 s range. That
+suggests the timeouts are not "naturally slow tests" but **specific
+compiler bugs** (infinite loops in codegen, exponential backtracking,
+quadratic behaviour in some pass) that hang indefinitely until the
+pool kills them.
+
+## Implementation plan
+
+### Phase 1 — bucket the 136
+
+Run a one-off analysis script that:
+
+1. Reads `benchmarks/results/test262-current.jsonl`
+2. Filters to `status: compile_timeout`
+3. Groups by path prefix (e.g. `language/expressions/async-arrow`,
+   `built-ins/RegExp/prototype/exec`)
+4. For each top bucket (>5 tests), pick a representative file and
+   manually compile it with a 60 s ceiling and `--profile` / Node
+   inspector to see where time is spent
+
+Output: `plan/notes/test262-timeout-clusters.md` listing the buckets,
+representative files, and likely root-cause hypothesis per bucket.
+
+### Phase 2 — fix the root causes (separate issues per cluster)
+
+Most likely the 136 timeouts cluster into 5-15 distinct compiler
+bugs. Examples of common patterns this typically surfaces:
+
+- **Exponential blow-up in regex compilation**: complex regex literal
+  triggers an O(2^n) state explosion in NFA construction.
+- **Infinite loop in fixpoint passes**: dead-code, type-narrowing, or
+  late-import shifts that don't reach a fixpoint on certain shapes.
+- **Quadratic-or-worse rewriting**: a pass that walks the AST and
+  also walks each node's body for each visit (n³ or worse on deeply
+  nested code).
+- **Regex / state-machine recursion** in early-error detection.
+
+For each cluster identified in Phase 1, file a separate sprint issue
+with the failing pattern + the proposed fix. Most fixes are local to
+one pass / one function — typical effort 1-2 days each.
+
+### Phase 3 — tighten the timeout ceiling once the bugs are fixed
+
+After the root causes are addressed, drop the timeout from 30 s to
+10 s in `tests/test262-shared.ts` and `scripts/compiler-pool.ts`.
+The bimodal distribution means a 10 s ceiling catches the same hangs
+without losing any honest work. Save the wall-clock cost on regressions
+that re-introduce hangs (they'd be caught faster).
+
+This phase only lands once Phase 2 has eliminated the legitimate
+30 s outliers, otherwise we'd just convert 30 s timeouts into 10 s
+timeouts without saving the underlying work.
+
+### Out of scope (already documented elsewhere or separate issue)
+
+- **Caching known-timeout tests** (skip them by default, hit only on
+  `--recheck`) — discussed in the analysis but is a workaround, not a
+  fix. If we ship caching, we mask regressions. Phase 2 is the right
+  fix; defer caching unless Phase 2 gets stuck.
+- **Pipelining compile↔execute within a fork** — separate parallelism
+  win; orthogonal to this issue.
+- **Sharding across multiple vitest forks** — separate parallelism
+  win; orthogonal.
+
+## Acceptance criteria
+
+1. **Phase 1 deliverable**: `plan/notes/test262-timeout-clusters.md`
+   listing the 5-15 distinct buckets, representative files, and
+   per-bucket hypothesis.
+2. **Phase 2 deliverable**: ≥80% of the 136 timeouts fixed (target
+   ≤30 timeouts remaining). Each cluster fixed via its own follow-up
+   issue with a regression test.
+3. **Phase 3 deliverable**: timeout ceiling lowered from 30 s to 10 s
+   in `tests/test262-shared.ts` and `scripts/compiler-pool.ts`.
+4. **Wall-clock impact**: full local test262 run drops from
+   ~14-16 min to ~8-10 min. Verifiable via `time pnpm run test:262`
+   before and after.
+5. CI test262 net delta ≥ 0 — all 136 tests previously hitting
+   `compile_timeout` now show their *actual* result (likely a mix of
+   pass / fail / compile_error). Net `compile_timeout` count drops
+   to ≤30.
+
+## Reproducer / measurement
+
+Today's data point (43,168 tests, baseline `2d5b69d54`):
+
+| Status | Count | % |
+|---|---:|---:|
+| pass | 25,387 | 58.8% |
+| fail | 13,913 | 32.2% |
+| compile_error | 2,393 | 5.5% |
+| skip | 1,339 | 3.1% |
+| **compile_timeout** | **136** | **0.3%** |
+
+Cost: 136 × 30 s / 9 forks = **453 s = 7.6 min wall-clock added per run**.
+
+To reproduce the bucketing analysis:
+
+```bash
+python3 - <<'PY'
+import json
+from collections import Counter
+buckets = Counter()
+with open('benchmarks/results/test262-current.jsonl') as f:
+    for line in f:
+        d = json.loads(line)
+        if d.get('status') == 'compile_timeout':
+            buckets['/'.join(d['file'].split('/')[:5])] += 1
+for path, n in buckets.most_common():
+    print(f"{n:4d}  {path}")
+PY
+```
+
+## Notes
+
+This is the third item on the test262-parallelism analysis (the first
+two were "the 9-fork pool is correctly parallel" — confirmed — and
+"compile↔exec pipelining within each fork" — separate issue). Of the
+three, **this one has the highest wall-clock leverage on local test262
+runs today**: roughly halves the time. Filed as `priority: high` for
+sprint 47.
+
+The fixes are also intrinsically valuable beyond the wall-clock win:
+each cluster represents a real compiler bug that can hang on
+adversarial input. Fixing them improves the compiler's robustness,
+not just its CI throughput.
+
+## Phase 1 outcome (2026-05-01)
+
+The phase-1 deliverable lives at
+[`plan/notes/test262-timeout-clusters.md`](../../../notes/test262-timeout-clusters.md).
+That note now carries an `Update 2026-05-01` section at the top with the
+final Phase-1 finding.
+
+Headline result: with the iter-close cluster fixed in a prior PR, **the
+remaining 156 reported `compile_timeout` entries are not compiler bugs**.
+A single-threaded isolation probe over all 156 (script:
+`.tmp/probe-all-timeouts.mts`) compiles them in **31.6 s total wall-clock**
+(max individual compile: 553 ms). 134 succeed; the other 22 are legitimate
+sub-second `compile_error`s. None genuinely time out.
+
+Root cause: `scripts/compiler-pool.ts:195` starts the timeout timer at
+*enqueue* time, so jobs queued behind a saturated pool accumulate wall-clock
+against a timer that fires before the worker ever picks them up.
+
+This changes the planned Phase 2 / Phase 3 work:
+
+- **Phase 2 (5–15 separate cluster fixes) is no longer applicable.** The
+  clusters aren't real compiler bugs; they're queue-ordering artefacts.
+  The original cluster table in this issue (Array, TypedArray, Object,
+  RegExp, …) is preserved in the notes file as historical context.
+- **A new follow-up should be filed (e.g. `#1207a`)** to move the timer
+  creation from `enqueue` into `dispatch` in `compiler-pool.ts` — a
+  one-spot change. After it lands and the next baseline refresh runs,
+  the `compile_timeout` count is expected to drop into the single
+  digits (only tests that genuinely loop or backtrack inside the
+  compiler, if any).
+- **Phase 3 (lower the 30 s ceiling to 10 s) becomes safe** once the
+  dispatch-time-timer fix has landed, since real isolated compile times
+  are all <1 s.
+
+This PR (#1207 worktree `issue-1207-timeout-clusters`) lands only the
+Phase 1 analysis update. The runner fix and the timeout reduction will
+land in dedicated follow-ups so each carries its own regression test
+and CI baseline diff.

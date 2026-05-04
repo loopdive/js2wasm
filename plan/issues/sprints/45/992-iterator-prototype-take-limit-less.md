@@ -1,0 +1,52 @@
+---
+id: 992
+sprint: 45
+title: "Iterator.prototype.take limit-less-than-total hits 30s compiler timeout"
+status: done
+created: 2026-04-07
+updated: 2026-04-27
+completed: 2026-04-27
+priority: medium
+feasibility: medium
+reasoning_effort: medium
+goal: iterator-protocol
+resolved_by: "#1085 (iterative bodyUsesArguments, PR #127)"
+test262_ct: 1
+---
+# #992 -- Iterator.prototype.take limit-less-than-total hits 30s compiler timeout
+
+## Problem
+
+The full official-scope recheck (`benchmarks/results/test262-results-20260407-005506.jsonl`)
+contains a dedicated **30s compile timeout** for:
+
+- `test/built-ins/Iterator/prototype/take/limit-less-than-total.js`
+
+This is only one file, but it still costs a full **30s worker slot** on every
+full run and sits in the same broader Iterator helper area as #991.
+
+## Why this should be separate
+
+The timeout is in `Iterator.prototype.take`, not the `generator-is-running`
+cluster. It likely represents a different slow path:
+
+- helper pipeline for bounded iteration
+- array/result accumulation
+- limit arithmetic / loop lowering
+
+## ECMAScript spec reference
+
+- [§27.1.4.2 Iterator.prototype.take](https://tc39.es/ecma262/#sec-iteratorprototype.take) — step 6: if remaining ≤ 0, return IteratorClose and complete
+
+
+## Suggested fix
+
+1. Reproduce the test in isolation
+2. Compare generated helper/code size against other passing Iterator helper tests
+3. Identify whether `take` lowers through a unique loop/closure path
+4. Add a regression check so compile time stays below the timeout threshold
+
+## Acceptance criteria
+
+- `limit-less-than-total.js` compiles in <5s locally
+- no `compile_timeout` for this test in a full recheck

@@ -1,23 +1,17 @@
 // Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 import * as path from "path";
-import ts from "typescript";
+import { ts } from "./ts-api.js";
 import type { CompileOptions } from "./index.js";
+import { rewriteCjsRequire } from "./cjs-rewrite.js";
+import { getDefaultEnvironment } from "./env.js";
 
-function isBrowserLikeRuntime(): boolean {
-  return typeof window !== "undefined" || typeof (globalThis as any).WorkerGlobalScope !== "undefined";
-}
-// Lazy-load fs for browser compatibility.
-// Dynamic import avoids bundlers resolving it at build time and avoids
-// eval("require") warnings. The top-level await resolves before any
-// sync getFs() call since module evaluation completes before exports are used.
-let _fs: typeof import("fs") | null = null;
-try {
-  _fs = isBrowserLikeRuntime() ? null : await import("node:fs");
-} catch {
-  _fs = null;
-}
-function getFs() {
-  return _fs;
+// Filesystem access goes through the environment adapter (#1096).
+// This module no longer probes `typeof window` / `typeof process` directly
+// and no longer uses top-level `await` — `getDefaultEnvironment()` is fully
+// synchronous, which lets embedders import the resolver without forcing the
+// whole module graph through async initialization.
+function getFs(): typeof import("node:fs") | null {
+  return getDefaultEnvironment().fs;
 }
 
 /**
@@ -351,27 +345,40 @@ export function getBarePackageName(specifier: string): string | null {
  * Recursively resolve all imports starting from an entry file,
  * building a complete dependency graph.
  *
+ * Files are returned in topological order (deps first, importers last,
+ * entry last). This is essential for module-init code generation:
+ * top-level statements that depend on imported variables must run
+ * after their dependencies' top-level statements (#1109).
+ *
+ * Cycles are tolerated — when re-entering a node we drop the back-edge
+ * and continue the post-order walk. The result mirrors ES module
+ * evaluation order: each module's body runs after its imports' bodies,
+ * with cycles broken by the first-seen position.
+ *
  * @returns A map of file paths to source contents (including the entry file)
  */
 export function resolveAllImports(entryFile: string, resolver: ModuleResolver): Map<string, string> {
   const resolved = new Map<string, string>();
   const visited = new Set<string>();
-  const queue: string[] = [path.resolve(entryFile)];
+  const onStack = new Set<string>();
 
-  while (queue.length > 0) {
-    const filePath = queue.pop()!;
-    if (visited.has(filePath)) continue;
-    visited.add(filePath);
+  function visit(filePath: string): void {
+    if (visited.has(filePath) || onStack.has(filePath)) return;
+    onStack.add(filePath);
 
     let content: string;
     try {
       content = getFs()!.readFileSync(filePath, "utf-8");
     } catch {
       // File not found — skip (TS will report errors)
-      continue;
+      onStack.delete(filePath);
+      return;
     }
 
-    resolved.set(filePath, content);
+    // Rewrite CJS `const X = require('Y')` to ESM `import X from 'Y'` so the
+    // dependency-walk below picks up CommonJS modules' transitive deps the same
+    // way it picks up ESM ones (#1279).
+    content = rewriteCjsRequire(content);
 
     // Parse to find import specifiers
     const sf = ts.createSourceFile(
@@ -382,24 +389,28 @@ export function resolveAllImports(entryFile: string, resolver: ModuleResolver): 
       filePath.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
     );
 
+    // Visit dependencies first (post-order DFS) so their content lands
+    // in `resolved` before this file's content. This produces a true
+    // topological order: deps before importers, entry last.
     for (const stmt of sf.statements) {
       if (ts.isImportDeclaration(stmt) && ts.isStringLiteral(stmt.moduleSpecifier)) {
         const specifier = stmt.moduleSpecifier.text;
         const resolvedPath = resolver.resolve(specifier, filePath);
-        if (resolvedPath && !visited.has(resolvedPath)) {
-          queue.push(resolvedPath);
-        }
+        if (resolvedPath) visit(resolvedPath);
       }
       // Also handle export ... from "..."
       if (ts.isExportDeclaration(stmt) && stmt.moduleSpecifier && ts.isStringLiteral(stmt.moduleSpecifier)) {
         const specifier = stmt.moduleSpecifier.text;
         const resolvedPath = resolver.resolve(specifier, filePath);
-        if (resolvedPath && !visited.has(resolvedPath)) {
-          queue.push(resolvedPath);
-        }
+        if (resolvedPath) visit(resolvedPath);
       }
     }
+
+    visited.add(filePath);
+    onStack.delete(filePath);
+    resolved.set(filePath, content);
   }
 
+  visit(path.resolve(entryFile));
   return resolved;
 }

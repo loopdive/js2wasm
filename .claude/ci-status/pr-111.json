@@ -1,15 +1,17 @@
 {
   "pr": 111,
   "conclusion": "failure",
-  "head_branch": "issue-1082-ci-feed-net-per-test",
-  "head_sha": "db8919ff89941d9f3bbb46bc3babc8cff0b68586",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24290145909",
-  "timestamp": "2026-04-11T19:48:18Z",
-  "pass": 20624,
-  "fail": 16636,
-  "compile_error": 4561,
-  "snapshot_delta": 0,
-  "net_per_test": 80,
-  "regressions": 1,
-  "improvements": 81
+  "head_branch": "issue-1198-presize-dense-arrays",
+  "head_sha": "3bddd1578d17cfc28c16d845b8453aba1c4c9579",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25191608478",
+  "timestamp": "2026-04-30T22:15:41Z",
+  "pass": 25829,
+  "fail": 13924,
+  "compile_error": 1836,
+  "snapshot_delta": -10,
+  "net_per_test": -3,
+  "regressions": 147,
+  "regressions_real": 37,
+  "compile_timeouts": 110,
+  "improvements": 144
 }

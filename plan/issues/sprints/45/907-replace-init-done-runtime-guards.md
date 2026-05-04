@@ -1,0 +1,142 @@
+---
+id: 907
+sprint: 45
+title: "Replace __init_done runtime guards with start/init entry semantics"
+status: done
+created: 2026-04-02
+updated: 2026-04-25
+completed: 2026-04-25
+priority: high
+feasibility: medium
+reasoning_effort: high
+goal: developer-experience
+depends_on: [900]
+required_by: [908]
+files:
+  src/codegen/index.ts:
+    modify:
+      - "Avoid emitting __init_done runtime guard globals for module-init-only programs when start/init semantics can be decided statically"
+  src/compiler.ts:
+    modify:
+      - "Expose the selected init/entrypoint strategy clearly so runtimes can instantiate without extra hot-path guards"
+  playground/main.ts:
+    modify:
+      - "Consume compile-time init metadata instead of depending on runtime guard-oriented behavior"
+---
+# #907 -- Replace `__init_done` runtime guards with start/init entry semantics
+
+## Problem
+
+For module-init-only programs, the compiler currently emits a runtime guard global:
+
+```wat
+(global $__init_done (mut i32) (i32.const 0))
+```
+
+This came up with the example:
+
+```ts
+function squared(n) {
+  return n * n;
+}
+
+let result = 0;
+
+for (let i = 0; i < 10000; i++) {
+  result += squared(10);
+}
+
+console.log(result);
+```
+
+Even though the program is effectively "run module initialization once", the emitted module shape still carries `__init_done` machinery intended to guard exported execution paths.
+
+That decision should not be deferred to runtime when the compiler already knows the module has:
+
+- top-level executable statements
+- no explicit exported `main()`
+- a single intended initialization sequence
+
+Using a Wasm `start` function, or an explicit compile-time-selected init entry, would be simpler than carrying runtime guard state into the emitted module.
+
+## Goal
+
+Move one-time module initialization to a compile/load-time entry strategy instead of preserving `__init_done` runtime guard state in emitted modules.
+
+## Requirements
+
+1. Distinguish module-init-only programs from explicit exported-entry programs at compile time
+2. Prefer a start/init entry strategy over `__init_done` globals and injected guard preambles where supported
+3. Keep runtime behavior deterministic for playground and non-playground consumers
+4. Preserve cases where explicit guarded exports are still actually required
+5. Add regression coverage using the example above
+
+## Acceptance criteria
+
+- the example above no longer emits `__init_done`
+- init-once behavior still works correctly
+- exported-entry programs keep correct semantics
+- runtime setup becomes simpler and less guard-oriented for module-init-only code
+
+## Test Results
+
+### Sample from the issue (module-init-only)
+```ts
+function squared(n) { return n * n; }
+let result = 0;
+for (let i = 0; i < 10000; i++) { result += squared(10); }
+console.log(result);
+```
+- Binary no longer contains `__init_done` global ✓
+- Binary now uses Wasm `start` section: `(start <idx>)` ✓
+- No `_start` export wrapper (init runs automatically on instantiate) ✓
+- Top-level code executes during `WebAssembly.instantiate()` and prints `1000000` ✓
+
+### `tests/issue-907.test.ts`
+8 / 8 new tests pass — covers module-init-only, exports + top-level, main()
+prepended init, pure exports, WASI mode, and "init runs exactly once" semantics.
+
+### Equivalence regression check
+- main: 106 failed | 1185 passed (1291)
+- branch: 106 failed | 1185 passed (1291)
+- exact same set of failing test files; no new regressions
+
+### Bug found and fixed during implementation
+Late-added union imports via `addUnionImports` shift defined-function indices
+but did NOT update `ctx.mod.startFuncIdx`, causing `(start 0)` to point at the
+wrong function and trip `WebAssembly.validate()`. Now also remapped alongside
+`declaredFuncRefs` and table elements.
+
+## Implementation
+
+`src/codegen/declarations.ts` — when a module has top-level executable
+statements but no user-declared `main()`, the compiler now emits an unexported
+`__module_init` function and (for non-WASI targets) sets
+`ctx.mod.startFuncIdx = initFuncIdx`. The Wasm engine runs the start function
+once during instantiation, before any export becomes callable. This replaces
+both the legacy `__init_done` runtime guard with per-export guard preambles
+*and* the `_start` export wrapper for module-init-only programs.
+
+For WASI targets, `addWasiStartExport` continues to create a `_start` export
+wrapping `__module_init`; `startFuncIdx` is intentionally NOT set so the WASI
+host's explicit `_start` invocation remains the single entry point (otherwise
+init would run twice).
+
+Supporting changes:
+
+- `src/ir/types.ts` — added `startFuncIdx?: number` to `WasmModule`.
+- `src/emit/binary.ts` — emit Wasm start section (id 8) between Export and
+  Element when `startFuncIdx` is set.
+- `src/emit/wat.ts` — emit `(start <idx>)` directive after exports.
+- `src/codegen/dead-elimination.ts` — mark `startFuncIdx` as a function root
+  (so dead-import elimination keeps `__module_init`) and remap it after the
+  function-index renumber.
+- `src/codegen/index.ts` (`addUnionImports`) — shift `startFuncIdx` alongside
+  the existing `declaredFuncRefs` / element-segment / call-instruction shifts.
+- `playground/main.ts` — the playground no longer synthesizes a fake `main()`
+  for "exports + top-level" sources, and no longer calls `_start()` for
+  module-init-only sources. With the start section, init runs during
+  `instantiateWasm()` and the playground simply reports
+  "Executed top-level statements during module instantiation."
+- `tests/issue-907.test.ts` — regression coverage.
+

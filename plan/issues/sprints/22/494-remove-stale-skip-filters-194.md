@@ -1,0 +1,41 @@
+---
+id: 494
+sprint: 22
+title: "Remove stale skip filters (194 tests)"
+status: done
+created: 2026-03-18
+updated: 2026-04-14
+completed: 2026-04-14
+priority: medium
+feasibility: easy
+goal: core-semantics
+test262_skip: 194
+files:
+  tests/test262-runner.ts:
+    new:
+      - "remove/narrow stale skip filters for Object.keys, new Object, for-of destructuring, globalThis"
+    breaking: []
+---
+# #494 — Remove stale skip filters (194 tests)
+
+## Status: open
+
+Several skip filters are stale — the features they guard were already implemented:
+
+| Filter | Tests | Already done? |
+|--------|------:|--------------|
+| Object.keys/values/entries | 102 | #61 implemented these |
+| new Object() | 92 | #181 implemented this |
+| globalThis | 22 | Should compile as module global |
+| for-of object destructuring from array | 64 | Likely works now |
+
+## Approach
+
+Remove or narrow each filter one at a time, run the affected tests, file issues for any new failures.
+
+## Complexity: XS
+
+## Acceptance criteria
+- [ ] Stale filters removed
+- [ ] New pass count measured
+- [ ] Follow-up issues created for remaining failures

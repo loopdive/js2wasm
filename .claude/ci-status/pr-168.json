@@ -1,0 +1,19 @@
+{
+  "pr": 168,
+  "conclusion": "failure",
+  "head_branch": "issue-1268-index-sig-nullish-assign",
+  "head_sha": "ff02a09cdf107e81e495b0e7edcc1b0488c53d22",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25254392452",
+  "timestamp": "2026-05-02T14:56:44Z",
+  "pass": 26080,
+  "fail": 13888,
+  "compile_error": 1717,
+  "snapshot_delta": 12,
+  "net_per_test": 8,
+  "regressions": 56,
+  "regressions_real": 24,
+  "regressions_wasm_change": 24,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 32,
+  "improvements": 64
+}

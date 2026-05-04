@@ -1,0 +1,24 @@
+---
+id: 1015
+sprint: 40
+title: "Support fixture/includes tests in unified compilation mode (172 CE)"
+status: done
+created: 2026-04-10
+updated: 2026-04-14
+completed: 2026-04-14
+priority: medium
+feasibility: medium
+reasoning_effort: high
+goal: test-infrastructure
+---
+# #1015 — Support fixture/includes tests in unified compilation mode (172 CE)
+
+## Problem
+
+172 test262 tests fail with `fixture tests not supported in unified mode`. These tests use the `includes:` metadata to load helper files (e.g. `propertyHelper.js`, `compareArray.js`) that define shared assertion utilities.
+
+The test262 runner currently skips these in unified compilation mode because the compiler doesn't handle multi-file includes.
+
+## Approach
+
+The test262 harness already has preamble injection for `assert.js` and `sta.js`. Extend it to also inject the `includes:` files listed in test metadata. The includes are standard test262 harness files in `test262/harness/`.

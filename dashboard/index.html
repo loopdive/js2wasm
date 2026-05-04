@@ -221,6 +221,64 @@
         width: 84px;
       }
 
+      .sprint-nav-btn {
+        background: none;
+        border: 1px solid var(--border);
+        color: var(--text-muted);
+        cursor: pointer;
+        width: 26px;
+        height: 26px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 4px;
+        font-size: 14px;
+        padding: 0;
+        line-height: 1;
+      }
+
+      .sprint-nav-btn:hover {
+        color: var(--text);
+        border-color: rgba(255, 255, 255, 0.28);
+      }
+
+      #issue-search {
+        background: var(--bg);
+        color: var(--text);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 5px 10px;
+        font-family: var(--font);
+        font-size: 12px;
+        width: 160px;
+        outline: none;
+      }
+
+      #issue-search::placeholder {
+        color: var(--text-muted);
+      }
+
+      #issue-search:focus {
+        border-color: rgba(255, 255, 255, 0.28);
+      }
+
+      #refresh-btn {
+        background: none;
+        border: none;
+        color: var(--text-muted);
+        cursor: pointer;
+        padding: 0 4px;
+        font-size: 22px;
+        line-height: 1;
+        display: flex;
+        align-items: center;
+        opacity: 0.55;
+      }
+
+      #refresh-btn:hover {
+        opacity: 1;
+      }
+
       /* Kanban board */
       .kanban {
         margin-bottom: 24px;
@@ -230,6 +288,14 @@
         display: grid;
         grid-template-columns: repeat(4, 1fr);
         gap: 12px;
+        border-bottom: 1px solid var(--border);
+        padding-bottom: 12px;
+      }
+
+      #overview,
+      #kanban,
+      #dependencies {
+        scroll-margin-top: 72px;
       }
 
       @media (max-width: 900px) {
@@ -238,8 +304,18 @@
         }
       }
       @media (max-width: 600px) {
+        body {
+          padding: 72px 12px 24px;
+        }
         .kanban-board {
           grid-template-columns: 1fr;
+          gap: 8px;
+        }
+        .kanban-col {
+          min-height: 100vh;
+        }
+        .kanban-col-body {
+          min-height: calc(100vh - 60px);
         }
       }
 
@@ -247,7 +323,25 @@
         background: var(--bg);
         border-radius: var(--radius);
         padding: 10px;
-        min-height: 200px;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      .kanban-col-body {
+        flex: 1;
+        overflow-y: auto;
+        min-height: 140px;
+        padding-top: 28px;
+        mask-image: linear-gradient(to bottom, transparent 0%, black 28px, black calc(100% - 28px), transparent 100%);
+        -webkit-mask-image: linear-gradient(
+          to bottom,
+          transparent 0%,
+          black 28px,
+          black calc(100% - 28px),
+          transparent 100%
+        );
       }
 
       .kanban-col-header {
@@ -330,6 +424,10 @@
         background: rgba(107, 138, 255, 0.15);
         color: var(--accent);
       }
+      .tag.wont-fix {
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--text-muted);
+      }
 
       /* Sprint table */
       .sprint-table {
@@ -388,9 +486,6 @@
         }
       }
 
-      .kanban-col-body {
-      }
-
       .kanban-col-body::-webkit-scrollbar {
         width: 4px;
       }
@@ -421,8 +516,31 @@
     </style>
   </head>
   <body>
-    <site-nav base="../"></site-nav>
+    <site-nav
+      base="../"
+      links='[{"label":"Overview","href":"#overview"},{"label":"Sprint","href":"#kanban"},{"label":"Issues","href":"#dependencies"}]'
+    ></site-nav>
+    <div
+      id="build-meta"
+      style="
+        position: fixed;
+        top: 68px;
+        right: 56px;
+        z-index: 99;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 11px;
+        font-family: var(--font-mono, &quot;JetBrains Mono&quot;, monospace);
+        color: rgba(255, 255, 255, 0.28);
+        pointer-events: none;
+      "
+    >
+      <span id="build-hash"></span>
+      <span id="build-date"></span>
+    </div>
     <header
+      id="overview"
       style="display: flex; align-items: baseline; gap: 8px; border-bottom: none; padding-bottom: 0; flex-wrap: wrap"
     >
       <div class="metrics-row" id="metrics-row">
@@ -458,15 +576,20 @@
     </header>
 
     <!-- Kanban -->
-    <div class="panel kanban" style="border-top: none">
+    <div id="kanban" class="panel kanban" style="border-top: none">
       <div class="panel-head">
-        <h2>Issue Board</h2>
+        <div style="display: flex; align-items: center; gap: 12px">
+          <h2>Issue Board</h2>
+          <input type="search" id="issue-search" placeholder="Filter issues…" autocomplete="off" />
+        </div>
         <div class="panel-actions">
           <div class="sprint-controls">
             <label for="sprint-select">Sprint</label>
+            <button class="sprint-nav-btn" id="sprint-prev" title="Previous sprint">−</button>
             <select id="sprint-select"></select>
+            <button class="sprint-nav-btn" id="sprint-next" title="Next sprint">+</button>
           </div>
-          <a href="../issues-graph.html">dependency graph</a>
+          <button id="refresh-btn" onclick="refreshData()" title="Refresh">↺</button>
         </div>
       </div>
       <div class="kanban-board" id="kanban-board">
@@ -501,7 +624,7 @@
       </div>
     </div>
 
-    <div class="panel">
+    <div id="dependencies" class="panel">
       <div class="panel-head">
         <h2>Dependency graph</h2>
         <div class="panel-actions">
@@ -600,6 +723,7 @@
           hard: "Requires deep analysis or architectural changes",
         };
         let meta = "";
+        if (fm.status === "wont-fix") meta += `<span class="tag wont-fix">wont-fix</span>`;
         if (priority !== "medium")
           meta += `<span class="tag ${priority}" title="${prioTips[priority] || ""}">${priority}</span>`;
         if (feasibility && feasibility !== "medium")
@@ -628,10 +752,17 @@
         return (
           [...sprints]
             .filter((s) => Number.isFinite(s.sprintNumber))
-            .filter((s) => !s.isClosed)
+            .filter((s) => !s.isClosed && !s.isPlanning)
             .sort((a, b) => a.sprintNumber - b.sprintNumber)
             .at(-1) || null
         );
+      }
+
+      const PRIORITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
+      function prioritySort(a, b) {
+        const pa = PRIORITY_ORDER[a.priority] ?? 99;
+        const pb = PRIORITY_ORDER[b.priority] ?? 99;
+        return pa !== pb ? pa - pb : String(b.id).localeCompare(String(a.id), undefined, { numeric: true });
       }
 
       function buildSprintOptions(sprints) {
@@ -662,7 +793,7 @@
 
       function filterIssuesForSprint(issues, sprint) {
         if (!sprint) return issues;
-        if (sprint.isClosed && !sprintHasUnfinishedIssueIds(sprint)) {
+        if (sprint.isClosed) {
           const completed = new Set((sprint.completedIssueIds || []).map(String));
           return {
             blocked: [],
@@ -707,7 +838,10 @@
         return numeric[idx];
       }
 
+      let searchQuery = "";
+
       function renderIssueBoard(issues) {
+        const q = searchQuery.toLowerCase().trim();
         const cols = {
           ready: { el: document.getElementById("col-ready"), count: document.getElementById("col-ready-count") },
           inprogress: {
@@ -719,9 +853,12 @@
         };
 
         for (const [status, col] of Object.entries(cols)) {
-          const list = issues[status] || [];
+          let list = issues[status] || [];
+          if (q) {
+            list = list.filter((iss) => String(iss.id).includes(q) || (iss.title || "").toLowerCase().includes(q));
+          }
           col.count.textContent = list.length;
-          const display = status === "done" ? [...list].reverse() : list;
+          const display = status === "done" ? [...list].reverse() : [...list].sort(prioritySort);
           col.el.innerHTML = display.map((iss) => makeCard(iss.id, iss.title || `Issue #${iss.id}`, iss)).join("");
         }
       }
@@ -762,11 +899,24 @@
         if (updEl) updEl.textContent = "Updated: " + new Date().toLocaleString();
 
         // ── Metrics ──
-        if (runs.length > 0) {
-          const latest = runs[runs.length - 1];
-          // Use the full pass rate to match the landing page donut chart.
-          const passRate = ((latest.pass / latest.total) * 100).toFixed(1);
-          document.getElementById("m-passrate").textContent = passRate + "%";
+        // Use test262-report.json as the authoritative pass rate (same source as landing page).
+        // runs/index.json may contain PR runs that differ from the merged baseline.
+        try {
+          const reportData = await loadJSON("../benchmarks/results/test262-report.json");
+          if (reportData?.summary?.pass && reportData?.summary?.total) {
+            const passRate = ((reportData.summary.pass / reportData.summary.total) * 100).toFixed(1);
+            document.getElementById("m-passrate").textContent = passRate + "%";
+          } else if (runs.length > 0) {
+            const latest = runs[runs.length - 1];
+            document.getElementById("m-passrate").textContent = ((latest.pass / latest.total) * 100).toFixed(1) + "%";
+          }
+          // ── Build meta (top-right commit hash + date) ──
+          updateBuildMeta(reportData);
+        } catch {
+          if (runs.length > 0) {
+            const latest = runs[runs.length - 1];
+            document.getElementById("m-passrate").textContent = ((latest.pass / latest.total) * 100).toFixed(1) + "%";
+          }
         }
 
         // ── Baseline age badge ──
@@ -783,7 +933,6 @@
               if (ageHours < 1) ageText = Math.round(ageHours * 60) + "m";
               else if (ageHours < 48) ageText = ageHours.toFixed(1) + "h";
               else ageText = (ageHours / 24).toFixed(1) + "d";
-              if (reportData.baseline_sha) ageText += " (" + reportData.baseline_sha.slice(0, 7) + ")";
               ageEl.textContent = ageText;
               if (ageHours > 24) ageEl.style.color = "var(--red)";
               else if (ageHours > 6) ageEl.style.color = "var(--orange)";
@@ -863,6 +1012,30 @@
         }
 
         sprintSelect.addEventListener("change", () => setSprintByNumber(sprintSelect.value));
+
+        // ── Sprint ±1 navigation ──
+        const sortedSprintNums = sprintOptions
+          .filter((s) => Number.isFinite(s.sprintNumber))
+          .map((s) => s.sprintNumber)
+          .sort((a, b) => a - b);
+
+        document.getElementById("sprint-prev")?.addEventListener("click", () => {
+          const cur = selectedSprint?.sprintNumber ?? NaN;
+          const idx = sortedSprintNums.indexOf(cur);
+          if (idx > 0) setSprintByNumber(sortedSprintNums[idx - 1]);
+        });
+
+        document.getElementById("sprint-next")?.addEventListener("click", () => {
+          const cur = selectedSprint?.sprintNumber ?? NaN;
+          const idx = sortedSprintNums.indexOf(cur);
+          if (idx >= 0 && idx < sortedSprintNums.length - 1) setSprintByNumber(sortedSprintNums[idx + 1]);
+        });
+
+        // ── Issue search ──
+        document.getElementById("issue-search")?.addEventListener("input", (e) => {
+          searchQuery = e.target.value;
+          renderSprintBoard();
+        });
 
         // ── Sprint timeline in header ──
         if (sprints.length > 0) {
@@ -960,14 +1133,73 @@
         }
       }
 
-      // ── Run on load ──
-      main().catch((err) => console.error("Dashboard error:", err));
+      // ── Local vs baseline detection ──
+      // Set to true when the Vite dev-server WebSocket connects, meaning
+      // we're viewing locally-generated data rather than a committed baseline.
+      let isLocal = false;
 
-      // ── Resize handler for charts ──
+      function fmtDate(d) {
+        return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+      }
+
+      function updateBuildMeta(reportData) {
+        const hashEl = document.getElementById("build-hash");
+        const dateEl = document.getElementById("build-date");
+        if (isLocal) {
+          if (hashEl) hashEl.textContent = "";
+          if (dateEl) dateEl.textContent = "local · " + fmtDate(new Date());
+        } else {
+          if (hashEl && reportData?.baseline_sha) hashEl.textContent = reportData.baseline_sha.slice(0, 8);
+          if (dateEl && reportData?.timestamp) {
+            const d = new Date(reportData.timestamp);
+            if (dateEl) dateEl.textContent = isNaN(d) ? reportData.timestamp : fmtDate(d);
+          }
+        }
+      }
+
+      // ── Refresh ──
+      function refreshData() {
+        main().catch((err) => console.error("Dashboard error:", err));
+      }
+
+      function resizeKanban() {
+        const board = document.getElementById("kanban-board");
+        if (!board) return;
+        const top = board.getBoundingClientRect().top;
+        board.style.height = Math.max(200, window.innerHeight - top - 12) + "px";
+      }
+
+      // Push updates via SSE — no polling needed, no WebSocket upgrade dance
+      if (location.protocol !== "file:") {
+        const es = new EventSource("/dashboard-sse");
+        es.onopen = () => {
+          isLocal = true;
+          updateBuildMeta(null);
+        };
+        es.onmessage = (e) => {
+          try {
+            const { type } = JSON.parse(e.data);
+            if (type === "refresh") {
+              main().then(resizeKanban).catch(console.error);
+              const dateEl = document.getElementById("build-date");
+              if (dateEl) dateEl.textContent = "local · " + fmtDate(new Date());
+            }
+          } catch {}
+        };
+      }
+
+      // ── Run on load ──
+      main()
+        .then(resizeKanban)
+        .catch((err) => console.error("Dashboard error:", err));
+
+      // ── Resize handler for charts + kanban ──
       let resizeTimer;
       window.addEventListener("resize", () => {
         clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(() => main(), 200);
+        resizeTimer = setTimeout(() => {
+          main().then(resizeKanban);
+        }, 200);
       });
     </script>
   </body>

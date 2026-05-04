@@ -174,12 +174,15 @@ var legacy = true;`,
     name: "Functions & closures",
     edition: "ES5",
     badge: "full",
-    description: "Named functions, expressions, and lexical closures",
-    js: `function greet(name: string): string {
-  return "Hi " + name;
+    description: "Named functions, expressions, and lexical closures over captured state",
+    js: `function makeCounter(): () => number {
+  let n = 0;
+  return () => ++n;
 }
 
-const add = (a: number, b: number): number => a + b;`,
+const c = makeCounter();
+c(); c();
+const value = c(); // 3`,
   },
   {
     name: "Control flow",
@@ -198,14 +201,14 @@ const add = (a: number, b: number): number => a + b;`,
     name: "try / catch / finally",
     edition: "ES5",
     badge: "full",
-    description: "Exception handling with optional finally block",
-    js: `function safe(): number {
+    description: "Exception handling with recovery via catch",
+    js: `function safeDiv(a: number, b: number): number {
   try {
-    throw new Error("oops");
+    if (b === 0) throw new Error("div by zero");
+    return a / b;
   } catch (e) {
     return -1;
   }
-  return 0;
 }`,
   },
   {
@@ -347,16 +350,10 @@ const add = (a: number, b: number): number => a + b;`,
     name: "Destructuring",
     edition: "ES2015",
     badge: "full",
-    description: "Extract values from arrays and objects",
-    js: `class Opts {
-  a: number;
-  b: number;
-  constructor(a: number, b: number) { this.a = a; this.b = b; }
-}
-
-function sum(opts: Opts): number {
-  const { a, b } = opts;
-  return a + b;
+    description: "Extract values from arrays and objects, with rest patterns",
+    js: `function firstTwo(arr: number[]): number {
+  const [a, b, ...rest] = arr;
+  return a + b + rest.length;
 }`,
   },
   {
@@ -406,16 +403,20 @@ const obj: Record<string, number> = { [key]: 42 };`,
     badge: "full",
     description: "Pausable functions that produce sequences",
     js: `function* range(n: number): Generator<number> {
-  for (let i = 0; i < n; i++) {
-    yield i;
-  }
+  for (let i = 0; i < n; i++) yield i;
+}
+
+function sumRange(n: number): number {
+  let sum = 0;
+  for (const x of range(n)) sum += x;
+  return sum;
 }`,
   },
   {
     name: "Classes",
     edition: "ES2015",
     badge: "partial",
-    description: "Class declarations with inheritance",
+    description: "Class declarations, inheritance, and method override",
     js: `class Animal {
   name: string;
   constructor(name: string) { this.name = name; }
@@ -423,9 +424,12 @@ const obj: Record<string, number> = { [key]: 42 };`,
 }
 
 class Dog extends Animal {
-  bark(): string { return this.name + " barks"; }
-}`,
-    explain: "Constructor, methods, extends, super work. Dynamic prototype lookup is partial.",
+  speak(): string { return this.name + " barks"; }
+}
+
+const d = new Dog("Rex");
+const msg = d.speak(); // "Rex barks"`,
+    explain: "Constructor, methods, extends, super, and virtual dispatch work. Dynamic prototype lookup is partial.",
   },
   {
     name: "Map / Set",
@@ -499,8 +503,9 @@ export const version = "1.0";`,
     badge: "full",
     host: true,
     description: "Asynchronous functions with synchronous-style syntax",
-    js: `export async function fetchValue(): Promise<number> {
-  return 42;
+    js: `export async function fetchAndDouble(p: Promise<number>): Promise<number> {
+  const n = await p;
+  return n * 2;
 }`,
   },
   {

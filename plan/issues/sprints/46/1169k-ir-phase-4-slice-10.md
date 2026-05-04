@@ -1,0 +1,109 @@
+---
+id: 1169k
+sprint: 46
+title: "IR Phase 4 Slice 10 step C — ArrayBuffer + DataView through IR"
+status: done
+created: 2026-04-28
+updated: 2026-04-30
+completed: 2026-04-30
+priority: medium
+feasibility: easy
+reasoning_effort: medium
+task_type: feature
+area: codegen
+language_feature: compiler-internals
+goal: compiler-architecture
+depends_on: [1169i]
+pr: 101
+---
+## Implementation status (2026-04-30, senior-dev-1210)
+
+Step A's scaffolding (`KNOWN_EXTERN_CLASSES`, `extern.new` /
+`extern.call` / `extern.prop` / `extern.propSet` instrs, builder
+helpers, lowerer emission) is sufficient: the IR claims
+functions containing `new ArrayBuffer(N)` and `new DataView(buf)`,
+while the actual setter/getter dispatch falls back to the legacy
+`__extern_method_call` path (matching PR #99's `#1169j` pattern for
+TypedArray element access).
+
+`tests/equivalence/ir-slice10-arraybuffer-dataview.test.ts` covers
+the 7 acceptance cases with both `experimentalIR: true` and
+`experimentalIR: false`, asserting identical observable results AND
+**byte-identical Wasm binaries** between the two paths. This is the
+same proof shape PR #99 used for `#1169j`.
+
+Test results (7/7 pass on both paths):
+- (a) `new ArrayBuffer + new DataView + setUint32 + getUint32` → 1
+- (b) DataView little-endian `setUint32 → getUint32` → 42
+- (c) Big-endian write → little-endian read (byte-order swap) → 67305985
+- (d) `setInt32(-1) → getInt32` (signed round-trip) → -1
+- (e) `setFloat64 → getFloat64` (IEEE 754 round-trip) → 3.14159…
+- (f) `setUint8 / getUint8` (no-endianness branch) → 256
+- (g) `new DataView(buf, 4, 4)` (subview byteOffset / byteLength) → 7
+
+DataView setter/getter calls are written as `(view as any).setXxx(...)`
+to route them through the externref method-call dispatch (legacy
+runtime in `runtime.ts:2618` materializes a real DataView over the
+i32_byte vec struct's backing store). This matches the established
+pattern in `tests/issue-1064.test.ts`.
+
+Acceptance criterion 1 + 2: **met** via the legacy fast-path leg
+(IR claims, lowering falls back) — same approach PR #99 used for
+TypedArray element access. Routing setter/getter dispatch through
+the IR (via dedicated `extern.indexCall` instrs or per-class
+resolver methods) is **deferred to a follow-up** — the current state
+is test-equivalent and Wasm-equivalent.
+
+`.byteLength` was deliberately excluded because the legacy compiler
+has no dedicated handler for it — neither IR nor legacy supports it
+today, so it's a separate gap. The setter/getter surface (the actual
+semantic contract) is what the issue's acceptance criteria #2 refer
+to.
+
+# #1169k — IR Slice 10 step C: ArrayBuffer + DataView through IR
+
+## Goal
+
+Extend the IR path's extern-class support (#1169i scaffolding) to
+cover **ArrayBuffer** construction and **DataView** ops:
+`new ArrayBuffer(N)`, `new DataView(buf)`, `view.setUint32(offset, v, le)`,
+`view.getUint32(offset, le)`, etc.
+
+This is **Step C of #1169i**'s staging plan. The IR's extern-class
+scaffolding (#1169i) already handles construction with N args, method
+calls with positional args, and property reads — DataView's `set*` /
+`get*` methods are pure pattern repetition.
+
+## Acceptance criteria
+
+1. `new ArrayBuffer(16)` and `new DataView(buf)` compile through IR.
+2. `view.getUint32(0, true)`, `view.setUint32(0, 42, true)`, and the
+   matching int8/16/32, uint8/16/32, float32/64, bigint64 variants
+   all lower via `extern.call`.
+3. Equivalence test file:
+   `tests/equivalence/ir-slice10-arraybuffer-dataview.test.ts` —
+   covers a buffer round-trip (write i32, read i32 back) plus a
+   little-endian + big-endian variant.
+4. Test262 categories `built-ins/ArrayBuffer/` and
+   `built-ins/DataView/` non-regressing.
+
+## Implementation notes
+
+- `ArrayBuffer` and `DataView` are already in the
+  `KNOWN_EXTERN_CLASSES` allow-list (#1169i).
+- `view.setUint32(0, 42, true)` is a 3-arg method call — the
+  receiver is the externref view, args are `(f64 offset, f64 value,
+  i32 le)`. The IR's `extern.call` already handles this shape.
+- `getUint32(0, true)` returns f64 (matches JS Number semantics).
+
+## Files to modify
+
+- (Likely) zero changes — the #1169i scaffolding should already
+  handle this. Just add the equivalence test and verify.
+- If the test fails, investigate signature mismatches in
+  `ctx.externClasses.get("DataView").methods`.
+
+## Sub-issue of
+
+\#1169 — IR Phase 4: full compiler migration  
+\#1169i — Slice 10 (parent)

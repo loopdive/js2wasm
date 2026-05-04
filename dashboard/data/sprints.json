@@ -998,7 +998,8 @@
       "1114"
     ],
     "explicitCarryOver": false,
-    "isClosed": false
+    "isPlanning": false,
+    "isClosed": true
   },
   {
     "name": "sprint 1",
@@ -1067,6 +1068,10 @@
       "113",
       "114",
       "115",
+      "123",
+      "124",
+      "125",
+      "129",
       "144",
       "145",
       "148",
@@ -1089,6 +1094,7 @@
       "172"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1208,6 +1214,7 @@
       "224"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1253,6 +1260,7 @@
       "256"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1284,6 +1292,7 @@
       "286"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1305,6 +1314,7 @@
       "322"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1346,6 +1356,7 @@
       "320"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1419,6 +1430,7 @@
       "386"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1436,6 +1448,7 @@
       "407"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1481,6 +1494,7 @@
       "458"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1516,6 +1530,7 @@
       "488"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1533,6 +1548,7 @@
       "493"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1552,6 +1568,7 @@
       "1113"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1569,6 +1586,7 @@
       "651"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1604,6 +1622,7 @@
       "1110"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1631,6 +1650,7 @@
       "686"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1650,6 +1670,7 @@
       "725"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1667,6 +1688,7 @@
       "754"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1678,18 +1700,21 @@
     "result": "14,720 pass / 48,102 total (stable)",
     "issueCount": 0,
     "issueIds": [
+      "688",
       "764",
       "768",
       "776",
       "777"
     ],
     "completedIssueIds": [
+      "688",
       "764",
       "768",
       "776",
       "777"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1709,6 +1734,7 @@
       "774"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1722,6 +1748,7 @@
     "issueIds": [],
     "completedIssueIds": [],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1791,6 +1818,7 @@
       "1115"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1818,6 +1846,7 @@
       "770"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1831,6 +1860,7 @@
     "issueIds": [],
     "completedIssueIds": [],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1860,6 +1890,7 @@
       "816"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1891,6 +1922,7 @@
       "823"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1928,6 +1960,7 @@
       "819"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1945,6 +1978,7 @@
       "835"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1958,6 +1992,7 @@
     "issueIds": [],
     "completedIssueIds": [],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -1975,6 +2010,7 @@
       "841"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -2004,6 +2040,7 @@
       "873"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -2041,6 +2078,7 @@
       "909"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -2070,6 +2108,7 @@
       "856"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -2093,6 +2132,7 @@
       "887"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -2122,6 +2162,7 @@
       "902"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -2151,6 +2192,7 @@
       "925"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -2186,6 +2228,7 @@
       "942"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -2253,6 +2296,7 @@
       "953"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -2310,6 +2354,7 @@
       "972"
     ],
     "explicitCarryOver": true,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -2341,6 +2386,7 @@
       "989"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -2357,6 +2403,7 @@
       "864",
       "882",
       "884",
+      "929",
       "971",
       "975",
       "977",
@@ -2375,14 +2422,21 @@
       "1014",
       "1015",
       "1021",
-      "1025",
+      "1022",
       "1026",
       "1027",
       "1028",
       "1030",
       "1031",
       "1040",
+      "1048",
+      "1049",
+      "1050",
+      "1051",
       "1054",
+      "1055",
+      "1064",
+      "1065",
       "1082",
       "1084"
     ],
@@ -2392,6 +2446,7 @@
       "864",
       "882",
       "884",
+      "929",
       "971",
       "975",
       "977",
@@ -2410,18 +2465,26 @@
       "1014",
       "1015",
       "1021",
-      "1025",
+      "1022",
       "1026",
       "1027",
       "1028",
       "1030",
       "1031",
       "1040",
+      "1048",
+      "1049",
+      "1050",
+      "1051",
       "1054",
+      "1055",
+      "1064",
+      "1065",
       "1082",
       "1084"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -2463,6 +2526,7 @@
       "1023",
       "1024",
       "1034",
+      "1041",
       "1053",
       "1056",
       "1060",
@@ -2480,6 +2544,7 @@
       "1092"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
@@ -2491,17 +2556,11 @@
     "result": "",
     "issueCount": 0,
     "issueIds": [
-      "907",
       "990",
-      "991",
-      "992",
-      "993",
-      "994",
-      "995",
-      "996",
       "1001",
       "1005",
       "1006",
+      "1017",
       "1036",
       "1037",
       "1038",
@@ -2510,7 +2569,6 @@
       "1067",
       "1071",
       "1073",
-      "1077",
       "1088",
       "1094",
       "1097",
@@ -2534,17 +2592,11 @@
       "1146"
     ],
     "completedIssueIds": [
-      "907",
       "990",
-      "991",
-      "992",
-      "993",
-      "994",
-      "995",
-      "996",
       "1001",
       "1005",
       "1006",
+      "1017",
       "1036",
       "1037",
       "1038",
@@ -2553,7 +2605,6 @@
       "1067",
       "1071",
       "1073",
-      "1077",
       "1088",
       "1094",
       "1097",
@@ -2576,28 +2627,47 @@
       "1146"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
     "name": "sprint 43",
     "sprintNumber": 43,
-    "status": "planned",
-    "date": "2026-04-20 →",
-    "baseline": "TBD (pending sprint 42 consolidation)",
+    "status": "done",
+    "date": "2026-04-20 → 2026-04-23",
+    "baseline": "",
+    "result": "",
+    "issueCount": 0,
+    "issueIds": [
+      "826",
+      "1127",
+      "1131"
+    ],
+    "completedIssueIds": [
+      "826",
+      "1127"
+    ],
+    "explicitCarryOver": false,
+    "isPlanning": false,
+    "isClosed": true
+  },
+  {
+    "name": "sprint 44",
+    "sprintNumber": 44,
+    "status": "closed",
+    "date": "TBD (follows sprint 43)",
+    "baseline": "TBD (inherits from sprint 43 close-out)",
     "result": "",
     "issueCount": 0,
     "issueIds": [
       "825",
-      "826",
-      "1008",
-      "1016",
+      "854",
       "1119",
-      "1127",
-      "1131",
       "1148",
       "1149",
       "1150",
       "1152",
+      "1153",
       "1156",
       "1160",
       "1161",
@@ -2605,28 +2675,44 @@
       "1163",
       "1167",
       "1167a",
-      "1167b"
+      "1167b",
+      "1167c",
+      "1168"
     ],
     "completedIssueIds": [
-      "826",
-      "1127"
+      "825",
+      "854",
+      "1119",
+      "1148",
+      "1149",
+      "1150",
+      "1152",
+      "1153",
+      "1156",
+      "1160",
+      "1161",
+      "1162",
+      "1163",
+      "1167a",
+      "1167b",
+      "1167c",
+      "1168"
     ],
     "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": true
   },
   {
-    "name": "sprint 44",
-    "sprintNumber": 44,
-    "status": "planned",
-    "date": "TBD (follows sprint 43)",
-    "baseline": "TBD (inherits from sprint 43 close-out)",
+    "name": "sprint 45",
+    "sprintNumber": 45,
+    "status": "closed",
+    "date": "2026-04-23 → 2026-04-29",
+    "baseline": "TBD (inherits from sprint 44 close-out)",
     "result": "",
     "issueCount": 0,
     "issueIds": [
-      "742",
       "744",
       "773",
-      "854",
       "862",
       "906",
       "907",
@@ -2637,19 +2723,16 @@
       "995",
       "996",
       "1000",
-      "1001",
       "1003",
       "1004",
-      "1005",
-      "1006",
+      "1008",
+      "1016",
       "1025",
       "1035",
       "1043",
       "1044",
       "1045",
       "1058",
-      "1067",
-      "1073",
       "1075",
       "1076",
       "1077",
@@ -2658,32 +2741,387 @@
       "1080",
       "1086",
       "1093",
-      "1094",
       "1095",
       "1096",
       "1098",
       "1099",
       "1109",
       "1111",
-      "1119",
       "1120",
       "1121",
       "1122",
-      "1123",
       "1125",
-      "1126",
       "1128",
       "1135",
       "1147",
-      "1153",
       "1164",
-      "1166",
-      "1167c",
-      "1168",
-      "1169"
+      "1169a",
+      "1169b",
+      "1169c",
+      "1169d",
+      "1169e",
+      "1169f",
+      "1169g",
+      "1169h",
+      "1169i",
+      "1170",
+      "1171",
+      "1172",
+      "1173",
+      "1174",
+      "1175",
+      "1177",
+      "1178",
+      "1179",
+      "1180",
+      "1181",
+      "1182",
+      "1183",
+      "1185",
+      "1186",
+      "1191",
+      "1192",
+      "1193",
+      "1202",
+      "1206",
+      "1208",
+      "1256"
     ],
-    "completedIssueIds": [],
+    "completedIssueIds": [
+      "862",
+      "906",
+      "907",
+      "991",
+      "992",
+      "993",
+      "994",
+      "995",
+      "996",
+      "1016",
+      "1025",
+      "1035",
+      "1043",
+      "1076",
+      "1077",
+      "1078",
+      "1079",
+      "1080",
+      "1086",
+      "1096",
+      "1109",
+      "1111",
+      "1120",
+      "1121",
+      "1125",
+      "1128",
+      "1135",
+      "1164",
+      "1169a",
+      "1169b",
+      "1169c",
+      "1169d",
+      "1169e",
+      "1169f",
+      "1169g",
+      "1169h",
+      "1169i",
+      "1170",
+      "1171",
+      "1173",
+      "1174",
+      "1175",
+      "1177",
+      "1178",
+      "1179",
+      "1180",
+      "1181",
+      "1182",
+      "1183",
+      "1185",
+      "1186",
+      "1191",
+      "1192",
+      "1193",
+      "1202",
+      "1208",
+      "1256"
+    ],
     "explicitCarryOver": false,
+    "isPlanning": false,
+    "isClosed": true
+  },
+  {
+    "name": "sprint 46",
+    "sprintNumber": 46,
+    "status": "ready",
+    "date": "2026-04-30 → TBD",
+    "baseline": "25,830 / 43,168 = 59.8% (inherited from S45 close)",
+    "result": "",
+    "issueCount": 0,
+    "issueIds": [
+      "742",
+      "1166",
+      "1169",
+      "1169j",
+      "1169k",
+      "1169l",
+      "1169m",
+      "1184",
+      "1187",
+      "1188",
+      "1189",
+      "1190",
+      "1201",
+      "1203",
+      "1204",
+      "1205",
+      "1209",
+      "1210",
+      "1211",
+      "1212",
+      "1213",
+      "1214",
+      "1215",
+      "1217",
+      "1218",
+      "1219",
+      "1220",
+      "1221"
+    ],
+    "completedIssueIds": [
+      "1169j",
+      "1169k",
+      "1169l",
+      "1169m",
+      "1184",
+      "1187",
+      "1188",
+      "1189",
+      "1190",
+      "1201",
+      "1203",
+      "1204",
+      "1205",
+      "1209",
+      "1210",
+      "1211",
+      "1212",
+      "1213",
+      "1214",
+      "1215",
+      "1217",
+      "1218",
+      "1219",
+      "1220",
+      "1221"
+    ],
+    "explicitCarryOver": false,
+    "isPlanning": false,
+    "isClosed": true
+  },
+  {
+    "name": "sprint 47",
+    "sprintNumber": 47,
+    "status": "done",
+    "date": "2026-05-01 → 2026-05-03",
+    "baseline": "27,104 / 46,632 = 58.1% pass (at S46 close, after #1177/#1219/#1220/#1221)",
+    "result": "",
+    "issueCount": 0,
+    "issueIds": [
+      "1118",
+      "1157",
+      "1169n",
+      "1169o",
+      "1169p",
+      "1169q",
+      "1195",
+      "1196",
+      "1197",
+      "1198",
+      "1207",
+      "1216",
+      "1222",
+      "1224",
+      "1225",
+      "1226",
+      "1227",
+      "1228",
+      "1229",
+      "1231",
+      "1232",
+      "1234",
+      "1235",
+      "1238",
+      "1242",
+      "1243",
+      "1244",
+      "1245",
+      "1246",
+      "1247",
+      "1248",
+      "1249",
+      "1250",
+      "1251",
+      "1253",
+      "1258",
+      "1259",
+      "1260",
+      "1267",
+      "1268",
+      "1271",
+      "1272",
+      "1273",
+      "1274",
+      "1275",
+      "1276",
+      "1277",
+      "1278",
+      "1279",
+      "1281",
+      "1283",
+      "1284",
+      "1285",
+      "1286",
+      "1288",
+      "1289"
+    ],
+    "completedIssueIds": [
+      "1118",
+      "1157",
+      "1169n",
+      "1169o",
+      "1169p",
+      "1169q",
+      "1195",
+      "1196",
+      "1197",
+      "1198",
+      "1207",
+      "1216",
+      "1222",
+      "1224",
+      "1225",
+      "1226",
+      "1227",
+      "1228",
+      "1229",
+      "1231",
+      "1232",
+      "1234",
+      "1235",
+      "1238",
+      "1242",
+      "1243",
+      "1244",
+      "1245",
+      "1246",
+      "1247",
+      "1248",
+      "1249",
+      "1250",
+      "1251",
+      "1253",
+      "1258",
+      "1259",
+      "1260",
+      "1267",
+      "1268",
+      "1271",
+      "1272",
+      "1273",
+      "1274",
+      "1275",
+      "1276",
+      "1277",
+      "1278",
+      "1279",
+      "1281",
+      "1283",
+      "1284",
+      "1285",
+      "1286",
+      "1288",
+      "1289"
+    ],
+    "explicitCarryOver": false,
+    "isPlanning": false,
+    "isClosed": true
+  },
+  {
+    "name": "sprint 48",
+    "sprintNumber": 48,
+    "status": "done",
+    "date": "2026-05-03 (single-day sprint, drained → S49)",
+    "baseline": "",
+    "result": "",
+    "issueCount": 0,
+    "issueIds": [
+      "1200",
+      "1233",
+      "1236",
+      "1269",
+      "1270",
+      "1280",
+      "1282",
+      "1291",
+      "1292",
+      "1293",
+      "1294",
+      "1295"
+    ],
+    "completedIssueIds": [
+      "1200",
+      "1233",
+      "1236",
+      "1269",
+      "1270",
+      "1280",
+      "1282",
+      "1291",
+      "1292",
+      "1293",
+      "1294",
+      "1295"
+    ],
+    "explicitCarryOver": false,
+    "isPlanning": false,
+    "isClosed": true
+  },
+  {
+    "name": "sprint 49",
+    "sprintNumber": 49,
+    "status": "active",
+    "date": "",
+    "baseline": "",
+    "result": "",
+    "issueCount": 0,
+    "issueIds": [
+      "1126",
+      "1223",
+      "1241",
+      "1290",
+      "1296",
+      "1297",
+      "1298",
+      "1299",
+      "1300",
+      "1301",
+      "1302",
+      "1303",
+      "1304",
+      "1305",
+      "1306"
+    ],
+    "completedIssueIds": [
+      "1241",
+      "1290",
+      "1296",
+      "1297",
+      "1299",
+      "1300"
+    ],
+    "explicitCarryOver": false,
+    "isPlanning": false,
     "isClosed": false
   }
 ]

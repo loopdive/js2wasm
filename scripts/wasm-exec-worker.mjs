@@ -137,11 +137,29 @@ parentPort.on("message", async (msg) => {
       });
     }
   } catch (outerErr) {
-    reply({
-      ok: false,
-      error: outerErr.message ?? String(outerErr),
-      instantiateError: true,
-    });
+    // #1221: A WebAssembly.Exception escaping the inner tries (e.g. thrown
+    // from `restoreBuiltins` walking a poisoned Symbol.iterator, or a
+    // microtask resumed at an `await` boundary) is a runtime throw — not a
+    // compile/link failure. Stringify via extractWasmExceptionInfo so the
+    // harness records a useful runtime fail instead of compile_error
+    // (instantiateError:true) with text "[object WebAssembly.Exception]".
+    // The inner instantiate catch was fixed in #1155 — this closes the
+    // outer-catch leak that was missed.
+    if (outerErr instanceof WebAssembly.Exception) {
+      const info = extractWasmExceptionInfo(outerErr, instance ?? null);
+      reply({
+        ok: false,
+        error: info.message,
+        isException: true,
+        exceptionPayload: info.stack,
+      });
+    } else {
+      reply({
+        ok: false,
+        error: outerErr.message ?? String(outerErr),
+        instantiateError: true,
+      });
+    }
   } finally {
     // Drop references to Wasm module so GC can collect compiled code
     instance = null;

@@ -3,7 +3,7 @@
  * Call expression compilation: direct calls, optional calls, closure calls,
  * property method calls, IIFEs, and conditional callees.
  */
-import ts from "typescript";
+import { ts, forEachChild } from "../../ts-api.js";
 import {
   isBooleanType,
   isExternalDeclaredClass,
@@ -74,6 +74,7 @@ import {
   tryExternClassMethodOnAny,
 } from "./calls-closures.js";
 import { compileOptionalCallExpression } from "./calls-optional.js";
+import { tryStaticEvalInline } from "./eval-inline.js";
 import { compileExternMethodCall, compileSpreadCallArgs, emitLazyProtoGet } from "./extern.js";
 import { getFuncParamTypes, getWasmFuncReturnType, isEffectivelyVoidReturn, wasmFuncReturnsVoid } from "./helpers.js";
 import { analyzeTdzAccessByPos, emitLocalTdzCheck, emitStaticTdzThrow } from "./identifiers.js";
@@ -166,7 +167,7 @@ function usesArguments(node: ts.Node): boolean {
   if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node)) {
     return false;
   }
-  return ts.forEachChild(node, usesArguments) ?? false;
+  return forEachChild(node, usesArguments) ?? false;
 }
 
 /**
@@ -282,11 +283,30 @@ function compileOptionalDirectCall(ctx: CodegenContext, fctx: FunctionContext, e
   return resultType;
 }
 
-function isEvalCallExpression(expr: ts.CallExpression): boolean {
-  if (expr.questionDotToken) return false;
+/**
+ * Classify an eval call expression as `direct`, `indirect`, or `none`.
+ *
+ * Per ECMA-262 §19.2.1, a *direct* eval is a call whose callee is the
+ * lexical Identifier `eval` (after stripping parentheses).  Anything that
+ * forces a reference resolution detour — `(0, eval)(...)` or any other
+ * non-Identifier callee that resolves to the eval function — is *indirect*.
+ *
+ * The compiler-side flag is forwarded to `__extern_eval` so the host shim
+ * can preserve the spec-mandated scope distinction (#1164).  Direct eval
+ * runs in the caller's lexical scope; indirect eval runs in global scope.
+ *
+ * Uses the TypeScript checker to verify that any `eval` identifier resolves
+ * to the *global* eval, not a locally-shadowed variable or parameter named
+ * `eval` (e.g. `function foo(eval) { return eval(42); }`).
+ */
+function classifyEvalCallExpression(expr: ts.CallExpression, checker: ts.TypeChecker): "direct" | "indirect" | "none" {
+  if (expr.questionDotToken) return "none";
   let callee: ts.Expression = expr.expression;
   while (ts.isParenthesizedExpression(callee)) callee = callee.expression;
-  if (ts.isIdentifier(callee) && callee.text === "eval") return true;
+  if (ts.isIdentifier(callee) && callee.text === "eval") {
+    if (isGlobalEvalIdentifier(callee, checker)) return "direct";
+    return "none";
+  }
   // Indirect form: (0, eval)(src) — a comma expression whose right side is `eval`.
   if (
     ts.isBinaryExpression(callee) &&
@@ -294,9 +314,119 @@ function isEvalCallExpression(expr: ts.CallExpression): boolean {
     ts.isIdentifier(callee.right) &&
     callee.right.text === "eval"
   ) {
-    return true;
+    if (isGlobalEvalIdentifier(callee.right, checker)) return "indirect";
+    return "none";
   }
-  return false;
+  return "none";
+}
+
+/**
+ * #1229 peephole — detect `eval("/" + X + "/")` and rewrite to `new RegExp(X)`.
+ *
+ * Test262's BMP-codepoint regex tests are 65k-iteration loops that build a
+ * regex literal via eval per iteration:
+ *
+ * ```js
+ * for (var cu = 0; cu <= 0xffff; ++cu) {
+ *   var pattern = eval("/" + xx + "/");
+ * }
+ * ```
+ *
+ * Each `eval()` call on js2wasm pays the full TS-parse + js2wasm-codegen +
+ * Wasm-instantiate pipeline (~50ms). 65,536 × 50ms = an hour of wall-clock,
+ * so the test always hits the 30s pool ceiling. By detecting the literal-
+ * fence shape `"/" + X + "/"` we can route directly to the RegExp
+ * constructor host call — same observable semantics for any code that
+ * inspects `.source` / `.flags` / matching behavior, but ~one
+ * host-call's worth of work instead of two.
+ *
+ * Returns:
+ *   - `InnerResult` (with stack push of the constructed RegExp externref) on match
+ *   - `undefined` if the AST shape doesn't match — caller falls through
+ */
+function tryEvalAsRegExpPeephole(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.CallExpression,
+): InnerResult | undefined {
+  if (expr.arguments.length !== 1) return undefined;
+
+  // Strip parens around the argument.
+  let arg = expr.arguments[0]!;
+  while (ts.isParenthesizedExpression(arg)) arg = arg.expression;
+
+  // Outer shape: BinaryExpression(`+`, BinaryExpression(`+`, "/", X), "/")
+  // (left-associative `+`).
+  if (!ts.isBinaryExpression(arg)) return undefined;
+  if (arg.operatorToken.kind !== ts.SyntaxKind.PlusToken) return undefined;
+  if (!ts.isStringLiteral(arg.right)) return undefined;
+  if (arg.right.text !== "/") return undefined;
+
+  let inner: ts.Expression = arg.left;
+  while (ts.isParenthesizedExpression(inner)) inner = inner.expression;
+  if (!ts.isBinaryExpression(inner)) return undefined;
+  if (inner.operatorToken.kind !== ts.SyntaxKind.PlusToken) return undefined;
+  if (!ts.isStringLiteral(inner.left)) return undefined;
+  if (inner.left.text !== "/") return undefined;
+
+  const xExpr = inner.right;
+
+  // Register `RegExp_new(pattern, flags) -> externref` on demand. The 7 target
+  // tests (regexp/S7.8.5_*, comments/S7.4_A6, AnnexB/RegExp/RegExp-*-escape-BMP)
+  // build their regex via eval *only* — they never write `new RegExp(...)` or a
+  // `/.../` literal in source, so the pre-pass scan in `index.ts` does NOT
+  // register `RegExp_new` and `ctx.externClasses` does NOT contain a `"RegExp"`
+  // entry at this point. We mirror the on-demand registration pattern from
+  // `compileRegExpLiteral` (`src/codegen/typeof-delete.ts:172-180`) so the
+  // peephole works even when the source has no other RegExp use.
+  //
+  // Both the import AND a minimal externClasses entry are needed: the host
+  // import resolver (`src/compiler/import-manifest.ts:46-51`) only routes
+  // `RegExp_new` to the extern_class constructor when "RegExp" is in
+  // `mod.externClasses`. Without that entry, the resolver falls through to
+  // the "builtin" branch, which has no handler for `RegExp_new` and resolves
+  // to a no-op that returns undefined — making the produced "regex" undefined
+  // at runtime even though codegen looked correct.
+  if (!ctx.externClasses.has("RegExp")) {
+    ctx.externClasses.set("RegExp", {
+      importPrefix: "RegExp",
+      namespacePath: [],
+      className: "RegExp",
+      constructorParams: [{ kind: "externref" }, { kind: "externref" }],
+      methods: new Map(),
+      properties: new Map(),
+    });
+  }
+  let funcIdx = ctx.funcMap.get("RegExp_new");
+  if (funcIdx === undefined) {
+    const importsBefore = ctx.numImportFuncs;
+    const regexpNewType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "RegExp_new", { kind: "func", typeIdx: regexpNewType });
+    shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+    funcIdx = ctx.funcMap.get("RegExp_new");
+  }
+  if (funcIdx === undefined) return undefined;
+
+  // Argument 0: pattern source (X compiled to externref).
+  compileExpression(ctx, fctx, xExpr, { kind: "externref" });
+  // Argument 1: flags — empty string. The eval-of-regex shape is
+  // `eval("/" + X + "/")` with no flag tail, so flags is always "".
+  const emptyFlagsResult = compileStringLiteral(ctx, fctx, "", expr);
+  if (!emptyFlagsResult) return undefined;
+  const finalIdx = ctx.funcMap.get("RegExp_new") ?? funcIdx;
+  fctx.body.push({ op: "call", funcIdx: finalIdx });
+  return { kind: "externref" };
+}
+
+/** Returns true if the given `eval` identifier resolves to the global eval function (not a local shadow). */
+function isGlobalEvalIdentifier(ident: ts.Identifier, checker: ts.TypeChecker): boolean {
+  const sym = checker.getSymbolAtLocation(ident);
+  if (!sym) return true; // unresolved → assume global eval
+  const decls = sym.declarations;
+  if (!decls || decls.length === 0) return true;
+  // Global eval is declared only in .d.ts files. A local shadow has at least one
+  // declaration in a non-declaration (.ts) source file.
+  return decls.every((d) => d.getSourceFile().isDeclarationFile);
 }
 
 /**
@@ -458,6 +588,134 @@ function tryEmitInlineDynamicCall(
   return { kind: "externref" };
 }
 
+/**
+ * (#1299) Emit a tag-based virtual method dispatch for a base-typed
+ * receiver where multiple subclasses provide overriding implementations.
+ * Mirrors the `instanceof` codegen: load the receiver's `__tag` field
+ * (i32, set in each subclass's constructor) and compare against each
+ * candidate's known `classTag` value, calling the matching subclass's
+ * method body. Receiver and arguments are evaluated once and saved to
+ * temp locals so each branch can reference them.
+ *
+ * Returns the call's IR result type, or undefined if dispatch could not
+ * be emitted (caller falls back to the existing static path).
+ */
+function emitVirtualMethodDispatchByTag(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.CallExpression,
+  propAccess: ts.PropertyAccessExpression,
+  candidates: { className: string; funcIdx: number; classTag: number }[],
+  baseClassName: string,
+): InnerResult | undefined {
+  // Resolve the base struct typeIdx for `struct.get __tag` (field 0).
+  const baseStructIdx = ctx.structMap.get(baseClassName);
+  if (baseStructIdx === undefined) return undefined;
+
+  // Validate first candidate's signature (used as the schema for arg
+  // type hints and return-type lookup; all overrides share the same
+  // user-visible signature).
+  const firstCand = candidates[0]!;
+  const firstParamTypes = getFuncParamTypes(ctx, firstCand.funcIdx);
+  if (!firstParamTypes || firstParamTypes.length === 0) return undefined;
+
+  // Compile the receiver expression — produces a ref-typed value.
+  const recvType = compileExpression(ctx, fctx, propAccess.expression);
+  if (!recvType || (recvType.kind !== "ref" && recvType.kind !== "ref_null")) return undefined;
+
+  const recvLocalType: ValType = { kind: "ref_null", typeIdx: (recvType as { typeIdx: number }).typeIdx };
+  const recvLocal = allocTempLocal(fctx, recvLocalType);
+  fctx.body.push({ op: "local.set", index: recvLocal });
+
+  // Evaluate args and save each to a temp local. Pad missing args with
+  // default values so call sites can omit trailing arguments.
+  const argLocals: { idx: number; type: ValType }[] = [];
+  const userParamCount = firstParamTypes.length - 1; // exclude self
+  const argCount = Math.min(expr.arguments.length, userParamCount);
+  for (let i = 0; i < argCount; i++) {
+    const expectedArgType = firstParamTypes[i + 1];
+    const aType = compileExpression(ctx, fctx, expr.arguments[i]!, expectedArgType);
+    if (!aType) return undefined;
+    const local = allocTempLocal(fctx, aType);
+    fctx.body.push({ op: "local.set", index: local });
+    argLocals.push({ idx: local, type: aType });
+  }
+  for (let i = expr.arguments.length + 1; i < firstParamTypes.length; i++) {
+    const paramType = firstParamTypes[i]!;
+    pushDefaultValue(fctx, paramType, ctx);
+    const local = allocTempLocal(fctx, paramType);
+    fctx.body.push({ op: "local.set", index: local });
+    argLocals.push({ idx: local, type: paramType });
+  }
+
+  // Determine return type from the first candidate's signature.
+  const sig = ctx.checker.getResolvedSignature(expr);
+  let resultType: ValType | typeof VOID_RESULT = VOID_RESULT;
+  if (sig) {
+    const retType = ctx.checker.getReturnTypeOfSignature(sig);
+    const fullName0 = `${firstCand.className}_${propAccess.name.text}`;
+    if (!isEffectivelyVoidReturn(ctx, retType, fullName0)) {
+      const wasmRet = getWasmFuncReturnType(ctx, firstCand.funcIdx);
+      resultType = wasmRet ?? resolveWasmType(ctx, retType);
+    }
+  }
+  if (resultType !== VOID_RESULT && wasmFuncReturnsVoid(ctx, firstCand.funcIdx)) {
+    resultType = VOID_RESULT;
+  }
+
+  const blockType: { kind: "val"; type: ValType } | { kind: "empty" } =
+    resultType === VOID_RESULT ? { kind: "empty" } : { kind: "val", type: resultType };
+
+  // Build the call body for one candidate. We need to ref.cast the
+  // receiver to the candidate's struct type before calling, so the
+  // function-type signature matches.
+  function callBody(cand: { className: string; funcIdx: number; classTag: number }): Instr[] {
+    const candParams = getFuncParamTypes(ctx, cand.funcIdx);
+    if (!candParams || candParams.length === 0) return [];
+    const selfType = candParams[0]!;
+    if (selfType.kind !== "ref" && selfType.kind !== "ref_null") return [];
+    const selfTypeIdx = (selfType as { typeIdx: number }).typeIdx;
+    const body: Instr[] = [];
+    body.push({ op: "local.get", index: recvLocal });
+    // ref.cast_null preserves nullability if the receiver might be null;
+    // ref.cast (non-null) traps on null. Use ref.cast_null since the
+    // receiver could be null at the static type level.
+    body.push({ op: "ref.cast_null", typeIdx: selfTypeIdx } as Instr);
+    for (const a of argLocals) {
+      body.push({ op: "local.get", index: a.idx });
+    }
+    const finalIdx = ctx.funcMap.get(`${cand.className}_${propAccess.name.text}`) ?? cand.funcIdx;
+    body.push({ op: "call", funcIdx: finalIdx });
+    return body;
+  }
+
+  // Build the cascade: load __tag, compare to each candidate's classTag.
+  // Outermost: candidates[0]; deepest else: unreachable.
+  let elseInstrs: Instr[] = [{ op: "unreachable" } as Instr];
+  for (let i = candidates.length - 1; i >= 0; i--) {
+    const cand = candidates[i]!;
+    const branch: Instr[] = [
+      { op: "local.get", index: recvLocal },
+      { op: "struct.get", typeIdx: baseStructIdx, fieldIdx: 0 } as Instr,
+      { op: "i32.const", value: cand.classTag } as Instr,
+      { op: "i32.eq" } as Instr,
+      {
+        op: "if",
+        blockType,
+        then: callBody(cand),
+        else: elseInstrs,
+      } as Instr,
+    ];
+    elseInstrs = branch;
+  }
+  for (const instr of elseInstrs) fctx.body.push(instr);
+
+  for (const a of argLocals) releaseTempLocal(fctx, a.idx);
+  releaseTempLocal(fctx, recvLocal);
+
+  return resultType;
+}
+
 function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr: ts.CallExpression): InnerResult {
   // Optional chaining on calls: obj?.method()
   if (expr.questionDotToken && ts.isPropertyAccessExpression(expr.expression)) {
@@ -497,38 +755,68 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
     return compileOptionalDirectCall(ctx, fctx, expr);
   }
 
-  // eval(...) — route to __extern_eval JS-host import (#1006).
+  // eval(...) — first try static inlining (#1163): if the source argument is
+  // a compile-time-constant string, parse it and splice the AST inline at the
+  // call site.  This is the zero-runtime-cost path.  If the argument is not
+  // a constant (or parsing fails), fall through to __extern_eval (#1006/#1164).
   // Covers direct `eval(src)` and indirect `(0, eval)(src)` / `(0,eval)(src)`.
   // In standalone/WASI mode the host import is unavailable and will trap at
   // instantiation time — callers that need eval must use a JS host.
-  if (isEvalCallExpression(expr)) {
-    let evalIdx = ctx.funcMap.get("__extern_eval");
-    if (evalIdx === undefined) {
-      const importsBefore = ctx.numImportFuncs;
-      const evalType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
-      addImport(ctx, "env", "__extern_eval", { kind: "func", typeIdx: evalType });
-      shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
-      evalIdx = ctx.funcMap.get("__extern_eval");
-    }
-    if (evalIdx === undefined) {
-      fctx.body.push({ op: "unreachable" });
-      return null;
-    }
-    if (expr.arguments.length === 0) {
-      fctx.body.push({ op: "ref.null", refType: "extern" } as unknown as Instr);
+  //
+  // #1164: signature is `(externref src, i32 isDirect) -> externref`.  The
+  // isDirect flag (1 = direct call, 0 = indirect) lets the host shim
+  // preserve ECMA-262 §19.2.1 scope semantics — direct eval has access to
+  // the caller's lexical scope, indirect eval runs in global scope.
+  {
+    const evalKind = classifyEvalCallExpression(expr, ctx.checker);
+    if (evalKind !== "none") {
+      // #1229 — peephole: `eval("/" + X + "/")` → `new RegExp(X)`.
+      // Test262's BMP-codepoint regex tests build a regex literal per
+      // iteration via eval; the eval pipeline (TS+codegen+wasm-instantiate)
+      // is ~50ms per call, hitting the 30s pool ceiling on the first few
+      // hundred of 65k iterations. Rewriting to the RegExp constructor
+      // avoids the eval pipeline entirely — one host call (regex parse +
+      // compile) instead of two (eval pipeline + regex parse + compile).
+      // The semantic difference (eval throws SyntaxError-by-eval; new RegExp
+      // throws SyntaxError-by-RegExp) is invisible to callers that only
+      // inspect `.source` / `.flags` / matching behavior, which is the
+      // entire test set this targets.
+      const rewritten = tryEvalAsRegExpPeephole(ctx, fctx, expr);
+      if (rewritten !== undefined) return rewritten;
+      const inlined = tryStaticEvalInline(ctx, fctx, expr);
+      if (inlined !== undefined) return inlined;
+      let evalIdx = ctx.funcMap.get("__extern_eval");
+      if (evalIdx === undefined) {
+        const importsBefore = ctx.numImportFuncs;
+        const evalType = addFuncType(ctx, [{ kind: "externref" }, { kind: "i32" }], [{ kind: "externref" }]);
+        addImport(ctx, "env", "__extern_eval", { kind: "func", typeIdx: evalType });
+        shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+        evalIdx = ctx.funcMap.get("__extern_eval");
+      }
+      if (evalIdx === undefined) {
+        fctx.body.push({ op: "unreachable" });
+        return null;
+      }
+      if (expr.arguments.length === 0) {
+        // eval() with no args returns undefined per spec.  Avoid the host
+        // round-trip entirely.
+        fctx.body.push({ op: "ref.null", refType: "extern" } as unknown as Instr);
+        return { kind: "externref" };
+      }
+      const srcArg = expr.arguments[0]!;
+      const srcType = compileExpression(ctx, fctx, srcArg);
+      if (srcType && srcType.kind !== "externref") {
+        coerceType(ctx, fctx, srcType, { kind: "externref" });
+      }
+      // Push isDirect flag.
+      fctx.body.push({ op: "i32.const", value: evalKind === "direct" ? 1 : 0 });
+      for (let ai = 1; ai < expr.arguments.length; ai++) {
+        const extraType = compileExpression(ctx, fctx, expr.arguments[ai]!);
+        if (extraType) fctx.body.push({ op: "drop" });
+      }
+      fctx.body.push({ op: "call", funcIdx: evalIdx });
       return { kind: "externref" };
     }
-    const srcArg = expr.arguments[0]!;
-    const srcType = compileExpression(ctx, fctx, srcArg);
-    if (srcType && srcType.kind !== "externref") {
-      coerceType(ctx, fctx, srcType, { kind: "externref" });
-    }
-    for (let ai = 1; ai < expr.arguments.length; ai++) {
-      const extraType = compileExpression(ctx, fctx, expr.arguments[ai]!);
-      if (extraType) fctx.body.push({ op: "drop" });
-    }
-    fctx.body.push({ op: "call", funcIdx: evalIdx });
-    return { kind: "externref" };
   }
 
   // Dynamic import() — delegate to __dynamic_import host import.
@@ -3245,19 +3533,76 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           ancestor = ctx.classParentMap.get(ancestor);
         }
       }
-      // Walk child classes (handles abstract class → concrete subclass)
+      // Walk child classes (handles abstract class → concrete subclass).
+      // (#1299) Collect ALL subclass implementations so we can emit a
+      // runtime tag-based dispatch (virtual dispatch) when more than one
+      // exists. Without this, a base-typed receiver would unconditionally
+      // call the first subclass's method regardless of runtime type.
+      let virtualCandidates: { className: string; funcIdx: number; classTag: number }[] | undefined;
       if (funcIdx === undefined) {
+        const candidates: { className: string; funcIdx: number; classTag: number }[] = [];
+        const baseClass = fullName.split("_")[0];
         for (const [childClass, parentClass] of ctx.classParentMap) {
-          if (parentClass === receiverClassName || parentClass === fullName.split("_")[0]) {
+          if (parentClass === receiverClassName || parentClass === baseClass) {
             const childFullName = `${childClass}_${methodName}`;
             const childFuncIdx = ctx.funcMap.get(childFullName);
-            if (childFuncIdx !== undefined) {
-              fullName = childFullName;
-              funcIdx = childFuncIdx;
-              break;
+            const childTag = ctx.classTagMap.get(childClass);
+            if (childFuncIdx !== undefined && childTag !== undefined) {
+              candidates.push({ className: childClass, funcIdx: childFuncIdx, classTag: childTag });
             }
           }
         }
+        if (candidates.length === 1) {
+          fullName = `${candidates[0]!.className}_${methodName}`;
+          funcIdx = candidates[0]!.funcIdx;
+        } else if (candidates.length > 1) {
+          virtualCandidates = candidates;
+          fullName = `${candidates[0]!.className}_${methodName}`;
+          funcIdx = candidates[0]!.funcIdx;
+        }
+      } else {
+        // Method exists on receiver class — also check for subclass overrides.
+        const candidates: { className: string; funcIdx: number; classTag: number }[] = [];
+        const recvTag = ctx.classTagMap.get(receiverClassName);
+        if (recvTag !== undefined) {
+          candidates.push({ className: receiverClassName, funcIdx, classTag: recvTag });
+        }
+        for (const [childClass, parentClass] of ctx.classParentMap) {
+          // Walk full ancestry to capture transitive subclasses.
+          let cur: string | undefined = parentClass;
+          while (cur) {
+            if (cur === receiverClassName) break;
+            cur = ctx.classParentMap.get(cur);
+          }
+          if (cur === receiverClassName && childClass !== receiverClassName) {
+            const childFullName = `${childClass}_${methodName}`;
+            const childFuncIdx = ctx.funcMap.get(childFullName);
+            const childTag = ctx.classTagMap.get(childClass);
+            if (
+              childFuncIdx !== undefined &&
+              childTag !== undefined &&
+              !candidates.some((c) => c.className === childClass)
+            ) {
+              candidates.push({ className: childClass, funcIdx: childFuncIdx, classTag: childTag });
+            }
+          }
+        }
+        if (candidates.length > 1) {
+          virtualCandidates = candidates;
+        }
+      }
+      // Early intercept: emit virtual dispatch (tag-comparison cascade,
+      // same pattern as `instanceof`) if multiple candidates exist.
+      if (virtualCandidates && virtualCandidates.length > 1) {
+        const vresult = emitVirtualMethodDispatchByTag(
+          ctx,
+          fctx,
+          expr,
+          propAccess,
+          virtualCandidates,
+          receiverClassName,
+        );
+        if (vresult !== undefined) return vresult;
       }
       // If no method found, check if the property is a callable struct field
       // (e.g. this.callback() where callback is a function-typed property)
@@ -3440,10 +3785,16 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             return resultType;
           }
         }
-        // Non-nullable receiver: emit call directly
+        // Non-nullable receiver: emit call directly.
+        // User-visible param count excludes self (param 0). Clamp to ≥ 0 —
+        // when funcMap indirectly points at a stale index (e.g. a zero-arg
+        // constructor entry that wasn't shifted after a late import), the
+        // raw `length - 1` would go negative and the `for` loop would read
+        // `expr.arguments[-1]` → undefined → "unexpected undefined AST node".
+        // Seen in tests that mix static + instance private methods under
+        // the #1162 yield* async-generator cluster.
         const paramTypes = getFuncParamTypes(ctx, funcIdx);
-        // User-visible param count excludes self (param 0)
-        const methodParamCount = paramTypes ? paramTypes.length - 1 : expr.arguments.length;
+        const methodParamCount = paramTypes ? Math.max(0, paramTypes.length - 1) : expr.arguments.length;
         const calleeReadsArgsNn = ctx.funcUsesArguments.has(fullName);
         for (let i = 0; i < Math.min(expr.arguments.length, methodParamCount); i++) {
           compileExpression(ctx, fctx, expr.arguments[i]!, paramTypes?.[i + 1]); // +1 to skip self
@@ -3857,9 +4208,31 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       const importName = `string_${method}`;
       const funcIdx = ctx.funcMap.get(importName);
       if (funcIdx !== undefined) {
-        compileExpression(ctx, fctx, propAccess.expression);
-        const paramTypes = getFuncParamTypes(ctx, funcIdx);
+        // #1248: substring/slice with a single argument default the missing
+        // `end` to `s.length`, NOT 0. Without this, the generic padding loop
+        // below pushes f64.const 0, and the host import calls
+        // `s.substring(start, 0)` — which JS spec swaps to `substring(0, start)`,
+        // returning the wrong prefix instead of the suffix from `start`.
+        // Save the receiver into a temp local so we can re-compute its length
+        // when padding the missing `end` arg.
         const args = expr.arguments;
+        const paramTypes = getFuncParamTypes(ctx, funcIdx);
+        const needsLengthDefault =
+          (method === "substring" || method === "slice") &&
+          args.length === 1 &&
+          paramTypes !== undefined &&
+          paramTypes.length === 3;
+        let savedReceiverLocal: number | undefined;
+        if (needsLengthDefault) {
+          // Ensure wasm:js-string.length is registered so we can compute s.length below.
+          addStringImports(ctx);
+          // Compile receiver, save to temp, leave on stack for the call.
+          compileExpression(ctx, fctx, propAccess.expression);
+          savedReceiverLocal = allocLocal(fctx, `__substr_recv_${fctx.locals.length}`, { kind: "externref" });
+          fctx.body.push({ op: "local.tee", index: savedReceiverLocal });
+        } else {
+          compileExpression(ctx, fctx, propAccess.expression);
+        }
         // Cap at declared param count (excluding self) to avoid pushing extra values
         const userParamCount = paramTypes ? paramTypes.length - 1 : args.length;
         for (let ai = 0; ai < args.length; ai++) {
@@ -3885,7 +4258,18 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         if (paramTypes && args.length + 1 < paramTypes.length) {
           for (let pi = args.length + 1; pi < paramTypes.length; pi++) {
             const pt = paramTypes[pi]!;
-            if (pt.kind === "externref") fctx.body.push({ op: "ref.null.extern" });
+            if (needsLengthDefault && pi === 2 && savedReceiverLocal !== undefined && pt.kind === "f64") {
+              // #1248: For substring/slice missing-end, push s.length instead of 0.
+              const lenIdx = ctx.jsStringImports.get("length");
+              if (lenIdx !== undefined) {
+                fctx.body.push({ op: "local.get", index: savedReceiverLocal });
+                fctx.body.push({ op: "call", funcIdx: lenIdx });
+                fctx.body.push({ op: "f64.convert_i32_u" } as Instr);
+              } else {
+                // Fallback if length import is unavailable for some reason
+                fctx.body.push({ op: "f64.const", value: 0x7fffffff });
+              }
+            } else if (pt.kind === "externref") fctx.body.push({ op: "ref.null.extern" });
             else if (pt.kind === "f64") fctx.body.push({ op: "f64.const", value: 0 });
             else if (pt.kind === "i32") fctx.body.push({ op: "i32.const", value: 0 });
           }
@@ -4569,8 +4953,32 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
   if (ts.isIdentifier(expr.expression)) {
     const funcName = expr.expression.text;
 
+    // (#1301) Param/local that shadows an outer function with nested captures:
+    // the funcMap path emits a direct call AND prepends the outer's nested
+    // captures using `cap.outerLocalIdx` indices. Inside a lifted closure
+    // body those indices map to unrelated locals in the lifted fctx, which
+    // produces struct.new validation errors:
+    //   "struct.new[0] expected type f64, found local.get of type anyref".
+    //
+    // Narrow trigger: only redirect when ALL of:
+    //   1. The current fctx has a local/param with this name (real shadow)
+    //   2. The funcMap entry has nestedFuncCaptures (the broken path)
+    //   3. The local has a callable TS type (actually used as a callable)
+    //
+    // Other shadow cases stay on the funcMap path — direct calls that don't
+    // emit cap-prepend logic are already correct, even if a coincidental
+    // local with the same name exists in the current scope.
+    let isLocallyShadowed = false;
+    if (fctx.localMap.has(funcName) && ctx.nestedFuncCaptures.has(funcName)) {
+      const localCalleeTsType = ctx.checker.getTypeAtLocation(expr.expression);
+      const localCallSigs = localCalleeTsType?.getCallSignatures?.();
+      if (localCallSigs && localCallSigs.length > 0) {
+        isLocallyShadowed = true;
+      }
+    }
+
     // Check if this is a closure call
-    let closureInfo = ctx.closureMap.get(funcName);
+    let closureInfo = isLocallyShadowed ? undefined : ctx.closureMap.get(funcName);
 
     if (!closureInfo) {
       closureInfo = resolveClosureInfoFromLocal(ctx, fctx, funcName);
@@ -4579,7 +4987,14 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       return compileClosureCall(ctx, fctx, expr, funcName, closureInfo);
     }
 
-    const funcIdx = ctx.funcMap.get(funcName);
+    // #1177: funcIdx must be re-fetched from funcMap whenever a late-import
+    // shift may have run. Late imports added during argument/cap compilation
+    // (e.g. emitLocalTdzCheck → ensureLateImport(__throw_reference_error))
+    // shift `ctx.numImportFuncs` and update `ctx.funcMap` entries, but a
+    // local `const funcIdx` would hold the pre-shift value.
+    // (#1301) Skip funcMap when locally shadowed; the local-callable fallback
+    // below handles dispatch via call_ref through the param/local.
+    let funcIdx = isLocallyShadowed ? undefined : ctx.funcMap.get(funcName);
     if (funcIdx === undefined) {
       // Before giving up, check if this identifier is a local/param with callable TS type
       // (e.g. function parameter `fn: (x: number) => number` stored as externref).
@@ -4892,20 +5307,91 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
     // Prepend captured values for nested functions with captures
     const nestedCaptures = ctx.nestedFuncCaptures.get(funcName);
     if (nestedCaptures) {
-      // Get param types early so we can coerce captures to expected types
+      // #1177: Get param types early so we can coerce captures to expected types.
+      // Re-fetch funcIdx in case a prior compileExpression triggered a late-import
+      // shift (which updated funcMap but not our local `funcIdx`).
+      funcIdx = ctx.funcMap.get(funcName) ?? funcIdx;
       const captureParamTypes = getFuncParamTypes(ctx, funcIdx);
       for (let capIdx = 0; capIdx < nestedCaptures.length; capIdx++) {
         const cap = nestedCaptures[capIdx]!;
+        // #1177: TDZ check for captured let/const/using variables — fires
+        // BEFORE the cap-prepend so we throw ReferenceError before the callee
+        // observes an uninitialized value. Apply to BOTH the mutable and
+        // non-mutable branches: a callee with a mutable capture (ref cell)
+        // can still be called while the outer let-decl is in TDZ if a
+        // closure that captured the flag invokes the callee transitively.
+        const capTdzIdx = fctx.tdzFlagLocals?.get(cap.name);
+        if (capTdzIdx !== undefined) {
+          const capTdzResult = analyzeTdzAccessByPos(ctx, cap.name, expr);
+          if (capTdzResult === "check") {
+            emitLocalTdzCheck(ctx, fctx, cap.name, capTdzIdx);
+          } else if (capTdzResult === "throw") {
+            emitStaticTdzThrow(ctx, fctx, cap.name);
+          }
+          // "skip" — call site is after declaration, no check needed
+        }
         if (cap.mutable && cap.valType) {
           // Mutable capture: wrap in a ref cell so writes propagate back
           const refCellTypeIdx = getOrRegisterRefCellType(ctx, cap.valType);
           // Check if this local is already boxed (from a previous call to the same or another closure)
-          if (fctx.boxedCaptures?.has(cap.name)) {
+          //
+          // #1259: detect double-wrap when `localMap[cap.name]` was
+          // re-aimed at a boxed-cap local *deliberately* by a different
+          // codegen site (compileArrowAsClosure, emitFuncRefAsClosure,
+          // object-ops, etc.). All such sites use the `__boxed_<name>`
+          // local-naming convention AND set `boxedCaptures[cap.name]`
+          // in lockstep. The narrow guard here checks for both signals:
+          //   1. the slot's type matches `cap.valType`'s ref cell type, AND
+          //   2. the slot's name starts with `__boxed_`.
+          // If both hold, we're confident this slot is a deliberately
+          // boxed cap (not a coincidental same-typed local) and we can
+          // pass it through without re-boxing. The narrower guard avoids
+          // the regressions seen on the wider type-only guard (PR#166
+          // CI: net -25, 33 wasm-change regressions).
+          //
+          // Without this check, none of the existing call sites would
+          // hit the `localMap`-already-boxed-but-`boxedCaptures`-empty
+          // path on main today (they pair the two writes). The guard
+          // is defensive prep for #1177 Stage 1 — when Stage 1 re-aims
+          // `localMap` to an outer-fctx boxed local whose `__boxed_` name
+          // we can recognize, we'll treat it as already-boxed.
+          const candidateLocalIdx = fctx.localMap.get(cap.name);
+          let candidateIsBoxed = false;
+          if (candidateLocalIdx !== undefined) {
+            const candidateType = getLocalType(fctx, candidateLocalIdx);
+            const isRefCellTyped =
+              candidateType !== undefined &&
+              (candidateType.kind === "ref" || candidateType.kind === "ref_null") &&
+              (candidateType as { typeIdx: number }).typeIdx === refCellTypeIdx;
+            // Also require the name signal — only deliberately-boxed locals
+            // use the `__boxed_` convention.
+            const localSlot =
+              candidateLocalIdx >= fctx.params.length ? fctx.locals[candidateLocalIdx - fctx.params.length] : undefined;
+            const hasBoxedName = localSlot?.name?.startsWith(`__boxed_`) ?? false;
+            candidateIsBoxed = isRefCellTyped && hasBoxedName;
+          }
+          if (fctx.boxedCaptures?.has(cap.name) || candidateIsBoxed) {
             // Already a ref cell — pass the ref cell reference directly
-            const currentLocalIdx = fctx.localMap.get(cap.name)!;
+            const currentLocalIdx = fctx.localMap.get(cap.name) ?? cap.outerLocalIdx;
             fctx.body.push({ op: "local.get", index: currentLocalIdx });
+            // Backfill boxedCaptures only when we hit the new candidateIsBoxed
+            // branch — preserves invariants for downstream helpers that key on
+            // boxedCaptures membership.
+            if (candidateIsBoxed && !fctx.boxedCaptures?.has(cap.name)) {
+              if (!fctx.boxedCaptures) fctx.boxedCaptures = new Map();
+              fctx.boxedCaptures.set(cap.name, {
+                refCellTypeIdx,
+                valType: cap.valType,
+              });
+            }
           } else {
-            // Create a ref cell, store the current value, keep ref on stack
+            // Create a ref cell, store the current value, keep ref on stack.
+            // (Note: #1177 originally proposed `localMap.get(cap.name) ?? cap.outerLocalIdx`
+            // but that caused 100+ test262 regressions where main's "wrong-slot"
+            // behavior was load-bearing for tests that relied on a null deref
+            // throwing inside an async fn body. Reverted; the canonical TDZ-
+            // through-closure case is fixed via the call-site TDZ check below
+            // and Stage 3 C.1 in compileArrowAsClosure.)
             fctx.body.push({ op: "local.get", index: cap.outerLocalIdx });
             fctx.body.push({ op: "struct.new", typeIdx: refCellTypeIdx });
             // Also box the outer local so subsequent reads/writes go through the ref cell
@@ -4932,18 +5418,9 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             }
           }
         } else {
-          // TDZ check for captured let/const variables — apply static analysis
-          // to skip checks when the call site is provably after initialization.
-          const capTdzIdx = fctx.tdzFlagLocals?.get(cap.name);
-          if (capTdzIdx !== undefined) {
-            const capTdzResult = analyzeTdzAccessByPos(ctx, cap.name, expr);
-            if (capTdzResult === "check") {
-              emitLocalTdzCheck(ctx, fctx, cap.name, capTdzIdx);
-            } else if (capTdzResult === "throw") {
-              emitStaticTdzThrow(ctx, fctx, cap.name);
-            }
-            // "skip" — call site is after declaration, no check needed
-          }
+          // (#1177: TDZ check moved above the mutable/non-mutable branch.
+          // Stage 1 localMap-first lookup reverted — see comment in mutable
+          // branch above.)
           fctx.body.push({ op: "local.get", index: cap.outerLocalIdx });
           // Coerce capture value to expected param type if they differ
           const expectedCapType = captureParamTypes?.[capIdx];
@@ -4955,7 +5432,98 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           }
         }
       }
+
+      // #1205 Stage 3: After all value captures, push boxed TDZ flag refs.
+      // Mirrors compileArrowAsClosure's construct-time logic at
+      // closures.ts:2085-2118. Layout invariant: lifted-fn signature is
+      // [valueCap_0, ..., valueCap_N-1, tdzFlagBox_0, ..., tdzFlagBox_K-1, ...userParams].
+      const tdzFlaggedNested = nestedCaptures.filter((c) => c.hasTdzFlag);
+      if (tdzFlaggedNested.length > 0) {
+        const i32RefCellTypeIdx = getOrRegisterRefCellType(ctx, { kind: "i32" });
+        for (const cap of tdzFlaggedNested) {
+          const existing = fctx.boxedTdzFlags?.get(cap.name);
+          if (existing) {
+            // Already boxed by an enclosing closure construction or a prior
+            // call-site cap-prepend — share the box reference.
+            fctx.body.push({ op: "local.get", index: existing.localIdx });
+          } else {
+            // Fresh box: read the current i32 flag, struct.new an i32 ref cell,
+            // tee into a new outer-fctx local, and re-aim
+            // `fctx.tdzFlagLocals` + `fctx.boxedTdzFlags` so subsequent
+            // emitLocalTdzInit / emitLocalTdzCheck in the outer scope route
+            // through the same box.
+            //
+            // #1205 sourcing rules — the i32 flag must come from a location
+            // we can verify is an i32 in the *current* fctx. Two cases:
+            //
+            //   1. Live `fctx.tdzFlagLocals.get(name)` returns an idx whose
+            //      local type is i32 in the current fctx — use it directly.
+            //      This is the common case (fn-decl hoisted in same fctx
+            //      as the let-decl, no block shadowing in between).
+            //
+            //   2. Live lookup is missing or points to a non-i32 local.
+            //      This covers two sub-cases that we treat the same way:
+            //
+            //      a. Block-scope shadow cleared the live entry. The
+            //         stored `cap.outerTdzFlagIdx` still points to an i32
+            //         local — but its RUNTIME VALUE is stale, because the
+            //         inner let-decl's `emitLocalTdzInit` was a no-op
+            //         (the live entry was deleted by `saveBlockScopedShadows`)
+            //         so the flag was never set to 1 inside the block.
+            //
+            //      b. Cross-function transitive (fn A calls fn B and B
+            //         captures a TDZ-flagged var that A does NOT capture).
+            //         A's fctx has no source for B's flag. The stored idx
+            //         points to a slot in B's hoist fctx, NOT in A's.
+            //
+            //      In both sub-cases, we cannot trust any runtime i32
+            //      slot in the current fctx to give us the right flag
+            //      value. Push `i32.const 1` (treat as initialized).
+            //      This matches the pre-#1205 behavior, where the lifted
+            //      body had no flag check at all — the call site's
+            //      static TDZ analysis (calls.ts:4968-4977 above this
+            //      block) is the authoritative pre-call check; if it
+            //      didn't fire, the variable is past its TDZ.
+            const liveFlagIdx = fctx.tdzFlagLocals?.get(cap.name);
+            const liveType = liveFlagIdx !== undefined ? getLocalType(fctx, liveFlagIdx) : undefined;
+            const liveOk = liveType?.kind === "i32";
+            if (liveOk && liveFlagIdx !== undefined) {
+              fctx.body.push({ op: "local.get", index: liveFlagIdx });
+              fctx.body.push({ op: "struct.new", typeIdx: i32RefCellTypeIdx });
+            } else {
+              fctx.body.push({ op: "i32.const", value: 1 });
+              fctx.body.push({ op: "struct.new", typeIdx: i32RefCellTypeIdx });
+            }
+            const flagBoxLocal = allocLocal(fctx, `__tdz_box_${cap.name}`, {
+              kind: "ref",
+              typeIdx: i32RefCellTypeIdx,
+            });
+            fctx.body.push({ op: "local.tee", index: flagBoxLocal });
+            // Only re-aim outer fctx's flag maps when we sourced from a
+            // verified i32 in THIS fctx — otherwise we'd corrupt the maps
+            // with a synthetic box that has no relationship to any actual
+            // outer flag, which would in turn break later TDZ checks /
+            // initializations in the outer scope.
+            if (liveOk) {
+              if (!fctx.boxedTdzFlags) fctx.boxedTdzFlags = new Map();
+              fctx.boxedTdzFlags.set(cap.name, {
+                refCellTypeIdx: i32RefCellTypeIdx,
+                localIdx: flagBoxLocal,
+              });
+              if (!fctx.tdzFlagLocals) fctx.tdzFlagLocals = new Map();
+              fctx.tdzFlagLocals.set(cap.name, flagBoxLocal);
+            }
+          }
+        }
+      }
     }
+
+    // #1177: Re-fetch funcIdx in case the cap-prepend loop above (or any
+    // earlier compileExpression in this function) triggered a late-import
+    // shift via emitLocalTdzCheck/emitStaticTdzThrow. #1205: also covers
+    // late-import shifts triggered by the TDZ-flag prepend block (which
+    // calls getOrRegisterRefCellType — typically pre-registered, but still).
+    funcIdx = ctx.funcMap.get(funcName) ?? funcIdx;
 
     // Check for rest parameters on the callee
     const restInfo = ctx.funcRestParams.get(funcName);
@@ -4995,7 +5563,15 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
     } else {
       // Normal call — compile provided arguments with type hints from function signature
       const paramTypes = getFuncParamTypes(ctx, funcIdx);
-      const captureCount = nestedCaptures ? nestedCaptures.length : 0;
+      // #1205: Each TDZ-flagged value capture also has a flag-box param
+      // prepended to the lifted fn signature (see FNDECL-A2 in
+      // statements/nested-declarations.ts). Account for those flag params
+      // when computing user-visible arity — otherwise the padding loop
+      // below pushes a phantom default value for each flag, producing an
+      // arity-mismatch trap at the call site.
+      const captureCount = nestedCaptures
+        ? nestedCaptures.length + nestedCaptures.filter((c) => c.hasTdzFlag).length
+        : 0;
       // User-visible param count excludes capture params (which are prepended internally)
       const paramCount = paramTypes ? paramTypes.length - captureCount : expr.arguments.length;
       const calleeReadsArgsDirect = ctx.funcUsesArguments.has(funcName);
@@ -5371,6 +5947,49 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
     if (resolvedMethodName !== undefined) {
       const methodName = resolvedMethodName;
       const receiverType = ctx.checker.getTypeAtLocation(elemAccess.expression);
+
+      // Iterator protocol dispatch (#1016b): obj[Symbol.iterator]() and
+      // obj[Symbol.asyncIterator]() must drive the iterator protocol via the
+      // host imports __iterator / __async_iterator. Without this, calls like
+      // `array[Symbol.iterator]()` fall through to the null-pushing fallback
+      // because no class method `__@@iterator` is registered for built-in JS
+      // iterables (TypedArray, Map, Set, RegExpStringIterator, etc.).
+      // The runtime __iterator handles all dispatch paths:
+      //   - direct Symbol.iterator on JS objects
+      //   - sidecar @@iterator on WasmGC structs
+      //   - WasmGC closure via __call_fn_0
+      //   - __call_@@iterator export for user-defined iterable classes
+      //   - __vec_len/__vec_get fallback for vec structs (arrays)
+      if (methodName === "@@iterator" || methodName === "@@asyncIterator") {
+        const importName = methodName === "@@iterator" ? "__iterator" : "__async_iterator";
+        const recvType = compileExpression(ctx, fctx, elemAccess.expression);
+        if (recvType) {
+          if (recvType.kind === "ref" || recvType.kind === "ref_null") {
+            fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+          } else if (recvType.kind === "f64") {
+            const boxIdx = ensureLateImport(ctx, "__box_number", [{ kind: "f64" }], [{ kind: "externref" }]);
+            if (boxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: boxIdx });
+          } else if (recvType.kind === "i32") {
+            fctx.body.push({ op: "f64.convert_i32_s" });
+            const boxIdx = ensureLateImport(ctx, "__box_number", [{ kind: "f64" }], [{ kind: "externref" }]);
+            if (boxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: boxIdx });
+          }
+          // externref / funcref / other: assume already iterable-shaped
+        }
+        // Iterator methods take no arguments; evaluate any extras for side effects only.
+        for (const arg of expr.arguments) {
+          const argType = compileExpression(ctx, fctx, arg);
+          if (argType) fctx.body.push({ op: "drop" });
+        }
+        const iterIdx = ensureLateImport(ctx, importName, [{ kind: "externref" }], [{ kind: "externref" }]);
+        flushLateImportShifts(ctx, fctx);
+        if (iterIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx: iterIdx });
+        } else {
+          fctx.body.push({ op: "ref.null.extern" });
+        }
+        return { kind: "externref" };
+      }
 
       // Try class instance method: ClassName_methodName
       let receiverClassName = receiverType.getSymbol()?.name;

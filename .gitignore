@@ -1,7 +1,7 @@
 node_modules/
 dist/
-playground-dist/
-pages-dist/
+dist/playground/
+dist/pages/
 output/
 *.tsbuildinfo
 .vite/
@@ -13,6 +13,7 @@ benchmarks/results/*.json
 !benchmarks/results/wat-analysis-report.json
 !benchmarks/results/latest.json
 !benchmarks/results/history.json
+!benchmarks/results/diff-test-baseline.json
 benchmarks/results/*.md
 benchmarks/results/*.txt
 .pnpm-store/
@@ -20,9 +21,11 @@ benchmarks/results/*.txt
 .claude/worktrees/
 .claude/agents/
 .test262-cache/
-test262-out/
+output/
 scripts/compiler-bundle.mjs
 scripts/runtime-bundle.mjs
+scripts/main-compiler-bundle.mjs
+scripts/main-runtime-bundle.mjs
 tmp_*.ts
 tmp_*.mts
 _tmp_*.ts
@@ -64,13 +67,11 @@ tests/fixtures/*.wat
 tests/fixtures/*.d.ts
 tests/fixtures/*.imports.js
 .claude/nonces/
-benchmarks/results/test262-results-*.jsonl
-benchmarks/results/memory-monitor-*.jsonl
+*.jsonl
+benchmarks/results/runs/
 .playwright-cli/
 vendor/
 docs/publications/
-benchmarks/results/test262-report.json
-# test262-current.{jsonl,json} is the stable filename committed by the
-# nightly workflow — keep it tracked so build-pages can use it.
-!benchmarks/results/test262-current.jsonl
-!benchmarks/results/test262-current.json
+
+# Claude Code scheduled tasks lock
+.claude/scheduled_tasks.lock

@@ -1,0 +1,67 @@
+---
+id: 781
+sprint: 0
+title: "- TypeError (null/undefined access) in language constructs (~2,841 tests)"
+status: done
+created: 2026-03-25
+updated: 2026-04-14
+completed: 2026-03-25
+priority: high
+feasibility: medium
+goal: core-semantics
+parent: 779
+test262_fail: 2841
+---
+# #781 -- TypeError (null/undefined access) in language constructs (~2,841 tests)
+
+## Problem
+
+Tests in the `language/` category crash with `TypeError (null/undefined access)` — the compiled Wasm code dereferences a null reference during normal language operations (property access, iteration, destructuring, closures).
+
+Unlike #780 (built-ins), these failures are in core language features: expressions, statements, destructuring iteration, class definitions, generator/async functions.
+
+## Breakdown by sub-category
+
+| Sub-category | Count |
+|-------------|-------|
+| language/expressions | 1,238 |
+| language/statements | 921 |
+| language/eval-code | 166 |
+| annexB/language | 117 |
+| language/arguments-object | 93 |
+| language/function-code | 71 |
+| language/computed-property-names | ~60 |
+| language/module-code | ~40 |
+| Other | ~135 |
+
+## Common sub-patterns
+
+- **Iterator protocol failures** (~300): destructuring and for-of calls `Symbol.iterator` which resolves to null
+- **Computed property name evaluation** (~100): dynamic property keys trigger null access when ToPrimitive is called
+- **Closure variable capture** (~80): captured variables in nested functions resolve to null ref cells
+- **eval-related** (~166): eval() returns null/undefined where a value is expected
+- **Arguments object** (~93): accessing `arguments.callee`, `arguments.length` on missing arguments object
+
+## Sample test files
+
+- `test/language/expressions/addition/S11.6.1_A1.js` — addition operator evaluation order
+- `test/language/expressions/strict-does-not-equals/S11.9.5_A2.4_T2.js` — strict inequality with ToPrimitive
+- `test/language/statements/class/cpn-class-decl-fields-computed-property-name-from-additive-expression-subtract.js` — computed class field names
+- `test/language/statements/for-await-of/async-gen-decl-dstr-obj-prop-elem-init-fn-name-cover.js` — for-await-of destructuring
+- `test/language/expressions/generators/dstr/ary-init-iter-close.js` — iterator close in generators
+- `test/language/arguments-object/10.6-11-b-1.js` — arguments object property access
+- `test/language/expressions/assignment/dstr/array-elem-trlg-iter-list-nrml-close-null.js` — iterator close on null
+- `test/language/statements/generators/dstr/ary-ptrn-rest-id-direct.js` — rest element in generators
+
+## Fix approach
+
+1. **Iterator protocol completeness** — ensure `Symbol.iterator` lookup and `IteratorRecord` creation handles all edge cases (null iterators, abrupt completion forwarding)
+2. **ToPrimitive/ToPropertyKey** — computed property names must call ToPrimitive; if the object lacks `valueOf`/`toString`, the code dereferences null
+3. **Closure ref-cell initialization** — verify all ref cells are initialized before first access, especially in default parameter expressions
+4. **Arguments object** — ensure `arguments` is properly constructed for all function types (async, generator, arrow fallback)
+
+## Files to modify
+
+- `src/codegen/expressions.ts` — property access, ToPrimitive calls, iterator protocol
+- `src/codegen/statements.ts` — for-of/for-await-of iterator handling, destructuring
+- `src/codegen/index.ts` — arguments object creation, closure ref-cell setup

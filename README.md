@@ -46,7 +46,7 @@ Projects in this category usually take years to reach meaningful semantic covera
 
 Current public milestone:
 
-- **52% Test262 compliance**
+- **~60% Test262 compliance**
 
 See the [Playground](https://loopdive.github.io/js2wasm/playground/) and [Roadmap](./ROADMAP.md) for the current public surface.
 
@@ -54,7 +54,7 @@ See the [Playground](https://loopdive.github.io/js2wasm/playground/) and [Roadma
 
 `js2wasm` is still an active compiler effort, but it is no longer just a research prototype. The project now has:
 
-- **52% Test262 compliance**
+- **~60% Test262 compliance**
 - a public browser playground
 - ongoing benchmark and compatibility reporting
 - both JS-hosted and standalone-oriented compiler work, with standalone support still in progress and not yet the primary conformance path
@@ -174,6 +174,12 @@ The workflow is not hidden behind a consultancy. It is **in this repository**:
 
 Anyone with a [Claude Code](https://docs.claude.com/claude-code) subscription can clone the repo, spawn a `developer` agent from `.claude/agents/developer.md`, point it at a `status: ready` issue under `plan/issues/sprints/`, and contribute a real fix through the same pipeline the core team uses. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the agentic contribution path.
 
+### How this is built
+
+For a long-form, technical account of the agentic development methodology — how the team is structured, how correctness is anchored across multiple test suites, where the decision boundaries between human and agent are drawn, what has gone wrong, and how the methodology has evolved — see [`docs/methodology.md`](./docs/methodology.md).
+
+The document is intended for senior engineers who are skeptical but curious. It cites concrete numbers (sprint count, PR count, test262 pass rate), names the failure modes the team has hit, and discusses honest tradeoffs versus a traditional engineering team. It synthesizes the raw planning material in `plan/` for an external reader without contradicting it; if the two ever diverge, `plan/` is the primary source.
+
 ## Licensing
 
 This repository is licensed under the **Apache License 2.0 with LLVM Exceptions**. See [LICENSE](./LICENSE).
@@ -197,16 +203,36 @@ This is the intended path for infrastructure vendors and strategic partners, inc
 
 Contact: `hello@loopdive.com`
 
+## Testing
+
+`js2wasm` validates correctness through three complementary test layers:
+
+- **Unit & equivalence tests** — `npm test` (vitest). Targeted regression coverage and JS↔Wasm equivalence assertions. See `tests/equivalence/`.
+- **Test262 conformance** — `pnpm run test:262` runs the official ECMAScript test suite (~48k tests) and reports per-edition / per-path pass rates. CI runs this sharded on every PR; the [report](./benchmarks/results/report.html) is regenerated on each merge.
+- **Differential testing vs V8** — `pnpm run test:diff` (#1203). For each program in `tests/differential/corpus/`, the harness runs Node-V8 directly and the compiled `.wasm` and compares stdout. test262 measures spec compliance; differential testing measures whether real programs actually produce the right answer. CI gates each PR on a delta against `benchmarks/results/diff-test-baseline.json` — no new mismatches allowed. Use `pnpm run test:diff:triage` to bucket mismatches by category for follow-up filing.
+
 ## Development
 
 Additional contributor workflow details, including CLA terms, are in [CONTRIBUTING.md](./CONTRIBUTING.md).
+
+## Architecture decisions
+
+The foundational design choices behind `js2wasm` — why WasmGC instead of linear memory, why AOT instead of an embedded engine, how TypeScript annotations are treated, how closures are lowered — are documented as Architecture Decision Records in [`docs/adr/`](./docs/adr/README.md). Each record states the context, the decision, and the consequences in 200–600 words. Start with [ADR-002 (architectural approach)](./docs/adr/0002-architectural-approach.md) and [ADR-001 (hybrid compilation strategy)](./docs/adr/0001-hybrid-compilation-strategy.md); the rest are sub-decisions within that frame.
 
 ## Further Reading
 
 - [Playground](https://loopdive.github.io/js2wasm/playground/)
 - [Roadmap](./ROADMAP.md)
+- [Architecture Decisions](./docs/adr/README.md)
 - [Architecture Notes](./CLAUDE.md)
 - [Contributing](./CONTRIBUTING.md)
+
+## Acknowledgments
+
+We are grateful to the following people for fruitful technical discussions that shaped key design decisions in this project:
+
+- **Chris Fallin** (Cranelift tech lead) — discussions on type inference, IR design, and the performance implications of missing type information at object boundaries.
+- **Luke Wagner** (WebAssembly co-designer, Mozilla / Fastly) — discussions on WasmGC type system design, component model integration, and the long-term direction of WasmGC as a compilation target for typed languages.
 
 ## Trademark Disclaimer
 

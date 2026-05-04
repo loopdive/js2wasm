@@ -1,0 +1,26 @@
+---
+id: 1141
+sprint: 42
+title: "Object.defineProperties: descriptor shape not validated per ECMA-262 §10.1"
+status: done
+created: 2026-04-20
+updated: 2026-04-20
+completed: 2026-04-20
+priority: medium
+feasibility: medium
+reasoning_effort: medium
+goal: error-model
+---
+## Problem
+
+`Object.defineProperties` and `Object.defineProperty` accepted any object as a descriptor without validating its shape per ECMA-262 §10.1. Invalid descriptors (e.g. both `value` and `get`) should throw a `TypeError`.
+
+## Acceptance Criteria
+
+- [x] Invalid descriptor shapes throw `TypeError` with "TypeError:" prefix
+- [x] Conflicting data/accessor descriptor fields rejected
+- [x] test262 define-property tests pass
+
+## Implementation
+
+Merged via PR #226 (branch `issue-defineproperty-validate`).

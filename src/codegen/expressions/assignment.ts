@@ -2,7 +2,7 @@
 /**
  * Assignment operator compilation: simple assignment, destructuring, compound, logical.
  */
-import ts from "typescript";
+import { ts, forEachChild } from "../../ts-api.js";
 import { isBooleanType, isExternalDeclaredClass, isStringType } from "../../checker/type-mapper.js";
 import type { FieldDef, Instr, ValType } from "../../ir/types.js";
 import { emitBoundsCheckedArrayGet, resolveArrayInfo } from "../array-methods.js";
@@ -26,12 +26,18 @@ import {
 } from "../index.js";
 import { buildDestructureNullThrow } from "../destructuring-params.js";
 import { resolveComputedKeyExpression } from "../literals.js";
-import { emitNullGuardedStructGet, isProvablyNonNull } from "../property-access.js";
+import { emitNullGuardedStructGet, isProvablyNonNull, isSafeBoundsEliminated } from "../property-access.js";
 import type { InnerResult } from "../shared.js";
 import { coerceType, compileExpression, valTypesMatch } from "../shared.js";
 import { compileStringLiteral, emitBoolToString } from "../string-ops.js";
 import { findExternInfoForMember, patchStructNewForDynamicField } from "./extern.js";
-import { emitCoercedLocalSet, emitThrowString, getFuncParamTypes, updateLocalType } from "./helpers.js";
+import {
+  emitCoercedLocalSet,
+  emitThrowString,
+  getFuncParamTypes,
+  updateLocalType,
+  widenLocalToNullable,
+} from "./helpers.js";
 import {
   ensureLateImport,
   flushLateImportShifts,
@@ -40,6 +46,7 @@ import {
 } from "./late-imports.js";
 import { emitMappedArgParamSync, emitMappedArgReverseSync } from "./logical-ops.js";
 import { resolveStructName, resolveStructNameForExpr } from "./misc.js";
+import { compileStringBuilderAppend, getBuilderInfo } from "../string-builder.js";
 
 /**
  * Emit a null/undefined guard for an externref-typed destructuring source.
@@ -484,20 +491,31 @@ function compileDestructuringAssignment(
   // patterns the bindings stay at their defaults (mimics JS behaviour for
   // destructuring primitives — the properties simply do not exist). (#379)
   if (!typeName || !ctx.structMap.has(typeName) || !ctx.structFields.get(typeName)) {
-    // Null/undefined check — throw TypeError (#783).
-    // In JS, `{...} = null` and `{...} = undefined` always throw TypeError.
+    // Null/undefined check — throw TypeError (#783, #1260).
+    // In JS, `{...} = null` and `{...} = undefined` always throw TypeError per
+    // §13.15.5.5 RequireObjectCoercible. Use emitExternrefAssignDestructureGuard
+    // which checks BOTH ref.is_null (catches null) AND __extern_is_undefined
+    // (catches the JS undefined sentinel). The bare ref.is_null check missed
+    // undefined-encoded externrefs (#1260).
     // Skip for empty `{} = val` patterns (#225) — only fire on real property accesses.
     if ((resultType.kind === "externref" || resultType.kind === "ref_null") && target.properties.length > 0) {
-      const throwInstrs = buildDestructureNullThrow(ctx, fctx);
       const tmpNullChk = allocLocal(fctx, `__destruct_null_chk_${fctx.locals.length}`, resultType);
-      fctx.body.push({ op: "local.tee", index: tmpNullChk });
-      fctx.body.push({ op: "ref.is_null" } as Instr);
-      fctx.body.push({
-        op: "if",
-        blockType: { kind: "empty" },
-        then: throwInstrs,
-        else: [],
-      });
+      fctx.body.push({ op: "local.set", index: tmpNullChk });
+      if (resultType.kind === "externref") {
+        emitExternrefAssignDestructureGuard(ctx, fctx, tmpNullChk);
+      } else {
+        // ref_null source: only ref.is_null is meaningful (no undefined sentinel
+        // for typed-struct refs).
+        const throwInstrs = buildDestructureNullThrow(ctx, fctx);
+        fctx.body.push({ op: "local.get", index: tmpNullChk });
+        fctx.body.push({ op: "ref.is_null" } as Instr);
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "empty" },
+          then: throwInstrs,
+          else: [],
+        });
+      }
       // Restore value on stack
       fctx.body.push({ op: "local.get", index: tmpNullChk });
     }
@@ -1400,6 +1418,15 @@ function emitObjectDestructureFromLocal(
   const fields = ctx.structFields.get(structName);
   if (!fields) return;
 
+  // The compiler may declare the local as non-nullable `ref T` even though
+  // the value at runtime can be null (e.g. `[{x}] = [null]` element-extracts
+  // a ref_null whose runtime value is null but whose static type is `ref T`).
+  // Widen the local so `ref.is_null` is valid below (#1260, mirrors #1225).
+  const needsNullGuard = pattern.properties.length > 0;
+  if (needsNullGuard) {
+    widenLocalToNullable(fctx, srcLocal);
+  }
+
   // Null guard for ref_null types
   const savedBodyODFL = fctx.body;
   const odflInstrs: Instr[] = [];
@@ -1479,10 +1506,11 @@ function emitObjectDestructureFromLocal(
     }
   }
 
-  // Close null guard — throw TypeError if null/undefined (#730).
+  // Close null guard — throw TypeError if null/undefined (#730, #1260).
   // Skip for empty `{} = val` nested patterns (#225).
+  // Apply to both ref and ref_null sources (we widened above, so ref.is_null is valid).
   fctx.body = savedBodyODFL;
-  if (srcType.kind === "ref_null" && pattern.properties.length > 0) {
+  if (needsNullGuard) {
     const throwInstrs = buildDestructureNullThrow(ctx, fctx);
     fctx.body.push({ op: "local.get", index: srcLocal });
     fctx.body.push({ op: "ref.is_null" } as Instr);
@@ -1518,13 +1546,87 @@ function emitArrayDestructureFromLocal(
   const srcDef = ctx.mod.types[srcTypeIdx];
   if (!srcDef || srcDef.kind !== "struct") return;
 
-  const arrTypeIdx = getArrTypeIdxFromVec(ctx, srcTypeIdx);
-  const arrDef = ctx.mod.types[arrTypeIdx];
-  if (!arrDef || arrDef.kind !== "array") return;
+  // Detect vec vs tuple struct shape (#1225). Tuple fields are named _0, _1, ...
+  const isVecStruct =
+    srcDef.fields.length === 2 && srcDef.fields[0]?.name === "length" && srcDef.fields[1]?.name === "data";
+  const isTupleStruct =
+    !isVecStruct &&
+    srcDef.fields.length > 0 &&
+    srcDef.fields.every((f: { name?: string }, idx: number) => f.name === `_${idx}`);
 
-  const elemType = arrDef.element;
+  // For ref/ref_null sources we want to emit a null guard. The compiler may
+  // declare the local as non-nullable `ref T` even though the value at runtime
+  // can be null (e.g. struct fields holding nested tuple refs that may be
+  // ref.null T). Widen the local so `ref.is_null` is valid (#1225).
+  const needsNullGuard = (srcType.kind === "ref" || srcType.kind === "ref_null") && pattern.elements.length > 0;
+  if (needsNullGuard) {
+    widenLocalToNullable(fctx, srcLocal);
+  }
 
-  // Null guard for ref_null types
+  // For unsupported struct shapes, still emit the null/undefined guard so we
+  // throw the spec-required TypeError (#1225). Without this, nested patterns
+  // like `[[ _ ]] = [null]` would silently drop the destructuring.
+  if (!isVecStruct && !isTupleStruct) {
+    if (needsNullGuard) {
+      const throwInstrs = buildDestructureNullThrow(ctx, fctx);
+      fctx.body.push({ op: "local.get", index: srcLocal });
+      fctx.body.push({ op: "ref.is_null" } as Instr);
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: throwInstrs,
+        else: [],
+      });
+    }
+    return;
+  }
+
+  let arrTypeIdx = -1;
+  let arrDef: { kind: string; element: ValType } | undefined;
+  if (isVecStruct) {
+    arrTypeIdx = getArrTypeIdxFromVec(ctx, srcTypeIdx);
+    const ad = ctx.mod.types[arrTypeIdx];
+    if (!ad || ad.kind !== "array") {
+      // Unexpected: vec struct without proper array data field.
+      // Fall back to emitting null guard only.
+      if (needsNullGuard) {
+        const throwInstrs = buildDestructureNullThrow(ctx, fctx);
+        fctx.body.push({ op: "local.get", index: srcLocal });
+        fctx.body.push({ op: "ref.is_null" } as Instr);
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "empty" },
+          then: throwInstrs,
+          else: [],
+        });
+      }
+      return;
+    }
+    arrDef = ad as { kind: string; element: ValType };
+  }
+
+  // Helper: get element type at index i
+  const getElemType = (i: number): ValType => {
+    if (isVecStruct) return arrDef!.element;
+    // Tuple
+    const field = srcDef.fields[i];
+    return field ? field.type : { kind: "f64" };
+  };
+  // Helper: emit instructions to load element i onto the stack
+  const emitElemGet = (i: number): void => {
+    fctx.body.push({ op: "local.get", index: srcLocal });
+    if (isVecStruct) {
+      fctx.body.push({ op: "struct.get", typeIdx: srcTypeIdx, fieldIdx: 1 });
+      fctx.body.push({ op: "i32.const", value: i });
+      emitBoundsCheckedArrayGet(fctx, arrTypeIdx, arrDef!.element);
+    } else {
+      // Tuple: direct struct.get on field index i
+      fctx.body.push({ op: "struct.get", typeIdx: srcTypeIdx, fieldIdx: i });
+    }
+  };
+
+  // Build the destructuring body in a separate buffer so we can wrap it in a
+  // null guard for ref_null sources.
   const savedBodyADFL = fctx.body;
   const adflInstrs: Instr[] = [];
   fctx.body = adflInstrs;
@@ -1533,27 +1635,44 @@ function emitArrayDestructureFromLocal(
     const element = pattern.elements[i]!;
     if (ts.isOmittedExpression(element)) continue;
 
+    // Tuple OOB: pattern targets element beyond tuple's fields → no-op for
+    // identifier targets (would normally read undefined; we rely on the local
+    // staying at its prior value).
+    if (isTupleStruct && i >= srcDef.fields.length) continue;
+
+    const elemType = getElemType(i);
+
     if (ts.isIdentifier(element)) {
       let localIdx = fctx.localMap.get(element.text);
       if (localIdx === undefined) {
         localIdx = allocLocal(fctx, element.text, elemType);
       }
-      fctx.body.push({ op: "local.get", index: srcLocal });
-      fctx.body.push({ op: "struct.get", typeIdx: srcTypeIdx, fieldIdx: 1 });
-      fctx.body.push({ op: "i32.const", value: i });
-      emitBoundsCheckedArrayGet(fctx, arrTypeIdx, elemType);
+      emitElemGet(i);
       const localType = getLocalType(fctx, localIdx);
       if (localType && !valTypesMatch(elemType, localType)) {
         coerceType(ctx, fctx, elemType, localType);
       }
       emitCoercedLocalSet(ctx, fctx, localIdx, elemType);
+    } else if (ts.isObjectLiteralExpression(element)) {
+      // Nested object pattern: [{ a, b }] = arr (#1225)
+      const tmpElem = allocLocal(fctx, `__arr_nested_${fctx.locals.length}`, elemType);
+      emitElemGet(i);
+      fctx.body.push({ op: "local.set", index: tmpElem });
+      emitObjectDestructureFromLocal(ctx, fctx, element, tmpElem, elemType);
+    } else if (ts.isArrayLiteralExpression(element)) {
+      // Nested array pattern: [[a, b]] = arr (#1225)
+      const tmpElem = allocLocal(fctx, `__arr_nested_${fctx.locals.length}`, elemType);
+      emitElemGet(i);
+      fctx.body.push({ op: "local.set", index: tmpElem });
+      emitArrayDestructureFromLocal(ctx, fctx, element, tmpElem, elemType);
     }
+    // else: unsupported nested target — skip (existing behavior)
   }
 
-  // Close null guard — throw TypeError if null/undefined (#730).
+  // Close null guard — throw TypeError if null/undefined (#730, #1225).
   // Skip for empty `[] = val` nested patterns (#225).
   fctx.body = savedBodyADFL;
-  if (srcType.kind === "ref_null" && pattern.elements.length > 0) {
+  if (needsNullGuard) {
     const throwInstrs = buildDestructureNullThrow(ctx, fctx);
     fctx.body.push({ op: "local.get", index: srcLocal });
     fctx.body.push({ op: "ref.is_null" } as Instr);
@@ -2093,14 +2212,16 @@ function compileElementAssignment(
         else: [],
       });
     }
+    // #1179: hint i32 directly so an i32 loop index doesn't take an f64 round-trip.
+    // compileExpression with i32 hint emits i32.trunc_sat_f64_s for non-i32 results
+    // via coerceType, matching the previous behavior for f64 indices.
     const idxResult = compileExpression(ctx, fctx, target.argumentExpression, {
-      kind: "f64",
+      kind: "i32",
     });
     if (!idxResult) {
       reportError(ctx, target, "Failed to compile element index");
       return null;
     }
-    fctx.body.push({ op: "i32.trunc_sat_f64_s" });
     const idxLocal = allocLocal(fctx, `__idx_${fctx.locals.length}`, {
       kind: "i32",
     });
@@ -2113,6 +2234,26 @@ function compileElementAssignment(
     }
     const valLocal = allocLocal(fctx, `__val_${fctx.locals.length}`, arrDef.element);
     fctx.body.push({ op: "local.set", index: valLocal });
+
+    // #1196: Bounds-check elimination on writes — when the for-loop pattern
+    // proves `i < arr.length`, the index is in [0, length) so capacity is
+    // already sufficient and `vec.length` does not need to grow. Skip the
+    // grow check + length-update entirely and emit a direct `array.set`.
+    if (isSafeBoundsEliminated(fctx, target)) {
+      // Vec data field is `(ref $arr)` (non-nullable), so struct.get yields
+      // a non-null ref directly — no ref.as_non_null needed.
+      fctx.body.push({ op: "local.get", index: vecLocal });
+      fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 }); // get data
+      fctx.body.push({ op: "local.get", index: idxLocal });
+      fctx.body.push({ op: "local.get", index: valLocal });
+      fctx.body.push({ op: "array.set", typeIdx: arrTypeIdx });
+      // Mapped arguments reverse sync (#849)
+      if (fctx.mappedArgsInfo && ts.isIdentifier(target.expression) && target.expression.text === "arguments") {
+        emitMappedArgReverseSync(ctx, fctx, idxLocal, valLocal);
+      }
+      fctx.body.push({ op: "local.get", index: valLocal });
+      return elemValResult;
+    }
 
     // Get data array into a local so we can update it after potential grow
     const dataLocal = allocLocal(fctx, `__vec_data_${fctx.locals.length}`, {
@@ -2932,9 +3073,23 @@ function compileElementLogicalAssignment(
 ): ValType | null {
   // Compile object expression
   const arrType = compileExpression(ctx, fctx, target.expression);
-  if (!arrType || (arrType.kind !== "ref" && arrType.kind !== "ref_null")) {
-    reportError(ctx, target, "Logical assignment on non-array element access");
+  if (!arrType) {
+    reportError(ctx, target, "Logical assignment on undefined element access target");
     return null;
+  }
+
+  // #1268 — index-signature dict (`{ [key: string]: T }`) lowers to
+  // externref (host JS object); other non-ref kinds (f64, i32 — rare,
+  // but possible via boxed primitives) likewise route through the host.
+  // Plain `obj[key] = val` already has a `compileExternSetFallback` arm
+  // for these; the parallel `??=` / `||=` / `&&=` arm was missing and
+  // produced a "Logical assignment on non-array element access" error
+  // that callers silently dropped, leaving the LHS uninitialized — the
+  // subsequent read returned NaN. This routes the logical-assignment
+  // case through the same `__extern_get` / `__extern_set` host imports
+  // the plain assignment uses.
+  if (arrType.kind !== "ref" && arrType.kind !== "ref_null") {
+    return compileElementLogicalAssignmentExternref(ctx, fctx, target, rhs, op, arrType);
   }
 
   const typeIdx = (arrType as { typeIdx: number }).typeIdx;
@@ -3042,6 +3197,129 @@ function compileElementLogicalAssignment(
 }
 
 /**
+ * #1268 — `obj[key] ??= rhs` / `obj[key] ||= rhs` / `obj[key] &&= rhs`
+ * where `obj` is an index-signature dict (lowered to externref) or any
+ * other non-ref / non-ref_null target.
+ *
+ * Mirrors `compileExternSetFallback` for the read+write portions and
+ * `emitLogicalAssignmentPattern` for the short-circuit semantics.
+ *
+ * Layout:
+ *   1. Coerce obj to externref (already on stack), save to `__lelm_obj`
+ *   2. Compute key (externref string), save to `__lelm_key`
+ *   3. emitGet := obj_local; key_local; call $__extern_get → externref
+ *   4. emitSet (after RHS pushed): save val to `__lelm_val`;
+ *      obj_local; key_local; val_local; call $__extern_set;
+ *      val_local (return value)
+ *   5. emitLogicalAssignmentPattern handles the if/else dispatch
+ *
+ * Result type is externref — the host import lives in externref world,
+ * and the caller-visible value is whatever the write/read produced.
+ *
+ * Caveat: `??=` semantics in JS treat `null` AND `undefined` as nullish.
+ * `__extern_get` returns `ref.null.extern` for missing keys (which the
+ * `ref.is_null` check captures correctly) and a boxed `undefined` for
+ * keys present with undefined value. The current `emitLogicalAssignment-
+ * Pattern` only checks `ref.is_null` for the `??=` arm, which matches
+ * the legacy global-scope `??=` behaviour. Distinguishing
+ * `undefined`-vs-other-truthy is the same gap that the global path has
+ * (compiled there too) — leave aligned with the existing convention.
+ */
+function compileElementLogicalAssignmentExternref(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  target: ts.ElementAccessExpression,
+  rhs: ts.Expression,
+  op: ts.SyntaxKind,
+  objType: ValType,
+): ValType | null {
+  // Coerce obj on stack to externref (mirrors compileExternSetFallback's prelude).
+  if (objType.kind === "externref") {
+    // already externref
+  } else if (objType.kind === "f64") {
+    const boxIdx = ctx.funcMap.get("__box_number");
+    if (boxIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: boxIdx });
+    } else {
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "ref.null.extern" });
+    }
+  } else if (objType.kind === "i32") {
+    fctx.body.push({ op: "f64.convert_i32_s" });
+    const boxIdx = ctx.funcMap.get("__box_number");
+    if (boxIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: boxIdx });
+    } else {
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "ref.null.extern" });
+    }
+  } else {
+    reportError(ctx, target, "Unsupported element logical-assignment target type");
+    return null;
+  }
+
+  // Save obj to a local so we can read it twice (get + set).
+  const objLocal = allocLocal(fctx, `__lelm_obj_${fctx.locals.length}`, { kind: "externref" });
+  fctx.body.push({ op: "local.set", index: objLocal });
+
+  // Compute key (always externref string for host imports) and save.
+  const keyType = compileExpression(ctx, fctx, target.argumentExpression, { kind: "externref" });
+  if (!keyType) return null;
+  // Coerce key to externref if needed (string literals already are).
+  if (keyType.kind === "f64") {
+    const boxIdx = ctx.funcMap.get("__box_number");
+    if (boxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: boxIdx });
+  } else if (keyType.kind === "i32") {
+    fctx.body.push({ op: "f64.convert_i32_s" });
+    const boxIdx = ctx.funcMap.get("__box_number");
+    if (boxIdx !== undefined) fctx.body.push({ op: "call", funcIdx: boxIdx });
+  } else if (keyType.kind === "ref" || keyType.kind === "ref_null") {
+    fctx.body.push({ op: "extern.convert_any" });
+  }
+  const keyLocal = allocLocal(fctx, `__lelm_key_${fctx.locals.length}`, { kind: "externref" });
+  fctx.body.push({ op: "local.set", index: keyLocal });
+
+  // Ensure host imports are registered.
+  const getIdx = ensureLateImport(
+    ctx,
+    "__extern_get",
+    [{ kind: "externref" }, { kind: "externref" }],
+    [{ kind: "externref" }],
+  );
+  const setIdx = ensureLateImport(
+    ctx,
+    "__extern_set",
+    [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }],
+    [],
+  );
+  flushLateImportShifts(ctx, fctx);
+  if (getIdx === undefined || setIdx === undefined) {
+    reportError(ctx, target, "Could not register __extern_get/__extern_set imports");
+    return null;
+  }
+
+  const emitGet = (): void => {
+    fctx.body.push({ op: "local.get", index: objLocal });
+    fctx.body.push({ op: "local.get", index: keyLocal });
+    fctx.body.push({ op: "call", funcIdx: getIdx });
+  };
+  const emitSet = (): void => {
+    // Stack on entry: <rhs value as externref>
+    // We need to: save it, then call __extern_set(obj, key, val), then
+    // re-push val as the result value of the logical assignment.
+    const valLocal = allocLocal(fctx, `__lelm_val_${fctx.locals.length}`, { kind: "externref" });
+    fctx.body.push({ op: "local.set", index: valLocal });
+    fctx.body.push({ op: "local.get", index: objLocal });
+    fctx.body.push({ op: "local.get", index: keyLocal });
+    fctx.body.push({ op: "local.get", index: valLocal });
+    fctx.body.push({ op: "call", funcIdx: setIdx });
+    fctx.body.push({ op: "local.get", index: valLocal });
+  };
+
+  return emitLogicalAssignmentPattern(ctx, fctx, rhs, op, { kind: "externref" }, emitGet, emitSet);
+}
+
+/**
  * Check if a ValType is a reference type (can be used with ref.is_null).
  * Value types (i32, i64, f32, f64, v128, i16) are never null/undefined.
  */
@@ -3077,8 +3355,28 @@ function emitLogicalAssignmentPattern(
       emitGet();
       return varType;
     }
+    // For externref-typed targets, host imports return JS `undefined` as
+    // a non-null externref (the WebAssembly type system doesn't equate
+    // them). `ref.is_null` alone misses `undefined`-valued slots — see
+    // the parallel pattern in `compileLogicalAssignment` that uses
+    // `__extern_is_undefined` for variable-scope `??=`. Compose the
+    // two checks via `i32.or` so the then-arm fires for both.
     emitGet();
+    const tmpForUndef = varType.kind === "externref" ? allocTempLocal(fctx, varType) : -1;
+    if (varType.kind === "externref") {
+      fctx.body.push({ op: "local.tee", index: tmpForUndef });
+    }
     fctx.body.push({ op: "ref.is_null" });
+    if (varType.kind === "externref") {
+      const undefIdx = ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+      flushLateImportShifts(ctx, fctx);
+      if (undefIdx !== undefined) {
+        fctx.body.push({ op: "local.get", index: tmpForUndef });
+        fctx.body.push({ op: "call", funcIdx: undefIdx });
+        fctx.body.push({ op: "i32.or" } as unknown as Instr);
+      }
+      releaseTempLocal(fctx, tmpForUndef);
+    }
 
     const savedBody = pushBody(fctx);
     const rhsResult = compileExpression(ctx, fctx, rhs, varType);
@@ -3175,6 +3473,15 @@ export function isCompoundAssignment(op: ts.SyntaxKind): boolean {
 /**
  * Handle string += : load current string value, compile RHS (coercing
  * numbers to string if needed), call concat, store back.
+ *
+ * In nativeStrings mode (auto-on for `--target wasi`), routes through the
+ * native `__str_concat` helper which expects `ref $AnyString` operands and
+ * returns `ref $AnyString`. The legacy host-import branch uses
+ * `wasm:js-string concat` with externref operands. The two branches must
+ * not be mixed: calling `addStringImports` late in nativeStrings mode adds
+ * 5 host imports without shifting already-emitted module function indices,
+ * which corrupts every `call funcIdx=N` instruction whose index now points
+ * at a host import instead of the intended native helper (#1175).
  */
 function compileStringCompoundAssignment(
   ctx: CodegenContext,
@@ -3182,6 +3489,10 @@ function compileStringCompoundAssignment(
   expr: ts.BinaryExpression,
   name: string,
 ): ValType | null {
+  if (ctx.nativeStrings && ctx.nativeStrTypeIdx >= 0) {
+    return compileNativeStringCompoundAssignment(ctx, fctx, expr, name);
+  }
+
   // Ensure string imports are registered
   addStringImports(ctx);
 
@@ -3250,6 +3561,190 @@ function compileStringCompoundAssignment(
 }
 
 /**
+ * Native-strings variant of string `+=` (#1175). Uses `__str_concat` which
+ * accepts and returns `ref $AnyString`. RHS coercion: numbers are routed
+ * through `number_toString` (returns externref) then `any.convert_extern` +
+ * `ref.cast` to land back in the native string type.
+ */
+function compileNativeStringCompoundAssignment(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.BinaryExpression,
+  name: string,
+): ValType | null {
+  const concatIdx = ctx.nativeStrHelpers.get("__str_concat");
+  if (concatIdx === undefined) {
+    reportError(ctx, expr, "Native __str_concat helper not available");
+    return null;
+  }
+  const anyStrType: ValType = { kind: "ref", typeIdx: ctx.anyStrTypeIdx };
+  const anyStrTypeNullable: ValType = { kind: "ref_null", typeIdx: ctx.anyStrTypeIdx };
+
+  // #1210: route detected `let s = ""; for (...) s += <expr>` builder
+  // patterns to the in-place buffer append, avoiding O(N) ConsString
+  // allocations.
+  const sb = getBuilderInfo(fctx, name);
+  if (sb !== undefined) {
+    // Compile RHS and coerce to ref $AnyString — same coercion the legacy
+    // path uses below, lifted into a small helper.
+    const coerced = compileAndCoerceToAnyStr(ctx, fctx, expr.right);
+    if (coerced === null) {
+      reportError(ctx, expr, "Failed to compile string += RHS");
+      return null;
+    }
+    compileStringBuilderAppend(ctx, fctx, coerced, sb);
+    // The += statement is normally side-effecting (statement-level) — the
+    // wrapping ExpressionStatement drops the result. Push a sentinel
+    // `ref.null $AnyString` so callers that DO consume the value get a
+    // typed value to drop / coerce.
+    fctx.body.push({ op: "ref.null", typeIdx: ctx.anyStrTypeIdx } as Instr);
+    return anyStrTypeNullable;
+  }
+
+  const localIdx = fctx.localMap.get(name);
+  const capturedIdx = ctx.capturedGlobals.get(name);
+  const moduleIdx = ctx.moduleGlobals.get(name);
+
+  // Load current value as ref $AnyString
+  if (localIdx !== undefined) {
+    fctx.body.push({ op: "local.get", index: localIdx });
+  } else if (capturedIdx !== undefined) {
+    fctx.body.push({ op: "global.get", index: capturedIdx });
+  } else if (moduleIdx !== undefined) {
+    fctx.body.push({ op: "global.get", index: moduleIdx });
+  } else {
+    // Graceful fallback: compile RHS for side effects, return null AnyString.
+    const rhsFallback = compileExpression(ctx, fctx, expr.right);
+    if (rhsFallback) fctx.body.push({ op: "drop" });
+    fctx.body.push({ op: "ref.null", typeIdx: ctx.anyStrTypeIdx });
+    return anyStrTypeNullable;
+  }
+
+  // Compile RHS
+  const rhsType = compileExpression(ctx, fctx, expr.right);
+  if (!rhsType) {
+    reportError(ctx, expr, "Failed to compile string += RHS");
+    return null;
+  }
+  // Coerce RHS to ref $AnyString.
+  if (rhsType.kind === "ref" || rhsType.kind === "ref_null") {
+    // Already a ref. Assume it's an AnyString-compatible type; if not,
+    // ref.cast at __str_concat boundary will trap. Common case: native
+    // string method calls return ref $AnyString already.
+  } else if (rhsType.kind === "f64" || rhsType.kind === "i32") {
+    const rhsTsType = ctx.checker.getTypeAtLocation(expr.right);
+    if (isBooleanType(rhsTsType) && rhsType.kind === "i32") {
+      // bool → "true"/"false" string. emitBoolToString returns externref.
+      emitBoolToString(ctx, fctx);
+      fctx.body.push({ op: "any.convert_extern" } as Instr);
+      fctx.body.push({ op: "ref.cast", typeIdx: ctx.anyStrTypeIdx } as Instr);
+    } else {
+      if (rhsType.kind === "i32") fctx.body.push({ op: "f64.convert_i32_s" });
+      const toStr = ctx.funcMap.get("number_toString");
+      if (toStr !== undefined) {
+        fctx.body.push({ op: "call", funcIdx: toStr });
+        // number_toString returns externref → convert to ref $AnyString
+        fctx.body.push({ op: "any.convert_extern" } as Instr);
+        fctx.body.push({ op: "ref.cast", typeIdx: ctx.anyStrTypeIdx } as Instr);
+      } else {
+        // No host number_toString: fall back to dropping and using empty string.
+        // (Standalone WASI mode currently lacks a wasm-native number-to-string;
+        //  this is an open gap. Drop the f64 to keep stack balanced.)
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "ref.null", typeIdx: ctx.anyStrTypeIdx });
+      }
+    }
+  } else if (rhsType.kind === "externref") {
+    // externref → ref $AnyString: convert + cast (e.g. host charAt result).
+    fctx.body.push({ op: "any.convert_extern" } as Instr);
+    fctx.body.push({ op: "ref.cast", typeIdx: ctx.anyStrTypeIdx } as Instr);
+  }
+
+  // Call __str_concat — returns ref $AnyString
+  fctx.body.push({ op: "call", funcIdx: concatIdx });
+
+  // Store back. Re-read indices since RHS compilation may have shifted them.
+  if (localIdx !== undefined) {
+    fctx.body.push({ op: "local.tee", index: localIdx });
+  } else if (capturedIdx !== undefined) {
+    const capturedIdxPost = ctx.capturedGlobals.get(name)!;
+    fctx.body.push({ op: "global.set", index: capturedIdxPost });
+    fctx.body.push({ op: "global.get", index: capturedIdxPost });
+  } else if (moduleIdx !== undefined) {
+    const moduleIdxPost = ctx.moduleGlobals.get(name)!;
+    fctx.body.push({ op: "global.set", index: moduleIdxPost });
+    fctx.body.push({ op: "global.get", index: moduleIdxPost });
+  }
+
+  return anyStrType;
+}
+
+/**
+ * Compile a string-typed expression and coerce the result to a non-null
+ * `ref $AnyString`. Handles the same coercion paths as
+ * `compileNativeStringCompoundAssignment` (numbers via `number_toString`,
+ * externref via `any.convert_extern + ref.cast`, booleans via
+ * `emitBoolToString`). Used by the #1210 string-builder rewrite.
+ *
+ * Returns the resulting ValType (always `ref $AnyString` on success), or
+ * null on failure.
+ */
+function compileAndCoerceToAnyStr(ctx: CodegenContext, fctx: FunctionContext, expr: ts.Expression): ValType | null {
+  const anyStrType: ValType = { kind: "ref", typeIdx: ctx.anyStrTypeIdx };
+  const rhsType = compileExpression(ctx, fctx, expr);
+  if (!rhsType) return null;
+
+  if (rhsType.kind === "ref" || rhsType.kind === "ref_null") {
+    // Already a ref to a string-like type. If nullable, force non-null —
+    // __str_flatten and array.copy require non-null operands.
+    if (rhsType.kind === "ref_null") {
+      fctx.body.push({ op: "ref.as_non_null" } as Instr);
+    }
+    return anyStrType;
+  }
+  if (rhsType.kind === "f64" || rhsType.kind === "i32") {
+    const rhsTsType = ctx.checker.getTypeAtLocation(expr);
+    if (isBooleanType(rhsTsType) && rhsType.kind === "i32") {
+      emitBoolToString(ctx, fctx);
+      fctx.body.push({ op: "any.convert_extern" } as Instr);
+      fctx.body.push({ op: "ref.cast", typeIdx: ctx.anyStrTypeIdx } as Instr);
+      return anyStrType;
+    }
+    if (rhsType.kind === "i32") fctx.body.push({ op: "f64.convert_i32_s" });
+    const toStr = ctx.funcMap.get("number_toString");
+    if (toStr !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: toStr });
+      fctx.body.push({ op: "any.convert_extern" } as Instr);
+      fctx.body.push({ op: "ref.cast", typeIdx: ctx.anyStrTypeIdx } as Instr);
+      return anyStrType;
+    }
+    // Standalone-mode gap: no host number_toString. Drop the value and emit
+    // an empty native string so the append is a no-op.
+    fctx.body.push({ op: "drop" });
+    // Empty NativeString: struct.new $NativeString(0, 0, array.new_default 0)
+    fctx.body.push({ op: "i32.const", value: 0 });
+    fctx.body.push({ op: "i32.const", value: 0 });
+    fctx.body.push({ op: "i32.const", value: 0 });
+    fctx.body.push({ op: "array.new_default", typeIdx: ctx.nativeStrDataTypeIdx });
+    fctx.body.push({ op: "struct.new", typeIdx: ctx.nativeStrTypeIdx });
+    return anyStrType;
+  }
+  if (rhsType.kind === "externref") {
+    fctx.body.push({ op: "any.convert_extern" } as Instr);
+    fctx.body.push({ op: "ref.cast", typeIdx: ctx.anyStrTypeIdx } as Instr);
+    return anyStrType;
+  }
+  // Other types (i64 etc.) — drop and emit empty string as fallback.
+  fctx.body.push({ op: "drop" });
+  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "i32.const", value: 0 });
+  fctx.body.push({ op: "array.new_default", typeIdx: ctx.nativeStrDataTypeIdx });
+  fctx.body.push({ op: "struct.new", typeIdx: ctx.nativeStrTypeIdx });
+  return anyStrType;
+}
+
+/**
  * Check if a variable named `name` is assigned a string value anywhere
  * in the enclosing function/block scope. This handles the test262 pattern:
  *   var __str;     // type: any
@@ -3301,9 +3796,9 @@ function hasStringAssignment(name: string, fromExpr: ts.Node): boolean {
         return;
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
-  ts.forEachChild(scope, visit);
+  forEachChild(scope, visit);
   return found;
 }
 
@@ -3346,9 +3841,9 @@ function hasStringAssignmentInParentScopes(name: string, fromExpr: ts.Node): boo
         return;
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
-  ts.forEachChild(root, visit);
+  forEachChild(root, visit);
   return found;
 }
 

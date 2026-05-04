@@ -1,14 +1,15 @@
 {
   "pr": 86,
   "conclusion": "failure",
-  "head_branch": "issue-1037-symbol-dispose",
-  "head_sha": "ba62edf4bbfec5bde4d487f576263bca099000ba",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24285034286",
-  "timestamp": "2026-04-11T15:01:59Z",
-  "pass": 21523,
-  "fail": 18831,
-  "compile_error": 1459,
-  "delta": 333,
-  "regressions": 35,
-  "improvements": 368
+  "head_branch": "issue-1169i-ir-slice10",
+  "head_sha": "6744adaba8fa8e1ac83ebc61ce5959610bdfdd78",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25047502885",
+  "timestamp": "2026-04-28T10:30:43Z",
+  "pass": 25825,
+  "fail": 13932,
+  "compile_error": 1842,
+  "snapshot_delta": 19,
+  "net_per_test": 34,
+  "regressions": 142,
+  "improvements": 176
 }

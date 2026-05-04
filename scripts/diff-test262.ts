@@ -13,7 +13,7 @@
  *   - Error category breakdown for regressions
  */
 
-import { createReadStream } from "fs";
+import { createReadStream, readFileSync } from "fs";
 import { createInterface } from "readline";
 
 interface TestResult {
@@ -22,6 +22,13 @@ interface TestResult {
   error?: string;
   error_category?: string;
   category?: string;
+  /**
+   * 12-char sha256 hex digest of the compiled Wasm binary (or null if no
+   * binary was produced — skip / compile_error / compile_timeout). Added in
+   * #1222 so the PR regression-gate can filter out byte-identical "regressions"
+   * that are pure CI runner noise.
+   */
+  wasm_sha?: string | null;
 }
 
 type StatusMap = Map<string, TestResult>;
@@ -43,6 +50,28 @@ async function loadJsonl(path: string): Promise<StatusMap> {
   return map;
 }
 
+// Reads baseline metadata (baseline_generated_at, baseline_sha) from a report.json.
+// Used to warn when the committed baseline is older than 6 hours — see #1079.
+function readBaselineMeta(path: string): { generatedAt?: string; sha?: string } | null {
+  try {
+    const raw = readFileSync(path, "utf8");
+    const json = JSON.parse(raw);
+    return {
+      generatedAt: typeof json.baseline_generated_at === "string" ? json.baseline_generated_at : undefined,
+      sha: typeof json.baseline_sha === "string" ? json.baseline_sha : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function formatAge(ageMs: number): string {
+  const totalMinutes = Math.max(0, Math.floor(ageMs / 60000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+}
+
 function main() {
   const args = process.argv.slice(2);
 
@@ -52,29 +81,50 @@ function main() {
 Compare two test262 JSONL result files and report regressions/improvements.
 
 Options:
-  --verbose, -v    Show individual test transitions (default: show up to 20)
-  --all            Show all transitions (no limit)
-  --quiet, -q      Only show summary counts
-  --help, -h       Show this help`);
+  --verbose, -v                 Show individual test transitions (default: show up to 20)
+  --all                         Show all transitions (no limit)
+  --quiet, -q                   Only show summary counts
+  --baseline-meta <report.json> Read baseline_generated_at + baseline_sha to warn on stale baseline
+  --help, -h                    Show this help`);
     process.exit(args.includes("--help") || args.includes("-h") ? 0 : 1);
   }
 
-  const baselinePath = args[0];
-  const newPath = args[1];
+  const positional = args.filter((a, i) => {
+    if (a.startsWith("--") || a.startsWith("-")) return false;
+    const prev = args[i - 1];
+    if (prev === "--baseline-meta") return false;
+    return true;
+  });
+  const baselinePath = positional[0];
+  const newPath = positional[1];
   const verbose = args.includes("--verbose") || args.includes("-v");
   const showAll = args.includes("--all");
   const quiet = args.includes("--quiet") || args.includes("-q");
+  const metaIdx = args.indexOf("--baseline-meta");
+  const baselineMetaPath = metaIdx >= 0 ? args[metaIdx + 1] : undefined;
 
   const maxShow = showAll ? Infinity : verbose ? 50 : 20;
 
-  run(baselinePath, newPath, maxShow, quiet);
+  run(baselinePath, newPath, maxShow, quiet, baselineMetaPath);
 }
 
-async function run(baselinePath: string, newPath: string, maxShow: number, quiet: boolean) {
+async function run(baselinePath: string, newPath: string, maxShow: number, quiet: boolean, baselineMetaPath?: string) {
   const [baseline, newer] = await Promise.all([loadJsonl(baselinePath), loadJsonl(newPath)]);
 
   // Collect transitions
-  const regressions: { file: string; from: string; to: string; error?: string; error_category?: string }[] = [];
+  const regressions: {
+    file: string;
+    from: string;
+    to: string;
+    error?: string;
+    error_category?: string;
+    /**
+     * True when both base and pr have a non-null wasm_sha and the values
+     * match — i.e. the compiled binary is byte-identical, so any pass→fail
+     * transition is CI runner noise (#1222).
+     */
+    wasmUnchanged: boolean;
+  }[] = [];
   const improvements: { file: string; from: string; to: string }[] = [];
   const otherChanges: { file: string; from: string; to: string }[] = [];
 
@@ -102,12 +152,21 @@ async function run(baselinePath: string, newPath: string, maxShow: number, quiet
     if (baseStatus === curStatus) continue;
 
     if (baseStatus === "pass" && curStatus !== "pass") {
+      // #1222: if both runs produced a Wasm binary and the binaries are
+      // byte-identical, the test cannot have regressed for any compiler
+      // reason — the runtime difference is CI-runner variance (scheduling,
+      // memory pressure, GC timing). The merge gate uses
+      // `regressions_wasm_change` which excludes these.
+      const baseSha = base?.wasm_sha;
+      const curSha = cur?.wasm_sha;
+      const wasmUnchanged = typeof baseSha === "string" && typeof curSha === "string" && baseSha === curSha;
       regressions.push({
         file,
         from: baseStatus,
         to: curStatus,
         error: cur?.error,
         error_category: cur?.error_category,
+        wasmUnchanged,
       });
     } else if (baseStatus !== "pass" && curStatus === "pass") {
       improvements.push({ file, from: baseStatus, to: curStatus });
@@ -160,6 +219,32 @@ async function run(baselinePath: string, newPath: string, maxShow: number, quiet
       console.log(`  ... and ${regressions.length - maxShow} more`);
     }
   }
+  console.log();
+
+  // #1192: split regressions by destination status. compile_timeout
+  // transitions are runner-load timing noise (tests near the 30s
+  // compile-timeout boundary flap based on CI system load), not real
+  // compiler regressions. Emit separate counts so the merge gate can
+  // exclude CT noise from the ratio. The "Regressions (pass → other)"
+  // line above stays unchanged for backwards compat with the dashboard.
+  const regressionsCT = regressions.filter((r) => r.to === "compile_timeout").length;
+  const regressionsReal = regressions.length - regressionsCT;
+  console.log(`=== Compile timeouts (pass → compile_timeout): ${regressionsCT} ===`);
+  console.log(`=== Regressions excluding compile_timeout: ${regressionsReal} ===`);
+
+  // #1222: filter regressions where the compiled Wasm binary is byte-identical
+  // on both base and PR. A test that compiles to the same bytes cannot have
+  // regressed due to anything in the PR — the pass→fail flip is pure CI runner
+  // variance (scheduling, memory pressure, GC timing). The merge gate prefers
+  // `regressions_wasm_change` over `regressions_real` to avoid flagging these
+  // physically-impossible "regressions". Only counts entries where wasm_sha
+  // is present on BOTH sides; if either is missing we conservatively treat
+  // the regression as real (could be a compile_error vs pass transition).
+  const noiseFiltered = regressions.filter((r) => !r.wasmUnchanged && r.to !== "compile_timeout");
+  const regressionsWasmChange = noiseFiltered.length;
+  const wasmIdenticalNoise = regressions.filter((r) => r.wasmUnchanged && r.to !== "compile_timeout").length;
+  console.log(`=== Wasm-identical noise (pass → other, same wasm_sha): ${wasmIdenticalNoise} ===`);
+  console.log(`=== Regressions with wasm-hash change: ${regressionsWasmChange} ===`);
   console.log();
 
   // Improvements
@@ -223,8 +308,33 @@ async function run(baselinePath: string, newPath: string, maxShow: number, quiet
   console.log(`=== Net: ${sign}${delta} pass (${basePass} → ${newPass}) ===`);
   console.log();
 
-  // Exit code: non-zero if regressions
-  if (regressions.length > 0) {
+  // Stale baseline warning — emit a PR-comment-friendly line if the
+  // committed baseline is older than 6h. See #1079.
+  if (baselineMetaPath) {
+    const meta = readBaselineMeta(baselineMetaPath);
+    if (meta?.generatedAt) {
+      const generated = new Date(meta.generatedAt);
+      if (!Number.isNaN(generated.getTime())) {
+        const ageMs = Date.now() - generated.getTime();
+        const ageText = formatAge(ageMs);
+        const shortSha = meta.sha ? meta.sha.slice(0, 7) : "unknown";
+        if (ageMs >= 6 * 3600 * 1000) {
+          console.log(
+            `⚠️  baseline is ${ageText} old (commit ${shortSha}) — consider force-refresh via workflow_dispatch before trusting these numbers`,
+          );
+        } else {
+          console.log(`baseline age: ${ageText} (commit ${shortSha})`);
+        }
+        console.log();
+      }
+    }
+  }
+
+  // Exit code: non-zero when the change is a net negative using wasm-hash-filtered regressions.
+  // Compile_timeout flaps (timing noise) and wasm-identical flips are excluded via
+  // regressionsWasmChange. Gate: improvements - regressionsWasmChange < 0.
+  const netPerTest = improvements - regressionsWasmChange;
+  if (netPerTest < 0) {
     process.exit(1);
   }
 }

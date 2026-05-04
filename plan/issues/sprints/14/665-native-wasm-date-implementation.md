@@ -1,0 +1,23 @@
+---
+id: 665
+sprint: 14
+title: "Native Wasm Date implementation"
+status: done
+created: 2026-03-20
+updated: 2026-04-14
+completed: 2026-03-20
+priority: high
+goal: platform
+commit: d9c06d16
+---
+# Issue #665: Native Wasm Date implementation
+
+## Problem
+Date constructor and methods are not supported. `new Date(ms)`, `new Date()`, `Date.now()`,
+and `.getTime()` all fail or produce incorrect results.
+
+## Solution
+Represent Date as a WasmGC struct with a single f64 timestamp field (ms since epoch).
+
+## Implementation summary
+Native Date via WasmGC struct with f64 timestamp. Civil date algorithm for year/month/day decomposition. Host import `__date_now` for current time.

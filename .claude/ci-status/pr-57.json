@@ -1,0 +1,15 @@
+{
+  "pr": 57,
+  "conclusion": "failure",
+  "head_branch": "issue-1173-no-exact-refs",
+  "head_sha": "e0e629bf4e75e1de0e1d9c1db4e7320e3141c898",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24973818737",
+  "timestamp": "2026-04-27T02:39:28Z",
+  "pass": 25813,
+  "fail": 13956,
+  "compile_error": 1848,
+  "snapshot_delta": 9,
+  "net_per_test": 11,
+  "regressions": 130,
+  "improvements": 141
+}

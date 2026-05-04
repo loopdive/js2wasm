@@ -1,0 +1,29 @@
+---
+id: 129
+sprint: 1
+title: "propertyHelper.js test262 harness include"
+status: wont-fix
+created: 2026-03-11
+updated: 2026-04-14
+completed: 2026-03-12
+task_type: test
+language_feature: property-descriptors
+goal: property-model
+---
+# Issue 129: propertyHelper.js test262 harness include
+
+## Summary
+
+341 test262 tests require `propertyHelper.js` from the test262 harness. This
+include provides helpers to verify property attributes (configurable, enumerable,
+writable).
+
+## Decision
+
+Keep skipped. Property attribute verification is tied to Object.defineProperty
+(#125) and property descriptors, which are fundamental JS runtime features we
+don't support.
+
+## Complexity
+
+N/A — Blocked by #125.

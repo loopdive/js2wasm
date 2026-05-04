@@ -5,7 +5,7 @@
  * This module constructs a fresh CodegenContext and performs the minimal
  * upfront registry bootstrap that generateModule/generateMultiModule rely on.
  */
-import ts from "typescript";
+import { ts } from "../../ts-api.js";
 import type { WasmModule } from "../../ir/types.js";
 import { getOrRegisterVecType, registerNativeStringTypes } from "../registry/types.js";
 import type { CodegenContext, CodegenOptions } from "./types.js";
@@ -29,6 +29,7 @@ export function createCodegenContext(
     errors: [],
     lastKnownNode: null,
     externClasses: new Map(),
+    pseudoExternClasses: new Map(),
     funcOptionalParams: new Map(),
     anonTypeMap: new Map(),
     anonTypeCounter: 0,
@@ -84,12 +85,14 @@ export function createCodegenContext(
     tupleTypeMap: new Map(),
     fast: options?.fast ?? false,
     nativeStrings: options?.nativeStrings ?? options?.fast ?? options?.wasi ?? false,
+    testRuntime: options?.testRuntime ?? false,
     nativeStrDataTypeIdx: -1,
     anyStrTypeIdx: -1,
     nativeStrTypeIdx: -1,
     consStrTypeIdx: -1,
     nativeStrHelpersEmitted: false,
     nativeStrExternBridgeEmitted: false,
+    testRuntimeStringHelpersEmitted: false,
     nativeStrHelpers: new Map(),
     refCellTypeMap: new Map(),
     anyValueTypeIdx: -1,

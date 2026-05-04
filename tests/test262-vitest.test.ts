@@ -28,6 +28,7 @@ async function getCompileMulti() {
 import {
   classifyError,
   classifyTestScope,
+  computeWasmSha,
   findTestFiles,
   parseMeta,
   wrapTest,
@@ -309,6 +310,7 @@ function recordResult(
   error?: string,
   timing?: { compileMs?: number; execMs?: number },
   scopeInfo?: { scope: Test262Scope; official: boolean; reason?: string; strict?: "only" | "no" | "both" },
+  wasmSha?: string | null,
 ) {
   const errorCategory = status === "fail" || status === "compile_error" ? classifyError(error) : undefined;
 
@@ -325,6 +327,11 @@ function recordResult(
     scope_official: scopeInfo?.official ?? true,
     scope_reason: scopeInfo?.reason,
     strict: scopeInfo?.strict ?? "both",
+    // #1222: 12-char sha256 hex of the compiled Wasm binary (or null when no
+    // binary was produced — skip / compile_error / compile_timeout). The PR
+    // regression-gate compares wasm_sha across base & branch; matching hashes
+    // imply byte-identical Wasm and any pass→fail flip is CI noise.
+    wasm_sha: wasmSha ?? null,
   });
   fdWrite(jsonlFd, entry + "\n");
   summary.total++;
@@ -541,6 +548,11 @@ for (const category of TEST_CATEGORIES) {
             | { ok: true; binary: Uint8Array; result: any; cachePath?: string }
             | { ok: false; error: string; errorCodes?: number[]; timeout?: boolean };
 
+          // #1222: 12-char sha256 of the compiled Wasm binary, attached to every
+          // post-compile recordResult call. Stays null for skip / cache-miss /
+          // compile_error / compile_timeout, where no binary was produced.
+          let wasmSha: string | null = null;
+
           if (fixtures.length > 0) {
             // FIXTURE tests: compile inline (rare, can't be precompiled)
             try {
@@ -583,11 +595,27 @@ for (const category of TEST_CATEGORIES) {
             compileResult = cached;
           }
 
+          // #1222: compile succeeded — compute the binary hash now so every
+          // post-compile recordResult below can include it. The cache file
+          // holds the same bytes that the inline path produces. Negative
+          // parse/early tests will still report pass/fail with this hash if
+          // the binary was produced.
+          if (compileResult.ok) {
+            try {
+              const binary = compileResult.cachePath ? readFileSync(compileResult.cachePath) : compileResult.binary;
+              if (binary && binary.length > 0) {
+                wasmSha = computeWasmSha(binary);
+              }
+            } catch {
+              // hashing must never fail the test — fall back to null
+            }
+          }
+
           // Handle negative parse/early tests
           if (isNegative) {
             const earlyErrors = compileResult.ok ? (compileResult.result as any)?.earlyErrorCodes : undefined;
             if (earlyErrors?.length > 0) {
-              recordResult(relPath, category, "pass", undefined, undefined, scopeInfo);
+              recordResult(relPath, category, "pass", undefined, undefined, scopeInfo, wasmSha);
               return;
             }
 
@@ -596,9 +624,9 @@ for (const category of TEST_CATEGORIES) {
               const codes = (compileResult as any).errorCodes as number[] | undefined;
               const hasEarlyError = codes?.some((c: number) => ES_EARLY_ERRORS.has(c));
               if (hasEarlyError) {
-                recordResult(relPath, category, "pass", undefined, undefined, scopeInfo);
+                recordResult(relPath, category, "pass", undefined, undefined, scopeInfo, wasmSha);
               } else {
-                recordResult(relPath, category, "pass", undefined, undefined, scopeInfo);
+                recordResult(relPath, category, "pass", undefined, undefined, scopeInfo, wasmSha);
               }
               return;
             }
@@ -608,12 +636,12 @@ for (const category of TEST_CATEGORIES) {
               const imports = buildImports(compileResult.result.imports, undefined, compileResult.result.stringPool);
               await WebAssembly.instantiate(binary, imports as any);
             } catch {
-              recordResult(relPath, category, "pass", undefined, undefined, scopeInfo);
+              recordResult(relPath, category, "pass", undefined, undefined, scopeInfo, wasmSha);
               return;
             }
             const desc = meta.description?.substring(0, 100) ?? "";
             const info = `expected ${meta.negative!.phase} ${meta.negative!.type} but compiled${desc ? `: ${desc}` : ""}`;
-            recordResult(relPath, category, "fail", info, undefined, scopeInfo);
+            recordResult(relPath, category, "fail", info, undefined, scopeInfo, wasmSha);
             return;
           }
 
@@ -656,6 +684,7 @@ for (const category of TEST_CATEGORIES) {
               "runtime timeout (10s)",
               { compileMs, execMs: EXEC_TIMEOUT_MS },
               scopeInfo,
+              wasmSha,
             );
             return;
           }
@@ -704,17 +733,17 @@ for (const category of TEST_CATEGORIES) {
                 enriched = `${msg} [in ${fname}()]`;
               }
             }
-            recordResult(relPath, category, "compile_error", enriched, timing, scopeInfo);
+            recordResult(relPath, category, "compile_error", enriched, timing, scopeInfo, wasmSha);
             return;
           }
 
           if (workerResult.noTestExport) {
-            recordResult(relPath, category, "compile_error", "no test export", timing, scopeInfo);
+            recordResult(relPath, category, "compile_error", "no test export", timing, scopeInfo, wasmSha);
             return;
           }
 
           if (workerResult.workerError) {
-            recordResult(relPath, category, "fail", workerResult.error, timing, scopeInfo);
+            recordResult(relPath, category, "fail", workerResult.error, timing, scopeInfo, wasmSha);
             return;
           }
 
@@ -739,19 +768,27 @@ for (const category of TEST_CATEGORIES) {
               }
 
               if (/TypeError \(null\/undefined/.test(errInfo)) {
-                recordResult(relPath, category, "fail", `${errInfo}${desc ? `: ${desc}` : ""}`, timing, scopeInfo);
+                recordResult(
+                  relPath,
+                  category,
+                  "fail",
+                  `${errInfo}${desc ? `: ${desc}` : ""}`,
+                  timing,
+                  scopeInfo,
+                  wasmSha,
+                );
               } else {
-                recordResult(relPath, category, "fail", errInfo, timing, scopeInfo);
+                recordResult(relPath, category, "fail", errInfo, timing, scopeInfo, wasmSha);
               }
             } else {
-              recordResult(relPath, category, "fail", workerResult.error, timing, scopeInfo);
+              recordResult(relPath, category, "fail", workerResult.error, timing, scopeInfo, wasmSha);
             }
             return;
           }
 
           // Success path
           if (workerResult.runtimeNegativePass) {
-            recordResult(relPath, category, "pass", undefined, timing, scopeInfo);
+            recordResult(relPath, category, "pass", undefined, timing, scopeInfo, wasmSha);
             return;
           }
 
@@ -763,23 +800,24 @@ for (const category of TEST_CATEGORIES) {
               `expected runtime ${meta.negative!.type} but succeeded`,
               timing,
               scopeInfo,
+              wasmSha,
             );
             return;
           }
 
           const ret = workerResult.ret;
           if (ret === 1) {
-            recordResult(relPath, category, "pass", undefined, timing, scopeInfo);
+            recordResult(relPath, category, "pass", undefined, timing, scopeInfo, wasmSha);
           } else if (ret === -1) {
             const desc = meta.description?.substring(0, 100) ?? "";
             const throwsMatch = source.match(/assert\.throws\s*\(\s*(\w+Error)/);
             const expectedErr = throwsMatch ? throwsMatch[1] : null;
             let context = desc || "exception in test body";
             if (expectedErr) context = `expected ${expectedErr} — ${context}`;
-            recordResult(relPath, category, "fail", `returned -1 — ${context}`, timing, scopeInfo);
+            recordResult(relPath, category, "fail", `returned -1 — ${context}`, timing, scopeInfo, wasmSha);
           } else {
             const assertInfo = findNthAssert(source, ret);
-            recordResult(relPath, category, "fail", `returned ${ret} — ${assertInfo}`, timing, scopeInfo);
+            recordResult(relPath, category, "fail", `returned ${ret} — ${assertInfo}`, timing, scopeInfo, wasmSha);
           }
         },
         90_000,

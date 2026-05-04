@@ -1,0 +1,35 @@
+---
+id: 157
+sprint: 1
+title: "void expression returns wrong value"
+status: done
+created: 2026-03-11
+updated: 2026-04-14
+completed: 2026-04-14
+priority: low
+goal: compilable
+files:
+  src/codegen/expressions.ts:
+    new: []
+    breaking: []
+---
+# #157 — void expression returns wrong value
+
+## Problem
+`void` should always return `undefined`, but may not produce correct undefined representation in all contexts.
+
+## Investigation
+The void expression implementation is correct:
+- Evaluates the operand for side effects, drops its value
+- Pushes `ref.null.extern` (which represents `undefined`)
+- Returns `externref` type
+
+When used in f64 context, the outer `coerceType` converts externref null to f64 via `__unbox_number`, which returns NaN — correct for `Number(undefined)`.
+
+All test262 void tests (`S11.4.2_*`) are either:
+- Skipped (due to `!== undefined` string comparisons or other unsupported features)
+- Compile errors (due to TypeScript type errors from test wrapping, not void-specific)
+
+No actual failures in void codegen were found.
+
+## Status: done (no fix needed)

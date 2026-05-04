@@ -1,0 +1,33 @@
+---
+id: 968
+sprint: 38
+title: "Block scope variable shadows broken by #954 dedup locals (25 tests)"
+status: done
+created: 2026-04-05
+updated: 2026-04-14
+completed: 2026-04-14
+priority: high
+feasibility: medium
+reasoning_effort: high
+goal: maintainability
+required_by: [971]
+---
+# #968 — Block scope variable dedup merges locals that should stay separate
+
+## Problem
+
+~25 tests fail with assertion errors like `assert.sameValue(x, 'outer')` after #954 dedup locals. The deduplication merges local variables from sibling block scopes that should remain separate.
+
+## Sample files
+
+- test/language/block-scope/leave/verify-context-in-labelled-block.js
+- test/language/block-scope/leave/try-block-let-declaration-only-shadows-outer-parameter-value-2.js
+
+## Likely Cause
+
+#954's `deduplicateLocals()` in src/codegen/context/locals.ts merges locals with the same name across different block scopes. But sibling blocks (e.g. `{ let x = 'inner' } { let x = 'outer' }`) need separate locals even though they share a name.
+
+## Acceptance Criteria
+
+- Block-scoped variables in sibling scopes are not merged
+- No assertion failures on variable shadow tests

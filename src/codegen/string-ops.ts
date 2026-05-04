@@ -4,7 +4,7 @@
  * Handles string literals, templates, tagged templates, string binary ops,
  * and native string method calls.
  */
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 import { isBooleanType, isStringType, isVoidType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
 import { compileNumericBinaryOp } from "./binary-ops.js";
@@ -387,7 +387,7 @@ export function compileTaggedTemplateExpression(
     // Case 2: tag is a known function
     const funcIdx = ctx.funcMap.get(tagName);
     if (funcIdx !== undefined) {
-      // Prepend captured values for nested functions with captures
+      // Prepend captured values for nested functions with captures.
       const nestedCaptures = ctx.nestedFuncCaptures.get(tagName);
       if (nestedCaptures) {
         for (const cap of nestedCaptures) {

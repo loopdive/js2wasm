@@ -1,0 +1,29 @@
+---
+id: 177
+sprint: 2
+title: "- Bug: Spread operator in new expressions"
+status: done
+created: 2026-03-11
+updated: 2026-04-14
+completed: 2026-03-11
+goal: class-system
+---
+# #177 -- Bug: Spread operator in new expressions
+
+## Status: review
+
+## Summary
+new Ctor(...args) with spread operator fails at runtime. The spread elements are not correctly expanded into constructor arguments.
+
+## Implementation Notes
+Added spread argument handling to local class constructor calls in compileNewExpression:
+- Uses flattenCallArgs to resolve literal array spreads at compile time
+- Falls back to compileSpreadCallArgs for non-literal spreads
+- Also pads missing constructor arguments with defaults
+
+## Complexity
+M
+
+## Acceptance criteria
+- [x] new Ctor(...[1,2,3]) passes correct arguments
+- [x] Equivalence tests pass

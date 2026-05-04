@@ -1,0 +1,36 @@
+---
+id: 445
+sprint: 0
+title: "Wasm validation: call args missing (72 CE)"
+status: done
+created: 2026-03-17
+updated: 2026-04-14
+completed: 2026-04-14
+priority: medium
+goal: compilable
+test262_ce: 72
+complexity: S
+files:
+  src/codegen/expressions.ts:
+    breaking:
+      - "compileCallExpression -- argument count must match function signature"
+---
+# #445 -- Wasm validation: call args missing (72 CE)
+
+## Problem
+
+72 tests fail Wasm validation because a `call` instruction does not have enough arguments on the stack for the target function's signature.
+
+This is distinct from #411 (struct.new args) -- this is about regular function calls where the compiler emits fewer arguments than the callee expects. Common causes:
+- Optional parameters not filled with default values
+- Variadic functions called with fewer args than the Wasm signature requires
+- Method calls where `this` argument is missing
+
+## Priority: medium (72 tests)
+
+## Complexity: S
+
+## Acceptance criteria
+- [ ] All call sites emit the correct number of arguments
+- [ ] Missing optional args are filled with defaults (undefined/0/NaN)
+- [ ] CE count for call args missing reduced by at least 70%

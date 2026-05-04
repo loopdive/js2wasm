@@ -7,7 +7,7 @@
  * bounds-checked array access, and related utilities.
  */
 
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 import { isExternalDeclaredClass, isIteratorResultType, isStringType } from "../checker/type-mapper.js";
 import type { FieldDef, Instr, ValType } from "../ir/types.js";
 import { emitBoundsCheckedArrayGet } from "./array-methods.js";
@@ -18,6 +18,7 @@ import type { CodegenContext, FunctionContext } from "./context/types.js";
 import { emitLazyProtoGet, findExternInfoForMember } from "./expressions/extern.js";
 import { patchStructNewForAddedField } from "./expressions/late-imports.js";
 import { addUnionImports, resolveWasmType } from "./index.js";
+import { stringConstantExternrefInstrs } from "./native-strings.js";
 import { addStringConstantGlobal, ensureExnTag, localGlobalIdx } from "./registry/imports.js";
 import { getArrTypeIdxFromVec, getOrRegisterVecType } from "./registry/types.js";
 import {
@@ -275,10 +276,12 @@ export function typeErrorThrowInstrs(ctx: CodegenContext, node?: ts.Node): Instr
     line > 0 && col > 0
       ? `TypeError: Cannot access property on null or undefined at ${line}:${col}`
       : "TypeError: Cannot access property on null or undefined";
+  // Register the literal: in legacy mode this adds a `string_constants` global
+  // import; in nativeStrings mode it just records the value with sentinel -1
+  // so call sites can materialize it inline (#1174).
   addStringConstantGlobal(ctx, message);
-  const strIdx = ctx.stringGlobalMap.get(message)!;
   const tagIdx = ensureExnTag(ctx);
-  return [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx } as Instr];
+  return [...stringConstantExternrefInstrs(ctx, message), { op: "throw", tagIdx } as Instr];
 }
 
 /**
@@ -1687,19 +1690,33 @@ export function compilePropertyAccess(
     }
 
     // Handle instance method accessed as value (not call): obj.method (#820, #1149)
-    // Returns null externref to prevent null deref traps from the fallthrough path.
-    // Applies to both class instances and object-literal struct types: object-literal
-    // methods are registered in classMethodSet under `${typeName}_${propName}` even
-    // though the struct type itself is not in classSet. Without this, the fallback
-    // path would dynamically add a struct field for the method and read its null
-    // default, causing a null_deref trap when the detached method reference is later
-    // invoked — instead of the TypeError the JS caller would expect.
+    // For OBJECT LITERAL struct types, the method's struct field now holds a
+    // proper closure-ref (#1118 — `compileObjectLiteralForStruct` calls
+    // `emitObjectMethodAsClosure`), so we read the field to get a callable
+    // value. For CLASS instances the field doesn't exist; fall through to the
+    // legacy null-externref placeholder.
     {
       const methodFullName = `${typeName}_${propName}`;
       if (ctx.classMethodSet.has(methodFullName) || ctx.staticMethodSet.has(methodFullName)) {
         const funcIdx = ctx.funcMap.get(methodFullName);
         if (funcIdx !== undefined) {
-          // Compile and drop the object expression (for side effects)
+          // #1118: Object literal — read the struct field which holds the closure.
+          // Detected by: typeName is a registered struct AND the struct has a
+          // matching field. classSet.has(typeName) excludes class instances.
+          const structFields = ctx.structFields.get(typeName);
+          const fieldIdx = structFields ? structFields.findIndex((f) => f.name === propName) : -1;
+          const structTypeIdx = ctx.structMap.get(typeName);
+          if (!ctx.classSet.has(typeName) && structFields && fieldIdx >= 0 && structTypeIdx !== undefined) {
+            // Compile the object → struct ref on stack → struct.get the field.
+            const objResult = compileExpression(ctx, fctx, expr.expression);
+            if (objResult) {
+              fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
+              const fType = structFields[fieldIdx]!.type;
+              return fType;
+            }
+          }
+          // Legacy fallback for class methods or unresolved cases:
+          // compile + drop the object, return null externref placeholder.
           const objResult = compileExpression(ctx, fctx, expr.expression);
           if (objResult) {
             fctx.body.push({ op: "drop" });
@@ -2085,8 +2102,32 @@ export function compilePropertyAccess(
           fctx.body.push({ op: "any.convert_extern" } as Instr);
           fctx.body.push({ op: "local.set", index: tmpAnyExt });
 
-          const resultWasm =
-            accessWasm.kind === "f64" || accessWasm.kind === "i32" ? accessWasm : { kind: "externref" as const };
+          // Phase 3 (#1269): consumer-side specialization. When
+          // `accessWasm` is externref (TS `any`-typed receiver) but
+          // every struct candidate has the same Phase-1-inferred
+          // primitive field type, narrow the dispatch result to that
+          // primitive. The struct-then arm reads the field directly
+          // (no `__box_number`); the extern_get-else arm calls
+          // `__unbox_number` once. This eliminates the box→unbox
+          // roundtrip that previously fired on `const p: any =
+          // createPoint(...); p.x + p.y` style code, where Phase 1+2
+          // had already typed the struct's field but Phase 3 had not
+          // taught the consumer-side dispatch to use the typed read.
+          let resultWasm: ValType =
+            accessWasm.kind === "f64" || accessWasm.kind === "i32" ? accessWasm : ({ kind: "externref" } as const);
+          if (resultWasm.kind === "externref") {
+            const fieldKinds = new Set(structCandidates.map((c) => c.fieldType.kind));
+            if (fieldKinds.size === 1) {
+              const k = [...fieldKinds][0];
+              if (k === "f64" || k === "i32") {
+                resultWasm = { kind: k } as ValType;
+                if (unboxIdx === undefined) {
+                  unboxIdx = ensureLateImport(ctx, "__unbox_number", [{ kind: "externref" }], [{ kind: "f64" }]);
+                  flushLateImportShifts(ctx, fctx);
+                }
+              }
+            }
+          }
           const resultLocal = allocLocal(fctx, `__sd_res_${fctx.locals.length}`, resultWasm);
 
           // Build the __extern_get fallback instructions
@@ -2136,12 +2177,15 @@ export function compilePropertyAccess(
 
           fctx.body.push(...buildStructDispatch(0));
           fctx.body.push({ op: "local.get", index: resultLocal });
-          if (accessWasm.kind === "f64") {
-            return { kind: "f64" };
-          }
-          if (accessWasm.kind === "i32") {
-            return { kind: "i32" };
-          }
+          // Phase 3 (#1269): when we narrowed `resultWasm` to the
+          // candidates' shared primitive type, return that — caller
+          // sees f64/i32 directly, no enclosing unbox needed. Falls
+          // back to the legacy accessWasm-based return when no
+          // narrowing was possible.
+          if (resultWasm.kind === "f64") return { kind: "f64" };
+          if (resultWasm.kind === "i32") return { kind: "i32" };
+          if (accessWasm.kind === "f64") return { kind: "f64" };
+          if (accessWasm.kind === "i32") return { kind: "i32" };
           return { kind: "externref" };
         }
 
@@ -2603,12 +2647,11 @@ export function compileElementAccessBody(
     }
     // Unwrap: struct.get data field, then index into backing array
     fctx.body.push({ op: "struct.get", typeIdx, fieldIdx: 1 }); // get data from vec
-    if (ctx.fast) {
-      compileExpression(ctx, fctx, expr.argumentExpression, { kind: "i32" });
-    } else {
-      compileExpression(ctx, fctx, expr.argumentExpression, { kind: "f64" });
-      fctx.body.push({ op: "i32.trunc_sat_f64_s" });
-    }
+    // #1179: hint i32 directly for the index. compileExpression will produce
+    // i32 cleanly for i32 locals / integer literals (no f64 round-trip), and
+    // the existing coerceType(f64→i32) path handles non-i32 results via
+    // trunc_sat — same as the legacy explicit cast below.
+    compileExpression(ctx, fctx, expr.argumentExpression, { kind: "i32" });
     if (isSafeBoundsEliminated(fctx, expr)) {
       // Bounds check elided: loop guard guarantees index < array.length
       fctx.body.push({ op: "array.get", typeIdx: arrTypeIdx } as Instr);
@@ -2623,13 +2666,10 @@ export function compileElementAccessBody(
     return null;
   }
 
-  // Compile index and convert to i32
-  if (ctx.fast) {
-    compileExpression(ctx, fctx, expr.argumentExpression, { kind: "i32" });
-  } else {
-    compileExpression(ctx, fctx, expr.argumentExpression, { kind: "f64" });
-    fctx.body.push({ op: "i32.trunc_sat_f64_s" });
-  }
+  // Compile index and convert to i32 (#1179: hint i32 directly to skip the
+  // f64.convert_i32_s + i32.trunc_sat_f64_s round-trip when the index is
+  // already an i32 local or integer literal).
+  compileExpression(ctx, fctx, expr.argumentExpression, { kind: "i32" });
 
   if (isSafeBoundsEliminated(fctx, expr)) {
     // Bounds check elided: loop guard guarantees index < array.length

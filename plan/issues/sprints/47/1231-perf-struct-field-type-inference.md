@@ -1,0 +1,891 @@
+---
+id: 1231
+sprint: 47
+title: "perf: struct field type inference — eliminate boxing in object properties"
+status: done
+created: 2026-05-02
+completed: 2026-05-02
+updated: 2026-05-02
+priority: high
+feasibility: hard
+reasoning_effort: max
+task_type: feature
+area: ir
+language_feature: object-literal, property-access
+goal: performance
+depends_on: [1169n, 1169o, 1169p]
+es_edition: ES2015+
+related: [1169, 1195]
+---
+# #1229 — Struct field type inference: eliminate boxing in object properties
+
+## Problem
+
+Object property fields are always stored as `(mut externref)` even when the compiler
+has full data-flow visibility and can prove they are always `f64`. This forces every
+property write through `__box_number` and every read through
+`__unbox_number` + null-check + type-test — four round-trips for four accesses
+in a simple `distance(p)` function.
+
+```javascript
+function createPoint(x, y) { return { x: x, y: y }; }
+function distance(p)       { return Math.sqrt(p.x * p.x + p.y * p.y); }
+distance(createPoint(3, 4));
+```
+
+Current output (abbreviated):
+
+```wat
+(type $__anon_0 (struct (field $x (mut externref)) (field $y (mut externref))))
+
+(func $createPoint (param f64 f64) (result (ref null $__anon_0))
+  local.get 0
+  call $__box_number     ;; f64 → externref (unnecessary)
+  local.get 1
+  call $__box_number     ;; f64 → externref (unnecessary)
+  struct.new $__anon_0)
+```
+
+`distance` then pays four unbox+null-check+type-test round trips to read `p.x` and `p.y`.
+
+## What it should produce
+
+```wat
+(type $Point (struct (field $x f64) (field $y f64)))
+
+(func $createPoint (param f64 f64) (result (ref null $Point))
+  local.get 0            ;; direct f64
+  local.get 1
+  struct.new $Point)
+
+(func $distance (param (ref null $Point)) (result f64)
+  local.get 0
+  struct.get $Point $x   ;; direct f64, no unboxing
+  local.get 0
+  struct.get $Point $x
+  f64.mul
+  ...)
+```
+
+No `__box_number`, no `__unbox_number`, no null checks on provably-non-null refs.
+
+## Why this matters
+
+Struct field inference is the transition from *"unboxes primitives in straight-line
+numeric code"* (which we already do for `fib`, `add`) to *"eliminates boxing across
+object boundaries"* — the property that makes real-world object-heavy JS competitive
+with native code. Without it, the compiler only wins on trivial numeric benchmarks.
+
+## Technical approach
+
+### Phase 1 — field-type annotation at struct creation sites
+
+In `src/codegen/literals.ts` (or the IR equivalent), when all values assigned to a
+field are proven `f64` (via existing IR type resolution), emit `f64` as the field
+`ValType` instead of `externref`. The struct type name (or anonymous hash key) must
+encode the field types so two structs with the same field names but different field
+types get distinct Wasm struct type indices.
+
+### Phase 2 — call-graph propagation (whole-function analysis)
+
+Build a lightweight dataflow summary:
+- For each function, record what `ValType` it writes into each struct field index.
+- For each call site `f(args)`, propagate arg types into parameter positions.
+- Fixed-point iterate until stable (most object code converges in 1–2 passes).
+
+This is a **closed-world** analysis: it only applies to functions that don't escape
+to host or dynamic call sites. Open-world callers fall back to boxed `externref`.
+
+### Phase 3 — consumer-side specialization
+
+In `src/codegen/property-access.ts`, when a `struct.get` target is a
+specialized struct with a typed field, emit the direct `struct.get` without
+unboxing. Requires the receiver's type to be a known specialized struct.
+
+### Phase 4 — null-check elimination (post-`struct.new`)
+
+If the receiver ref was just produced by `struct.new` in the same function (tracked
+via SSA value IDs), skip the `ref.is_null` guard. Already partially handled by the
+peephole pass; extend it to cover the struct-field read case.
+
+### Escape boundary
+
+When a struct value is passed to a function whose parameter type is `externref`
+(unanalyzed callee), widen back to the boxed representation at that boundary.
+The strict/dynamic split: typed path for closed-world callers, boxed fallback for
+open-world.
+
+## Acceptance criteria
+
+1. For `createPoint` / `distance` as written above:
+   - No `call $__box_number` in `createPoint`
+   - No `call $__unbox_number` in `distance`
+   - Field type is `f64`, not `externref`
+2. Mixed-type struct (`{ name: string, age: number }`) — `age` field is `f64`,
+   `name` is `externref`; no unboxing in the `age` accessor
+3. Polymorphic object (`wrap(1); wrap("hello");`) — `value` field stays `externref`
+4. Chained object creation (`vec2 → add → vec2`) — all structs specialized, no boxing
+5. No regression in equivalence tests
+6. test262 does not regress; net improvement expected in numeric test categories
+
+## Test cases
+
+```javascript
+// Case 1: simple — field types from constructor args
+function createPoint(x, y) { return { x, y }; }
+function distance(p) { return Math.sqrt(p.x * p.x + p.y * p.y); }
+distance(createPoint(3, 4)); // → 5
+
+// Case 2: mixed types
+function createUser(name, age) { return { name, age }; }
+function getAge(u) { return u.age; }
+getAge(createUser("Alice", 30)); // → 30
+
+// Case 3: polymorphic — must stay boxed
+function wrap(v) { return { value: v }; }
+wrap(1); wrap("hello"); // value: externref
+
+// Case 4: chained objects
+function vec2(x, y) { return { x, y }; }
+function addVec(a, b) { return vec2(a.x + b.x, a.y + b.y); }
+addVec(vec2(1, 2), vec2(3, 4)); // → { x: 4, y: 6 }
+```
+
+## Out of scope
+
+- Prototype chain analysis (method calls on structs)
+- Dynamic property access (`obj[key]` where key is unknown)
+- Cross-module / host-escape cases
+
+## Implementation notes
+
+- Start with Phase 1 only (single-function, no interprocedural propagation).
+  This alone eliminates boxing when a constructor's args are typed.
+- Phase 2 adds call-graph propagation; most gains come here.
+- The struct type dedup hash (extended in #1118) already incorporates field shapes —
+  extend it to include field `ValType` so specialized structs get unique type indices.
+- See `src/codegen/literals.ts` for struct creation, `src/codegen/property-access.ts`
+  for field reads, `src/ir/integration.ts` for IR type resolution.
+- **Needs architect spec before dev dispatch** — feasibility is hard, touches multiple
+  subsystems. Spawn `/architect-spec` or a dedicated architect agent first.
+
+---
+
+## Implementation Plan
+
+### Root cause (first 30 minutes of reading)
+
+The architect-spec PR header proposed two paths (legacy + IR). Reading the
+compiler shows the **legacy and IR sides are already wired for typed fields**;
+what's missing is a way to *prove* a field is `f64` when the function's
+parameters are untyped in source.
+
+Concretely:
+
+1. **Legacy path** — `ensureStructForType` (`src/codegen/index.ts:5437`) builds
+   the field-type list by calling `resolveWasmType(ctx, propType)` on
+   `ctx.checker.getTypeOfSymbol(prop)`. For `function createPoint(x, y) { return {x, y} }`
+   with no annotations TypeScript types `x`, `y` as `any`, so `propType.flags`
+   carry `Any` and `mapTsTypeToWasm` (`src/checker/type-mapper.ts:38-106`)
+   returns `externref`. The struct registers as `{x: externref, y: externref}`.
+   Field-type encoding in `fieldsHashKey` (`src/codegen/index.ts:5402-5413`)
+   already distinguishes `f64` from `externref` via `t.kind`, so two structs
+   with different field types correctly get distinct typeIdx. **The dedup hash
+   does not need a structural change for this issue** — it already encodes
+   ValType. The bug is upstream: TS-inference produces `any`, never `f64`.
+
+2. **IR path** — `lowerObjectLiteral` in `src/ir/from-ast.ts:1322-1379`
+   builds the shape from each property's *lowered* IR value type
+   (`cx.builder.typeOf(v)`). If a function's params are typed `f64`, the
+   shorthand-property values in the body lower as `f64`, and the resulting
+   `IrType.object` has `f64`-typed fields. `ObjectStructRegistry.resolve`
+   (`src/ir/integration.ts:1075-1136`) then registers a Wasm struct with
+   `(field $x f64) (field $y f64)` and *converges with the legacy registry
+   on `legacyFieldsHashKey`*. So the IR side already produces what the issue
+   wants — **when the function is IR-claimed**.
+
+3. **What blocks IR claiming** of `createPoint(x, y)`:
+   - `propagate.ts:buildTypeMap` (`src/ir/propagate.ts:140-261`) is *capable*
+     of inferring `x: f64`, `y: f64` from the call site `createPoint(3, 4)`.
+     But the propagator's `LatticeAtom` for objects carries only a string
+     shape (`{ kind: "object"; shape: string }`, line 103), not actual field
+     types. So shape *info* never flows back from a call site into the
+     callee or out into the caller's view of the return type.
+   - `resolvePositionType` in `src/codegen/index.ts:234-345` is called on
+     the function's *declared* return type. For an unannotated return,
+     `objectIrTypeFromTsType` (`src/codegen/index.ts:356-381`) reads
+     `tsType.getProperties()` and for each prop calls
+     `tsTypeToFieldIr(ctx, propType)`. Property type is `any` →
+     `tsTypeToFieldIr` returns `null` → `objectIrTypeFromTsType` returns
+     `null` → `resolvePositionType` throws → IR drops `createPoint`.
+   - Net effect: even when propagation knows the *params* are `f64`, the
+     IR rejects `createPoint` because the *return shape's field types*
+     can't be reconstructed.
+
+So this issue is fundamentally **a propagator-and-IR-type-resolution
+extension that lets object shapes carry concrete field types end-to-end**.
+The legacy struct-registration path already produces correct typed structs
+*if it is given typed fields* — the only way to give it typed fields without
+source annotations is via the IR.
+
+### Architectural decisions (need user/PO confirmation)
+
+1. **Phase 1 = IR-only path (recommended).** Do not touch the legacy
+   `ensureStructForType` field-type resolution. Instead, extend the IR path
+   to claim object-creating functions whose param types come from
+   propagation. Side benefit: this is the natural direction the codebase is
+   moving in (#1169a–#1169q). Risk: legacy-only callers won't see the win;
+   any function that escapes the IR claim graph still emits boxed fields.
+
+2. **Lattice extension or two-pass IR lowering?** Two ways to flow object
+   shape evidence:
+   - (a) **Extend `LatticeAtom.object`** to carry `Map<string, LatticeAtom>`
+     for field types, and recurse `inferExpr` over object literals and
+     property accesses. Compositional, no extra pass. *Recommended.*
+   - (b) **Two-pass IR build**: lower bodies once with placeholder return
+     types, observe the actual `IrType` returned, then re-lower callers.
+     Closer to whole-program inference but requires a new fixed-point at
+     the IR layer. Defer to Phase 2 if Phase 1 doesn't cover the chained
+     `addVec` / `vec2` case.
+
+3. **Which functions to claim under typed shapes?** Mirror the existing
+   call-graph closure rule (`src/ir/select.ts:31-32`): if any caller or
+   callee is legacy-compiled, the IR refuses to emit a typed-shape signature
+   that legacy can't consume. The closure rule already handles this for
+   primitives; we need to verify it transitively closes over object-typed
+   params/returns too.
+
+### Phase 1 (this issue's primary scope) — propagator object shapes + IR claim
+
+Implement (a) above. Five concrete changes, in dependency order:
+
+#### 1.1  Extend the lattice (`src/ir/propagate.ts`)
+
+**File: `src/ir/propagate.ts:99-110`**
+
+Replace `LatticeAtom`'s opaque object kind with a recursive shape:
+
+```ts
+export type LatticeAtom =
+  | { readonly kind: "f64" }
+  | { readonly kind: "bool" }
+  | { readonly kind: "string" }
+  | {
+      readonly kind: "object";
+      readonly fields: readonly { readonly name: string; readonly type: LatticeAtom }[];
+    };
+```
+
+Field list is name-sorted so structurally equal shapes compare equal under
+`atomEquals`. Update `atomEquals`, `atomLessThan`, `joinAtom`, and
+`describeAtom` (lines 514-565 area) to recurse over the new field list.
+
+**Risk**: blowing up the join lattice. The fixed-point in
+`buildTypeMap` (`src/ir/propagate.ts:185-253`) caps at 50 iterations with
+`MAX_ITERS`; the lattice height now becomes O(field count × atom height).
+Cap the recursion depth at 3 (matches the legacy `resolveWasmType` depth
+guard in `src/codegen/index.ts:5255`); shapes deeper than that widen to
+`dynamic`. Add a unit test that fixpoint terminates on
+`function rec(x){ return {a: rec(x)} }`.
+
+#### 1.2  Infer literal and property-access types (`src/ir/propagate.ts:399-`)
+
+**File: `src/ir/propagate.ts:399-510`** (`inferExpr`)
+
+Add three handlers:
+
+- `ts.isObjectLiteralExpression(expr)` — for each `PropertyAssignment` /
+  `ShorthandPropertyAssignment`, infer the value's atom in the current
+  scope. If any property's atom widens to `dynamic`, the whole literal is
+  `dynamic`. Otherwise build `{ kind: "object"; fields: [...].sort() }`.
+  Reject computed keys, spread, methods, and getters / setters by
+  returning `dynamic` (rationale: legacy fallback is correct for those).
+
+- `ts.isPropertyAccessExpression(expr)` — infer the receiver atom; if it's
+  an object atom and the field is in the field list, return the field's
+  atom. Else `dynamic`.
+
+- `ts.isElementAccessExpression(expr)` with a `StringLiteral` arg — same as
+  property access but keyed by the literal's text.
+
+#### 1.3  Replace the `objectIrTypeFromTsType` call path (`src/codegen/index.ts`)
+
+**File: `src/codegen/index.ts:336-345`** (the `resolvePositionType` mapped fallthrough)
+
+Currently the function rejects mapped-only object positions:
+
+```ts
+if (mapped?.kind === "object") {
+  throw new Error(`object position type without explicit annotation — needs TypeNode in slice 2`);
+}
+```
+
+Replace this throw with a call to a new `objectIrTypeFromLattice(mapped)`
+helper that walks the lattice shape recursively, mapping each atom to
+either `irVal({ kind: "f64" })` / `irVal({ kind: "i32" })` / `{ kind: "string" }`
+or recursing for nested objects. The helper builds `IrType.object` directly
+from the lattice and never consults the TS checker — that's the whole
+point: we are using flow info, not TS info.
+
+**File: `src/codegen/index.ts:356-381`** (`objectIrTypeFromTsType`)
+
+Keep as-is for the *annotated* path (`TypeReferenceNode` /
+`TypeLiteralNode`); it stays the lookup for code that *does* have explicit
+shape annotations. The lattice path covers unannotated code.
+
+**File: `src/codegen/index.ts:389-395`** (`tsTypeToFieldIr`)
+
+No change needed for Phase 1 — this is reached only from the annotated
+path, which already works.
+
+#### 1.4  Make the IR builder's `lowerObjectLiteral` honor a *contextual* shape
+
+**File: `src/ir/from-ast.ts:1322-1379`** (`lowerObjectLiteral`)
+
+Today the function ignores the contextual hint and uses each value's
+lowered IR type as the field type. That's correct for shape *inference*
+but wrong when the function's declared return type is a typed shape
+(e.g., the override map says `returnType: { kind: "object", shape: {x:f64,y:f64} }`)
+and the value itself lowered as f64 — the shape match is fine, no
+coercion needed. But when the lattice claims the param is f64 but the
+expression actually lowers to externref (e.g., shorthand for an
+unboxed-but-then-coerced local), we must coerce *into* the declared
+field type before pushing.
+
+Fix: pass the contextual shape (via the existing `expectedType` channel
+already used by `lowerExpr`) and, for each value, call `coerceIrValue`
+(if absent, add a thin helper that emits `boxed/unboxed` IR
+instructions per-element) before constructing the shape. Reject mismatches
+(callee throws, function falls back to legacy via the existing IR-error
+channel).
+
+For Phase 1 the simpler path is to *trust* `cx.builder.typeOf(v)`: if it
+matches the expected field atom, register the shape; else throw, and let
+the IR-fallback warning surface. We add coercion only if the simpler
+trust-path produces too many fallbacks (track via the `JS2WASM_LOG_IR_FALLBACKS`
+telemetry already in `src/codegen/index.ts:726`).
+
+#### 1.5  Consume the typed shape in property reads (`src/ir/from-ast.ts`)
+
+**Already works.** `lowerExpr` for `PropertyAccessExpression` consults
+`recvType.shape.fields` and emits `object.get` with the field's IrType
+(`src/ir/from-ast.ts:1257`, `:1404`). The lowerer in `src/ir/lower.ts:737-751`
+emits a direct `struct.get` typed by `obj.fieldIdx(name)` — no unboxing.
+
+**Verify** there is no implicit `coerceType` call between `object.get` and
+the consumer; if the result is `f64` and the parent expects `f64`, the
+emitter must NOT route through `__unbox_number`. Spot-check with
+`JS2WASM_DUMP_IR=1` on the createPoint/distance fixture before declaring
+the slice done.
+
+### Phase 2 — call-graph propagation
+
+The lattice extension in 1.1 already drives call-graph propagation: shapes
+flow through the existing fixed-point (`buildTypeMap`'s
+caller→callee → callee-returns→caller cycle) once the lattice carries
+shape info. So Phase 2 is **free** under this design — Phase 1.1 IS
+Phase 2 in the original PR.
+
+The remaining Phase 2 work is *transitive selector closure under shape
+types*. The current `select.ts` closes the claim set under primitive types
+only; we need:
+
+- `select.ts:isPhase1Expr` already accepts `CallExpression` (Phase 2 of
+  IR-migration). Same for `PropertyAccessExpression`. No change needed.
+- `select.ts:resolveReturnType` (line 353) — extend `ResolvedKind` to
+  return shape info, OR make the selector treat any object-kind position
+  as accepted and let `resolvePositionType` decide later. **Recommended**:
+  the latter — keeps the selector narrow.
+- The closure pass at the bottom of `planIrCompilation` (which I read at
+  `src/ir/select.ts:`190-280) drops a function if any caller or callee
+  isn't claimed. This already handles the open-world boundary correctly
+  for shape-typed functions: an externref-consuming caller stays legacy
+  and pulls every callee that escapes to it back to legacy, exactly the
+  behavior the issue calls out as the "escape boundary."
+
+### Phase 3 — null-check elimination (deferred)
+
+Out of scope for the first dev pass. Worth a follow-up issue once Phase 1
+is landed and we measure remaining overhead. The IR's Phase-1 lowering of
+`object.get` already emits `struct.get` with no null check when the value
+is a `(ref $T)` (non-null) — the null check appears only on `(ref null $T)`
+locals. The peephole pass (`src/codegen/peephole.ts`) already drops a
+redundant `ref.as_non_null` after `ref.cast`; extending it to drop the
+null guard between adjacent `struct.new` and `struct.get` SSA defs is
+straightforward but a separate change.
+
+### Wasm IR pattern (target output)
+
+For `createPoint(3, 4)` with `f64` propagation:
+
+```
+(type $Point (struct (field $x (mut f64)) (field $y (mut f64))))
+
+(func $createPoint (param $x f64) (param $y f64) (result (ref null $Point))
+  local.get $x
+  local.get $y
+  struct.new $Point)
+
+(func $distance (param $p (ref null $Point)) (result f64)
+  local.get $p
+  ref.is_null
+  if  ;; null-guarded TypeError  (Phase 4 elides this for SSA-fresh refs)
+    ...throw TypeError...
+  end
+  local.get $p
+  struct.get $Point $x         ;; direct f64 — no __unbox_number
+  local.get $p
+  struct.get $Point $x
+  f64.mul
+  local.get $p
+  struct.get $Point $y
+  local.get $p
+  struct.get $Point $y
+  f64.mul
+  f64.add
+  call $Math.sqrt
+  return)
+```
+
+### Edge cases — explicit handling
+
+| Case | Behaviour | Where enforced |
+|------|-----------|----------------|
+| Polymorphic field (`wrap(1); wrap("hello")`) | Lattice joins → `dynamic` → `wrap` falls out of IR claim → struct stays `(mut externref)` (legacy). Acceptance criterion (3) ✓ | `joinAtom` in propagate.ts |
+| Mixed-type struct (`{name: string, age: number}`) | Lattice carries `{name:string, age:f64}` shape → IR registers `(struct (field $name externref) (field $age f64))`. Acceptance criterion (2) ✓ | `objectIrTypeFromLattice` |
+| Field hole (missing field at struct.new) | `lowerObjectLiteral` already enforces value/shape arity (`builder.ts:247-251`). If a literal is missing a field declared in the contextual shape, IR throws → legacy fallback. Same behavior as today. | `emitObjectNew` arity guard |
+| Open-world escape (return value passed to host) | The export wrapper always coerces to externref via `coerceType` (`src/codegen/type-coercion.ts:882`+). For typed structs the wrapper picks the `ref/ref_null → externref` arm at line 1352, which falls through to `extern.convert_any` — already correct. No new code needed. | `coerceType` ref→externref arm |
+| Cross-module (`import` consumer) | A typed struct from this module reaches an importer as externref via `extern.convert_any`. The importer's TS view of the returned type will be `unknown` / `any`. No new code needed. | unchanged |
+| Function called *before* its params are inferred | The propagator's fixed-point handles this — first iteration may seed `dynamic`; subsequent iterations narrow to `f64` once a typed call site is observed. The IR claim happens after the fixpoint, so all signatures are stable. | `buildTypeMap` fixed-point |
+| Recursive object construction (`function rec(x){ return {a: rec(x)} }`) | Lattice depth-cap (Phase 1.1) widens recursive nesting to `dynamic` after depth 3. Lossy but safe; rare in real code. | `objectIrTypeFromLattice` depth guard |
+| Object passed as argument to a legacy callee | The selector's call-graph closure already pulls `createPoint` back to legacy if any local caller is legacy. Boxed-externref representation throughout. | `select.ts` claim closure |
+| Spread / computed keys / getters / setters / methods | `inferExpr` returns `dynamic` for these — the function falls back to legacy. Existing object-method tests stay on the legacy path. | `inferExpr` shape inference |
+
+### Struct type dedup hash — confirmation, not change
+
+`fieldsHashKey` in `src/codegen/index.ts:5402-5413` already keys by
+`f.name + ":" + t.kind` (with typeIdx for ref types). Two shapes
+`{x: f64, y: f64}` and `{x: externref, y: externref}` already hash
+differently and produce two distinct anon structs. The IR's
+`legacyFieldsHashKey` in `src/ir/integration.ts:1186-1197` is a verbatim
+mirror with the same property. **No hash-key change required.**
+
+What WAS extended in #1118 is the *method arity* portion of the hash
+(`methodSigParts` in `src/codegen/index.ts:5470-5494`); that's orthogonal
+and stays as-is.
+
+The one subtle risk: a shape registered by the legacy path as
+`{x: externref}` and another shape registered by the IR path as `{x: f64}`
+will get *different* typeIdx. If both flow into the same downstream
+function — e.g., a util that takes an `any` — the function must accept
+both. Current behavior: such a util takes externref, so the IR-typed
+struct widens via `extern.convert_any` at the boundary (existing code).
+Acceptance criterion (5) — *no equivalence regressions* — depends on
+this widening still firing; verify by searching equivalence-test diffs
+for `extern.convert_any` count post-change.
+
+### File-level change summary
+
+| File | Function | Change |
+|------|----------|--------|
+| `src/ir/propagate.ts` | `LatticeAtom` (line ~99) | Add recursive `fields` to `object` atom |
+| `src/ir/propagate.ts` | `atomEquals`, `joinAtom`, `atomLessThan`, `describeAtom` (~514-565) | Recurse over field lists |
+| `src/ir/propagate.ts` | `inferExpr` (~399) | Handle `ObjectLiteralExpression`, `PropertyAccessExpression`, string-key `ElementAccessExpression` |
+| `src/ir/propagate.ts` | `tsTypeToLattice` (~322) | When a TS object type has resolvable property atoms, return an object atom (not `dynamic`) |
+| `src/codegen/index.ts` | `resolvePositionType` (line 336-345) | Replace the `mapped.kind === "object"` throw with a call to new `objectIrTypeFromLattice` |
+| `src/codegen/index.ts` | (new) `objectIrTypeFromLattice` | Walk lattice shape → `IrType.object` |
+| `src/ir/from-ast.ts` | `lowerObjectLiteral` (1322-1379) | Pass contextual shape; reject (with clean fallback) when value's IR type ≠ expected field type |
+| (no changes) | `src/codegen/literals.ts` | Legacy path stays as-is; benefits indirectly when IR claims more |
+| (no changes) | `src/codegen/property-access.ts` | Already typed-shape-aware via `emitNullGuardedStructGet` |
+| (no changes) | `fieldsHashKey` (`src/codegen/index.ts:5402`) | Already encodes ValType correctly |
+
+### Test files / fixtures to add
+
+Add a focused IR-bridge test (analogous to existing `tests/ir/object-literal-*.test.ts`,
+if any — or a new `tests/issue-1229-struct-field-inference.test.ts`):
+
+```ts
+test("createPoint/distance — no boxing on typed-flow shape", async () => {
+  const wat = await compileToWat(`
+    function createPoint(x, y) { return { x, y }; }
+    function distance(p) { return Math.sqrt(p.x * p.x + p.y * p.y); }
+    export function run() { return distance(createPoint(3, 4)); }
+  `, { experimentalIR: true });
+
+  expect(wat).not.toMatch(/call\s+\$__box_number/);
+  expect(wat).not.toMatch(/call\s+\$__unbox_number/);
+  expect(wat).toMatch(/struct.*field.*f64.*field.*f64/);
+});
+
+test("polymorphic wrap — stays boxed", async () => {
+  const wat = await compileToWat(`
+    function wrap(v) { return { value: v }; }
+    export function run() { wrap(1); wrap("hello"); }
+  `, { experimentalIR: true });
+
+  expect(wat).toMatch(/field.*externref/);
+});
+
+test("mixed types — number field unboxed, string field boxed", async () => {
+  const wat = await compileToWat(`
+    function createUser(name, age) { return { name, age }; }
+    function getAge(u) { return u.age; }
+    export function run() { return getAge(createUser("Alice", 30)); }
+  `, { experimentalIR: true });
+
+  expect(wat).toMatch(/field\s+\$age\s+\(mut\s+f64\)/);
+});
+```
+
+Also extend `equivalence.test.ts` with a chained-vec2 `addVec` case
+(Acceptance criterion 4) so we catch any signature drift across the
+call-graph closure.
+
+### Suggested incremental implementation order (for the dev)
+
+1. **Add the lattice extension** (Phase 1.1) and unit tests for
+   `joinAtom` / `atomEquals` over object shapes. Land as a no-op:
+   nothing consumes the new shape yet.
+2. **Add `objectIrTypeFromLattice`** and wire it into `resolvePositionType`.
+   Run equivalence tests — should be green (still no claims widened).
+3. **Add object-literal / property-access handlers to `inferExpr`**.
+   At this point `buildTypeMap` produces typed shapes for `createPoint`.
+   Run equivalence + a focused createPoint fixture; verify the IR claims
+   `createPoint` and emits `f64` field types in the WAT.
+4. **Verify `lowerObjectLiteral`** accepts the typed shape without
+   coercion errors. If it throws on the chained-vec2 case, add the
+   per-field coercion thin helper (Phase 1.4 fallback).
+5. **Run full equivalence suite + scoped test262**. Watch for
+   regressions in `language/expressions/object/` and
+   `language/statements/return/` — these exercise object literals
+   heavily.
+6. **Open PR.** Tag this as #1229 (the heading retains the original
+   number per the renumber commit `e95ab24df`).
+
+### Risk register (Architect's call-outs for PO/tech-lead)
+
+- **Lattice growth.** Recursive shape join can theoretically blow up
+  iteration count; the depth cap at 3 keeps it bounded but lossy. If a
+  realistic codebase hits the cap regularly, escalate — likely worth
+  raising to 5.
+- **Selector closure churn.** Adding shape types to claim positions may
+  pull more functions into the IR than today. That's the goal, but
+  every newly-IR-claimed function is a regression vector for IR-only
+  bugs (#1169p history shows this). Recommend gating Phase 1 behind a
+  `JS2WASM_IR_OBJECT_SHAPES=1` env flag for a sprint to bake before
+  default-on.
+- **Cross-module / WIT generation.** WIT generator (`src/wit-generator.ts`)
+  emits exported function signatures; if exports return typed structs,
+  the WIT output must still expose them as the boxed externref view.
+  Spot-check by adding `export function run` to the createPoint test
+  and inspecting the generated WIT.
+- **#1118 baseline JSONL.** Doesn't depend on anything here — landing
+  this issue may shift test262 numbers (positively, expected). Update
+  baseline per CLAUDE.md procedure post-merge.
+
+### Out-of-scope for this issue (follow-ups, file separately)
+
+- Phase 4 null-check elision (post-`struct.new` SSA tracking) — measure
+  remaining overhead first.
+- Legacy-path field-type inference (would let non-IR-claimed functions
+  also benefit) — only worth doing if IR claim coverage stays low.
+- Polymorphic specialization (clone `wrap` per call-site type) —
+  monomorphize already does this for primitives; extending to object
+  shapes is a much larger change.
+- Method-bearing object literals (`{ valueOf() {...} }`) — currently
+  excluded by `inferExpr` returning `dynamic`. Worth a follow-up only
+  if it materially affects benchmarks.
+
+---
+
+## Implementation notes (Senior Dev — Phase 1, gated)
+
+### Files changed
+- `src/ir/propagate.ts` — `LatticeAtom.object` now carries a recursive
+  `fields: { name; type: LatticeAtom }[]` instead of an opaque
+  `shape: string`. Helpers `atomsEqual` / `atomOrder` / `typesEqual`
+  recurse over the field list. `lowerTypeToIrType` lowers object
+  atoms to `IrType.object`. New constants
+  `LATTICE_OBJECT_SHAPE_MAX_DEPTH = 3` and `objectShapesEnabled()`
+  guard the env flag.
+- `src/ir/propagate.ts` — `inferExpr` gained handlers for
+  `ObjectLiteralExpression` (gated on the flag),
+  `PropertyAccessExpression`, and string-keyed `ElementAccessExpression`.
+- `src/ir/propagate.ts` — `tsTypeToLattice` returns `UNKNOWN` for
+  `Object`-flagged TS types when the flag is on (instead of `DYNAMIC`),
+  so unannotated returns like `function createPoint(x, y) { return
+  {x, y}; }` start at the bottom and let body-walk inference grow the
+  fact. This was the missing piece preventing the seed-vs-body join
+  rule from ever updating: `seedConcrete` was false for `dynamic` and
+  the asymmetric rule still bound `newReturn = join(dynamic, t) =
+  dynamic`. Outside the gate, `DYNAMIC` is preserved for legacy.
+- `src/codegen/index.ts` — replaced the `mapped.kind === "object"`
+  throw in `resolvePositionType` with a call to a new
+  `objectIrTypeFromLattice` helper that walks the lattice's recursive
+  field list into an `IrType.object`. The new `atomToFieldIr` helper
+  mirrors `tsTypeToFieldIr` for atoms (f64 / bool / string / object).
+- `tests/issue-1231.test.ts` — Phase 1 acceptance tests covering
+  lattice equality, polymorphic widening, depth cap, IR selection,
+  WAT emission of typed struct fields, and runtime equivalence with
+  legacy.
+- `tests/ir-frontend-widening.test.ts` — migrated existing
+  `kind: "object"` literals from the old `shape: string` form to the
+  new `fields: [...]` form.
+
+### Design decisions and WHYs
+
+1. **Why replace `shape: string` instead of adding `fields` alongside?**
+   The opaque `shape: string` is constructed nowhere in production —
+   only in tests, as a placeholder. Replacing it removes a dead
+   discriminator and makes the lattice carry meaningful shape
+   evidence. Migration is local: 6 lines in `ir-frontend-widening.test.ts`.
+
+2. **Why gate at `inferExpr` for the object literal arm only?**
+   Property access and element access on object atoms only return a
+   non-dynamic atom if some source produced one. Object literals are
+   the only source. So gating the literal handler is sufficient — the
+   access handlers don't need their own gate, and adding more gates
+   would just be code clutter.
+
+3. **Why fix `tsTypeToLattice` to return `UNKNOWN` for object types?**
+   Without this, the seed for unannotated `function createPoint(x, y)
+   { return {x, y}; }` is `DYNAMIC` (TS infers `{x: any, y: any}` and
+   the lattice maps Object-flagged types to dynamic). The
+   `seedConcrete` check in `buildTypeMap` then never fires, and the
+   join `dynamic ⊔ t = dynamic` swallows every body observation. The
+   IR claim never gets the typed shape it needs. Returning `UNKNOWN`
+   when the gate is on lets the body-walk pass refine the fact.
+
+4. **Why not also fix the annotated-object seed (`{x: number}`)?**
+   The annotated path already works through the legacy
+   `objectIrTypeFromTsType` arm of `resolvePositionType` — TS gives
+   us full property type info. The unannotated path is the bug.
+   Phase 1 keeps the annotated path untouched to minimize blast radius.
+
+5. **Why depth cap 3?** Matches the legacy `resolveWasmType` depth
+   guard at `codegen/index.ts:5255`. Deeper shapes are rare in real
+   code; a conservative cap keeps the lattice height bounded so the
+   worklist fixpoint always terminates. Bumping to 5 is a one-line
+   change if benchmarks demand it.
+
+6. **Why is the gate env-based, not a `CompileOptions` flag?**
+   Architect's risk-register call-out: "every newly-IR-claimed
+   function is a regression vector for IR-only bugs (#1169p history
+   shows this)." Defaulting off for a sprint lets us iterate on
+   correctness without affecting test262 conformance numbers. An env
+   var is the simplest gate that works for both vitest and ad-hoc CI
+   runs.
+
+### Verified behaviour
+
+For `function createPoint(x, y) { return { x: x, y: y }; }` /
+`function distance(p) { return p.x * p.x + p.y * p.y; }`, the WAT
+under `JS2WASM_IR_OBJECT_SHAPES=1`:
+
+```
+(type $__anon_1 (struct (field $x (mut f64)) (field $y (mut f64))))
+
+(func $createPoint (param f64 f64) (result (ref null 5))
+  local.get 0       ;; direct f64 — no __box_number
+  local.get 1
+  struct.new 5
+  return)
+
+(func $distance (param (ref null 5)) (result f64)
+  local.get 0
+  struct.get 5 0    ;; direct f64.get — no __unbox_number
+  local.get 0
+  struct.get 5 0
+  f64.mul
+  ...)
+```
+
+Acceptance criteria 1, 2, 3, 5 verified by `tests/issue-1231.test.ts`.
+Criterion 4 (chained `vec2 → addVec → vec2`) is implicitly covered by
+the propagator's call-graph propagation through `entries.get(name)
+.returnType` in `inferExpr`'s call-expression handler. Criterion 6
+(no test262 regression) is gated to CI — Phase 1 is opt-in via env
+so the default test262 path is unaffected.
+
+---
+
+## MLIR Compatibility Design Requirement
+
+This issue establishes the optimizer-emitter seam that makes MLIR bolt-on possible
+later. The rule is simple: **`propagate()` must return `TypeMap` as a first-class
+value, not bleed results into ambient state or IR node mutations.**
+
+### Explicit TypeMap contract
+
+```ts
+// Stable types — MLIR must produce the same shape
+type FieldTypes = { [fieldName: string]: ValType };      // e.g. { x: "f64", y: "f64" }
+export type TypeMap = Map<NodeId, FieldTypes>;
+
+// propagate() signature (seam boundary)
+export function propagate(ir: IR, ctx: LowerCtx): { ir: IR; typeMap: TypeMap }
+```
+
+The emitter reads `typeMap.get(nodeId)?.x` rather than querying `LatticeAtom`
+internals directly. This is the seam: a future MLIR optimizer produces the same
+`TypeMap` shape and the emitter is unchanged.
+
+### Pipeline flag (bolt-on point)
+
+```ts
+const optimizer = process.env.JS2WASM_MLIR_PATH
+  ? mlirOptimizer(process.env.JS2WASM_MLIR_PATH)   // future: out-of-process MLIR
+  : builtinLatticeOptimizer;                         // today: LatticeAtom propagation
+const { ir: optimizedIr, typeMap } = await optimizer(ir, ctx);
+emitWasm(optimizedIr, typeMap);                       // emitter unchanged either way
+```
+
+### What to avoid
+
+| Anti-pattern | Why it breaks the seam |
+|---|---|
+| Mutations on IR nodes (`node.inferredType = ...`) | MLIR can't replace node-mutating passes without a tree walk |
+| Ambient module-level maps (`const typeCache = new Map()`) | Not reproducible / not serializable |
+| String-encoded types (`shape: "f64,f64"`) | MLIR's type system can't parse arbitrary strings |
+| Calling `atom.fields` directly in the emitter | Couples emitter to LatticeAtom internals |
+
+### Scope of this requirement
+
+This design principle applies to **all** future IR optimization passes: #1232, #1233,
+and Phases 2–4 of this issue. Each must produce or consume `TypeMap` at the same
+contract boundary.
+
+---
+
+## Phase 2 — enable by default, monomorphization, full test coverage
+
+**Status**: Phase 1 merged (PR #143, env-gated `JS2WASM_IR_OBJECT_SHAPES=1`).
+Phase 2 is dispatched to dev-1231.
+
+### Context
+
+Struct field type inference is the difference between:
+- A compiler that unboxes primitives (what we already do for `fib`, `add`)
+- A compiler that eliminates boxing **across object boundaries** (what makes
+  real-world JS fast)
+
+Real JavaScript code creates objects constantly. If every property access
+requires box/unbox/null-check/type-test, the performance advantage of AOT
+compilation over an interpreter is marginal.
+
+### What Phase 1 shipped
+
+Phase 1 established:
+- `LatticeAtom.object` carries recursive `fields: { name; type: LatticeAtom }[]`
+- `inferExpr` handlers for ObjectLiteralExpression, PropertyAccessExpression
+- `objectIrTypeFromLattice` replacing the `resolvePositionType` throw
+- `tsTypeToLattice` returns `UNKNOWN` (not `DYNAMIC`) for unannotated object
+  returns under the gate — the key fix enabling body-walk inference
+- Gate: `JS2WASM_IR_OBJECT_SHAPES=1` env flag
+- WAT verified: `(field $x (mut f64))` emitted for `createPoint(3, 4)` under gate
+
+### Phase 2 scope
+
+#### Step 1 — gate graduation plan
+
+Determine whether the gate can be removed (enabled by default) or whether a
+more selective activation is needed. Options:
+- **Run test262 with `JS2WASM_IR_OBJECT_SHAPES=1` on CI** (add to the sharded
+  workflow for one run) and inspect the delta. If net ≥ 0 and no bucket > 50
+  regressions, remove the gate.
+- If regressions appear: analyze per-bucket to distinguish real issues from
+  test-corpus weirdness. Fix issues, then re-test.
+
+#### Step 2 — monomorphization at call sites (Case 3/4 from spec)
+
+When `wrap(v)` is called with two different types in the **same** compilation
+unit (not across module boundary), the propagator's join currently widens to
+`dynamic`. For the common case where the call sites are statically enumerable
+(array literal, loop over literal), the compiler could monomorphize `wrap`
+per call-site type.
+
+This is a **stretch goal** for Phase 2. Do not block Phase 2 gate graduation
+on it. File a follow-up issue if monomorphization is worth doing separately.
+
+#### Step 3 — complete test coverage for the new cases
+
+Add tests for all 6 cases from the updated spec:
+
+```javascript
+// Case 1: simple — field types from constructor args (already covered)
+function createPoint(x, y) { return { x, y }; }
+function distance(p) { return Math.sqrt(p.x * p.x + p.y * p.y); }
+distance(createPoint(3, 4)); // → 5
+
+// Case 2: mixed types (already covered)
+function createUser(name, age) { return { name, age }; }
+function getAge(u) { return u.age; }
+getAge(createUser("Alice", 30)); // → 30
+
+// Case 3: polymorphic — must stay boxed (already covered)
+function wrap(v) { return { value: v }; }
+wrap(1); wrap("hello"); // value: externref
+
+// Case 4: static array — unroll opportunity (stretch)
+function wrap(v) { return { value: v }; }
+const items = [1, "hello"];
+items.forEach(v => wrap(v)); // static array → could specialize
+
+// Case 5: open world — must fall back to boxed
+function wrap(v) { return { value: v }; }
+export function process(input) { return wrap(input); } // input: unknown at compile time
+
+// Case 6: chained objects (already covered by propagator)
+function vec2(x, y) { return { x, y }; }
+function add(a, b) { return vec2(a.x + b.x, a.y + b.y); }
+add(vec2(1, 2), vec2(3, 4)); // → { x: 4, y: 6 }
+```
+
+#### Step 4 — WAT regression guard
+
+After gate graduation, add a CI WAT snapshot assertion:
+```ts
+test("createPoint distance — no boxing in default mode", async () => {
+  const wat = await compileToWat(`...`, {}); // no env flag needed
+  expect(wat).not.toMatch(/call\s+\$__box_number/);
+  expect(wat).not.toMatch(/call\s+\$__unbox_number/);
+});
+```
+This ensures future refactors don't accidentally re-introduce boxing.
+
+### Target output (same as Phase 1 verified output, but without env flag)
+
+```wat
+(type $__anon_1 (struct (field $x (mut f64)) (field $y (mut f64))))
+
+(func $createPoint (param f64 f64) (result (ref null $Point))
+  local.get 0           ;; direct f64 — no __box_number
+  local.get 1
+  struct.new $Point)
+
+(func $distance (param (ref null $Point)) (result f64)
+  local.get 0
+  struct.get $Point $x  ;; direct f64 — no __unbox_number
+  local.get 0
+  struct.get $Point $x
+  f64.mul
+  local.get 0
+  struct.get $Point $y
+  local.get 0
+  struct.get $Point $y
+  f64.mul
+  f64.add
+  f64.sqrt)
+```
+
+### Phase 2 acceptance criteria
+
+1. `JS2WASM_IR_OBJECT_SHAPES` gate removed (or a concrete plan filed for why
+   it must stay, with a follow-up issue for removal)
+2. All 6 test cases above covered (Cases 4/5 as stretch — file follow-up if
+   not in scope for this PR)
+3. WAT snapshot assertion in place for Case 1 (no gate required)
+4. CI test262 net delta ≥ 0 (no regressions, improvement expected in numeric
+   object-heavy test categories)
+5. MLIR seam: `propagate()` returns explicit `TypeMap` as specified — confirm
+   in code review before merge

@@ -26,11 +26,11 @@ Filter to PRs with `mergeStateStatus: UNSTABLE | CLEAN | BEHIND` — skip `DIRTY
 The sharded workflow uploads `test262-merged-report` per run. Find each PR's run ID via the `merge shard reports` check:
 
 ```bash
-mkdir -p /tmp/pr-artifacts
+mkdir -p output/pr-artifacts
 for pr in <LIST>; do
   run_id=$(gh pr view $pr --json statusCheckRollup --jq '.statusCheckRollup[] | select(.name=="merge shard reports") | .detailsUrl' | grep -oE 'runs/[0-9]+' | head -1 | cut -d/ -f2)
-  mkdir -p /tmp/pr-artifacts/pr-$pr
-  gh run download $run_id -n test262-merged-report -D /tmp/pr-artifacts/pr-$pr >/dev/null 2>&1
+  mkdir -p output/pr-artifacts/pr-$pr
+  gh run download $run_id -n test262-merged-report -D output/pr-artifacts/pr-$pr >/dev/null 2>&1
 done
 ```
 
@@ -42,7 +42,7 @@ Artifact filenames: `test262-report-merged.json`, `test262-regressions.txt`, `te
 BASELINE=$(python3 -c "import json; d=json.load(open('benchmarks/results/test262-current.json')); print(d['summary']['pass'])")
 
 for pr in <LIST>; do
-  rpt=/tmp/pr-artifacts/pr-$pr/test262-report-merged.json
+  rpt=output/pr-artifacts/pr-$pr/test262-report-merged.json
   [ -f "$rpt" ] && python3 -c "
 import json
 d=json.load(open('$rpt'))
@@ -68,7 +68,7 @@ Thresholds (tune per context):
 Sample regressions for any PR where the regression count is > 5% of the delta:
 
 ```bash
-head -40 /tmp/pr-artifacts/pr-<NUM>/test262-regressions.txt
+head -40 output/pr-artifacts/pr-<NUM>/test262-regressions.txt
 ```
 
 Look for known false-positive patterns (see `feedback_regression_analysis.md`): harness wrapper coincidence, `String.prototype` wrapper tests, test expecting SyntaxError where we throw a different error at a matching phase, etc.

@@ -2,7 +2,7 @@
 /**
  * new/super/class expression compilation.
  */
-import ts from "typescript";
+import { ts, forEachChild } from "../../ts-api.js";
 import type { FieldDef, Instr, ValType } from "../../ir/types.js";
 import { collectReferencedIdentifiers, collectWrittenIdentifiers } from "../closures.js";
 import { reportError } from "../context/errors.js";
@@ -585,7 +585,7 @@ function inferArrayElementType(ctx: CodegenContext, expr: ts.NewExpression): ts.
       }
     }
 
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
   visit(scope);
@@ -603,7 +603,7 @@ function usesArguments(node: ts.Node): boolean {
   if (ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node)) {
     return false;
   }
-  return ts.forEachChild(node, usesArguments) ?? false;
+  return forEachChild(node, usesArguments) ?? false;
 }
 
 /**
@@ -900,6 +900,8 @@ function compileNewFunctionExpression(
     type: ValType;
     localIdx: number;
     mutable: boolean;
+    alreadyBoxed: boolean;
+    valType?: ValType;
   }[] = [];
   for (const name of referencedNames) {
     const localIdx = fctx.localMap.get(name);
@@ -913,7 +915,9 @@ function compileNewFunctionExpression(
         ? fctx.params[localIdx]!.type
         : (fctx.locals[localIdx - fctx.params.length]?.type ?? { kind: "f64" });
     const isMutable = writtenInClosure.has(name);
-    captures.push({ name, type, localIdx, mutable: isMutable });
+    const alreadyBoxed = !!fctx.boxedCaptures?.has(name);
+    const valType = alreadyBoxed ? fctx.boxedCaptures!.get(name)!.valType : undefined;
+    captures.push({ name, type, localIdx, mutable: isMutable, alreadyBoxed, valType });
   }
 
   // 4. Build the closure struct type
@@ -921,6 +925,12 @@ function compileNewFunctionExpression(
     { name: "func", type: { kind: "funcref" as const }, mutable: false },
     ...captures.map((c) => {
       if (c.mutable) {
+        if (c.alreadyBoxed) {
+          // Local already holds a ref cell — reuse the existing ref-cell type
+          // (the local's type IS the ref cell type). Avoids double-wrapping
+          // when the variable was pre-boxed at function entry (#996).
+          return { name: c.name, type: c.type, mutable: false };
+        }
         const refCellTypeIdx = getOrRegisterRefCellType(ctx, c.type);
         return {
           name: c.name,
@@ -985,7 +995,20 @@ function compileNewFunctionExpression(
   for (let i = 0; i < captures.length; i++) {
     const cap = captures[i]!;
     if (cap.mutable) {
-      const refCellTypeIdx = getOrRegisterRefCellType(ctx, cap.type);
+      // If the outer scope already had this variable boxed (pre-box from #996
+      // or a previous closure that boxed it), the struct field IS the ref cell
+      // — extract the existing ref-cell type index and reuse the original
+      // value type so the inner code reads/writes through the SAME cell as
+      // the outer scope.
+      let refCellTypeIdx: number;
+      let valType: ValType;
+      if (cap.alreadyBoxed && (cap.type.kind === "ref" || cap.type.kind === "ref_null")) {
+        refCellTypeIdx = (cap.type as { typeIdx: number }).typeIdx;
+        valType = cap.valType ?? { kind: "f64" };
+      } else {
+        refCellTypeIdx = getOrRegisterRefCellType(ctx, cap.type);
+        valType = cap.type;
+      }
       const refCellType: ValType = {
         kind: "ref_null",
         typeIdx: refCellTypeIdx,
@@ -1001,7 +1024,7 @@ function compileNewFunctionExpression(
       if (!liftedFctx.boxedCaptures) liftedFctx.boxedCaptures = new Map();
       liftedFctx.boxedCaptures.set(cap.name, {
         refCellTypeIdx,
-        valType: cap.type,
+        valType,
       });
     } else {
       // Check if this capture is an already-boxed ref cell from the outer scope
@@ -2478,6 +2501,19 @@ function compileNewExpression(ctx: CodegenContext, fctx: FunctionContext, expr: 
       const typeArgs = ctx.checker.getTypeArguments(exprType as ts.TypeReference);
       const elemTsType = typeArgs?.[0];
       elemWasm = elemTsType ? resolveWasmType(ctx, elemTsType) : { kind: "f64" };
+    }
+
+    // #1197: i32-specialized number[] override — caller (variable-declaration
+    // codegen) flagged this `new Array(...)` as belonging to an i32-specialized
+    // local. Override the element kind from f64 to i32. We must also re-resolve
+    // vecTypeIdx/arrTypeIdx through the i32 registration.
+    if (
+      elemWasm.kind === "f64" &&
+      (ctx as unknown as { _i32ElemArrayOverride?: boolean })._i32ElemArrayOverride === true
+    ) {
+      elemWasm = { kind: "i32" };
+      vecTypeIdx = getOrRegisterVecType(ctx, "i32", { kind: "i32" });
+      arrTypeIdx = getArrTypeIdxFromVec(ctx, vecTypeIdx);
     }
 
     if (arrTypeIdx < 0) {

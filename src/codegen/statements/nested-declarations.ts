@@ -4,11 +4,12 @@
  * Handles function declarations within other functions, class declarations,
  * function hoisting, default parameter handling, and the arguments object.
  */
-import ts from "typescript";
+import { ts } from "../../ts-api.js";
 import { isVoidType, unwrapPromiseType } from "../../checker/type-mapper.js";
 import { bodyUsesArguments } from "../helpers/body-uses-arguments.js";
 import type { Instr, ValType } from "../../ir/types.js";
 import {
+  collectFunctionOwnLocals,
   collectReferencedIdentifiers,
   collectWrittenIdentifiers,
   promoteAccessorCapturesToGlobals,
@@ -75,13 +76,21 @@ export function compileNestedClassDeclaration(
     }
 
     // Promote captured locals to globals so method/constructor bodies can access
-    // variables from the enclosing function scope
+    // variables from the enclosing function scope. Also scan parameter-default
+    // initializers so e.g. `method([x] = iter)` can resolve `iter` against the
+    // enclosing function scope (#1161).
     for (const member of decl.members) {
       if (ts.isMethodDeclaration(member) && member.body) {
-        promoteAccessorCapturesToGlobals(ctx, fctx, member.body);
+        const paramInits = member.parameters.map((p) => p.initializer).filter((e): e is ts.Expression => !!e);
+        promoteAccessorCapturesToGlobals(ctx, fctx, member.body, paramInits);
       }
       if (ts.isConstructorDeclaration(member) && member.body) {
-        promoteAccessorCapturesToGlobals(ctx, fctx, member.body);
+        const paramInits = member.parameters.map((p) => p.initializer).filter((e): e is ts.Expression => !!e);
+        promoteAccessorCapturesToGlobals(ctx, fctx, member.body, paramInits);
+      }
+      if ((ts.isGetAccessorDeclaration(member) || ts.isSetAccessorDeclaration(member)) && member.body) {
+        const paramInits = member.parameters.map((p) => p.initializer).filter((e): e is ts.Expression => !!e);
+        promoteAccessorCapturesToGlobals(ctx, fctx, member.body, paramInits);
       }
     }
 
@@ -167,25 +176,43 @@ export function compileNestedFunctionDeclaration(
     }
   }
 
-  // Analyze captured variables from the enclosing scope
+  // Analyze captured variables from the enclosing scope. Use scope-aware
+  // collection so nested `var` declarations and parameter bindings inside the
+  // function body shadow outer references — otherwise a function with its own
+  // `var i;` would be treated as capturing the outer `i` (#995).
+  const ownLocals = new Set<string>();
+  collectFunctionOwnLocals(stmt, ownLocals);
+
   const referencedNames = new Set<string>();
   for (const s of stmt.body.statements) {
-    collectReferencedIdentifiers(s, referencedNames);
+    collectReferencedIdentifiers(s, referencedNames, ownLocals);
   }
 
   // Detect which captured variables are written inside the function body
   const writtenInBody = new Set<string>();
   for (const s of stmt.body.statements) {
-    collectWrittenIdentifiers(s, writtenInBody);
+    collectWrittenIdentifiers(s, writtenInBody, ownLocals);
   }
 
-  const ownParamNames = new Set(
-    stmt.parameters.filter((p) => ts.isIdentifier(p.name)).map((p) => (p.name as ts.Identifier).text),
-  );
-
-  const captures: { name: string; type: ValType; localIdx: number; mutable: boolean }[] = [];
+  const captures: {
+    name: string;
+    type: ValType;
+    localIdx: number;
+    mutable: boolean;
+    /**
+     * #1205: Whether this capture has a TDZ flag in the outer fctx. When
+     * true, we (a) force-box the value so post-init mutations propagate
+     * through a ref cell, and (b) propagate the boxed flag itself as an
+     * extra leading param so identifier reads inside the lifted body
+     * route through `boxedTdzFlags` (struct.get on the i32 ref cell)
+     * rather than reading a stale capture-time snapshot.
+     */
+    hasTdzFlag: boolean;
+    /** Outer-fctx flag local index (i32 flag OR boxed ref-cell ref). */
+    tdzFlagIdx?: number;
+  }[] = [];
   for (const name of referencedNames) {
-    if (ownParamNames.has(name)) continue;
+    if (ownLocals.has(name)) continue;
     const localIdx = fctx.localMap.get(name);
     if (localIdx === undefined) continue;
     if (ctx.funcMap.has(name)) continue;
@@ -193,8 +220,46 @@ export function compileNestedFunctionDeclaration(
       localIdx < fctx.params.length
         ? fctx.params[localIdx]!.type
         : (fctx.locals[localIdx - fctx.params.length]?.type ?? { kind: "f64" });
+    // #1205 Stage 3: detect TDZ flag in outer scope (mirrors closures.ts:1326-1336
+    // for the arrow path). The `__tdz_<name>` slot scan is the fallback for the
+    // case where a block-scope shadow cleared `tdzFlagLocals` but the underlying
+    // local still exists.
+    let tdzFlagIdx: number | undefined = fctx.tdzFlagLocals?.get(name);
+    if (tdzFlagIdx === undefined) {
+      const tdzSlotName = `__tdz_${name}`;
+      for (let i = 0; i < fctx.locals.length; i++) {
+        if (fctx.locals[i]!.name === tdzSlotName) {
+          tdzFlagIdx = fctx.params.length + i;
+          if (!fctx.tdzFlagLocals) fctx.tdzFlagLocals = new Map();
+          if (!fctx.tdzFlagLocals.has(name)) fctx.tdzFlagLocals.set(name, tdzFlagIdx);
+          break;
+        }
+      }
+    }
+    const hasTdzFlag = tdzFlagIdx !== undefined;
+    // #1205: We previously force-boxed the value when `hasTdzFlag` was true
+    // (mirroring the arrow path at closures.ts:1356). That broke 48+
+    // for-await-of test262 cases because the destructure-assign codegen path
+    // (`compileForOfAssignDestructuringExternref` in loops.ts:1364) writes
+    // via `emitCoercedLocalSet(targetLocal, externref)` — a direct `local.set`
+    // that does NOT route through `boxedCaptures.struct.set`. With the value
+    // param force-boxed to `ref $T_refcell`, the externref → ref coercion
+    // emits a `ref.cast_null` + `ref.as_non_null` that traps at runtime
+    // ("dereferencing a null pointer in fn() at source L<for-await-line>").
+    //
+    // For pure flag plumbing (the body's TDZ check via `boxedTdzFlags`) we
+    // do NOT need to force-box the value — FNDECL-A2..A5's flag-box param
+    // alone is sufficient, and identifier reads still see the right value
+    // through the regular value param when no internal write happens.
+    //
+    // The "writer + reader fn-decl pair sharing a TDZ-flagged outer let"
+    // pattern (issue-1205.test.ts case 1) does require this force-boxing
+    // for proper sharing — but that case requires Stage 1 of #1177
+    // (`localMap.get(cap.name) ?? cap.outerLocalIdx`) to be re-applied AND
+    // the destructure-assign path to be box-aware. Both are out of scope
+    // for this PR; the test is marked `.todo` until that follow-up lands.
     const isMutable = writtenInBody.has(name);
-    captures.push({ name, type, localIdx, mutable: isMutable });
+    captures.push({ name, type, localIdx, mutable: isMutable, hasTdzFlag, tdzFlagIdx });
   }
 
   const results: ValType[] = returnType ? [returnType] : [];
@@ -355,19 +420,34 @@ export function compileNestedFunctionDeclaration(
   } else {
     // Has captures — lift with captures as leading parameters, use direct call
     // For mutable captures, use ref cell types so writes propagate back
-    const captureParamTypes = captures.map((c) => {
+    const valueCaptureParamTypes: ValType[] = captures.map((c) => {
       if (c.mutable) {
         const refCellTypeIdx = getOrRegisterRefCellType(ctx, c.type);
         return { kind: "ref" as const, typeIdx: refCellTypeIdx };
       }
       return c.type;
     });
+    // #1205 Stage 3: TDZ-flag ref-cell types come AFTER value captures. The
+    // layout matches the arrow path (closures.ts:1431-1445):
+    //   [valueCap_0, ..., valueCap_N-1, tdzFlagBox_0, ..., tdzFlagBox_K-1, ...userParams]
+    const tdzFlaggedCaptures = captures.filter((c) => c.hasTdzFlag);
+    const i32RefCellTypeIdx = tdzFlaggedCaptures.length > 0 ? getOrRegisterRefCellType(ctx, { kind: "i32" }) : -1;
+    const tdzFlagParamTypes: ValType[] = tdzFlaggedCaptures.map(() => ({
+      kind: "ref" as const,
+      typeIdx: i32RefCellTypeIdx,
+    }));
+    const captureParamTypes: ValType[] = [...valueCaptureParamTypes, ...tdzFlagParamTypes];
     const allParamTypes = [...captureParamTypes, ...paramTypes];
     const funcTypeIdx = addFuncType(ctx, allParamTypes, results, `${funcName}_type`);
     const liftedFctx: FunctionContext = {
       name: funcName,
       params: [
-        ...captures.map((c, i) => ({ name: c.name, type: captureParamTypes[i]! })),
+        ...captures.map((c, i) => ({ name: c.name, type: valueCaptureParamTypes[i]! })),
+        // #1205 Stage 3: extra leading params for TDZ flag boxes.
+        ...tdzFlaggedCaptures.map((c) => ({
+          name: `__tdz_box_${c.name}`,
+          type: { kind: "ref" as const, typeIdx: i32RefCellTypeIdx },
+        })),
         ...stmt.parameters.map((p, i) => ({
           name: ts.isIdentifier(p.name) ? p.name.text : `__param${i}`,
           type: paramTypes[i]!,
@@ -405,6 +485,31 @@ export function compileNestedFunctionDeclaration(
             valType: outerBoxed.valType,
           });
         }
+      }
+    }
+
+    // #1205 Stage 3: register TDZ-flag boxed params so identifier reads
+    // inside the body route through `struct.get` on the i32 ref cell, and
+    // emitLocalTdzInit (for any inner `let __tdz_<name>` shadowing) finds
+    // the box via tdzFlagLocals. Mirror closures.ts:1577-1603.
+    //
+    // The flag is a *param*, not an alloc'd local. We register the param
+    // index directly. All `boxedTdzFlags` consumers (`emitLocalTdzCheck` in
+    // expressions/identifiers.ts, the call-site check at calls.ts) only
+    // `local.get $flagBoxLocal; struct.get` — they don't care whether the
+    // slot is a param or a local.
+    if (tdzFlaggedCaptures.length > 0) {
+      for (let ti = 0; ti < tdzFlaggedCaptures.length; ti++) {
+        const cap = tdzFlaggedCaptures[ti]!;
+        // Param index: captures.length value-params then ti flag-params.
+        const flagParamIdx = captures.length + ti;
+        if (!liftedFctx.boxedTdzFlags) liftedFctx.boxedTdzFlags = new Map();
+        liftedFctx.boxedTdzFlags.set(cap.name, {
+          refCellTypeIdx: i32RefCellTypeIdx,
+          localIdx: flagParamIdx,
+        });
+        if (!liftedFctx.tdzFlagLocals) liftedFctx.tdzFlagLocals = new Map();
+        liftedFctx.tdzFlagLocals.set(cap.name, flagParamIdx);
       }
     }
 
@@ -520,6 +625,10 @@ export function compileNestedFunctionDeclaration(
         outerLocalIdx: c.localIdx,
         mutable: c.mutable,
         valType: c.type,
+        // #1205 Stage 3: capture-time TDZ-flag metadata so the call site can
+        // mirror the construct-time flag-prepend (see calls.ts cap-prepend loop).
+        hasTdzFlag: c.hasTdzFlag,
+        outerTdzFlagIdx: c.tdzFlagIdx,
       })),
     );
   }
@@ -662,17 +771,22 @@ function emitDefaultParamInit(
 
     // Emit the null/zero check + conditional assignment
     if (paramType.kind === "externref") {
-      // JS semantics: defaults fire on missing arg OR explicit undefined.
-      // Must check __extern_is_undefined in addition to ref.is_null — callers
-      // may pass __get_undefined() which is an externref-wrapped JS undefined,
-      // not Wasm null (#1135 follow-up).
+      // Per JS spec, parameter defaults fire ONLY when the arg is `undefined`
+      // (omitted or explicit), never for `null`. Callers pad missing args with
+      // `__get_undefined()` (externref-wrapped undefined), so
+      // `__extern_is_undefined` catches both "omitted" and "explicit undefined".
+      // Using `ref.is_null` in addition would wrongly fire the default when the
+      // caller passed explicit `null` (#1025 / #1021).
       const undefIdx = ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
       flushLateImportShifts(ctx, liftedFctx);
       liftedFctx.body.push({ op: "local.get", index: paramIdx });
-      liftedFctx.body.push({ op: "ref.is_null" });
-      liftedFctx.body.push({ op: "local.get", index: paramIdx });
-      liftedFctx.body.push({ op: "call", funcIdx: undefIdx } as Instr);
-      liftedFctx.body.push({ op: "i32.or" } as Instr);
+      if (undefIdx !== undefined) {
+        liftedFctx.body.push({ op: "call", funcIdx: undefIdx } as Instr);
+      } else {
+        // Fallback (standalone mode): ref.is_null is imprecise — treats null
+        // as undefined.
+        liftedFctx.body.push({ op: "ref.is_null" });
+      }
       liftedFctx.body.push({
         op: "if",
         blockType: { kind: "empty" },

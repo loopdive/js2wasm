@@ -61,10 +61,10 @@ promise infrastructure.
 | **808** | Extract string/import infrastructure from index.ts → imports.ts | Backlog | ready | medium |
 | **820** | Nullish TypeError / null-pointer / illegal-cast umbrella (6,993 FAIL) | Backlog | ready | critical |
 | **851** | Iterator close protocol not implemented (147 tests) | 31 | done | high |
-| **854** | Iterator protocol: null next/return/throw methods (126 tests) | 44 | ready | high |
+| **854** | Iterator protocol: null next/return/throw methods (126 tests) | 44 | done | high |
 | **855** | Promise resolution and async error handling (210 tests) | 35 | done | high |
 | **859** | Map.forEach callback captures are immutable snapshots -- causes infinite loop on mutation during iteration | Backlog | ready | high |
-| **860** | Promise executor and property-assigned functions not compiled as host callbacks | Backlog | review | medium |
+| **860** | Promise executor and property-assigned functions not compiled as host callbacks | Backlog | ready | medium |
 | **875** | Research: ES standard support matrix for all JS-to-Wasm engines | 0 | done | medium |
 | **919** | Fix direct-eval arguments regressions introduced since the April 1 test262 baseline | 37 | done | high |
 | **930** | Not-a-constructor detection: built-in methods callable with new (68 FAIL) | 37 | done | medium |
@@ -85,17 +85,35 @@ promise infrastructure.
 | **986** | Internal compiler crash: BigInt serialization in statement/object emit paths (37 CE) | 40 | done | medium |
 | **1012** | Add source-anchored line numbers to all runtime error patterns | 40 | done | high |
 | **1014** | Promise .then() called on non-Promise values (1,969 FAIL) | 40 | done | critical |
-| **1017** | Null pointer dereferences and illegal casts in compiled code (504 FAIL) | Backlog | review | high |
+| **1017** | Null pointer dereferences and illegal casts in compiled code (504 FAIL) | 42 | done | high |
 | **1018** | Object.getOwnPropertyDescriptor returns null for missing/accessor properties (160 FAIL) | 41 | done | high |
 | **1027** | Missing __make_getter_callback late-import in PR #43 accessor paths | 40 | done | high |
 | **1034** | Compile prettier to Wasm — parser + AST + printer stress test; self-format smoke test | 41 | done | high |
-| **1035** | WASI hello-world: compile console.log + node:fs write to a standalone native executable | 44 | ready | high |
+| **1035** | WASI hello-world: compile console.log + node:fs write to a standalone native executable | 45 | done | high |
 | **1042** | async/await state-machine lowering (AwaitExpression is currently a no-op) | Backlog | ready | high |
-| **1044** | Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization) | 44 | ready | high |
-| **1089** | codegen: support dynamic import() expressions — 429 test262 tests skipped | backlog | ready | medium |
-| **1093** | Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262 | 44 | ready | high |
+| **1044** | Node builtin modules as host imports (NODE_HOST_IMPORT_MODULES, node: prefix normalization) | 45 | ready | high |
+| **1089** | codegen: support dynamic import() expressions — 429 test262 tests skipped | Backlog | ready | medium |
+| **1093** | Systematic ECMAScript spec conformance audit — review compiled semantics against tc39.es/ecma262 | 45 | ready | high |
 | **1116** | Promise resolution and async error handling (210 tests) | Backlog | ready | critical |
-| **1119** | Incremental compiler state leak — CompilerPool fork produces ~400 false CEs | 43 | closed | high |
+| **1150** | Fix runtime_error:26 + type_error:7 + oob:5 — async destructuring regressions | 44 | done | high |
+| **1151** | Async function synchronous throws bypass Promise.reject wrapping | Backlog | ready | high |
+| **1153** | Compiler-internal crashes block ~3,585 test262 tests: commentDirectiveRegEx.exec, constructSigs.reduce, cache.set | 44 | done | critical |
+| **1154** | test262 worker: Array.prototype poisoning leaks into TypeScript compiler — Array.from fails at compile time (~378 test262 regressions) | Backlog | ready | high |
+| **1169** | IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen | 46 | ready | high |
+| **1169f** | IR Phase 4 Slice 7 — generators and async/await through the IR path | 45 | done | high |
+| **1169h** | IR Phase 4 Slice 9 — try/catch/finally and throw through the IR path | 45 | done | high |
+| **1169i** | IR Phase 4 Slice 10 — remaining builtins (RegExp, TypedArray, DataView) through the IR path | 45 | done | high |
+| **1169m** | IR Phase 4 Slice 10 step E — Promise through IR (best-effort) | 46 | done | low |
+| **1195** | perf: escape-analysis scalarization for non-escaping arrays (eliminate array allocation in array-sum) | 47 | done | high |
+| **1201** | credibility: per-path test262 scores in test262-report.json — wire categorical data into landing page and report.html | 46 | done | high |
+| **1203** | credibility: differential testing harness — compare js2wasm output vs V8/SpiderMonkey on 1000+ programs | 46 | done | high |
+| **1205** | Extend TDZ flag boxing to async functions / generators (#1177-followup) — async-fn closure capture path needs Stage 2/3 wiring | 46 | done | high |
+| **1212** | fix: Promise resolve/reject edge cases regress after #1211 any-boxing fix | 46 | done | medium |
+| **1218** | ci(test262): auto-validate committed baseline on PR — spot-check 50 random pass entries | 46 | done | medium |
+| **1220** | test262-worker: Promise snapshot missing + prototype poisoning leaks across fork tests (+29 conformance) | 46 | done | high |
+| **1226** | class/elements: static async private method produces invalid Wasm — call missing argument (~104 tests) | 47 | done | high |
+| **1227** | fix(runner): compiler-pool timeout starts at enqueue time, not dispatch time — causes 156 false compile_timeouts | 47 | done | high |
+| **1259** | async-gen yield-star sync-fallback leaks unboxed ref-cell into iter capture | 47 | done | high |
 
 <!-- AUTOGENERATED:GOAL-ISSUES-END -->
 

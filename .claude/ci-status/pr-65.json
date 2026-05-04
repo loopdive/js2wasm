@@ -1,0 +1,15 @@
+{
+  "pr": 65,
+  "conclusion": "failure",
+  "head_branch": "issue-1169f-7prep-extract-generator-imports",
+  "head_sha": "fdea045c15a1ef1f0f146506d3716d3a4de49d16",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24979349076",
+  "timestamp": "2026-04-27T06:19:17Z",
+  "pass": 25832,
+  "fail": 13919,
+  "compile_error": 1845,
+  "snapshot_delta": -205,
+  "net_per_test": -263,
+  "regressions": 371,
+  "improvements": 108
+}

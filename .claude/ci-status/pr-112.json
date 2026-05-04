@@ -1,15 +1,17 @@
 {
   "pr": 112,
   "conclusion": "failure",
-  "head_branch": "test/revert-96-probe",
-  "head_sha": "593244366bcd7083c5bbf5c1bee453e1c71383cc",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24290440385",
-  "timestamp": "2026-04-11T20:05:54Z",
-  "pass": 20569,
-  "fail": 16721,
-  "compile_error": 4531,
-  "snapshot_delta": -55,
-  "net_per_test": -55,
-  "regressions": 56,
-  "improvements": 1
+  "head_branch": "issue-1218-baseline-validate",
+  "head_sha": "4012c04a41c566dbd89ec903a8cbbc852db42d65",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25193736201",
+  "timestamp": "2026-04-30T23:13:00Z",
+  "pass": 25837,
+  "fail": 13931,
+  "compile_error": 1757,
+  "snapshot_delta": 2,
+  "net_per_test": 0,
+  "regressions": 137,
+  "regressions_real": 33,
+  "compile_timeouts": 104,
+  "improvements": 137
 }

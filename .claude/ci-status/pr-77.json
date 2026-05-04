@@ -1,14 +1,15 @@
 {
   "pr": 77,
   "conclusion": "failure",
-  "head_branch": "worktree-issue-1030-array-prototype-long-tail",
-  "head_sha": "d522d1b411a2cceb0bc093d282b57bfa41b95337",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24282730270",
-  "timestamp": "2026-04-11T12:48:08Z",
-  "pass": 21302,
-  "fail": 19109,
-  "compile_error": 1398,
-  "delta": 112,
-  "regressions": 17,
-  "improvements": 129
+  "head_branch": "issue-1192-ct-classification",
+  "head_sha": "91fd26f55177e481c747a96b953203b94d9a01c2",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25004821615",
+  "timestamp": "2026-04-27T15:50:37Z",
+  "pass": 25839,
+  "fail": 13916,
+  "compile_error": 1845,
+  "snapshot_delta": -193,
+  "net_per_test": -271,
+  "regressions": 385,
+  "improvements": 114
 }

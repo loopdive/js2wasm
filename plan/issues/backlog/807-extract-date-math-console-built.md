@@ -1,0 +1,41 @@
+---
+id: 807
+title: "Extract Date/Math/console built-ins from expressions.ts → builtins.ts"
+status: ready
+created: 2026-03-26
+updated: 2026-04-28
+priority: medium
+feasibility: easy
+reasoning_effort: medium
+goal: platform
+subtask_of: 688
+---
+# #807 — Extract Date/Math/console built-ins from expressions.ts → builtins.ts
+
+## What moves
+
+~1,500 lines — built-in runtime function compilation:
+
+- `compileMathCall` (line 17086, 381 lines)
+- `compileDateMethodCall` (line 16398, 318 lines)
+- `ensureDateStruct` (line 16034)
+- `ensureDateCivilHelper` (line 16059)
+- `ensureDateDaysFromCivilHelper` (line 16259)
+- `compileConsoleCall` (line 15975) — if not moved to calls.ts
+- `compileConsoleCallWasi` (line 16716)
+- `wasiAllocStringData` (line 16780)
+- `emitWasiValueToStdout` (line 16800)
+- `ensureWasiWriteI32Helper` (line 16841)
+- `ensureWasiWriteF64Helper` (line 17004)
+
+## Validation
+
+1. `npm test` must pass
+2. Test: `Math.max()`, `Math.floor()`, `new Date()`, `console.log()`
+3. No behavior change
+
+## Risk: LOW
+
+These are leaf functions — they emit Wasm but nothing calls back into them from other modules. Console/WASI helpers are entirely self-contained.
+
+## Complexity: S

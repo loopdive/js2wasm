@@ -11,7 +11,7 @@
  *   3. Provides emitCoercedLocalSet and coerceType (used by statements and index)
  *   4. Registers delegates in shared.ts (registerCompileExpression, etc.)
  */
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 import { mapTsTypeToWasm } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
 import { reportError, reportErrorNoNode } from "./context/errors.js";
@@ -105,7 +105,12 @@ export {
 export { compileCallExpression, compileIIFE, compileOptionalCallExpression } from "./expressions/calls.js";
 export { emitLazyProtoGet, findExternInfoForMember } from "./expressions/extern.js";
 export { emitThrowString, getFuncParamTypes } from "./expressions/helpers.js";
-export { analyzeTdzAccessByPos, compileIdentifier, narrowTypeToUnbox } from "./expressions/identifiers.js";
+export {
+  analyzeTdzAccessByPos,
+  compileIdentifier,
+  computeElidableTopLevelTdzNames,
+  narrowTypeToUnbox,
+} from "./expressions/identifiers.js";
 export {
   emitUndefined,
   ensureExternIsUndefinedImport,

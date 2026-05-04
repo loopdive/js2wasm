@@ -1,0 +1,15 @@
+{
+  "pr": 28,
+  "conclusion": "failure",
+  "head_branch": "issue-906-compile-away-tdz",
+  "head_sha": "9662ac0cb71ec54331b45db3c27026208d673858",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24934874805",
+  "timestamp": "2026-04-25T16:09:09Z",
+  "pass": 25460,
+  "fail": 13848,
+  "compile_error": 2386,
+  "snapshot_delta": -111,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}

@@ -8,9 +8,20 @@
 # should react (PR finished and it's theirs); empty otherwise.
 #
 # How the dev "owns" a PR:
-#   The hook looks at `gh pr list --author @me --state open --json number`
-#   and matches against the file name. If the file is for a PR authored
-#   by this dev, react. Otherwise ignore.
+#   The hook reads `head_branch` from the ci-status JSON and compares it
+#   to the session's current git branch (`git rev-parse --abbrev-ref HEAD`
+#   in the hook's cwd, which is the agent's worktree). If they match, the
+#   dev agent owns this PR and the reminder is injected.
+#
+#   In a multi-agent / single-token setup we cannot use `gh pr list
+#   --author @me` here: every PR is GH-authored by the human running the
+#   orchestrator, so `@me` would either match every PR (when run from the
+#   orchestrator's session) or none (in dev sessions where the gh token
+#   is shared but identity is still the human's). See #1193.
+#
+#   The orchestrator session (cwd is the main repo, branch `main` or
+#   `master`) sees notifications for ALL PRs so the human-facing view is
+#   unchanged; dev agents see only their own.
 #
 # Dev protocol on reacting:
 #   - If conclusion=success and net_per_test is positive: no action needed,
@@ -39,24 +50,39 @@ esac
 pr_num=$(basename "$FILE" .json | sed 's/^pr-//')
 [ -z "$pr_num" ] && exit 0
 
-# Is this PR authored by this dev (current git user / gh user)?
-# Use gh api to check the author; match against this environment's gh identity.
-my_prs=$(gh pr list --author @me --state all --limit 30 --json number 2>/dev/null | jq -r '.[].number' 2>/dev/null || echo "")
-is_mine=false
-for n in $my_prs; do
-  if [ "$n" = "$pr_num" ]; then
-    is_mine=true
-    break
-  fi
-done
-
-if [ "$is_mine" = "false" ]; then
-  # Not this dev's PR — skip silently
+# Read the status file content
+if [ ! -f "$FILE" ]; then
   exit 0
 fi
 
-# Read the status file content
-if [ ! -f "$FILE" ]; then
+# Is this PR for this session's branch?
+#
+# Multi-agent / single-token: `@me` matches the human's GH identity, not
+# the agent's. Match by branch name instead — the hook runs in the agent's
+# session cwd, so `git rev-parse` resolves the agent's worktree branch.
+# (See #1193.)
+head_branch=$(jq -r '.head_branch // empty' "$FILE" 2>/dev/null)
+session_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")
+is_mine=false
+case "$session_branch" in
+  main|master)
+    # Orchestrator session — sees everything (preserves the existing
+    # human-facing view; the orchestrator runs from the main worktree).
+    is_mine=true
+    ;;
+  "")
+    # Not in a git worktree — skip silently.
+    is_mine=false
+    ;;
+  *)
+    if [ -n "$head_branch" ] && [ "$session_branch" = "$head_branch" ]; then
+      is_mine=true
+    fi
+    ;;
+esac
+
+if [ "$is_mine" = "false" ]; then
+  # Not this dev's PR — skip silently
   exit 0
 fi
 

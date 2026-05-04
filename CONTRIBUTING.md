@@ -53,7 +53,7 @@ If you have [Claude Code](https://docs.claude.com/claude-code), you can contribu
 
 1. Browse `plan/issues/sprints/` — each issue file is a real implementation spec with root-cause analysis, spec citations, and target files already identified. The `status:` frontmatter field tracks state (`ready`, `in-progress`, `blocked`, `done`).
 2. Claim one in your fork (update the `status` frontmatter or just start working).
-3. Spawn a developer agent pointed at the issue. It will read `.claude/agents/developer.md` for role, apply `.claude/hooks/pre-git-commit.sh` safety checks (code-word `CHECKLIST-FOXTROT` required in commit messages), push a branch, and open a PR against this repo.
+3. Spawn a developer agent pointed at the issue. It will read `.claude/agents/developer.md` for role, apply `.claude/hooks/pre-git-commit.sh` safety checks (`Checklist completed.` required in commit messages), push a branch, and open a PR against this repo.
 4. Human review + merge as usual.
 
 You do **not** need agents to contribute. Regular PRs from any contributor are welcome via the standard flow below. The agent path is a force multiplier, not a requirement.

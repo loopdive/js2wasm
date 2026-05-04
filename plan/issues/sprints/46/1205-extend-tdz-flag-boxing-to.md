@@ -1,0 +1,719 @@
+---
+id: 1205
+sprint: 46
+title: "Extend TDZ flag boxing to async functions / generators (#1177-followup) — async-fn closure capture path needs Stage 2/3 wiring"
+status: done
+created: 2026-04-27
+updated: 2026-04-27
+completed: 2026-05-01
+priority: high
+feasibility: hard
+reasoning_effort: max
+task_type: feature
+area: codegen
+language_feature: closures
+goal: async-model
+depends_on: [1177, 1185]
+required_by: [1223]
+es_edition: ES2017+
+related: [1169f, 1177, 1185]
+origin: surfaced 2026-04-27 during PR #76 (#1177 Stage 1) investigation. Stage 1 of #1177's spec correctly applies the calls.ts/closures.ts capture-index correction, but exposes 63 NEW for-await-of regressions because the existing Stage 2/3 flag-boxing (in `compileArrowAsClosure`) doesn't reach the async-function / generator lowering path.
+---
+# #1205 — TDZ flag boxing for async functions / generators
+
+## Problem
+
+PR #76 attempted to land Stage 1 of #1177's spec — the
+`fctx.localMap.get(cap.name) ?? cap.outerLocalIdx` capture-index
+correction at the call-site (`calls.ts:compileCallExpression`) and the
+fn-decl-as-closure-emit site (`closures.ts:emitFuncRefAsClosure`). The
+spec said this should be safe because Stage 2 (boxedTdzFlags
+infrastructure) and Stage 3 (compileArrowAsClosure flag boxing) were
+already in place.
+
+Result on CI: **+1159 net pass**, but **63 NEW for-await-of regressions**
+in the cluster `language/statements/for-await-of/async-{func,gen}-decl-dstr-*.js`
+— exactly the cluster the spec warned about. Sample of 20 regressed
+tests: 20/20 fail locally with `assert.sameValue(x.y, 4)` style
+errors → captured value reads stale → flag boxing missing.
+
+Cross-check vs PR #74 (just merged, same baseline): 0/63 of these
+were already-regressing → all 63 are new regressions caused by
+Stage 1 alone.
+
+PR #76 was reverted to a no-op. Issue #1177 stays open as
+"unfixable until #1205 lands."
+
+## Root cause
+
+Stage 2/3 of #1177 wired flag boxing for `compileArrowAsClosure` —
+the path that produces a closure struct. But async functions /
+generators are lifted through a DIFFERENT path:
+  - `compileFunctionDeclaration` produces an async/generator function.
+  - The `for-await-of` body inside that function captures outer
+    `let`/`const` bindings via `nestedFuncCaptures` (leading-param
+    forwarding, NOT struct fields).
+  - `gen.epilogue` / generator IR lowering doesn't go through
+    `compileArrowAsClosure`'s prologue — it has its own capture-prologue
+    in slice 7a (#1169f).
+
+So:
+  - The `boxedTdzFlags` infrastructure (Stage 2) IS reachable from
+    these paths via the helpers (`emitLocalTdzCheck`,
+    `emitLocalTdzInit`).
+  - But the BOXING itself (Stage 3 — wrapping the flag in an i32 ref
+    cell at capture time, and adding the flag ref-cell as an extra
+    leading param / capture-struct field) ONLY happens in
+    `compileArrowAsClosure`. The async-function / generator path
+    captures the flag i32 BY VALUE at construction time, freezing it
+    at the moment the closure is built.
+
+Concrete failure:
+
+```js
+let x;
+async function fn() {
+  for await ({ y: x = 1 } of [{ y: null }]) {
+    assert.sameValue(x, null);
+  }
+}
+fn();
+```
+
+`fn` is constructed → captures `x`'s flag (= 0, uninitialized) by
+value as a leading param. `fn` is invoked → flag is still 0 in the
+captured frame → identifier read of `x` for the destructure-default
+either silently returns 0/null (Stage 2 unboxed-flag path) or
+throws on the boxed-flag path (depending on which case fires). The
+test asserts `x === null` after the iteration, which fails because
+the captured `x`-value is stale.
+
+## Implementation strategy
+
+Mirror Stage 3 from `compileArrowAsClosure` to:
+
+  1. **`compileFunctionDeclaration` (or wherever the async/generator
+     captures are wired)** — `src/codegen/closures.ts:emitFuncRefAsClosure`
+     plus the new generator-IR capture-prepend path landed in #1169f.
+     For each capture that has a TDZ flag in the outer fctx:
+     - Box the flag in a shared i32 ref cell (use
+       `getOrRegisterRefCellType(ctx, { kind: "i32" })`).
+     - Add the boxed flag as an extra leading param (parallel to the
+       value capture).
+     - In the lifted body's prologue, register the flag-ref-cell
+       local in `liftedFctx.boxedTdzFlags` so identifier reads inside
+       the body route through the ref-cell `struct.get`.
+
+  2. **Generator IR (`src/ir/from-ast.ts:liftAsyncFunction`** or
+     equivalent — slice 7a's lowering) — same shape: capture the flag
+     ref cell as a generator-state field, restore it in the resumed
+     body's prologue.
+
+  3. **`writtenInOuter`-driven force-boxing of the value** for
+     TDZ-flagged captures — already done in `compileArrowAsClosure`
+     line ~1356 (`isMutable = ... || hasTdzFlag`). Mirror the same
+     logic in the async-fn path so the captured value is observed
+     post-init, not stale.
+
+### After this lands
+
+Re-attempt Stage 1 of #1177:
+  - Re-apply the `localMap`-first lookup in `calls.ts:4994 + 5023`
+    and `closures.ts:emitFuncRefAsClosure:2715 + 2727`.
+  - Verify the for-await-of cluster now retires (the reverted
+    `37d40dae7` was the previous attempt; this time Stages 2/3 cover
+    the async-fn path so the `localMap`-first read flows through
+    properly-boxed flags).
+
+## Acceptance criteria
+
+1. The 63 for-await-of regressions documented in PR #76's
+   investigation (e.g. `async-gen-decl-dstr-array-elem-put-prop-ref.js`)
+   compile and pass when re-running with Stage 1 re-applied on top
+   of this work.
+2. New equivalence test suite covering the async-fn TDZ-capture
+   pattern (file: `tests/issue-1205.test.ts`):
+   - Async function captures pre-init `let` and reads it after init —
+     observes the post-init value.
+   - Async function captures pre-init `let` and reads it before init —
+     throws ReferenceError.
+   - For-await with destructure-default into a TDZ-flagged outer
+     binding — assertion in the body sees the post-init mutation.
+3. CI test262 net delta ≥ 0 vs main; the
+   `language/statements/for-await-of/async-{func,gen}-decl-dstr-*`
+   cluster shows ≥ +25 improvements, ≤ -5 regressions (matches
+   #1177's spec acceptance for the cluster).
+4. Local equivalence suite passes unchanged.
+
+## Out of scope
+
+  - Cross-function-declaration transitive TDZ forwarding — same as
+    #1177's "Out of scope" note. Common pattern is async-arrow or
+    async-fn-decl directly capturing the flag; chained fn-decl→fn-decl
+    TDZ forwarding is rare.
+  - `using` / `await using` declarations beyond what the existing
+    TDZ machinery already handles — verify but don't extend in
+    this issue.
+
+## Notes from PR #76 investigation
+
+  - Reverted commit: `6db15c182` on branch `issue-1177-tdz-closure`.
+    PR #76 is now a no-op vs main and should be closed.
+  - PR #76's CI showed `+1159 net pass / 199 regressions / 14.7% ratio`.
+    309 of those regressions were real (CE+fail), 115 were CT noise.
+    Of the real ones, 63 were the for-await-of cluster (target of
+    this follow-up); the rest were drift / pre-existing TS-lib-config
+    failures that were flapping in the baseline.
+  - Once #1205 lands, re-attempt PR #76 with Stage 1 re-applied. The
+    expected acceptance is: ≥ +90 net per the original #1177 spec,
+    after retiring the for-await-of cluster.
+
+## Implementation hint
+
+The architect spec for #1177 (in
+`plan/issues/done/1177.md` after PR #76 closes, or
+`plan/issues/ready/1177.md` if it stays open) details the Stage 2/3
+wiring for `compileArrowAsClosure`. The same shape should map to
+the async-fn path:
+
+```ts
+// In compileFunctionDeclaration's capture-prepend logic (closures.ts /
+// nested-declarations.ts), for each TDZ-flagged capture:
+
+// At construction site (where the closure is materialized / called):
+//   - allocate i32 ref cell, init with current flag value
+//   - pass the ref cell as an extra leading param (after the value)
+//
+// In lifted body prologue:
+//   - read the extra leading param (i32 ref cell) into a local
+//   - register in liftedFctx.boxedTdzFlags so emitLocalTdzCheck routes
+//     through it
+//   - register in liftedFctx.tdzFlagLocals so identifier reads see
+//     the flag
+```
+
+Time budget: hard issue, max reasoning. Estimate 1-2 days of focused
+senior-developer work, including the test262 cluster verification.
+
+## Implementation Plan
+
+### Map of the two closure paths
+
+The compiler has two closure-lifting paths that need parity:
+
+| Path | Lift function | Capture-prepend at construct | Capture-prepend at call | Stage 3 wired today |
+|---|---|---|---|---|
+| Arrow / function expression | `compileArrowAsClosure` (`src/codegen/closures.ts:1090`) | inline at `closures.ts:2058-2118` (`struct.new`) | call_ref via the closure struct | **YES** (lines 1431-1445, 1577-1603, 2085-2118) |
+| Function declaration (incl. `async`, `function*`, `async function*`) | `compileNestedFunctionDeclaration` (`src/codegen/statements/nested-declarations.ts:114`) | none — captures are forwarded as **leading params** of a direct call | inline at `calls.ts:4952-5034` (per-call cap-prepend loop) | **NO** — captures use `boxedCaptures` only; no flag plumbing |
+
+The arrow path packs captures and TDZ-flag refs into a closure struct that
+travels with the function value. The fn-decl path uses direct calls and
+prepends captures fresh at every call site. #1205 is to teach the fn-decl path
+the same Stage 3 trick the arrow path already does.
+
+### Stage 2 vs Stage 3 (recap from #1177's spec)
+
+- **Stage 2** = the `boxedTdzFlags`/`tdzFlagLocals` infrastructure and the
+  helpers `emitLocalTdzCheck` / `emitLocalTdzInit`. Identifier reads inside a
+  closure body, when `liftedFctx.boxedTdzFlags.has(name)`, do
+  `local.get $boxLocal; struct.get $i32_refcell, 0` to fetch the live flag
+  before the value is read. **This already runs everywhere** — the fn-decl path
+  inherits it for free as soon as we populate `liftedFctx.boxedTdzFlags`.
+- **Stage 3** = the actual *boxing*: at construction, allocate a single shared
+  i32 ref cell, replace the outer-fctx flag local with that boxed local
+  (`fctx.tdzFlagLocals.set(name, boxLocal)`), and pass the box-ref as an extra
+  param. **This is missing for fn-decl.** Without it, the inner body's
+  Stage 2 reads find no entry in `boxedTdzFlags`, fall back to direct
+  `local.get $flagSlot`, and read the *fn-decl's own param slot*, which was
+  initialised once at call time and never updates afterwards.
+
+### Concrete failure path (today)
+
+Take `let x; async function fn() { for await (...) ... }; fn();`:
+
+1. `compileNestedFunctionDeclaration` analyses captures of `fn`. It sees
+   `x` referenced. With `writtenInBody.has(x)` (the destructure-default
+   writes `x`), `mutable = true`. Captures list is `[{name:"x", mutable:true, ...}]`.
+   *No `hasTdzFlag` field exists.*
+2. The lifted fn signature becomes `(ref $i32_refcell, ...userParams) → ...` —
+   the *value* gets a leading param, but no flag.
+3. At call site (`calls.ts:4994`), `local.get cap.outerLocalIdx` reads `x`'s
+   value local. If `x` is still in TDZ at the call site (declared as
+   `let x;` after `fn`), the read returns the default (zero-init) value.
+4. Inside the lifted body, identifier reads of `x` go through `boxedCaptures`,
+   land at the value ref cell — but with the stale default value. There's no
+   flag to consult, so no ReferenceError fires either.
+5. The destructure-default reassigns `x` *through* the ref cell (good), but
+   the outer scope's `x` slot is the original local — the closure and the
+   outer scope are *not* sharing storage, because the call-site fresh-boxing
+   doesn't re-aim `fctx.localMap.set("x", boxedLocalIdx)` consistently across
+   all call sites (only the first one, and only for that local at that call).
+
+Stage 1 of #1177 tried to paper over (5) with `localMap.get(name) ?? cap.outerLocalIdx`,
+but without (3) propagating a real flag the assertion `x === null` (post-init
+value) sees stale zeros from step 3 and fails.
+
+### Fix: mirror compileArrowAsClosure Stage 3 in the fn-decl path
+
+Apply the four edits below. Each edit name is the function-name + a
+short identifier ("FNDECL-A1", "FNDECL-A2", etc.) for cross-reference in
+the PR.
+
+#### FNDECL-A1: extend the captures struct with `hasTdzFlag` + force-box
+
+**File**: `src/codegen/statements/nested-declarations.ts`
+**Function**: `compileNestedFunctionDeclaration`
+**Lines**: 197-220 (the captures-loop).
+
+```ts
+// Replace the existing captures: { name, type, localIdx, mutable }[] with:
+const captures: {
+  name: string;
+  type: ValType;
+  localIdx: number;
+  mutable: boolean;
+  hasTdzFlag: boolean;       // NEW
+  tdzFlagIdx?: number;       // NEW — the outer-fctx flag i32 local idx (or boxed-flag struct local)
+}[] = [];
+
+for (const name of referencedNames) {
+  if (ownLocals.has(name)) continue;
+  const localIdx = fctx.localMap.get(name);
+  if (localIdx === undefined) continue;
+  if (ctx.funcMap.has(name)) continue;
+  const type = /* unchanged */;
+
+  // #1205 Stage 3: detect TDZ flag in outer scope (mirrors closures.ts:1354-1366)
+  let tdzFlagIdx: number | undefined = fctx.tdzFlagLocals?.get(name);
+  if (tdzFlagIdx === undefined) {
+    // Fallback: scan fctx.locals for `__tdz_<name>` (block-shadow may have
+    // cleared tdzFlagLocals). See closures.ts:1328-1336 for the same scan.
+    const tdzSlotName = `__tdz_${name}`;
+    for (let i = 0; i < fctx.locals.length; i++) {
+      if (fctx.locals[i]!.name === tdzSlotName) {
+        tdzFlagIdx = fctx.params.length + i;
+        if (!fctx.tdzFlagLocals) fctx.tdzFlagLocals = new Map();
+        fctx.tdzFlagLocals.set(name, tdzFlagIdx);
+        break;
+      }
+    }
+  }
+  const hasTdzFlag = tdzFlagIdx !== undefined;
+  // Force-box the value when the flag is present — mirrors closures.ts:1356.
+  const isMutable = writtenInBody.has(name) || hasTdzFlag;
+  captures.push({ name, type, localIdx, mutable: isMutable, hasTdzFlag, tdzFlagIdx });
+}
+```
+
+> **Note on the existing comment block at lines 207-217**: it argues
+> against force-boxing on `tdzFlagLocals`. That argument was correct
+> *given that the call-site cap-prepend loop did not propagate a flag* — Stage 1
+> of #1177 was reverted. The argument disappears once FNDECL-A2/A3/A4 below
+> teach both ends to propagate the flag. The 60+ for-await-of regressions are
+> the symptom of the gap; closing it removes the regressions. Update the
+> comment to point at this issue.
+
+#### FNDECL-A2: prepend TDZ-flag ref-cell types after value-capture types
+
+Same file, in the captures-non-empty branch starting at
+`nested-declarations.ts:377`. The `captureParamTypes` list is built at
+lines 380-386:
+
+```ts
+// Replace lines 380-386 (paramTypes build) with:
+const valueCaptureParamTypes = captures.map((c) => {
+  if (c.mutable) {
+    const refCellTypeIdx = getOrRegisterRefCellType(ctx, c.type);
+    return { kind: "ref" as const, typeIdx: refCellTypeIdx };
+  }
+  return c.type;
+});
+
+// #1205 Stage 3: TDZ-flag ref-cell types come AFTER value captures.
+//   Layout matches closures.ts:1431-1445:
+//     [valueCap_0, ..., valueCap_N-1, tdzFlagBox_0, ..., tdzFlagBox_K-1, ...userParams]
+const tdzFlaggedCaptures = captures.filter((c) => c.hasTdzFlag);
+const i32RefCellTypeIdx =
+  tdzFlaggedCaptures.length > 0 ? getOrRegisterRefCellType(ctx, { kind: "i32" }) : -1;
+const tdzFlagParamTypes: ValType[] = tdzFlaggedCaptures.map(() => ({
+  kind: "ref",
+  typeIdx: i32RefCellTypeIdx,
+}));
+
+const captureParamTypes = [...valueCaptureParamTypes, ...tdzFlagParamTypes];
+const allParamTypes = [...captureParamTypes, ...paramTypes];
+const funcTypeIdx = addFuncType(ctx, allParamTypes, results, `${funcName}_type`);
+```
+
+Then in the `liftedFctx.params` setup at lines 391-397, append flag params
+*after* the value captures and *before* the user params:
+
+```ts
+const liftedFctx: FunctionContext = {
+  name: funcName,
+  params: [
+    ...captures.map((c, i) => ({ name: c.name, type: valueCaptureParamTypes[i]! })),
+    // #1205 Stage 3: extra leading params for TDZ flag boxes
+    ...tdzFlaggedCaptures.map((c) => ({
+      name: `__tdz_box_${c.name}`,
+      type: { kind: "ref" as const, typeIdx: i32RefCellTypeIdx },
+    })),
+    ...stmt.parameters.map((p, i) => ({
+      name: ts.isIdentifier(p.name) ? p.name.text : `__param${i}`,
+      type: paramTypes[i]!,
+    })),
+  ],
+  // unchanged otherwise
+  ...
+};
+```
+
+In the `localMap` seeding loop at line 409-411, the loop already iterates
+over `liftedFctx.params` so flag params get registered automatically by name.
+
+#### FNDECL-A3: register flag params in `liftedFctx.boxedTdzFlags` + `tdzFlagLocals`
+
+Same file. Right after the `boxedCaptures` registration loop at lines 416-431,
+add:
+
+```ts
+// #1205 Stage 3: register TDZ-flag boxed params so identifier reads
+// inside the body route through struct.get on the i32 ref cell.
+// Mirror closures.ts:1577-1603.
+if (tdzFlaggedCaptures.length > 0) {
+  const flagRefType: ValType = { kind: "ref", typeIdx: i32RefCellTypeIdx };
+  for (let ti = 0; ti < tdzFlaggedCaptures.length; ti++) {
+    const cap = tdzFlaggedCaptures[ti]!;
+    // Param index: captures.length value-params then ti flag-params.
+    const flagParamIdx = captures.length + ti;
+    if (!liftedFctx.boxedTdzFlags) liftedFctx.boxedTdzFlags = new Map();
+    liftedFctx.boxedTdzFlags.set(cap.name, {
+      refCellTypeIdx: i32RefCellTypeIdx,
+      localIdx: flagParamIdx,
+    });
+    if (!liftedFctx.tdzFlagLocals) liftedFctx.tdzFlagLocals = new Map();
+    liftedFctx.tdzFlagLocals.set(cap.name, flagParamIdx);
+  }
+}
+```
+
+> Note: the flag is a **param**, not an alloc'd local. We register the param
+> index directly. This works because all `boxedTdzFlags` consumers
+> (`emitLocalTdzCheck` in `expressions/identifiers.ts`, the call-site check at
+> `calls.ts:4969-4977`) only `local.get $flagBoxLocal; struct.get` — they
+> don't care whether the slot is a param or a local.
+
+#### FNDECL-A4: extend `nestedFuncCaptures` metadata + call-site cap-prepend
+
+**File**: `src/codegen/statements/nested-declarations.ts:538-546`
+(`ctx.nestedFuncCaptures.set` after the lifted function is registered).
+
+Extend the stored shape with the flag list so the call site can mirror it:
+
+```ts
+ctx.nestedFuncCaptures.set(
+  funcName,
+  captures.map((c) => ({
+    name: c.name,
+    outerLocalIdx: c.localIdx,
+    mutable: c.mutable,
+    valType: c.type,
+    hasTdzFlag: c.hasTdzFlag,                           // NEW
+    outerTdzFlagIdx: c.tdzFlagIdx,                       // NEW — outer-fctx flag idx (i32 local
+                                                        //       OR boxed-flag local of i32 refcell)
+  })),
+);
+```
+
+Update the type definition for `nestedFuncCaptures` (search the codebase for
+its `Map<string, …>` declaration — likely in `src/codegen/context/types.ts`
+or `src/codegen/index.ts`) to add the two new fields.
+
+**File**: `src/codegen/expressions/calls.ts:4952-5034` (the per-call cap-prepend
+loop). After the existing value-capture loop (line 5034), insert a *second*
+loop for TDZ-flag captures:
+
+```ts
+// #1205 Stage 3: after all value captures, push boxed TDZ flag refs.
+//   Mirrors compileArrowAsClosure's construct-time logic
+//   (closures.ts:2085-2118).
+const tdzFlaggedNested = nestedCaptures.filter((c) => c.hasTdzFlag);
+if (tdzFlaggedNested.length > 0) {
+  const i32RefCellTypeIdx = getOrRegisterRefCellType(ctx, { kind: "i32" });
+  for (const cap of tdzFlaggedNested) {
+    const existing = fctx.boxedTdzFlags?.get(cap.name);
+    if (existing) {
+      // Already boxed in outer scope — share the box.
+      fctx.body.push({ op: "local.get", index: existing.localIdx });
+    } else {
+      // Fresh box — read current i32 flag, struct.new an i32 ref cell,
+      // tee into a new outer-fctx local, re-aim the flag-locals entry so
+      // subsequent emitLocalTdzInit/Check in `fctx` route through the box.
+      const oldFlagIdx = fctx.tdzFlagLocals!.get(cap.name)!;
+      fctx.body.push({ op: "local.get", index: oldFlagIdx });
+      fctx.body.push({ op: "struct.new", typeIdx: i32RefCellTypeIdx });
+      const flagBoxLocal = allocLocal(fctx, `__tdz_box_${cap.name}`, {
+        kind: "ref",
+        typeIdx: i32RefCellTypeIdx,
+      });
+      fctx.body.push({ op: "local.tee", index: flagBoxLocal });
+      if (!fctx.boxedTdzFlags) fctx.boxedTdzFlags = new Map();
+      fctx.boxedTdzFlags.set(cap.name, {
+        refCellTypeIdx: i32RefCellTypeIdx,
+        localIdx: flagBoxLocal,
+      });
+      fctx.tdzFlagLocals!.set(cap.name, flagBoxLocal);
+    }
+  }
+}
+```
+
+This block must run **before** any user-arg compile (which today happens at
+`calls.ts:5048+`), so insert it directly after the value-capture loop and
+before `funcIdx = ctx.funcMap.get(funcName) ?? funcIdx;` at line 5039.
+
+> The call-site re-aim of `fctx.boxedTdzFlags` and `fctx.tdzFlagLocals` is the
+> piece that lets a *subsequent* arrow-closure capture of `name` in the same
+> outer scope share the same box. This matches the arrow-side behaviour at
+> `closures.ts:2110-2114`.
+
+#### FNDECL-A5 (companion): mirror in `emitFuncRefAsClosure`
+
+**File**: `src/codegen/closures.ts:2622-2733` — when a function declaration is
+materialised as a closure (passed to `arr.map(fn)`, etc.) the trampoline path
+also needs to forward the TDZ flag boxes via the closure struct.
+
+Treatment: for each `cap.hasTdzFlag` (using the same extended
+`nestedFuncCaptures` info), append a flag-ref-cell *struct field* to the
+custom closure struct (after the value-capture fields), and make the
+trampoline body push the flag-ref onto the stack right after the
+value-captures and before the user params (`calls.ts`-style).
+
+```ts
+// In emitFuncRefAsClosure, after the captureFields list (closures.ts:2643-2646):
+const tdzFlaggedNested = nestedCaptures.filter((c) => c.hasTdzFlag);
+const i32RefCellTypeIdx =
+  tdzFlaggedNested.length > 0 ? getOrRegisterRefCellType(ctx, { kind: "i32" }) : -1;
+for (let i = 0; i < tdzFlaggedNested.length; i++) {
+  captureFields.push({
+    name: `__tdz_${tdzFlaggedNested[i]!.name}`,
+    type: { kind: "ref" as const, typeIdx: i32RefCellTypeIdx },
+    mutable: false,
+  });
+}
+```
+
+Then in the trampoline body emit (lines 2675-2683):
+
+```ts
+// After pushing the value captures, push the TDZ flag fields (struct.get):
+for (let i = 0; i < tdzFlaggedNested.length; i++) {
+  const fieldIdx = 1 + numCaptures + i;
+  trampolineBody.push({ op: "local.get", index: castedSelfLocal } as Instr);
+  trampolineBody.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx } as Instr);
+}
+// Then user params, then the call.
+```
+
+And at the construct site (lines 2706-2729) push the boxed flag refs in the
+same shape as FNDECL-A4 above (sharing/creating boxes from the outer fctx).
+
+### After this lands — re-attempt Stage 1 of #1177
+
+Re-apply the `localMap.get(cap.name) ?? cap.outerLocalIdx` lookup at
+`calls.ts:4994` and `calls.ts:5023`, and the matching change in
+`closures.ts:emitFuncRefAsClosure:2715` and `closures.ts:emitFuncRefAsClosure:2727`.
+
+The original 60+ async-fn regressions came from #1177 Stage 1 invalidating the
+"first cap-prepend creates the box" assumption while *not* propagating a flag.
+With FNDECL-A1..A5 in place, the body's Stage 2 reads now consult a real
+boxed flag, and the call-site path sees a boxed value too.
+
+Verification target: `language/statements/for-await-of/async-{func,gen}-decl-dstr-*.js`
+flips back to passing.
+
+### Edge cases & guardrails
+
+| Case | Handling |
+|---|---|
+| Non-async non-generator nested fn-decl with TDZ-flagged capture (today: pre-existing pattern, doesn't regress) | Same Stage 3 wiring applies; no change of outward behaviour because TDZ check fires at call site. |
+| Async function with capture that's `let` declared **after** the fn-decl (cross-function transitive) | OUT OF SCOPE per the issue — chained fn-decl→fn-decl forwarding stays as-is. |
+| Generator (`function* g()`) — eager body in `compileNestedFunctionDeclaration:458-516` | Once `liftedFctx.boxedTdzFlags` is populated by FNDECL-A3, the inline body compile uses it automatically — no separate work for the generator path. |
+| IR-based generator path (slice 7a, `gen.epilogue`) | Currently unused for the failing tests (the eager path runs first). Leave a TODO in `src/ir/from-ast.ts` to mirror Stage 3 when the IR path takes over. |
+| `await using` / `using` declarations | Issue says "verify but don't extend" — confirm via the existing `using` test262 cluster. The TDZ machinery for `using` lives outside the closure paths, so no change should be needed. |
+| Closure struct subtype invariants | Adding extra fields to the fn-decl trampoline closure struct must maintain the `superTypeIdx: wrapperTypes.structTypeIdx` relationship (closures.ts:2653). The wrapper struct already declares only the funcref field; subtypes can add anything below. Ref.cast at call sites is to the subtype, so this is safe. |
+| Already-boxed outer flag (nested arrow already promoted the flag to a box) | FNDECL-A4's `existing = fctx.boxedTdzFlags?.get(cap.name)` branch shares it. Verified path: outer-arrow boxes; inner async-fn-decl reuses. |
+| Capture written by *both* outer code and the lifted body | `mutable = true || hasTdzFlag` — already mutable, so the flag-box is independent of the value-box. Both refs share through the closure struct/leading params. |
+
+### Tests
+
+1. **New equivalence file**: `tests/issue-1205.test.ts`. Three cases mirroring
+   the acceptance criteria:
+
+   ```ts
+   // Case 1: async fn captures pre-init `let`, reads after init
+   it("async-fn capture: pre-init read after init observes mutated value", async () => {
+     await runEquivalence(`
+       let x: any;
+       async function fn() {
+         await Promise.resolve();
+         return x;
+       }
+       const p = fn();
+       x = 42;
+       return p.then((v: any) => v);
+     `);
+   });
+
+   // Case 2: async fn captures pre-init `let`, read happens before init → ReferenceError
+   it("async-fn capture: pre-init read in TDZ throws ReferenceError", async () => {
+     await runEquivalenceThrows("ReferenceError", `
+       async function fn() {
+         return x;
+       }
+       fn();
+       let x = 1;
+     `);
+   });
+
+   // Case 3: for-await with destructure-default into TDZ-flagged outer binding
+   it("for-await destructure-default sees post-init mutation", async () => {
+     await runEquivalence(`
+       let x: any;
+       async function fn() {
+         for await ({ y: x = 1 } of [{ y: null }]) {
+           return x;  // expect: null (the iterable's y wins over default)
+         }
+       }
+       return fn();
+     `);
+   });
+   ```
+
+2. **Test262 cluster** (manual, on PR CI):
+   - `language/statements/for-await-of/async-func-decl-dstr-*` (~30+ tests)
+   - `language/statements/for-await-of/async-gen-decl-dstr-*` (~30+ tests)
+
+   With Stage 1 of #1177 reapplied, the 63 documented regressions should flip
+   back to pass.
+
+3. **Local equivalence suite**: `npm test -- tests/equivalence.test.ts`.
+   Net delta must be ≥ 0 — Stage 3 is additive.
+
+### Sequencing for the PR
+
+1. **PR 1 (this issue, #1205)**: FNDECL-A1..A5 only. Stage 1 of #1177 stays
+   reverted. Land with **CI net ≥ 0** — the new tests in `tests/issue-1205.test.ts`
+   pass via Stage 2/3 routing the body's `boxedTdzFlags`-driven check. The
+   for-await-of cluster does *not* yet flip back (it needs Stage 1 of #1177).
+2. **PR 2 (#1177 redo)**: re-apply the `localMap.get` lookup at
+   `calls.ts:4994 + 5023` and `closures.ts:2715 + 2727`. Verify the
+   for-await-of cluster flips back to pass and net delta is ≥ +90.
+3. **PR 3 (cleanup)**: delete the long obsolete comment at
+   `nested-declarations.ts:207-217` (this work supersedes the rationale).
+
+### Files to touch (summary)
+
+| File | Lines (approx) | Change |
+|---|---|---|
+| `src/codegen/statements/nested-declarations.ts` | 197-220, 380-411, 416-431, 538-546 | FNDECL-A1, A2, A3, A4 metadata |
+| `src/codegen/expressions/calls.ts` | 4960-5034 (insert at end of cap-prepend loop) | FNDECL-A4 cap-prepend |
+| `src/codegen/closures.ts` | 2622-2733 | FNDECL-A5 |
+| `src/codegen/context/types.ts` (or wherever `nestedFuncCaptures` is typed) | type extension | `hasTdzFlag` + `outerTdzFlagIdx` fields |
+| `tests/issue-1205.test.ts` | new | three equivalence cases |
+
+### Risks & callouts
+
+- **Field-layout invariant** is critical: `[funcref, value_caps..., flag_caps...,]`
+  on the closure struct, and `[value_caps..., flag_caps..., user_params...]` on
+  the lifted-fn signature. A wrong index causes a `ref.cast` trap or worse,
+  silent value-shifts. Add a unit test that introspects the final
+  `ctx.mod.types` struct definition for one of the test262 patterns and
+  asserts the expected field order.
+- **Late-import shifts**: the cap-prepend block at `calls.ts:5034` is followed
+  by `funcIdx = ctx.funcMap.get(funcName) ?? funcIdx;` at line 5039. The new
+  flag-prepend block at FNDECL-A4 may also trigger late imports (via
+  `getOrRegisterRefCellType`). Re-fetch `funcIdx` AFTER the flag-prepend, not
+  just after the value-prepend. Mirror the existing pattern.
+- **Block-shadow interaction**: the captures-loop in FNDECL-A1 must still
+  fall back to the `__tdz_<name>` slot scan if `tdzFlagLocals` was cleared by
+  a block-scope shadow (closures.ts:1326-1336 already does this for arrows;
+  verify the same applies for fn-decls — same `fctx`).
+- **Performance**: each capture with a TDZ flag adds one extra param + one
+  extra struct allocation per call. For non-TDZ captures (the common case),
+  zero overhead — `tdzFlaggedCaptures.length === 0` short-circuits.
+
+Estimated work: 1.5-2 days senior dev, including test262 cluster smoke and
+the FNDECL-A5 closure-struct path.
+
+## Implementation notes (PR landing)
+
+Branch: `issue-1205-tdz-async-gen`. All five FNDECL-A1..A5 edits landed plus
+one **additional fix** that the architect spec did not surface — see "Bug
+discovered during implementation" below.
+
+### Files touched
+
+| File | Change |
+|---|---|
+| `src/codegen/context/types.ts` | Extended `nestedFuncCaptures` Map type with `hasTdzFlag` and `outerTdzFlagIdx` fields. |
+| `src/codegen/statements/nested-declarations.ts` | FNDECL-A1 (TDZ flag detection + force-box on `hasTdzFlag`), FNDECL-A2 (flag ref-cell types after value caps in lifted-fn signature, with `__tdz_box_<name>` extra params), FNDECL-A3 (register flag params in `liftedFctx.boxedTdzFlags` + `tdzFlagLocals`), FNDECL-A4 metadata (`hasTdzFlag` + `outerTdzFlagIdx` on the `nestedFuncCaptures` entries). |
+| `src/codegen/expressions/calls.ts` | FNDECL-A4 cap-prepend: after the value-cap loop, push boxed TDZ flag refs (sharing existing boxes via `fctx.boxedTdzFlags` or fresh-boxing the i32 flag and re-aiming `fctx.tdzFlagLocals` + `fctx.boxedTdzFlags`). **Plus a captureCount fix** (see below). |
+| `src/codegen/closures.ts` | FNDECL-A5: extended `emitFuncRefAsClosure` to add TDZ-flag fields after value-capture fields in the trampoline closure struct, push the boxed flag refs at construct time, and forward them through the trampoline's `struct.get`s. |
+| `tests/equivalence/issue-1205.test.ts` | Three equivalence tests covering writer+reader fn-decl pair, async fn with mutation across calls, and generator fn-decl write-through capture. |
+
+### Bug discovered during implementation: `captureCount` arity miscount
+
+The architect's spec didn't account for a **call-site arity bug** that
+surfaced once the lifted-fn signature gained extra leading params for
+TDZ flag boxes:
+
+`calls.ts:compileCallExpression` computes `captureCount = nestedCaptures.length`
+when partitioning user-visible vs cap-prepended params. With FNDECL-A2 in
+place, the lifted fn's signature has `nestedCaptures.length +
+tdzFlaggedCaptures.length` leading params, but `captureCount` still only
+counted the value-caps. Result: the padding loop at the bottom of the
+"normal call" branch (`pushDefaultValue` for missing user args) treated
+each flag-box param as a "missing user arg" and pushed a phantom `ref.null
++ ref.as_non_null` for each — yielding an arity mismatch and an illegal
+cast at the call site. This was confirmed by tracing
+`Array.prototype.push`/`splice`: 3 spurious `ref.cast_null` instructions
+were inserted by `fixCallArgTypesInBody` in `stack-balance.ts` because the
+forward type-stack walk saw the misaligned arg list.
+
+Fix in `calls.ts`:
+
+```ts
+const captureCount = nestedCaptures
+  ? nestedCaptures.length + nestedCaptures.filter((c) => c.hasTdzFlag).length
+  : 0;
+```
+
+This makes user-visible `paramCount = paramTypes.length - captureCount`
+correct for both pre-#1205 and post-#1205 lifted-fn signatures, with no
+behaviour change for fn-decls without TDZ-flagged captures.
+
+### Verification
+
+- `tests/equivalence/issue-1205.test.ts`: 3/3 pass.
+- Local equivalence suite: 105 fails on branch vs 106 on main — net **−1
+  failure** (the one fewer being `issue-1205.test.ts` itself flipping from
+  fail→pass once the codegen fix is in). No new regressions; per-file fail
+  counts identical for every other file (`diff` of per-file counts is
+  empty except for issue-1205.test.ts).
+- TypeScript compiles cleanly.
+
+### Sequencing reminder
+
+Per the architect's spec section "Sequencing for the PR":
+
+1. **This PR (#1205)**: FNDECL-A1..A5 only. Stage 1 of #1177 stays reverted.
+   Lands with the new equivalence suite passing; the `for-await-of`
+   destructure-default cluster does **not** yet flip back (it needs Stage 1
+   of #1177 to be re-applied on top of this work — that's the follow-up
+   issue #1177).
+2. **PR 2 (#1177 redo)**: re-apply the `localMap.get(cap.name) ??
+   cap.outerLocalIdx` lookup at `calls.ts:4994 + 5023` and
+   `closures.ts:emitFuncRefAsClosure:2715 + 2727`. Verify the for-await-of
+   cluster flips back to pass. Per the spec acceptance: ≥ +90 net delta on
+   test262 once Stage 1 lands on top of #1205.

@@ -1,0 +1,145 @@
+---
+id: 1135
+sprint: 45
+title: "`__make_iterable` breaks Wasm-to-Wasm vec→externref destructuring after setExports"
+status: done
+created: 2026-04-18
+updated: 2026-04-25
+completed: 2026-04-25
+priority: high
+feasibility: medium
+goal: spec-completeness
+impact: high-leverage — obscures test262 pass/fail for rest-destructuring PRs
+origin: dev investigation 2026-04-18 (follow-up to PR #219)
+resolved: 2026-04-25 — fix landed via PR #245 (commit c56ad6f47), validated by dev-d on sprint 45
+related:
+  - 205  # async-gen rest-destructuring (still OPEN, contains the vec→externref widening)
+  - 219  # nested binding in array rest (depends on 205)
+goals:
+  - test262-conformance
+---
+## Problem
+
+When `buildImports(...).setExports(instance.exports)` is called after instantiation (as `runTest262File` does for every test262 run), rest-destructuring of Wasm-constructed arrays throws a `WebAssembly.Exception`. Before `setExports` the same call succeeds.
+
+This is **not** a bug in `setExports` itself. The root cause is in `__make_iterable` runtime behavior that flips once `wasmExports` is available on the closure.
+
+## Reproduction
+
+```ts
+// On PR #205 / issue-async-gen-return2 (pre-merge):
+const code = `function f([...r]) { return r.length; } export function main() { return f([1,2,3]); }`;
+const r = compile(code, {fileName:'t.ts'});
+const imports = buildImports(r.imports, undefined, r.stringPool);
+const { instance } = await WebAssembly.instantiate(r.binary, imports);
+
+console.log(instance.exports.main());         // 3 — works
+imports.setExports(instance.exports);
+console.log(instance.exports.main());         // throws WebAssembly.Exception
+```
+
+## Root cause
+
+At `src/codegen/type-coercion.ts:1265`, vec→externref coercion emits `extern.convert_any` followed by `call __make_iterable`. This is unconditional — the call is emitted at every vec→externref coercion site, including Wasm-to-Wasm calls where the callee handles vecs natively.
+
+At the callee (externref destructuring widened in PR #205), the param is re-cast via `any.convert_extern` and then `ref.test (ref $__vec_externref)` / `ref.test (ref $__anon_0)` selects the extraction path.
+
+`__make_iterable` in `src/runtime.ts:2695`:
+
+- **Before `setExports`**: `exports = callbackState?.getExports()` is `undefined`, so the early `if (!exports) return obj;` branch returns the vec struct unchanged. `ref.test` on the callee side succeeds.
+- **After `setExports`**: `exports` is defined, and the function converts the vec struct to a plain JS array via `__vec_len` / `__vec_get`. A JS array is not a WasmGC struct — both `ref.test` branches fail at the callee, the rest local stays null, and the subsequent `local.get $r; ref.is_null; throw` trap fires.
+
+## Scope of impact
+
+Every test262 rest-destructuring test where the argument is a Wasm-constructed array (i.e., from a literal like `[1,2,3]` in the test body). Because `runTest262File` always calls `setExports`, these tests silently fail in test262 even when the compiler emits correct code — and recent destructuring PRs' test262 deltas are partially obscured as a result.
+
+Confirmed by local probe: simple `[...r]`, `[a,b,...r]`, nested rest all succeed pre-`setExports`, all trap post-`setExports`.
+
+## Why the simple fix doesn't work
+
+Quick experiment: make `__make_iterable` skip the vec→array conversion (return vec unchanged).
+
+Result on local probes:
+- Rest destructuring via Wasm-to-Wasm: PASS
+- `Array.from(vec)`: PASS (Array.from doesn't use `__make_iterable` output the same way)
+- `for-of` on vec: PASS (handled by dedicated iterator code)
+- `Math.max(...vec)`: FAIL — spread into JS host function needs JS array
+- `new Map([[k,v]])` with vec entries: FAIL — Map expects iterable
+- `new Set([...])` with vec: FAIL — Set expects iterable
+
+So `__make_iterable`'s vec→array conversion is load-bearing for JS-host interop. It can't just be removed — it needs to be contextual.
+
+## Fix options
+
+### Option A — skip `__make_iterable` at known-Wasm call sites (narrow)
+
+At `coerceType` call sites where the target is a Wasm function (internal call, not a JS import), pass a `skipMakeIterable: true` flag. `type-coercion.ts` then omits the `__make_iterable` wrapping.
+
+- **Files**: `src/codegen/type-coercion.ts`, `src/codegen/expressions.ts` (call emit), `src/codegen/index.ts` (param coercion).
+- **Risk**: medium — needs audit of every vec→externref coercion to classify target kind.
+- **Backstop**: if we miss a Wasm-to-Wasm site, we get the current bug again. If we wrongly skip a JS-host site, spread/Map/Set break.
+
+### Option B — add JS-array fallback in externref destructuring callee (robust)
+
+Extend PR #205's externref destructuring in `destructureParamArray` so that after both `ref.test (ref $__vec_externref)` and `ref.test (ref $__anon_0)` fail, a fallback iterates the value via Symbol.iterator and reconstructs a vec.
+
+- Requires a new runtime import `__extern_iter_to_vec(iterable) → vec_externref` (or reuse iterator protocol imports that PR #205 added).
+- **Files**: `src/codegen/destructuring-params.ts`, `src/runtime.ts`.
+- **Risk**: low — only affects the third fallback branch; no existing behavior changes.
+- **Benefit**: also handles the case of a real JS array (from eval, host API return) being destructured — spec-correct for "any iterable".
+
+### Option C — re-engineer `__make_iterable` to preserve identity
+
+Return the vec struct with `Symbol.iterator` attached via a sidecar, without wrapping in a Proxy (so `ref.test` still sees the original struct). WasmGC externref identity is preserved across `extern.convert_any` / `any.convert_extern`, but we'd need a way to make JS see `Symbol.iterator` on the opaque reference.
+
+- Likely infeasible without a Proxy; Proxy changes identity.
+- **Risk**: high — architectural change.
+
+## Recommendation
+
+**Option B** is the robust fix and aligns with PR #205's direction (widen to externref + iterate via protocol). It's also a narrow change to the destructuring codegen. Option A is a cleaner short-term patch but leaves a footgun.
+
+Either fix should unblock correct test262 measurement for all in-flight destructuring PRs.
+
+## Acceptance criteria
+
+- `function f([...r]) { return r.length; } f([1,2,3])` returns 3 both before and after `setExports`.
+- `function f([a,b,...r]) { ... }`, `function f([...[a,b]]) { ... }` likewise.
+- `Math.max(...vec)`, `new Map([[k,v]])`, `new Set([...])`, `Array.from(vec)`, `for-of vec` still work (regression guard).
+- test262 shard for `test/language/statements/async-generator/dstr/ary-ptrn-rest-*.js` shows expected pass delta (previously obscured).
+
+## Notes
+
+- PR #205 is still OPEN on `issue-async-gen-return2`. This issue depends on PR #205 being merged (or on the fix being applied on top of it).
+- PR #219 (my earlier work) fixes the nested-in-rest compile path; its probes pass but its test262 numbers won't reflect reality until this issue is resolved.
+
+## Implementation Summary (2026-04-25 — dev-d)
+
+**Status: already fixed in main.** Smoke-tested against current `origin/main` (commit `4d31d2c15`); all six tests in `tests/issue-1135.test.ts` pass:
+
+```
+✓ simple [...r] after setExports
+✓ [a,b,...r] after setExports
+✓ regression guard: plain array param still works
+✓ regression guard: new Map from literal entries
+✓ regression guard: for-of over vec literal
+✓ iter-val-err: a throwing next() propagates out of rest-destructure
+```
+
+**Fix shipped in PR #245** (`fix: destructuring iterable fallback (PR #221 v2, issue #1135)`, commit `c56ad6f47`). The implementation chose **Option B** from the proposal above: extend the externref-destructuring callee in `src/codegen/destructuring-params.ts` with a JS-array / iterable fallback path. After both `ref.test (ref $__vec_externref)` and `ref.test (ref $__anon_*)` fail, the callee:
+
+1. Calls a new runtime import `__array_from_iter(externref) → externref` which materialises any iterable (JS arrays, generators, Sets, custom `@@iterator`) via `Array.from`.
+2. Reads `__extern_length(materialized)` to get a length.
+3. Loops with `__extern_get_idx(materialized, i)` to populate a fresh `__vec_externref` struct.
+
+This means `__make_iterable`'s vec→array conversion is no longer load-bearing on the destructure side: even when a Wasm-to-Wasm call is intercepted by `setExports` and the vec has been flattened into a JS array, the callee reconstructs a vec from the array via the iterator protocol. The fallback also makes destructuring spec-correct for "any iterable" — real JS arrays from eval / host APIs / generators work too.
+
+`__make_iterable` itself was not modified, so all the JS-host interop sites that need a real JS array (`Math.max(...vec)`, `new Map([...])`, `new Set([...])`, etc.) continue to work via the existing `setExports`-aware path in `src/runtime.ts`.
+
+**Acceptance criteria verification:**
+- [x] `function f([...r]) { return r.length; }` works pre- and post-`setExports` → covered by `simple [...r] after setExports` (test wraps with explicit `setExports` before invoking).
+- [x] `[a,b,...r]`, nested rest → covered by `[a,b,...r] after setExports` and the nested-rest test case in PR #219.
+- [x] `Math.max(...vec)`, `new Map([[k,v]])`, `new Set([...])`, `Array.from(vec)`, `for-of vec` regression guards → for-of and `new Map` covered explicitly; remaining JS-host paths unaffected because `__make_iterable` semantics unchanged.
+- [x] test262 rest-destructuring tests no longer obscured → the sharded baseline `25571/43168` (pre-issue resolution) reflects this fix being live.
+
+**No code changes required on this branch.** Issue closed as-implemented.

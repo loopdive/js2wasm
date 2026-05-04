@@ -1,0 +1,60 @@
+---
+id: 499
+sprint: 0
+title: "with statement via static identifier dispatch (94 tests)"
+status: done
+created: 2026-03-18
+updated: 2026-04-14
+completed: 2026-04-14
+priority: low
+feasibility: medium
+goal: spec-completeness
+depends_on: [488]
+test262_skip: 94
+files:
+  src/codegen/statements.ts:
+    new:
+      - "compileWithStatement — static dispatch via AST identifier enumeration"
+    breaking: []
+---
+# #499 — with statement via static identifier dispatch (94 tests)
+
+## Status: open
+
+94 tests use the `with` statement. Deprecated in strict mode but part of the spec.
+
+## Approach
+
+`with (obj) { x }` dynamically resolves identifiers against `obj` first, then the outer scope. This seems to require dynamic scope — but the compiler can enumerate all identifiers at compile time:
+
+```javascript
+with (obj) {
+  console.log(x + y);
+}
+```
+
+Compiles to:
+```javascript
+console.log(
+  (hasOwnProperty(obj, "x") ? obj.x : outer_x) +
+  (hasOwnProperty(obj, "y") ? obj.y : outer_y)
+);
+```
+
+### Implementation
+1. Walk the AST inside the `with` block
+2. Collect all identifier references
+3. For each identifier, emit: `if obj.hasOwnProperty(name) then obj[name] else scope[name]`
+4. Requires #488 (hasOwnProperty) for the property check
+5. Property writes inside `with`: same dispatch — `if hasOwnProperty(obj, "x") then obj.x = v else outer_x = v`
+
+### Limitations
+- `with` + `eval` (eval adds dynamic bindings inside with) — not supported
+- Deeply nested `with` blocks — each level adds a dispatch check per identifier
+
+## Complexity: M
+
+## Acceptance criteria
+- [ ] `with (obj) { return x; }` resolves x from obj if present, else from scope
+- [ ] Property writes inside `with` dispatch correctly
+- [ ] Nested `with` blocks work

@@ -146,7 +146,7 @@ missing return values, incorrect type coercion, wrong control flow, broken scope
 | **737** | - Undefined-handling edge cases (276 tests) | 24 | done | medium |
 | **771** | - Arguments object incomplete (~617 tests) | 0 | done | high |
 | **781** | - TypeError (null/undefined access) in language constructs (~2,841 tests) | 0 | done | high |
-| **786** | - Multi-assertion failures: returned N > 2 (~1,183 tests) | Backlog | in-progress | medium |
+| **786** | - Multi-assertion failures: returned N > 2 (~1,183 tests) | Backlog | ready | medium |
 | **787** | - Wrong values in assert.sameValue and other first-assertion failures (~3,517 tests) | 0 | done | high |
 | **794** | - BindingElement null guard over-triggering in destructuring (537 fail) | 0 | done | high |
 | **796** | - Destructuring initializer not evaluated when value is not undefined (121 fail) | 0 | done | medium |
@@ -156,7 +156,7 @@ missing return values, incorrect type coercion, wrong control flow, broken scope
 | **821** | BindingElement null guard over-triggering | Backlog | ready | critical |
 | **822** | Wasm type mismatch compile errors (907 CE) | 31 | done | high |
 | **823** | Destructuring initializer not evaluated | 25 | done | high |
-| **846** | assert.throws not thrown: built-in methods accept invalid arguments silently (2,799 tests) | Backlog | review | critical |
+| **846** | assert.throws not thrown: built-in methods accept invalid arguments silently (2,799 tests) | Backlog | ready | critical |
 | **847** | for-await-of / for-of destructuring produces wrong values (660 tests) | 30 | done | high |
 | **852** | Destructuring parameters cause null_deref and illegal_cast (1,525 tests) | 30 | done | critical |
 | **911** | Split statements.ts into control-flow, variables, destructuring, loops, and functions modules | 39 | done | high |
@@ -168,11 +168,29 @@ missing return values, incorrect type coercion, wrong control flow, broken scope
 | **997** | BigInt ToPrimitive/wrapped-value helper emits i64 into externref __call_fn_0 wrapper (55 CE) | 41 | done | high |
 | **999** | for-of / for-await-of destructuring still emits f64↔externref and struct field mismatches (75 CE) | 40 | done | high |
 | **1013** | Split codegen/index.ts (14,344 lines) into focused modules | 41 | done | high |
-| **1016** | Iterator protocol null access — closed/exhausted iterators crash (500+ FAIL) | 43 | in-progress | high |
+| **1016** | Iterator protocol null access — closed/exhausted iterators crash (500+ FAIL) | 45 | done | high |
 | **1024** | Destructuring rest elements + array holes drop null vs undefined | 41 | done | high |
-| **1025** | BindingElement array-pattern default guards still use ref.is_null | 40 | done | high |
+| **1025** | BindingElement array-pattern default guards still use ref.is_null | 45 | done | high |
 | **1031** | Compile lodash to Wasm as a real-world stress test; harvest error patterns | 40 | done | high |
-| **1098** | Audit and reduce patch-layer accumulation in codegen (155 workarounds, special cases, fallbacks) | 44 | ready | medium |
+| **1098** | Audit and reduce patch-layer accumulation in codegen (155 workarounds, special cases, fallbacks) | 45 | ready | medium |
+| **1119** | ES2015 SingleNameBinding anonymous function/class naming from destructuring context | 44 | done | medium |
+| **1120** | Add int32 fast path for bitwise-coerced numeric loops in hot benchmarks | 45 | done | high |
+| **1121** | Infer numeric recursive fast path without JSDoc hints on exported entrypoints | 45 | done | high |
+| **1126** | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | Backlog | ready | high |
+| **1126** | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | 49 | in-progress | high |
+| **1127** | Class method param destructuring: nested array pattern + initializer throws spurious TypeError | 43 | done | high |
+| **1128** | Destructuring TDZ and AnnexB B.3.3 function-in-block hoisting (≥211 tests) | 45 | done | medium |
+| **1129** | ToObject (§7.1.18) not implemented — no primitive auto-boxing | Backlog | ready | low |
+| **1158** | destructureParamArray fallback eagerly consumes iterators via Array.from — violates 13.3.3.6 for empty pattern [] | Backlog | ready | medium |
+| **1159** | Nested empty array pattern with initializer violates §13.3.3.6 iterator consumption semantics | Backlog | ready | medium |
+| **1168** | IR frontend widening — IrType union/boxed, lattice string/object/union, box/unbox instructions | 44 | done | high |
+| **1169a** | IR Phase 4 Slice 1 — strings, typeof, null/undefined checks through the IR path | 45 | done | high |
+| **1169g** | IR Phase 4 Slice 8 — destructuring and rest/spread through the IR path | 45 | done | high |
+| **1169n** | IR Phase 4 Slice 11 — switch statements + missing binary/unary operators through IR | 47 | done | high |
+| **1219** | ArrayBindingPattern iter-close: destructuring hangs when iterator never sets done:true (26 compile_timeout tests) | 46 | done | high |
+| **1224** | class method dstr-parameter defaults: Cannot destructure null/undefined — guard fires before default is applied (408 failures) | 47 | done | high |
+| **1236** | Premature i32 specialization for `let s = 0` accumulators silently saturates on overflow | 48 | done | high |
+| **1256** | i32 fast path for `*` is not spec-faithful when true product exceeds 2^53 | 45 | done | medium |
 
 <!-- AUTOGENERATED:GOAL-ISSUES-END -->
 

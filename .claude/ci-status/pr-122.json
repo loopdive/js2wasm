@@ -1,15 +1,17 @@
 {
   "pr": 122,
   "conclusion": "failure",
-  "head_branch": "issue-1018-gopd-null",
-  "head_sha": "4f5558f8266dddd79ace4b41699f4d5b24e38fdc",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24303058558",
-  "timestamp": "2026-04-12T09:04:52Z",
-  "pass": 2263,
-  "fail": 1884,
-  "compile_error": 37684,
-  "snapshot_delta": -19922,
-  "net_per_test": -19922,
-  "regressions": 19934,
-  "improvements": 12
+  "head_branch": "issue-1196-bounds-check",
+  "head_sha": "f02e4578eb29109b735ab65cb3811fe44acd6991",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25210381683",
+  "timestamp": "2026-05-01T10:15:58Z",
+  "pass": 25841,
+  "fail": 13920,
+  "compile_error": 1774,
+  "snapshot_delta": 11,
+  "net_per_test": 6,
+  "regressions": 136,
+  "regressions_real": 28,
+  "compile_timeouts": 108,
+  "improvements": 142
 }

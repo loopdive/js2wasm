@@ -273,7 +273,7 @@ All independent — can run in parallel.
 
 ```
 #1094 (shrink runtime.ts) ──→ #1099 (standalone demo on Wasmtime, zero JS host)
-#1035 (WASI hello-fs) -- independent but related
+#1035 (WASI hello-fs) -- DONE (sprint 45)
 #680 (pure Wasm generators) -- enables broader standalone coverage
 #681 (pure Wasm iterators) -- enables broader standalone coverage
 #682 (RegExp standalone) ──→ #1105 Tier 2 string methods (match, replace, search)

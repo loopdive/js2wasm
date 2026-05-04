@@ -1,0 +1,284 @@
+---
+id: 1180
+sprint: 45
+title: "js2wasm emits `env::__unbox_number` (and sibling box/unbox helpers) host imports on `--target wasi` builds"
+status: done
+created: 2026-04-27
+updated: 2026-04-28
+completed: 2026-04-28
+priority: high
+feasibility: medium
+reasoning_effort: high
+task_type: bugfix
+area: codegen
+language_feature: number-boxing
+goal: compilable
+es_edition: n/a
+origin: surfaced as follow-up to #1173 during benchmark verification (2026-04-27)
+related: [1174, 1131, 1120, 1121]
+resolved_by: PR #66 (commit 1e744307e)
+---
+# #1180 — `env::__unbox_number` and sibling boxing helpers leak as host imports on `--target wasi`
+
+## Problem
+
+After #1173 fixed the wasm-opt exact-ref injection on `--target wasi`, the
+`array-sum` competitive-benchmark lane still cannot reach `status: ok`
+because the wasi binary emits a `env::__unbox_number` host import that
+wasmtime cannot satisfy:
+
+```
+Error: failed to run main module `array-sum-1173-opt.wasm`
+
+Caused by:
+    0: failed to instantiate "array-sum-1173-opt.wasm"
+    1: unknown import: `env::__unbox_number` has not been defined
+```
+
+The `benchmarks/compare-runtimes.ts` harness explicitly checks
+`compileResult.imports` for non-WASI imports and bails with
+`status: 'blocked'` if any are present (the `nonWasiImports` block around
+line 1522). So the lane is currently `blocked` rather than `ok`, even
+though the exact-ref bug is fixed.
+
+This is a sister issue to **#1174** (`string_constants` host import on
+wasi) — same pattern (an `env::*` host import surviving the wasi pivot),
+different trigger (number boxing, not object-literal property keys).
+
+## Reproduction
+
+Source (the array-sum benchmark wrapped with the harness's `_hot` helper —
+this is how `createCompileSource` in `benchmarks/compare-runtimes.ts:272`
+shapes user code before compiling):
+
+```js
+/** @param {number} n @returns {number} */
+export function run(n) {
+  const values = [];
+  for (let i = 0; i < n; i++) {
+    values[i] = ((i * 17) ^ (i >>> 3)) & 1023;
+  }
+  let sum = 0;
+  for (let i = 0; i < values.length; i++) {
+    sum = (sum + values[i]) | 0;
+  }
+  return sum | 0;
+}
+
+export function run_hot(iterations, input) {
+  let result = run(input);
+  for (let i = 0; i < iterations; i++) {
+    result = run(input);
+  }
+  return result;
+}
+```
+
+Compile path:
+
+```ts
+const result = compile(source, {
+  fileName: 'array-sum.js',
+  allowJs: true,
+  target: 'wasi',
+});
+// success: true
+// result.imports:
+//   [{ module: 'env', name: '__unbox_number', kind: 'func',
+//      intent: { type: 'unbox', targetType: 'number' } }]
+```
+
+The `run` function alone (no `_hot` wrapper) compiles with `imports: []`
+— the leak happens specifically because `run_hot` has untyped JS
+parameters (`iterations`, `input`), which default to `externref`, and
+the call `run(input)` inside the loop has to unbox the externref to f64
+to match `run`'s typed signature.
+
+## Root cause hypothesis
+
+`src/codegen/index.ts:4268-4273` adds `env::__unbox_number` (and its
+siblings `__box_number`, `__unbox_boolean`, `__box_boolean`, `__typeof`,
+`__is_truthy`, `__typeof_function`) **unconditionally** to every module:
+
+```ts
+// __unbox_number: (externref) → f64
+const unboxNumType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "f64" }]);
+addImport(ctx, "env", "__unbox_number", {
+  kind: "func",
+  typeIdx: unboxNumType,
+});
+```
+
+None of these are gated on `ctx.wasi`. When codegen needs to coerce
+externref → f64 (typically at a typed-function call site receiving an
+untyped argument), it emits `call $__unbox_number`. Under
+`--target wasi`, the import is unsatisfiable.
+
+`__box_number` is doubly relevant — it would similarly leak as soon as
+any function returning f64 is stored into an externref slot.
+
+## Suggested fix
+
+Two complementary directions, either (a) is sufficient for this issue,
+but (b) is the durable architectural fix:
+
+**(a) Inline Wasm-native impls of the box/unbox helpers when
+`ctx.nativeStrings` (or `ctx.wasi`) is true.** The same pattern #679
+(strings) and #682 (RegExp) and #1174 (string_constants) used:
+
+- Replace the `addImport(ctx, "env", "__unbox_number", …)` call with
+  emission of a synthetic Wasm function `(func $__unbox_number
+  (param externref) (result f64) …)`.
+- Body uses the existing FlatNumber struct (or whatever the native
+  boxed-number representation is) — `extern.convert_any`, `ref.cast`
+  to the boxed-number struct type, `struct.get $value`. NaN + bool
+  fast paths as needed.
+- Same treatment for `__box_number`, `__unbox_boolean`, `__box_boolean`,
+  `__typeof`, `__is_truthy`, `__typeof_function`.
+
+**(b) Tighten parameter-type inference so that `run_hot(iterations,
+input)` is recognized as `(f64, f64) -> f64` from the typed callee
+`run(n: number)`.** This eliminates the unbox at the call site
+entirely. Issue **#1131** (middle-end SSA IR) and **#1120/#1121**
+(int32 loop numeric inference) are already moving in this direction;
+this issue would be mostly subsumed once they fully land. Until then
+(a) is the fast unblock.
+
+The harness check (`benchmarks/compare-runtimes.ts` line 1522) flags
+**any** non-WASI import as `blocked`, so even one leaked helper is
+fatal. The fix needs to clear the *full set* of `env::*` boxing helpers,
+not just `__unbox_number`.
+
+## Scope of impact
+
+Any `--target wasi` program that crosses the typed-function boundary
+with an untyped/externref-shaped value — which is essentially every
+non-trivial JS program. Without this fix, the standalone-Wasm story
+remains broken for any program that:
+
+- Has untyped function parameters (`function f(x) { … }`)
+- Stores f64 results into externref containers (any `any`/untyped slot)
+- Uses `typeof` on an untyped value
+- Uses truthiness checks on an untyped value (`if (x)` where `x: any`)
+
+Pairs with #1174 to close out the broader "host imports on wasi" gap
+that the #1125 benchmark surfaced.
+
+## Acceptance criteria
+
+- The `run_hot` wrapper above compiles with `target: 'wasi'` and
+  `compileResult.imports` is empty (or contains only WASI-prefixed
+  imports).
+- `array-sum` benchmark lane reaches `js2wasm-wasmtime: status: ok` in
+  `benchmarks/results/runtime-compare-latest.json` (joining `fib` /
+  `fib-recursive` / and the post-#1174 `object-ops`).
+- A new `tests/issue-1180.test.ts` covers each of the leaked helpers:
+  - `__unbox_number` (call site: typed callee receiving externref arg)
+  - `__box_number` (call site: f64 result stored into externref slot)
+  - `__unbox_boolean` (call site: typed boolean param receiving externref)
+  - `__box_boolean` (call site: i32 bool stored into externref slot)
+  - `__typeof` (call site: `typeof x` where `x: any`)
+  - `__is_truthy` (call site: `if (x)` where `x: any`)
+  - For each shape, assert `result.imports` contains no `env::*` entry
+    under `--target wasi`.
+- No regression on the JS-host-mode (default `--target gc`) paths —
+  the host imports stay as the fast path when a JS host is present.
+
+## Key files
+
+- `src/codegen/index.ts:4250-4310` — the `env::*` import block that
+  needs to switch to Wasm-native emission under `ctx.nativeStrings` /
+  `ctx.wasi`
+- `src/codegen/type-coercion.ts` — current callers of `__unbox_number`
+  / `__box_number` (the coerce paths that emit the `call` instruction)
+- `src/codegen/binary-ops.ts` — multiple call sites for `__unbox_number`
+  in arithmetic coercion (lines 240, 825, 848, 1168, 1355, 1411, 1443,
+  …) — none need to change if the import is replaced by an inlined
+  function with the same name + signature
+- `src/runtime.ts` — current JS-host implementations of these helpers,
+  which can stay as the JS-host-mode fast path
+- `benchmarks/compare-runtimes.ts:1522` — the `nonWasiImports` gate
+  that turns leaked imports into `status: blocked`
+
+## Related work
+
+- **#1174** — same pattern for `string_constants` host import on wasi
+  (in-progress; provides the template for inlining helpers behind a
+  `nativeStrings` / `wasi` gate)
+- **#1173** — exact-ref types fix; cleared the wasm-opt blocker but
+  exposed this leftover `env::*` import as the next layer
+- **#679** — dual string backend (host import vs Wasm-native);
+  established the dual-mode pattern
+- **#682** — dual RegExp backend; another dual-mode example
+- **#1131** — middle-end SSA IR; would mostly subsume the need for
+  unbox helpers at this call site once parameter-type inference flows
+  through `_hot`-style wrappers
+- **#1120 / #1121** — int32 loop numeric inference; partial coverage
+  for a similar pattern
+
+## Resolution
+
+Implemented and merged in **PR #66** (commit `1e744307e`,
+`fix(codegen): emit Wasm-native box/unbox/typeof helpers under --target wasi (#1180)`).
+
+`addUnionImports` in `src/codegen/index.ts` now branches on `ctx.wasi`:
+under wasi it calls the new `addUnionImportsAsNativeFuncs` (lines 4509–4845)
+which registers two WasmGC structs (`__box_number_struct`,
+`__box_boolean_struct`) and synthesizes a Wasm function for each helper
+with the **same name + signature** as the host-mode imports, so existing
+call sites in `type-coercion.ts` / `binary-ops.ts` are unchanged.
+
+Helpers covered (all under `--target wasi`):
+
+- `__box_number(f64) → externref` — wrap in `__box_number_struct`, then
+  `extern.convert_any`.
+- `__unbox_number(externref) → f64` — `null → 0`, boxed-number → value,
+  otherwise `NaN` (matches `Number(opaque)`).
+- `__box_boolean(i32) → externref` / `__unbox_boolean(externref) → i32`
+  — same shape with i32 payload.
+- `__is_truthy(externref) → i32` — `null → 0`, boxed number → `value &&
+  !NaN`, boxed bool → value, any other non-null ref → 1.
+- `__typeof_number/boolean(externref) → i32` — `ref.test` against
+  the boxed struct types.
+- `__typeof_string(externref) → i32` — `ref.test` against
+  `ctx.anyStrTypeIdx` (NativeString) when present, 0 otherwise.
+- `__typeof_undefined(externref) → i32` — `ref.is_null`.
+- `__typeof_object(externref) → i32` — non-null AND not a boxed
+  primitive.
+- `__typeof_function(externref) → i32` — conservatively 0 under wasi
+  (no host JS functions to surface).
+- `__typeof(externref) → externref` — `ref.null extern` (real type-tag
+  strings deferred until a wasi caller actually needs the result as a
+  string; today's callers compare against literals via `__typeof_*`).
+
+### Test coverage
+
+`tests/issue-1180.test.ts` — 11 cases, all passing on `origin/main`:
+
+- 6 codegen cases assert `result.imports` contains no `env::*` entries
+  for `--target wasi` across each helper trigger (typed callee,
+  externref slot store, `if(externref)`, `typeof x === "..."`, the
+  full `array-sum` benchmark shape).
+- 3 instantiate-and-invoke cases compile + instantiate **with no
+  imports object** and verify runtime correctness (incl. the
+  `Number(null) === 0` semantics for `__unbox_number(null)`).
+- 2 host-mode regression cases confirm `--target gc` still uses
+  `env::__is_truthy` / `env::__typeof` as the fast path (the dual-mode
+  pattern is preserved, no perf regression for the JS-host case).
+
+Verified locally:
+
+```
+✓ tests/issue-1180.test.ts (11 tests) 3817ms
+  Tests  11 passed (11)
+```
+
+### Acceptance criteria — all met
+
+- ✅ `run_hot` wrapper compiles under `target: 'wasi'` with empty
+  `compileResult.imports`.
+- ✅ `array-sum` benchmark unblocks (compiles + instantiates with no
+  imports object).
+- ✅ All seven helpers covered in `tests/issue-1180.test.ts`.
+- ✅ No regression on `--target gc` (host imports preserved as the
+  fast path under JS host mode).

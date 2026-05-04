@@ -1,0 +1,15 @@
+{
+  "pr": 7,
+  "conclusion": "success",
+  "head_branch": "issue-1160-array-from-poisoning",
+  "head_sha": "44ba9bf42cc248c81446ce927c26e8909c1cbbc3",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24861463079",
+  "timestamp": "2026-04-23T22:20:33Z",
+  "pass": 25061,
+  "fail": 13989,
+  "compile_error": 2752,
+  "snapshot_delta": 578,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}

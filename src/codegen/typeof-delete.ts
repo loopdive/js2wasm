@@ -3,7 +3,7 @@
  * typeof, delete, instanceof, and RegExp literal compilation.
  * Extracted from expressions.ts (issue #688 step 5).
  */
-import ts from "typescript";
+import { ts } from "../ts-api.js";
 import { isBooleanType, isStringType, isSymbolType } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
 import { reportError } from "./context/errors.js";
@@ -494,6 +494,14 @@ function staticTypeofForType(ctx: CodegenContext, tsType: ts.Type): string | nul
     const sym = tsType.getSymbol?.();
     if (sym && (sym.name === "String" || sym.name === "Number" || sym.name === "Boolean")) {
       return "object";
+    }
+    // (#1304) Global `Function` interface — TS infers this for params used
+    // as `p.call(...)` / `p.apply(...)` etc. Without this branch the value
+    // falls into the generic "Object flag → object" path below and idiomatic
+    // guards like `if (typeof predicate != 'function')` const-fold to
+    // unconditional throws (lodash `negate`, `bind`, similar).
+    if (sym && sym.name === "Function") {
+      return "function";
     }
   }
   // Check string before wasm type mapping (native strings map to ref)

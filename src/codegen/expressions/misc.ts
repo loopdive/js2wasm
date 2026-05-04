@@ -3,7 +3,7 @@
  * Miscellaneous expression compilation: conditionals, generators/yield,
  * struct name resolution, and static analysis helpers.
  */
-import ts from "typescript";
+import { ts } from "../../ts-api.js";
 import { isStringType } from "../../checker/type-mapper.js";
 import type { Instr, ValType } from "../../ir/types.js";
 import { pushBody } from "../context/bodies.js";
@@ -363,14 +363,18 @@ export function tryStaticToNumber(ctx: CodegenContext, expr: ts.Expression): num
     const valueOfProp = expr.properties.find(
       (p) => ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === "valueOf",
     );
+    let valueOfReturnsObject = false;
     if (valueOfProp && ts.isPropertyAssignment(valueOfProp)) {
       const init = valueOfProp.initializer;
       if (ts.isFunctionExpression(init) || ts.isArrowFunction(init)) {
         // Check if valueOf returns a non-primitive (object/array) — ToPrimitive
-        // falls through to toString in that case, so we can't use valueOf's result
-        const returnExpr = getReturnExpression(init);
+        // falls through to toString in that case, so we can't use valueOf's result.
+        // Unwrap parenthesized expressions: `() => ({})` parses with the body as a
+        // ParenthesizedExpression around the ObjectLiteral, not as the literal directly.
+        const returnExpr = unwrapParens(getReturnExpression(init));
         if (returnExpr && (ts.isObjectLiteralExpression(returnExpr) || ts.isArrayLiteralExpression(returnExpr))) {
           // valueOf returns a non-primitive → fall through to toString
+          valueOfReturnsObject = true;
         } else {
           const retVal = getStaticReturnValue(ctx, init);
           if (retVal !== undefined) return retVal;
@@ -383,13 +387,22 @@ export function tryStaticToNumber(ctx: CodegenContext, expr: ts.Expression): num
         return undefined;
       }
     }
-    // No valueOf → try toString (ToPrimitive fallback per JS spec)
+    // No valueOf (or valueOf returned non-primitive) → try toString
+    // (ToPrimitive falls back to toString per JS spec).
     const toStringProp = expr.properties.find(
       (p) => ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === "toString",
     );
     if (toStringProp && ts.isPropertyAssignment(toStringProp)) {
       const init = toStringProp.initializer;
       if (ts.isFunctionExpression(init) || ts.isArrowFunction(init)) {
+        // #1253: if toString returns a non-primitive too, ToPrimitive throws TypeError
+        // per ECMA-262 §7.1.1.1 step 6. Bail to runtime so the runtime ToPrimitive
+        // path can throw (instead of folding to NaN, which silently swallows the
+        // spec-required exception).
+        const returnExpr = unwrapParens(getReturnExpression(init));
+        if (returnExpr && (ts.isObjectLiteralExpression(returnExpr) || ts.isArrayLiteralExpression(returnExpr))) {
+          return undefined;
+        }
         const retVal = getStaticReturnValue(ctx, init);
         if (retVal !== undefined) return retVal;
         // toString exists but can't be statically resolved → bail to runtime
@@ -398,7 +411,14 @@ export function tryStaticToNumber(ctx: CodegenContext, expr: ts.Expression): num
       // toString is not a function literal → can't fold
       return undefined;
     }
-    // No valueOf or toString → NaN (spec: ToNumber({}) = NaN)
+    // #1253: if valueOf returned a non-primitive AND there is no toString
+    // override, ToPrimitive falls back to Object.prototype.toString which
+    // returns "[object Object]" → ToNumber → NaN. So `+{ valueOf: () => ({}) }`
+    // legitimately produces NaN per spec (no TypeError). The static fold of
+    // NaN is fine here. The TypeError path requires both valueOf and toString
+    // overrides to return non-primitives; that case is handled above.
+    if (valueOfReturnsObject) return NaN;
+    // No valueOf or toString → NaN (spec: ToNumber({}) = NaN via prototype chain)
     return NaN;
   }
   // Parenthesized expression: unwrap parentheses
@@ -410,14 +430,24 @@ export function tryStaticToNumber(ctx: CodegenContext, expr: ts.Expression): num
     return tryStaticToNumber(ctx, expr.operand);
   }
   // Variable: trace to initializer (only for const declarations to avoid
-  // incorrectly folding mutable variables like `let heapSize = 0`)
+  // incorrectly folding mutable variables like `let heapSize = 0`).
+  //
+  // #1253: Don't trace through object/array literal initializers — the
+  // binding is const but the object's properties can still be mutated later
+  // (`const o = {}; o.valueOf = ...; +o`). Folding the literal value here
+  // would silently bake in the post-initialization snapshot and miss the
+  // sidecar overrides that should drive ToPrimitive at runtime.
   if (ts.isIdentifier(expr)) {
     const sym = ctx.checker.getSymbolAtLocation(expr);
     const decl = sym?.valueDeclaration;
     if (decl && ts.isVariableDeclaration(decl) && decl.initializer) {
       const declList = decl.parent;
       if (ts.isVariableDeclarationList(declList) && (declList.flags & ts.NodeFlags.Const) !== 0) {
-        return tryStaticToNumber(ctx, decl.initializer);
+        const init = decl.initializer;
+        if (ts.isObjectLiteralExpression(init) || ts.isArrayLiteralExpression(init)) {
+          return undefined;
+        }
+        return tryStaticToNumber(ctx, init);
       }
     }
   }
@@ -448,6 +478,20 @@ function getReturnExpression(fn: ts.FunctionExpression | ts.ArrowFunction): ts.E
     if (ts.isReturnStatement(stmt) && stmt.expression) return stmt.expression;
   }
   return undefined;
+}
+
+/**
+ * Strip surrounding parentheses from an expression. The arrow form
+ * `() => ({})` parses as `ParenthesizedExpression(ObjectLiteralExpression)`,
+ * which the object-literal/array-literal probes in `tryStaticToNumber` would
+ * otherwise miss. Used to recognize "function returns a non-primitive" cases
+ * for the ToPrimitive folding logic (#1253).
+ */
+function unwrapParens(expr: ts.Expression | undefined): ts.Expression | undefined {
+  while (expr && ts.isParenthesizedExpression(expr)) {
+    expr = expr.expression;
+  }
+  return expr;
 }
 
 function isStaticNaN(ctx: CodegenContext, expr: ts.Expression): boolean {

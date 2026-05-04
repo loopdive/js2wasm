@@ -15,8 +15,8 @@ import {
 import { dirname, join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname, "..");
-const PLAYGROUND_DIST = join(ROOT, "playground-dist");
-const PAGES_DIST = join(ROOT, "pages-dist");
+const PLAYGROUND_DIST = join(ROOT, "dist", "playground");
+const PAGES_DIST = join(ROOT, "dist", "pages");
 const DASHBOARD_DIR = join(ROOT, "dashboard");
 const PLAN_DIR = join(ROOT, "plan");
 const BENCHMARKS_RESULTS_DIR = join(ROOT, "benchmarks", "results");
@@ -308,14 +308,17 @@ writeJson(join(PLAYGROUND_APP_DATA_DIR, "test262-index-summary.json"), test262Da
 writeJson(join(PLAYGROUND_APP_DATA_DIR, "test262-files.json"), test262Data.filesJson);
 writeJson(join(PLAYGROUND_APP_DATA_DIR, "test262-file-results.json"), test262Data.resultsJson);
 
-copyFileIfExists(
-  join(PUBLIC_BENCH, "playground-benchmark-sidebar.json"),
-  join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "playground-benchmark-sidebar.json"),
-);
-copyFileIfExists(
-  join(PUBLIC_BENCH, "loadtime-benchmarks.json"),
-  join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "loadtime-benchmarks.json"),
-);
+// Landing page (top-level) and playground both reference these JSONs.
+// The canonical source lives in benchmarks/results/ (committed); fall back to
+// public/benchmarks/results/ for any files curated there.
+const TOP_BENCH_RESULTS = join(PAGES_DIST, "benchmarks", "results");
+for (const fileName of ["playground-benchmark-sidebar.json", "loadtime-benchmarks.json", "size-benchmarks.json"]) {
+  const source = resolvePreferredFileOrNull(join(BENCHMARKS_RESULTS_DIR, fileName), join(PUBLIC_BENCH, fileName));
+  if (source) {
+    copyFile(source, join(TOP_BENCH_RESULTS, fileName));
+    copyFile(source, join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, fileName));
+  }
+}
 if (existsSync(join(PUBLIC_BENCH, "loadtime"))) {
   copyDirectory(join(PUBLIC_BENCH, "loadtime"), join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "loadtime"));
 }
@@ -326,19 +329,31 @@ copyFileIfExists(
   join(PAGES_DIST, "benchmarks", "results", "test262-report.json"),
   join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "test262-report.json"),
 );
-copyFileIfExists(
-  join(PUBLIC_BENCH, "size-benchmarks.json"),
-  join(PLAYGROUND_BENCHMARKS_RESULTS_DIR, "size-benchmarks.json"),
-);
+
+// Iframe nav-sync glue (referenced from the landing page header at /).
+copyFileIfExists(join(ROOT, "frame-nav-sync.js"), join(PAGES_DIST, "frame-nav-sync.js"));
 
 // Disable Jekyll processing so all generated assets are published as-is.
 writeFileSync(join(PAGES_DIST, ".nojekyll"), "");
+
+// Emit CNAME so the GitHub Pages custom domain (js2.loopdive.com) survives
+// every re-deploy. GitHub Pages reads this file from the deployed artifact
+// and points the Pages site at the custom domain. Bare hostname only —
+// no scheme, trailing newline. See plan/issues/sprints/46/1188.md.
+writeFileSync(join(PAGES_DIST, "CNAME"), "js2.loopdive.com\n");
 
 // Copy web components to pages-dist root and dashboard
 const COMPONENTS_DIR = join(ROOT, "components");
 for (const file of ["site-nav.js", "t262-charts.js", "trend-chart.js", "perf-benchmark-chart.js"]) {
   copyFileIfExists(join(COMPONENTS_DIR, file), join(PAGES_DIST, "components", file));
 }
+
+// Render ADR markdown → HTML pages so the landing page can link to
+// on-origin /js2wasm/docs/adr/*.html instead of broken raw .md URLs.
+// `buildAdrPages` is gated behind isMainModule in build-adr-html.mjs, so
+// `await import(...)` alone is a no-op — call the export explicitly.
+const { buildAdrPages } = await import("./build-adr-html.mjs");
+buildAdrPages();
 
 // Copy sprint-stats.json to dashboard data when dashboard artifacts exist.
 if (hasDashboardBundle) {

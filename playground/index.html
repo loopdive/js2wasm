@@ -520,7 +520,14 @@
         padding: 0 14px;
         position: relative;
         cursor: grab;
-        touch-action: none;
+        /* #1237 — pan-x lets the tab bar scroll horizontally on touch when it
+         * overflows; the JS pointermove handler still hijacks vertical drags
+         * (dy > dx) into a tab move. With `touch-action: none` the browser
+         * never delivered scroll gestures to the bar, so a horizontal swipe
+         * would always trigger the drag-to-reorder path even when the user
+         * just wanted to scroll among many tabs.
+         */
+        touch-action: pan-x;
         font-size: 12px;
         color: var(--muted-text);
         border-right: 1px solid var(--separator-color);

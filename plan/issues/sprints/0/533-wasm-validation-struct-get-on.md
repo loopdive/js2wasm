@@ -1,0 +1,33 @@
+---
+id: 533
+sprint: 0
+title: "Wasm validation: struct.get on null ref type (125 CE)"
+status: done
+created: 2026-03-18
+updated: 2026-04-14
+completed: 2026-04-14
+priority: medium
+feasibility: medium
+goal: core-semantics
+test262_ce: 125
+files:
+  src/codegen/expressions.ts:
+    new: []
+    breaking:
+      - "struct.get — emit ref.as_non_null or null check before access on nullable refs"
+---
+# #533 — Wasm validation: struct.get on null ref type (125 CE)
+
+## Status: in-progress
+
+125 tests fail Wasm validation with "struct.get[0] expected type (ref null N), found ref.null of type externref" -- the compiler emits struct.get on externref null because object literal method parameters with binding patterns (ArrayBindingPattern, ObjectBindingPattern) were not being destructured.
+
+## Root Cause
+
+Object literal methods in `compileObjectLiteralForStruct` (expressions.ts ~16550) name binding-pattern params as `__param0` but never emit destructuring code to extract individual bindings into locals. When the method body references the destructured bindings (e.g. `x.length` from `method([...x])`), the compiler cannot find them in the local map and falls back to emitting `ref.null.extern`, which fails Wasm validation when used with `struct.get`.
+
+## Fix
+
+Added parameter destructuring for object literal methods by calling `destructureParamObject`/`destructureParamArray` after `emitMethodParamDefaults`. These functions were already implemented in `index.ts` for class methods and standalone functions but were not exported or used for object literal methods.
+
+## Complexity: S

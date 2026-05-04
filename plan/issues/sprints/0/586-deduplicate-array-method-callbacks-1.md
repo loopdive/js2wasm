@@ -1,0 +1,68 @@
+---
+id: 586
+sprint: 0
+title: "Deduplicate array method callbacks (~1,500 lines)"
+status: done
+created: 2026-03-19
+updated: 2026-04-14
+completed: 2026-03-19
+priority: medium
+feasibility: medium
+goal: maintainability
+required_by: [591]
+files:
+  src/codegen/expressions.ts:
+    new:
+      - "setupArrayCallback — shared callback compilation (closure or host bridge)"
+      - "setupArrayLoop — shared receiver/vec/data/len/i setup"
+      - "buildClosureCallInstrs — shared closure call_ref instruction builder"
+      - "buildBridgeCallInstrs — shared host bridge call instruction builder"
+      - "buildTruthyCheck / buildFalsyCheck — shared truthiness/falsiness check"
+      - "buildCallAndCheck — combined call + check helper"
+      - "emitArrayLoop / loopExitCheck / loopIncrement — shared loop structure"
+    breaking:
+      - "forEach, filter, map, reduce, find, findIndex, some, every refactored to use shared helpers"
+---
+# #586 — Deduplicate array method callbacks (~1,500 lines)
+
+## Status: review
+
+`forEach`, `filter`, `map`, `reduce`, `find`, `findIndex`, `some`, `every` (expressions.ts) each implement nearly identical logic:
+
+1. Get array length
+2. Loop from 0 to length
+3. Extract element + coerce type
+4. Call callback with (element, index, array)
+5. Use return value (filter: push if truthy, map: push result, reduce: accumulate, etc.)
+
+Steps 1-4 are identical across all 8 methods. Only step 5 differs.
+
+## Implementation Summary
+
+### What was done
+
+Extracted shared helper functions to eliminate duplication across 8 callback-based array methods:
+
+- `setupArrayCallback()` — compiles the callback argument, sets up either closure (call_ref) path or host bridge fallback
+- `setupArrayLoop()` — compiles receiver, extracts vec/data/len, allocates loop locals, sets i=0
+- `buildClosureCallInstrs()` / `buildBridgeCallInstrs()` — build the Wasm instructions for invoking the callback
+- `buildTruthyCheck()` / `buildFalsyCheck()` — build truthiness/falsiness check instructions based on return type
+- `buildCallAndCheck()` — combines call + check for convenience
+- `emitArrayLoop()` / `loopExitCheck()` / `loopIncrement()` — shared loop structure
+
+Each method (filter, map, reduce, forEach, find, findIndex, some, every) was refactored to use these helpers, keeping only their unique per-iteration logic.
+
+### Results
+- File reduced from 22,951 to 22,405 lines (net -546 lines)
+- The 8 methods went from ~1,332 lines to ~786 lines (including ~250 lines of shared helpers)
+- All existing tests pass with no regressions
+
+### What worked
+- Starting with the shared helper approach rather than trying to unify the loop bodies
+- Keeping `reduce` separate since it has a fundamentally different callback signature (2-arg)
+- Using discriminated union for `elemSource` parameter (`local` vs `inline`) to handle the two element loading patterns
+
+### Files changed
+- `src/codegen/expressions.ts` — extracted shared helpers, refactored 8 methods
+
+## Complexity: M

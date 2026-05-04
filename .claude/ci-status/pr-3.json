@@ -1,0 +1,15 @@
+{
+  "pr": 3,
+  "conclusion": "success",
+  "head_branch": "codex/report-timeline-polish-lfs",
+  "head_sha": "dbfe9189aed59409fd41bd25b293f5ada573fe00",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24855852217",
+  "timestamp": "2026-04-23T20:06:42Z",
+  "pass": 24483,
+  "fail": 13700,
+  "compile_error": 3621,
+  "snapshot_delta": 0,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}

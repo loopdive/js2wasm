@@ -1,0 +1,36 @@
+---
+id: 646
+sprint: 0
+title: "Residual undefined .kind: more AST node handlers (5,329 CE)"
+status: done
+created: 2026-03-19
+updated: 2026-04-14
+completed: 2026-04-14
+priority: high
+feasibility: medium
+goal: generator-model
+depends_on: [619]
+test262_ce: 5329
+files:
+  src/codegen/expressions.ts:
+    breaking:
+      - "add handlers for more AST node types"
+  src/codegen/statements.ts:
+    breaking:
+      - "add handlers for more AST node types"
+---
+# #646 — Residual undefined .kind: more AST node handlers (5,329 CE)
+
+## Status: open
+
+5,329 tests still hit the null guard from #611/#619. The remaining unhandled AST node types include:
+- Async generator method parameters
+- Decorator expressions
+- Computed class field initializers with complex expressions
+- Optional chain in various positions
+- Template literal expressions in certain contexts
+
+### Fix
+Analyze the most common line numbers to identify which AST patterns need handlers. Add cases to compileExpression/compileStatement switch.
+
+## Complexity: M

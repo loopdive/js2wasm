@@ -3,9 +3,19 @@
 import { createRequire } from "node:module";
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
-import { compile } from "./index.js";
 
 const args = process.argv.slice(2);
+
+// `--ts7` swaps the parser/checker frontend to `@typescript/native-preview`
+// (TS7 Go-port preview, #1288). The decision is made by `src/ts-api.ts` at
+// module-load time, so the env var MUST be set before any compiler imports
+// resolve. We use a dynamic import below for that reason.
+if (args.includes("--ts7")) {
+  process.env.JS2WASM_TS7 = "1";
+}
+
+const { compile } = await import("./index.js");
+const { buildDefaultDefines } = await import("./compiler/define-substitution.js");
 
 if (args.includes("--version") || args.includes("-v")) {
   const require = createRequire(import.meta.url);
@@ -28,6 +38,17 @@ Options:
   --wit             Generate WIT interface file for Component Model
   -O, --optimize    Run Binaryen wasm-opt optimizer (default: -O3)
   -O1..-O4          Set optimization level (1-4)
+  --define K=V      Substitute identifier path K with literal V before parsing.
+                    Repeatable. Example:
+                      --define process.env.NODE_ENV='"production"'
+                    String values must include their own quotes.
+  --mode <m>        Shorthand for --define-style production/development build.
+                    'production' sets process.env.NODE_ENV="production" and
+                    typeof process / typeof window to "undefined".
+                    'development' sets process.env.NODE_ENV="development".
+  --ts7             Use @typescript/native-preview (TypeScript 7 Go-port) as
+                    the parser/checker frontend (preview; full migration
+                    tracked in #1029). Equivalent to JS2WASM_TS7=1.
   -v, --version     Print version and exit
   -h, --help        Show this help
 
@@ -48,6 +69,7 @@ let watOnly = false;
 let optimize: boolean | 1 | 2 | 3 | 4 = false;
 let target: "gc" | "linear" | "wasi" | undefined;
 let emitWit = false;
+const defines: Record<string, string> = {};
 
 for (let i = 0; i < args.length; i++) {
   const arg = args[i]!;
@@ -73,6 +95,36 @@ for (let i = 0; i < args.length; i++) {
     optimize = true;
   } else if (/^-O[1-4]$/.test(arg)) {
     optimize = parseInt(arg.slice(2)) as 1 | 2 | 3 | 4;
+  } else if (arg === "--define") {
+    const kv = args[++i];
+    if (!kv) {
+      console.error("--define requires a KEY=VALUE argument");
+      process.exit(1);
+    }
+    const eq = kv.indexOf("=");
+    if (eq < 0) {
+      console.error(`--define expected KEY=VALUE, got: ${kv}`);
+      process.exit(1);
+    }
+    defines[kv.slice(0, eq)] = kv.slice(eq + 1);
+  } else if (arg.startsWith("--define=")) {
+    const kv = arg.slice("--define=".length);
+    const eq = kv.indexOf("=");
+    if (eq < 0) {
+      console.error(`--define expected KEY=VALUE, got: ${kv}`);
+      process.exit(1);
+    }
+    defines[kv.slice(0, eq)] = kv.slice(eq + 1);
+  } else if (arg === "--mode") {
+    const m = args[++i];
+    if (m !== "production" && m !== "development") {
+      console.error(`Unknown --mode: ${m} (expected production or development)`);
+      process.exit(1);
+    }
+    Object.assign(defines, buildDefaultDefines(m));
+  } else if (arg === "--ts7") {
+    // Already handled above (env var was set before dynamic import).
+    // No-op here so the unknown-option fallback below doesn't trigger.
   } else if (!arg.startsWith("-")) {
     inputPath = arg;
   } else {
@@ -95,6 +147,7 @@ const result = compile(source, {
   ...(optimize ? { optimize } : {}),
   ...(target ? { target } : {}),
   ...(emitWit ? { wit: true } : {}),
+  ...(Object.keys(defines).length > 0 ? { define: defines } : {}),
 });
 
 if (!result.success) {

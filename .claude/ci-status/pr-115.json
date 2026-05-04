@@ -1,15 +1,17 @@
 {
   "pr": 115,
-  "conclusion": "success",
-  "head_branch": "issue-1087-walk-instructions-iterative",
-  "head_sha": "54b79181db5ae9b4570b20913c3a87b2a2ba6783",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24291132130",
-  "timestamp": "2026-04-11T20:43:15Z",
-  "pass": 20624,
-  "fail": 16636,
-  "compile_error": 4561,
-  "snapshot_delta": 0,
+  "conclusion": "failure",
+  "head_branch": "issue-1221-wasm-exception-harness",
+  "head_sha": "65098e5d41366ab83bd114e1dff2a857f16a67ea",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25191951753",
+  "timestamp": "2026-04-30T22:29:28Z",
+  "pass": 25842,
+  "fail": 13927,
+  "compile_error": 1758,
+  "snapshot_delta": 3,
   "net_per_test": 0,
-  "regressions": 0,
-  "improvements": 0
+  "regressions": 138,
+  "regressions_real": 39,
+  "compile_timeouts": 99,
+  "improvements": 138
 }

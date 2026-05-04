@@ -5,7 +5,7 @@
  *
  * Extracted from codegen/index.ts (#1013).
  */
-import ts from "typescript";
+import { ts, forEachChild } from "../ts-api.js";
 import {
   isBigIntType,
   isBooleanType,
@@ -22,10 +22,12 @@ import { ensureWrapperTypes } from "./any-helpers.js";
 import { collectClassDeclaration, compileClassBodies } from "./class-bodies.js";
 import { reportError } from "./context/errors.js";
 import type { CodegenContext, FunctionContext, OptionalParamInfo } from "./context/types.js";
-import { bodyUsesArguments, compileFunctionBody, registerInlinableFunction } from "./function-body.js";
+import { compileFunctionBody, registerInlinableFunction } from "./function-body.js";
+import { bodyUsesArguments } from "./helpers/body-uses-arguments.js";
 import {
   addArrayIteratorImports,
   addForInImports,
+  addGeneratorImports,
   addIteratorImports,
   addStringImports,
   addUnionImports,
@@ -53,6 +55,7 @@ import {
   getOrRegisterTemplateVecType,
   getOrRegisterVecType,
 } from "./registry/types.js";
+import { computeElidableTopLevelTdzNames } from "./expressions/identifiers.js";
 import { compileExpression, compileStatement } from "./shared.js";
 
 /** Accumulated state for the single-pass collector */
@@ -237,6 +240,18 @@ export function unifiedVisitNode(ctx: CodegenContext, state: UnifiedCollectorSta
     const prop = node.expression;
     const receiverType = ctx.checker.getTypeAtLocation(prop.expression);
     const methodName = prop.name.text;
+    // #1215: Array<number>.join() / Array<number>.toString() must coerce each
+    // element to a string before concatenation. Without `number_toString` registered,
+    // compileArrayJoin silently drops the f64→externref conversion and emits a Wasm
+    // module that fails validation with "local.set[0] expected externref, found
+    // array.get of type f64". Register the import here so the codegen path can
+    // emit the call.
+    if (methodName === "join" || methodName === "toString") {
+      const elemType = receiverType.getNumberIndexType();
+      if (elemType && (isNumberType(elemType) || isBooleanType(elemType) || isBigIntType(elemType))) {
+        state.primitiveNeeded.add("number_toString");
+      }
+    }
     if (isNumberType(receiverType) && methodName === "toString") {
       state.primitiveNeeded.add("number_toString");
     }
@@ -739,11 +754,11 @@ export function unifiedVisitNode(ctx: CodegenContext, state: UnifiedCollectorSta
   // Track computed property name depth for string literal collection
   if (ts.isComputedPropertyName(node)) {
     state.insideComputedPropertyName++;
-    ts.forEachChild(node, (child) => unifiedVisitNode(ctx, state, child));
+    forEachChild(node, (child) => unifiedVisitNode(ctx, state, child));
     state.insideComputedPropertyName--;
     return; // already recursed
   }
-  ts.forEachChild(node, (child) => unifiedVisitNode(ctx, state, child));
+  forEachChild(node, (child) => unifiedVisitNode(ctx, state, child));
 }
 
 /** Run all post-walk finalization (register imports based on collected state) */
@@ -1009,53 +1024,12 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
   }
 
   // ── collectGeneratorImports finalize ──
-  if (state.generatorFound && !ctx.funcMap.has("__gen_create_buffer")) {
-    const bufType = addFuncType(ctx, [], [{ kind: "externref" }]);
-    addImport(ctx, "env", "__gen_create_buffer", { kind: "func", typeIdx: bufType });
-
-    const pushF64Type = addFuncType(ctx, [{ kind: "externref" }, { kind: "f64" }], []);
-    addImport(ctx, "env", "__gen_push_f64", { kind: "func", typeIdx: pushF64Type });
-
-    const pushI32Type = addFuncType(ctx, [{ kind: "externref" }, { kind: "i32" }], []);
-    addImport(ctx, "env", "__gen_push_i32", { kind: "func", typeIdx: pushI32Type });
-
-    const pushRefType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], []);
-    addImport(ctx, "env", "__gen_push_ref", { kind: "func", typeIdx: pushRefType });
-
-    // __gen_yield_star: (externref, externref) → void  (iterates inner iterable, pushes all values into outer buffer)
-    addImport(ctx, "env", "__gen_yield_star", {
-      kind: "func",
-      typeIdx: pushRefType, // same signature as push_ref: (buf, iterable) → void
-    });
-
-    // __create_generator: (buf: externref, pendingThrow: externref) -> externref
-    // Takes a buffer of yielded values and an optional pending exception,
-    // returns a Generator-like object that defers the throw to the first next() call.
-    const createGenType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
-    addImport(ctx, "env", "__create_generator", { kind: "func", typeIdx: createGenType });
-    // __create_async_generator: same Wasm signature as __create_generator, but .next()/.return()/.throw()
-    // return Promise-wrapped results as required by the ES spec for async generators.
-    addImport(ctx, "env", "__create_async_generator", { kind: "func", typeIdx: createGenType });
-    const genType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
-    addImport(ctx, "env", "__gen_next", { kind: "func", typeIdx: genType });
-
-    const genReturnType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
-    addImport(ctx, "env", "__gen_return", { kind: "func", typeIdx: genReturnType });
-    addImport(ctx, "env", "__gen_throw", { kind: "func", typeIdx: genReturnType });
-
-    addImport(ctx, "env", "__gen_result_value", { kind: "func", typeIdx: genType });
-
-    const resultValF64Type = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "f64" }]);
-    addImport(ctx, "env", "__gen_result_value_f64", { kind: "func", typeIdx: resultValF64Type });
-
-    const resultDoneType = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "i32" }]);
-    addImport(ctx, "env", "__gen_result_done", { kind: "func", typeIdx: resultDoneType });
-
-    // Ensure __get_caught_exception is available for generator body try/catch wrappers
-    if (!ctx.funcMap.has("__get_caught_exception")) {
-      const getCaughtType = addFuncType(ctx, [], [{ kind: "externref" }]);
-      addImport(ctx, "env", "__get_caught_exception", { kind: "func", typeIdx: getCaughtType });
-    }
+  // The full set of generator host imports lives in `addGeneratorImports`
+  // (in `./index.ts`) so the IR path can call the same helper when it
+  // claims a generator function (#1169f). The helper is idempotent —
+  // guards on `ctx.funcMap.has("__gen_create_buffer")` internally.
+  if (state.generatorFound) {
+    addGeneratorImports(ctx);
   }
 
   // ── collectIteratorImports finalize ──
@@ -1167,10 +1141,10 @@ export function resolveGenericCallSiteTypes(
         found = { params, results };
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
-  ts.forEachChild(sourceFile, visit);
+  forEachChild(sourceFile, visit);
   return found;
 }
 
@@ -1215,11 +1189,391 @@ export function inferParamTypeFromCallSites(
         }
       }
     }
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
-  ts.forEachChild(sourceFile, visit);
+  forEachChild(sourceFile, visit);
   return conflict ? null : agreed;
+}
+
+/**
+ * #1121: Fallback param-type inference from body usage. Used when
+ * `inferParamTypeFromCallSites` finds no call sites (e.g. an exported
+ * entrypoint that is only called from JS host) but the function body
+ * itself reveals how the parameter is used.
+ *
+ * Recognises three numeric-flow patterns:
+ *  1. `param` passed as an argument to a function whose return is in
+ *     `ctx.numericReturnTypes` (the recursive numeric kernels detected
+ *     by inferNumericReturnTypes).
+ *  2. `param` used as an operand of a numeric binary operator
+ *     (+, -, *, /, %, **, |, &, ^, <<, >>, >>>, ToInt32 coercion).
+ *  3. `param` used as a numeric loop bound / comparison operand
+ *     (<, <=, >, >=).
+ *
+ * Returns null if none of those patterns are found, leaving the param
+ * unchanged. This is intentionally conservative — the call-site path
+ * is still preferred when it has information.
+ */
+export function inferParamTypeFromBody(
+  ctx: CodegenContext,
+  decl: ts.FunctionLikeDeclaration,
+  paramIndex: number,
+): ValType | null {
+  if (!decl.body) return null;
+  const param = decl.parameters[paramIndex];
+  if (!param || !ts.isIdentifier(param.name)) return null;
+  const paramName = param.name.text;
+
+  let foundNumericUse = false;
+  function visit(node: ts.Node) {
+    if (foundNumericUse) return;
+    // Don't descend into nested functions — the param doesn't propagate there
+    // unless captured, and we don't track capture flow here.
+    if (
+      node !== decl &&
+      (ts.isFunctionDeclaration(node) ||
+        ts.isFunctionExpression(node) ||
+        ts.isArrowFunction(node) ||
+        ts.isMethodDeclaration(node) ||
+        ts.isAccessor(node) ||
+        ts.isConstructorDeclaration(node))
+    ) {
+      return;
+    }
+
+    // (1) param passed to a known numeric function
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
+      const calleeName = node.expression.text;
+      if (ctx.numericReturnTypes?.has(calleeName)) {
+        for (const arg of node.arguments) {
+          if (ts.isIdentifier(arg) && arg.text === paramName) {
+            foundNumericUse = true;
+            return;
+          }
+        }
+      }
+    }
+
+    // (2) param used in a numeric binary expression
+    if (ts.isBinaryExpression(node)) {
+      const op = node.operatorToken.kind;
+      const numericOps = new Set<ts.SyntaxKind>([
+        ts.SyntaxKind.PlusToken,
+        ts.SyntaxKind.MinusToken,
+        ts.SyntaxKind.AsteriskToken,
+        ts.SyntaxKind.AsteriskAsteriskToken,
+        ts.SyntaxKind.SlashToken,
+        ts.SyntaxKind.PercentToken,
+        ts.SyntaxKind.AmpersandToken,
+        ts.SyntaxKind.BarToken,
+        ts.SyntaxKind.CaretToken,
+        ts.SyntaxKind.LessThanLessThanToken,
+        ts.SyntaxKind.GreaterThanGreaterThanToken,
+        ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken,
+        ts.SyntaxKind.LessThanToken,
+        ts.SyntaxKind.LessThanEqualsToken,
+        ts.SyntaxKind.GreaterThanToken,
+        ts.SyntaxKind.GreaterThanEqualsToken,
+      ]);
+      if (numericOps.has(op)) {
+        const isParamId = (e: ts.Expression): boolean => ts.isIdentifier(e) && e.text === paramName;
+        // Skip when the OTHER operand is a string literal — `+` could mean
+        // string concatenation. The TS checker will already have given us
+        // a string-typed param in that case, so this guard is defensive.
+        if (op === ts.SyntaxKind.PlusToken) {
+          if (
+            (isParamId(node.left) && !ts.isStringLiteral(node.right)) ||
+            (isParamId(node.right) && !ts.isStringLiteral(node.left))
+          ) {
+            foundNumericUse = true;
+            return;
+          }
+        } else {
+          if (isParamId(node.left) || isParamId(node.right)) {
+            foundNumericUse = true;
+            return;
+          }
+        }
+      }
+    }
+
+    forEachChild(node, visit);
+  }
+  forEachChild(decl.body, visit);
+  return foundNumericUse ? { kind: "f64" } : null;
+}
+
+/**
+ * #1121: Infer numeric (f64) return types for functions whose body is a
+ * purely-numeric kernel even when TypeScript reports the return as
+ * `any`/`unknown` (e.g. unannotated recursive helpers like
+ * `function fib(n) { ... }`).
+ *
+ * We do a fixpoint over the entire source file:
+ *  1. Seed: every function declaration whose TS return type is implicit
+ *     any/unknown becomes a candidate for f64 promotion (assuming numeric).
+ *  2. Iterate: a candidate stays in the set only while every `return X`
+ *     in its body produces a value whose type is structurally numeric
+ *     under the assumption that all other candidates also return f64.
+ *  3. The fixpoint converges in O(N * passes) where passes is bounded by
+ *     the number of candidates.
+ *
+ * This intentionally does NOT consider parameter types — by the time we
+ * are called, the param-inference pass has already retyped each
+ * implicit-any parameter via `inferParamTypeFromCallSites`. We only need
+ * to fix the return-type side, which is what TS gives up on for
+ * recursive numeric kernels.
+ */
+export function inferNumericReturnTypes(ctx: CodegenContext, sourceFile: ts.SourceFile): Map<string, ValType> {
+  // Collect all function declarations whose return type TS reports as any/unknown.
+  // These are the only functions we may promote.
+  const candidates = new Map<string, ts.FunctionDeclaration>();
+  function collectFns(node: ts.Node) {
+    if (ts.isFunctionDeclaration(node) && node.name && node.body) {
+      // Skip if explicit return type annotation is present
+      if (node.type) {
+        return; // explicit annotation — TS already told us the answer
+      }
+      // Skip generator/async functions — return type semantics differ
+      if (node.asteriskToken || node.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword)) {
+        return;
+      }
+      const sig = ctx.checker.getSignatureFromDeclaration(node);
+      if (!sig) return;
+      const retType = ctx.checker.getReturnTypeOfSignature(sig);
+      const isImplicitAny = (retType.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0;
+      if (isImplicitAny) {
+        candidates.set(node.name.text, node);
+      }
+    }
+    forEachChild(node, collectFns);
+  }
+  forEachChild(sourceFile, collectFns);
+  if (candidates.size === 0) return new Map();
+
+  // Inference set: starts with all candidates, and shrinks as we eliminate
+  // any whose body cannot uniformly return numeric.
+  const numeric = new Set<string>(candidates.keys());
+
+  /**
+   * Returns true if `expr` produces a value that is structurally numeric
+   * under the optimistic assumption that every name in `numeric` returns
+   * f64.
+   *
+   * Conservative: any unrecognised construct returns false. A depth
+   * guard (MAX_DEPTH = 64) bails out for pathological deeply-nested
+   * source — the answer for those is conservatively `false`, leaving the
+   * function on its TS-derived return type. This keeps the inference
+   * runtime worst-case O(body_size) per call instead of growing with
+   * unbounded source-AST depth.
+   */
+  const MAX_NUMERIC_DEPTH = 64;
+  function isNumericExpr(expr: ts.Expression, paramNames: Set<string>, depth = 0): boolean {
+    if (depth > MAX_NUMERIC_DEPTH) return false;
+    if (ts.isParenthesizedExpression(expr)) {
+      return isNumericExpr(expr.expression, paramNames, depth + 1);
+    }
+    if (ts.isAsExpression(expr) || ts.isTypeAssertionExpression(expr) || ts.isNonNullExpression(expr)) {
+      return isNumericExpr(expr.expression, paramNames, depth + 1);
+    }
+    if (ts.isNumericLiteral(expr)) return true;
+    if (expr.kind === ts.SyntaxKind.TrueKeyword || expr.kind === ts.SyntaxKind.FalseKeyword) return true;
+    if (ts.isPrefixUnaryExpression(expr)) {
+      const o = expr.operator;
+      if (o === ts.SyntaxKind.PlusToken || o === ts.SyntaxKind.MinusToken || o === ts.SyntaxKind.TildeToken) {
+        return isNumericExpr(expr.operand, paramNames, depth + 1);
+      }
+      if (o === ts.SyntaxKind.ExclamationToken) {
+        return true; // !X is boolean → i32, treat as numeric
+      }
+      return false;
+    }
+    if (ts.isPostfixUnaryExpression(expr)) {
+      // ++ / -- on a numeric local
+      return isNumericExpr(expr.operand, paramNames, depth + 1);
+    }
+    if (ts.isBinaryExpression(expr)) {
+      const op = expr.operatorToken.kind;
+      const numericOps = new Set<ts.SyntaxKind>([
+        ts.SyntaxKind.PlusToken,
+        ts.SyntaxKind.MinusToken,
+        ts.SyntaxKind.AsteriskToken,
+        ts.SyntaxKind.AsteriskAsteriskToken,
+        ts.SyntaxKind.SlashToken,
+        ts.SyntaxKind.PercentToken,
+        ts.SyntaxKind.AmpersandToken,
+        ts.SyntaxKind.BarToken,
+        ts.SyntaxKind.CaretToken,
+        ts.SyntaxKind.LessThanLessThanToken,
+        ts.SyntaxKind.GreaterThanGreaterThanToken,
+        ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken,
+      ]);
+      const cmpOps = new Set<ts.SyntaxKind>([
+        ts.SyntaxKind.LessThanToken,
+        ts.SyntaxKind.LessThanEqualsToken,
+        ts.SyntaxKind.GreaterThanToken,
+        ts.SyntaxKind.GreaterThanEqualsToken,
+        ts.SyntaxKind.EqualsEqualsEqualsToken,
+        ts.SyntaxKind.ExclamationEqualsEqualsToken,
+        ts.SyntaxKind.EqualsEqualsToken,
+        ts.SyntaxKind.ExclamationEqualsToken,
+      ]);
+      if (numericOps.has(op)) {
+        return isNumericExpr(expr.left, paramNames, depth + 1) && isNumericExpr(expr.right, paramNames, depth + 1);
+      }
+      if (cmpOps.has(op)) {
+        // Comparisons return boolean (i32), counted as numeric for our purposes.
+        return isNumericExpr(expr.left, paramNames, depth + 1) && isNumericExpr(expr.right, paramNames, depth + 1);
+      }
+      // && / || / ?? return one of the operand types — accept only when both are numeric
+      if (
+        op === ts.SyntaxKind.AmpersandAmpersandToken ||
+        op === ts.SyntaxKind.BarBarToken ||
+        op === ts.SyntaxKind.QuestionQuestionToken
+      ) {
+        return isNumericExpr(expr.left, paramNames, depth + 1) && isNumericExpr(expr.right, paramNames, depth + 1);
+      }
+      return false;
+    }
+    if (ts.isConditionalExpression(expr)) {
+      return (
+        isNumericExpr(expr.whenTrue, paramNames, depth + 1) && isNumericExpr(expr.whenFalse, paramNames, depth + 1)
+      );
+    }
+    if (ts.isIdentifier(expr)) {
+      // Param of the function being checked → assumed numeric (we only run
+      // this analysis when all params are already numeric).
+      if (paramNames.has(expr.text)) return true;
+      // Other identifiers: rely on the TS checker. This catches
+      // numeric local variables, numeric module globals, etc. Implicit-any
+      // identifiers fail this test (return false) — that is the safe answer.
+      const t = ctx.checker.getTypeAtLocation(expr);
+      if (
+        (t.flags &
+          (ts.TypeFlags.Number | ts.TypeFlags.NumberLiteral | ts.TypeFlags.Boolean | ts.TypeFlags.BooleanLiteral)) !==
+        0
+      ) {
+        return true;
+      }
+      return false;
+    }
+    if (ts.isCallExpression(expr) && ts.isIdentifier(expr.expression)) {
+      const calleeName = expr.expression.text;
+      // Self-recursion / mutual recursion within our candidate set → assumed numeric
+      if (numeric.has(calleeName)) {
+        // Also require all arguments to be numeric (body still needs to
+        // produce numeric values for the call to be a numeric kernel call)
+        return expr.arguments.every((a) => isNumericExpr(a as ts.Expression, paramNames, depth + 1));
+      }
+      // Any other call: trust TS's reported return type
+      const t = ctx.checker.getTypeAtLocation(expr);
+      if (
+        (t.flags &
+          (ts.TypeFlags.Number | ts.TypeFlags.NumberLiteral | ts.TypeFlags.Boolean | ts.TypeFlags.BooleanLiteral)) !==
+        0
+      ) {
+        return true;
+      }
+      return false;
+    }
+    return false;
+  }
+
+  // One-time scan: collect all return expressions inside each candidate's
+  // body, plus the param-name set and a precomputed param-numericness
+  // check. Caching these means the fixpoint loop below does NOT re-walk
+  // the AST on each iteration — it only re-runs `isNumericExpr` against
+  // the cached return expressions. This bounds total work to O(candidates
+  // × cached returns × MAX_NUMERIC_DEPTH) instead of repeating an O(body
+  // size) walk per candidate per iteration.
+  type FnInfo = {
+    paramNames: Set<string>;
+    returns: ts.Expression[];
+    sawBareReturn: boolean;
+    paramsAllNumeric: boolean;
+  };
+  const fnInfo = new Map<string, FnInfo>();
+  for (const [fnName, fnDecl] of candidates) {
+    const paramNames = new Set<string>();
+    let paramsAllNumeric = true;
+    for (const p of fnDecl.parameters) {
+      if (ts.isIdentifier(p.name)) paramNames.add(p.name.text);
+      const pt = ctx.checker.getTypeAtLocation(p);
+      const isNumericTs =
+        (pt.flags &
+          (ts.TypeFlags.Number | ts.TypeFlags.NumberLiteral | ts.TypeFlags.Boolean | ts.TypeFlags.BooleanLiteral)) !==
+        0;
+      const isImplicitAny = !p.type && (pt.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0;
+      if (!isNumericTs && !isImplicitAny) {
+        paramsAllNumeric = false;
+      }
+    }
+    const returns: ts.Expression[] = [];
+    let sawBareReturn = false;
+    if (fnDecl.body) {
+      const visit = (node: ts.Node): void => {
+        // Don't descend into nested function-likes — their returns belong to them
+        if (
+          node !== fnDecl &&
+          (ts.isFunctionDeclaration(node) ||
+            ts.isFunctionExpression(node) ||
+            ts.isArrowFunction(node) ||
+            ts.isMethodDeclaration(node) ||
+            ts.isAccessor(node) ||
+            ts.isConstructorDeclaration(node))
+        ) {
+          return;
+        }
+        if (ts.isReturnStatement(node)) {
+          if (node.expression) {
+            returns.push(node.expression);
+          } else {
+            sawBareReturn = true;
+          }
+        }
+        forEachChild(node, visit);
+      };
+      forEachChild(fnDecl.body, visit);
+    }
+    fnInfo.set(fnName, { paramNames, returns, sawBareReturn, paramsAllNumeric });
+  }
+
+  // Iterate to fixpoint: drop candidates that fail under the current set.
+  // The set can only shrink, so the loop terminates in <= candidates.size
+  // iterations. Each iteration is O(candidates × cached returns ×
+  // MAX_NUMERIC_DEPTH) — no repeated AST walks of the function bodies.
+  let changed = true;
+  let safety = candidates.size + 1;
+  while (changed && safety-- > 0) {
+    changed = false;
+    for (const fnName of candidates.keys()) {
+      if (!numeric.has(fnName)) continue;
+      const info = fnInfo.get(fnName)!;
+      if (!info.paramsAllNumeric || info.sawBareReturn || info.returns.length === 0) {
+        numeric.delete(fnName);
+        changed = true;
+        continue;
+      }
+      let allNumeric = true;
+      for (const r of info.returns) {
+        if (!isNumericExpr(r, info.paramNames)) {
+          allNumeric = false;
+          break;
+        }
+      }
+      if (!allNumeric) {
+        numeric.delete(fnName);
+        changed = true;
+      }
+    }
+  }
+
+  const result = new Map<string, ValType>();
+  for (const fnName of numeric) {
+    result.set(fnName, { kind: "f64" });
+  }
+  return result;
 }
 
 /**
@@ -1561,14 +1915,22 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
   // First: collect enum declarations (so enum values are available)
   collectEnumDeclarations(ctx, sourceFile);
 
-  // Second: collect interfaces and type aliases (so struct types are available)
-  for (const stmt of sourceFile.statements) {
-    if (ts.isInterfaceDeclaration(stmt)) {
-      collectInterface(ctx, stmt);
-    } else if (ts.isTypeAliasDeclaration(stmt)) {
-      const aliasType = ctx.checker.getTypeAtLocation(stmt);
-      if (aliasType.flags & ts.TypeFlags.Object) {
-        collectObjectType(ctx, stmt.name.text, aliasType);
+  // Second: collect interfaces and type aliases (so struct types are available).
+  // Skip declarations from `.d.ts` files: those describe shapes of host
+  // values (DOM types, npm package public API). Lowering them to WasmGC
+  // structs registers types whose fields can recursively reference array
+  // types of other declaration-file interfaces, producing forward heap-type
+  // references that fail Wasm validation when the dead-elim pass compacts
+  // the type section. (#1287)
+  if (!sourceFile.isDeclarationFile) {
+    for (const stmt of sourceFile.statements) {
+      if (ts.isInterfaceDeclaration(stmt)) {
+        collectInterface(ctx, stmt);
+      } else if (ts.isTypeAliasDeclaration(stmt)) {
+        const aliasType = ctx.checker.getTypeAtLocation(stmt);
+        if (aliasType.flags & ts.TypeFlags.Object) {
+          collectObjectType(ctx, stmt.name.text, aliasType);
+        }
       }
     }
   }
@@ -1632,16 +1994,25 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
     if (ts.isClassExpression(node)) {
       registerClassExpression(node);
     }
-    ts.forEachChild(node, collectAnonymousClassesInNewExpr);
+    forEachChild(node, collectAnonymousClassesInNewExpr);
   }
 
   function collectClassesFromStatements(stmts: ts.NodeArray<ts.Statement> | readonly ts.Statement[]): void {
     for (const stmt of stmts) {
-      if (ts.isClassDeclaration(stmt) && stmt.name && !hasDeclareModifier(stmt)) {
+      // `class X` in a `.d.ts` file is implicitly ambient — only the type
+      // declaration is real, there is no JS body to compile. Treating it as
+      // a user-defined class registers a WasmGC struct type whose field
+      // resolution can produce forward heap-type references (e.g.
+      // `children: X[]` → struct ref array ref struct loop) that fail Wasm
+      // validation. The extern collection pass (`collectExternClass` /
+      // `collectExternFromDeclareVar` in `index.ts`) owns the type-only
+      // registration for these shapes. (#1287)
+      const isAmbient = hasDeclareModifier(stmt) || stmt.getSourceFile().isDeclarationFile;
+      if (ts.isClassDeclaration(stmt) && stmt.name && !isAmbient) {
         collectClassDeclaration(ctx, stmt);
         // Register class declaration .name
         ctx.functionNameMap.set(stmt.name.text, stmt.name.text);
-      } else if (ts.isVariableStatement(stmt) && !hasDeclareModifier(stmt)) {
+      } else if (ts.isVariableStatement(stmt) && !isAmbient) {
         for (const decl of stmt.declarationList.declarations) {
           if (ts.isIdentifier(decl.name) && decl.initializer && ts.isClassExpression(decl.initializer)) {
             collectClassDeclaration(ctx, decl.initializer, decl.name.text);
@@ -1786,15 +2157,30 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
         return false;
       };
 
+      // An unannotated binding-pattern parameter — `function f([x, y])` or
+      // `function f({a, b})` — must route through the externref destructure path
+      // so that the iterator protocol drives element extraction (spec
+      // §13.3.3.6 IteratorBindingInitialization). Without this widening the
+      // param compiles to a tuple struct signature and `f(generator)` silently
+      // skips the iterator's `.next()`. Mirrors closures.ts:905 for arrows /
+      // function-expressions. Skip when the user wrote an explicit type
+      // annotation — they asked for the tuple-struct specialization. (#862)
+      const bindingPatternParamNeedsWiden = (p: ts.ParameterDeclaration): boolean => {
+        if (p.type || p.dotDotDotToken) return false;
+        return ts.isArrayBindingPattern(p.name) || ts.isObjectBindingPattern(p.name);
+      };
+
       if (isGenerator) {
         // Generator functions: parameters are compiled normally, return is externref
         params = [];
         for (let i = 0; i < stmt.parameters.length; i++) {
           const param = stmt.parameters[i]!;
           const paramType = ctx.checker.getTypeAtLocation(param);
-          let wasmType: ValType = restBindingOverridesToExternref(param)
+          let wasmType: ValType = bindingPatternParamNeedsWiden(param)
             ? { kind: "externref" }
-            : resolveWasmType(ctx, paramType);
+            : restBindingOverridesToExternref(param)
+              ? { kind: "externref" }
+              : resolveWasmType(ctx, paramType);
           // If the parameter has a default value and is a non-null ref type,
           // widen to ref_null so callers can pass ref.null as a sentinel for "use default"
           if (param.initializer && wasmType.kind === "ref") {
@@ -1809,7 +2195,10 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
                 ctx.anyValueTypeIdx >= 0 &&
                 (wasmType as { typeIdx: number }).typeIdx === ctx.anyValueTypeIdx))
           ) {
-            const inferred = inferParamTypeFromCallSites(ctx, name, i, sourceFile);
+            let inferred = inferParamTypeFromCallSites(ctx, name, i, sourceFile);
+            if (!inferred) {
+              inferred = inferParamTypeFromBody(ctx, stmt, i);
+            }
             if (inferred) {
               wasmType = inferred;
             }
@@ -1845,9 +2234,11 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
             });
           } else {
             const paramType = ctx.checker.getTypeAtLocation(param);
-            let wasmType: ValType = restBindingOverridesToExternref(param)
+            let wasmType: ValType = bindingPatternParamNeedsWiden(param)
               ? { kind: "externref" }
-              : resolveWasmType(ctx, paramType);
+              : restBindingOverridesToExternref(param)
+                ? { kind: "externref" }
+                : resolveWasmType(ctx, paramType);
             // If the parameter has a default value and is a non-null ref type,
             // widen to ref_null so callers can pass ref.null as a sentinel for "use default"
             if (param.initializer && wasmType.kind === "ref") {
@@ -1863,7 +2254,13 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
                   ctx.anyValueTypeIdx >= 0 &&
                   (wasmType as { typeIdx: number }).typeIdx === ctx.anyValueTypeIdx))
             ) {
-              const inferred = inferParamTypeFromCallSites(ctx, name, i, sourceFile);
+              let inferred = inferParamTypeFromCallSites(ctx, name, i, sourceFile);
+              // #1121: Body-usage fallback. If no internal callers exist
+              // (e.g. exported entrypoint `function run(n) { return fib(n); }`)
+              // but the body still uses the param numerically, infer f64.
+              if (!inferred) {
+                inferred = inferParamTypeFromBody(ctx, stmt, i);
+              }
               if (inferred) {
                 wasmType = inferred;
               }
@@ -1874,7 +2271,17 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
         const r = ctx.checker.getReturnTypeOfSignature(sig);
         // For async functions, unwrap Promise<T> to get T for Wasm return type
         const rUnwrapped = isAsync ? unwrapPromiseType(r, ctx.checker) : r;
-        results = isVoidType(rUnwrapped) ? [] : [resolveWasmType(ctx, rUnwrapped)];
+        // #1121: Override TS's implicit-any return with our inferred numeric
+        // return type if every param is numeric and the body is a pure
+        // numeric kernel (catches e.g. recursive `function fib(n) {...}`).
+        const inferredNumericRet = !isAsync ? ctx.numericReturnTypes?.get(name) : undefined;
+        const isImplicitAnyReturn = (rUnwrapped.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0;
+        const allParamsNumeric = params.every((p) => p.kind === "f64" || p.kind === "i32");
+        if (inferredNumericRet && isImplicitAnyReturn && allParamsNumeric) {
+          results = [inferredNumericRet];
+        } else {
+          results = isVoidType(rUnwrapped) ? [] : [resolveWasmType(ctx, rUnwrapped)];
+        }
       }
 
       const optionalParams: OptionalParamInfo[] = [];
@@ -1989,6 +2396,33 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
     }
   }
 
+  // ESM named-export declaration: `export { foo, bar as baz };` (#1277).
+  // Without this, the rewriter and existing ESM walker only handle
+  // `export function foo() {}` and `export default <ident>`. Re-exports
+  // from another module (`export { x } from "spec"`) are intentionally
+  // skipped here — those need import resolution + re-export wiring that
+  // isn't part of this gap.
+  if (isEntryFile) {
+    for (const stmt of sourceFile.statements) {
+      if (!ts.isExportDeclaration(stmt)) continue;
+      if (!stmt.exportClause || !ts.isNamedExports(stmt.exportClause)) continue;
+      if (stmt.moduleSpecifier) continue; // re-export — handled elsewhere
+      for (const spec of stmt.exportClause.elements) {
+        // `export { foo as bar }` → propertyName=foo, name=bar
+        // `export { foo }`        → propertyName=undefined, name=foo
+        const localName = spec.propertyName?.text ?? spec.name.text;
+        const exportedName = spec.name.text;
+        if (!ctx.funcMap.has(localName)) continue;
+        const funcIdx = ctx.funcMap.get(localName)!;
+        const func = ctx.mod.functions[funcIdx - ctx.numImportFuncs];
+        if (func && !func.exported) func.exported = true;
+        if (!ctx.mod.exports.some((e) => e.name === exportedName)) {
+          ctx.mod.exports.push({ name: exportedName, desc: { kind: "func", index: funcIdx } });
+        }
+      }
+    }
+  }
+
   // CJS exports: recognize `module.exports` / `exports.foo` patterns (#1075).
   // Phase 1 — register CJS function expressions and surface CJS assignments as Wasm exports.
   // This runs after the ESM export-default block so CJS and ESM don't conflict.
@@ -2064,6 +2498,36 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
             if (name !== "default") {
               ctx.mod.exports.push({ name: "default", desc: { kind: "func", index: funcIdx } });
             }
+          }
+        }
+        continue;
+      }
+
+      // Pattern 1c: `module.exports = { a, b: c, d }` — multi-named export via
+      // object literal (#1277). Handles shorthand (`{ a }`) and named-with-
+      // identifier (`{ alias: foo }`) shapes. Skips computed keys, methods,
+      // spreads, and non-identifier RHS — those bail out without exporting
+      // (a future enhancement could route generic-expression values through
+      // a synthetic global).
+      if (isModuleExports(expr.left) && ts.isObjectLiteralExpression(expr.right)) {
+        hasModuleExportsDefault = true;
+        for (const prop of expr.right.properties) {
+          let key: string | undefined;
+          let valName: string | undefined;
+          if (ts.isShorthandPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
+            key = prop.name.text;
+            valName = key;
+          } else if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && ts.isIdentifier(prop.initializer)) {
+            key = prop.name.text;
+            valName = prop.initializer.text;
+          }
+          if (!key || !valName) continue;
+          if (!ctx.funcMap.has(valName)) continue;
+          const funcIdx = ctx.funcMap.get(valName)!;
+          const func = ctx.mod.functions[funcIdx - ctx.numImportFuncs];
+          if (func && !func.exported) func.exported = true;
+          if (!ctx.mod.exports.some((e) => e.name === key)) {
+            ctx.mod.exports.push({ name: key, desc: { kind: "func", index: funcIdx } });
           }
         }
         continue;
@@ -2328,7 +2792,15 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
           opKind === ts.SyntaxKind.CaretEqualsToken ||
           opKind === ts.SyntaxKind.LessThanLessThanEqualsToken ||
           opKind === ts.SyntaxKind.GreaterThanGreaterThanEqualsToken ||
-          opKind === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken;
+          opKind === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken ||
+          // #1268 — logical-assignment operators (??=, ||=, &&=) are also
+          // assignment ops with side effects; without these, top-level
+          // statements like `d["x"] ??= 42` were silently dropped from
+          // `__module_init`, leaving the LHS uninitialised and reads
+          // returning NaN/undefined.
+          opKind === ts.SyntaxKind.QuestionQuestionEqualsToken ||
+          opKind === ts.SyntaxKind.BarBarEqualsToken ||
+          opKind === ts.SyntaxKind.AmpersandAmpersandEqualsToken;
         if (!isAssignOp) continue;
         const targetName = getAssignmentRootIdentifier(expr.left);
         if (targetName && ctx.moduleGlobals.has(targetName)) {
@@ -2490,7 +2962,11 @@ export function compileDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
     insideFunction = false,
   ): void {
     for (const stmt of stmts) {
-      if (ts.isClassDeclaration(stmt) && stmt.name && !hasDeclareModifier(stmt)) {
+      // Mirror the `.d.ts` ambient guard from `collectClassesFromStatements`:
+      // there is no body to compile for classes declared in declaration
+      // files. (#1287)
+      const isAmbient = hasDeclareModifier(stmt) || stmt.getSourceFile().isDeclarationFile;
+      if (ts.isClassDeclaration(stmt) && stmt.name && !isAmbient) {
         if (insideFunction) {
           // Defer body compilation — will be compiled in compileNestedClassDeclaration
           // when the enclosing function is compiled (so captured locals are available)
@@ -2503,7 +2979,7 @@ export function compileDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
             reportError(ctx, stmt, `Internal error compiling class '${stmt.name.text}': ${msg}`);
           }
         }
-      } else if (ts.isVariableStatement(stmt) && !hasDeclareModifier(stmt)) {
+      } else if (ts.isVariableStatement(stmt) && !isAmbient) {
         for (const decl of stmt.declarationList.declarations) {
           if (ts.isIdentifier(decl.name) && decl.initializer && ts.isClassExpression(decl.initializer)) {
             if (insideFunction) {
@@ -2610,10 +3086,26 @@ export function compileDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
     if (ts.isClassExpression(node)) {
       compileAnonClassIfNeeded(node);
     }
-    ts.forEachChild(node, compileAnonymousClassBodiesInNode);
+    forEachChild(node, compileAnonymousClassBodiesInNode);
   }
 
   compileClassesFromStatements(sourceFile.statements);
+
+  // Compile away TDZ tracking for definite-assignment top-level let/const
+  // variables (#906). If every read of a top-level let/const can be statically
+  // proven to occur after its initializer (analyzeTdzAccess returns "skip"),
+  // we drop the variable from `tdzLetConstNames` so:
+  //   - no `__tdz_<name>` flag global is allocated below,
+  //   - `emitTdzInit` becomes a no-op (no `i32.const 1; global.set` writes
+  //     in `__module_init`),
+  //   - `emitTdzCheck` becomes a no-op (no runtime check at reads).
+  // Genuinely dynamic / ambiguous cases (e.g. function declarations that
+  // could be called before the variable's initializer runs) are preserved
+  // because `analyzeTdzAccess` conservatively returns "check" for them.
+  const elidableTdzNames = computeElidableTopLevelTdzNames(ctx, sourceFile, ctx.tdzLetConstNames);
+  for (const name of elidableTdzNames) {
+    ctx.tdzLetConstNames.delete(name);
+  }
 
   // Create TDZ flag globals for let/const module globals.
   // Each TDZ flag is an i32 global initialized to 0 (uninitialized).
@@ -2800,71 +3292,40 @@ export function compileDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
         shiftLocalIndices(compiledInitFctx.body, existingLocals);
       }
     } else {
-      // No main() function — create a standalone __module_init.
-      // Strategy depends on whether there are user-exported functions (#907):
-      //   - No exports: export __module_init directly as _start (no guard needed)
-      //   - Has exports: inject guarded call via __init_done into each export
+      // No main() function — create a standalone __module_init and run it
+      // automatically via the Wasm start section on instantiation (#907).
+      //
+      // This replaces both:
+      //   - the legacy `__init_done` runtime guard that injected a
+      //     `if (!done) { done = 1; __module_init(); }` preamble at the start
+      //     of every exported function, and
+      //   - the `_start` export wrapper used for module-init-only programs.
+      //
+      // Wasm `start` runs once during instantiation, before the host can call
+      // any export. That matches ES module semantics (top-level code runs at
+      // module load) and removes the per-call guard branch from every export.
+      //
+      // For WASI mode, we don't set the start section here — `addWasiStartExport`
+      // creates a dedicated `_start` export that wraps `__module_init`. Setting
+      // both would cause init to run twice (once during instantiation, once
+      // when the host calls `_start`).
 
-      const hasExportedFunctions = ctx.mod.functions.some((f) => f.exported && f.name !== "__module_init");
+      const initTypeIdx = addFuncType(ctx, [], [], "__module_init_type");
+      const initFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+      ctx.mod.functions.push({
+        name: "__module_init",
+        typeIdx: initTypeIdx,
+        locals: compiledInitFctx.locals,
+        body: compiledInitFctx.body,
+        exported: false,
+      });
 
-      if (!hasExportedFunctions) {
-        // Module-init-only program: export __module_init as _start.
-        // No __init_done guard needed — the caller invokes _start once.
-        const initTypeIdx = addFuncType(ctx, [], [], "__module_init_type");
-        const initFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
-        ctx.mod.functions.push({
-          name: "_start",
-          typeIdx: initTypeIdx,
-          locals: compiledInitFctx.locals,
-          body: compiledInitFctx.body,
-          exported: true,
-        });
-        ctx.mod.exports.push({
-          name: "_start",
-          desc: { kind: "func", index: initFuncIdx },
-        });
-      } else {
-        // Has exports but no main() — use __init_done guard for lazy init.
-        const guardGlobalIdx = nextModuleGlobalIdx(ctx);
-        ctx.mod.globals.push({
-          name: "__init_done",
-          type: { kind: "i32" },
-          mutable: true,
-          init: [{ op: "i32.const", value: 0 }],
-        });
-
-        const initTypeIdx = addFuncType(ctx, [], [], "__module_init_type");
-        const initFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
-        ctx.mod.functions.push({
-          name: "__module_init",
-          typeIdx: initTypeIdx,
-          locals: compiledInitFctx.locals,
-          body: compiledInitFctx.body,
-          exported: false,
-        });
-
-        // Inject guarded call at the start of every exported function.
-        // Each function gets its own deep copy of the guard preamble instructions
-        // to avoid shared-object bugs during dead-import elimination's index remapping.
-        for (const func of ctx.mod.functions) {
-          if (func.exported && func.name !== "__module_init") {
-            const guardPreamble: Instr[] = [
-              { op: "global.get", index: guardGlobalIdx },
-              { op: "i32.eqz" },
-              {
-                op: "if",
-                blockType: { kind: "empty" },
-                then: [
-                  { op: "i32.const", value: 1 } as Instr,
-                  { op: "global.set", index: guardGlobalIdx } as Instr,
-                  { op: "call", funcIdx: initFuncIdx } as Instr,
-                ],
-              } as Instr,
-            ];
-            func.body = [...guardPreamble, ...func.body];
-          }
-        }
+      if (!ctx.wasi) {
+        // Use Wasm start section — init runs automatically on instantiation.
+        ctx.mod.startFuncIdx = initFuncIdx;
       }
+      // else: WASI path — addWasiStartExport will export `_start` calling
+      // `__module_init`, and the host will invoke it explicitly.
     }
   }
 }

@@ -1,0 +1,1062 @@
+---
+id: 1124
+sprint: 42
+title: "Audit current codegen IR and, if needed, define a minimal SSA middle-end"
+status: done
+created: 2026-04-16
+updated: 2026-04-16
+completed: 2026-04-20
+priority: high
+feasibility: hard
+reasoning_effort: max
+task_type: investigation
+area: codegen
+language_feature: compiler-internals
+goal: compiler-architecture
+required_by: [744, 773, 1121, 1126, 1131]
+---
+# #1124 -- Audit current codegen IR and, if needed, define a minimal SSA middle-end
+
+## Status: done
+
+## Outcome
+
+The current compiler does **not** already have a usable compiler middle-end IR.
+It has a typed-frontend plus a Wasm-oriented backend IR:
+
+- TypeScript checker data is queried directly during AST lowering
+- lowering emits `WasmModule` / `Instr[]` in `src/ir/types.ts`
+- backend repair passes then patch Wasm validation and representation details
+
+That backend IR is valuable and should stay the backend IR, but it is too late,
+too stack-oriented, and too Wasm-shaped to serve as the place for SSA-style
+analysis, call-graph-driven type propagation, or clean specialization.
+
+**Explicit recommendation: insert new middle-end IR.**
+
+Keep:
+
+- TypeScript checker as the source of declared/inferred surface types
+- current `WasmModule` IR as the backend IR
+- current emitters/fixups/registries as the backend pipeline
+
+Insert:
+
+- a small JavaScript/TypeScript-aware SSA IR between checker analysis and Wasm
+  IR construction
+
+## Added goal
+
+The new middle-end should make it possible to infer useful parameter and return
+types for small unannotated JavaScript functions even when TypeScript itself
+does not infer them from callers.
+
+Concrete target case:
+
+```js
+function fib(n) {
+  if (n <= 1) return n;
+  return fib(n - 1) + fib(n - 2);
+}
+
+/** @param {number} n @returns {number} */
+export function run(n) {
+  return fib(n);
+}
+```
+
+For cases like this, the compiler goal is:
+
+- use TypeScript as the source of initial facts, not as the final authority on
+  interprocedural inference
+- infer that `fib` is on a numeric recursive path even though TS reports its
+  parameter as implicit `any`
+- propagate the exported `run(number) -> number` boundary fact into the
+  recursive SCC containing `fib`
+- keep that inference in the middle-end, not in ad hoc backend coercion logic
+
+This should be treated as a first-class motivation for the SSA/type-propagation
+layer, not just as a later optimization detail.
+
+## Pipeline audit
+
+### Current pipeline
+
+```text
+TS/JS source
+  -> TypeScript parser/checker
+  -> AST walkers in src/codegen/**
+  -> direct emission of WasmModule / Instr[]
+  -> backend fixups and stack repair
+  -> WAT / binary / object emitters
+```
+
+### Concrete file map
+
+- `src/compiler.ts`
+  - Step 2 says "Generate IR", but calls `generateModule(...)` directly
+- `src/codegen/index.ts`
+  - builds `WasmModule` directly
+  - mixes declaration collection, type queries, lowering, closure construction,
+    import registration, and backend fixups
+- `src/ir/types.ts`
+  - defines Wasm-facing module/function/instruction structures
+- `src/checker/type-mapper.ts`
+  - collapses TS types early into backend `ValType`
+- `src/codegen/expressions/calls.ts`
+  - resolves call signatures on the fly and emits direct/backend call forms
+- `src/codegen/closures.ts`
+  - makes closure capture layout decisions during backend lowering
+- `src/codegen/stack-balance.ts`
+  - repairs structured-stack mismatches after emission
+- `src/emit/wat.ts`, `src/emit/binary.ts`, `src/emit/object.ts`
+  - consume the backend Wasm IR
+
+## Audit answers
+
+### 1. Is the current IR already a meaningful middle-end?
+
+No. It is a backend IR for Wasm emission.
+
+Evidence:
+
+- `src/ir/types.ts` is built around Wasm module sections, locals, block types,
+  and Wasm instructions, not source-language values or CFG nodes
+- `src/codegen/index.ts` and `src/codegen/expressions/*.ts` emit stack machine
+  instructions directly while still consulting the TS checker
+- `src/codegen/stack-balance.ts` exists because correctness is being repaired
+  after backend emission rather than expressed in a stable analysis IR
+
+### 2. Is the current IR in SSA form?
+
+No.
+
+- values are implicit on the Wasm operand stack
+- mutable state is represented with `local.set`, `local.tee`, `global.set`
+- control-flow joins use structured Wasm block result typing, not block
+  arguments or explicit phi-equivalents
+
+### 3. Can it be evolved into the desired shape without a new layer?
+
+Not cleanly. Extending `Instr` until it carries SSA facts would fight the
+existing backend role of the IR and entangle frontend semantics with Wasm
+validation details.
+
+### 4. Where do values get typed today?
+
+Mostly in three places:
+
+- TypeScript checker queries such as `checker.getTypeAtLocation(...)` and
+  `checker.getResolvedSignature(...)` across `src/codegen/**`
+- `src/checker/type-mapper.ts::mapTsTypeToWasm(...)`
+- ad hoc lowering-time coercion via `coerceType(...)` and backend helpers
+
+These types are not stable analysis facts. They are consulted opportunistically
+while emitting Wasm.
+
+### 5. Where would call-site metadata naturally live today?
+
+Nowhere durable. The current pipeline can inspect a call while compiling a
+single AST node, but after lowering only backend `call`, `call_ref`, or
+`call_indirect` remain. The call-site identity and argument facts are lost.
+
+### 6. Can the current pipeline support interprocedural type propagation?
+
+Not as a principled compiler stage. It can special-case some patterns, but it
+collapses information too early into Wasm locals, refs, and coercions.
+
+### 7. Should the current Wasm IR be replaced?
+
+No. It is still the right backend IR.
+
+### 8. Where do boxing/unboxing decisions happen now?
+
+Mostly during Wasm lowering:
+
+- `mapTsTypeToWasm(...)` collapses many source distinctions into `f64`, `i32`,
+  `externref`, or broad ref kinds
+- `coerceType(...)` and call/operand helpers insert conversions while emitting
+- runtime imports such as `__box_number` / `__unbox_number` are pulled in from
+  backend-oriented code paths
+
+That is too late for clean analysis and too early for preserving specialized
+paths cleanly.
+
+### 9. Where would monomorphization fit today?
+
+There is no good dedicated slot today. Doing it directly in AST-to-Wasm
+lowering would further overload codegen. It belongs after SSA construction and
+basic propagation, before Wasm lowering.
+
+### 10. Where should `fib-recursive.js` numeric inference live?
+
+Combination:
+
+- initial facts can still come from the TS checker
+- the actual recursive numeric fast-path inference should live in the new SSA
+  middle-end
+- specialization decisions should also live there
+- backend Wasm lowering should only materialize the already-decided unboxed
+  numeric path
+- one explicit goal is to infer `fib(n: number) -> number` in cases where TS
+  leaves `fib` as implicit `any`, using exported boundary facts plus recursive
+  body constraints
+
+## Concrete blockers
+
+### Blocker 1: the IR is stack-based and mutable, not SSA
+
+`src/ir/types.ts` models Wasm instructions such as `local.set`, `local.tee`,
+`block`, `loop`, `if`, `call`, `call_ref`, and explicit Wasm `ValType`s. That
+is appropriate for backend emission, but it gives no explicit SSA values or CFG
+join arguments to analyze.
+
+### Blocker 2: type information collapses too early
+
+`src/checker/type-mapper.ts` maps many distinct TS facts to broad backend
+categories, especially `externref`. Union collapse and object fallback happen
+before there is a durable program representation where later passes could keep
+refined facts alive.
+
+### Blocker 3: call-site facts are transient
+
+`src/codegen/expressions/calls.ts` can inspect `getResolvedSignature(...)`,
+argument nodes, and closure metadata while compiling one expression, but the
+result becomes plain backend calls. There is no persistent `site_id`, edge
+record, or call-graph layer.
+
+### Blocker 4: closure capture semantics are decided during backend lowering
+
+`src/codegen/closures.ts` computes captures, boxes mutable captures, and builds
+closure wrapper structs directly in the Wasm backend. Captures do become
+explicit in the emitted closure layout, but only after semantic analysis has
+already been fused with backend lowering.
+
+### Blocker 5: backend repair passes are compensating for missing middle-end structure
+
+`src/codegen/stack-balance.ts` simulates stack effects and patches mismatches
+after emission. That is a strong signal that the current IR is already in the
+"make Wasm validate" phase, not the "analyze and transform source semantics"
+phase.
+
+## Things worth preserving
+
+### Preserve 1: current Wasm IR as backend IR
+
+`src/ir/types.ts` is already a useful backend contract for:
+
+- `src/emit/wat.ts`
+- `src/emit/binary.ts`
+- `src/emit/object.ts`
+
+It should remain the handoff format into emission.
+
+### Preserve 2: current frontend collection and backend registries
+
+The current codegen has real value in:
+
+- import/type registries
+- class/object layout knowledge
+- closure wrapper generation
+- string/native/external interop lowering
+
+Those pieces should become consumers of the new middle-end or helpers during
+SSA-to-Wasm lowering, not be rewritten blindly.
+
+### Preserve 3: TypeScript checker integration
+
+The compiler already has a strong source of declared and inferred facts via
+`getTypeAtLocation(...)`, `getResolvedSignature(...)`, and return/parameter
+queries. The new middle-end should consume those facts systematically rather
+than replacing them.
+
+## Recommendation
+
+**Insert a new SSA middle-end IR between TypeScript checker analysis and the
+current Wasm IR.**
+
+Why `insert`, not `replace`:
+
+- replacing the current Wasm IR would throw away working backend machinery
+- extending the current Wasm IR would mix frontend semantics and backend
+  validation concerns even more tightly
+- an inserted layer lets migration be incremental and feature-gated
+
+## Proposed minimal SSA IR
+
+### Design goals
+
+- block-argument SSA, not phi nodes
+- explicit values and explicit operands
+- explicit call sites
+- explicit closure captures
+- types rich enough for propagation but smaller than full TS types
+- clean boundary where boxing/unboxing becomes explicit
+
+### TypeScript data structures
+
+```ts
+export type IrType =
+  | { kind: "unknown" }
+  | { kind: "never" }
+  | { kind: "bool" }
+  | { kind: "i32" }
+  | { kind: "f64" }
+  | { kind: "i64" }
+  | { kind: "string" }
+  | { kind: "object"; shapeId?: string }
+  | { kind: "function"; functionId?: string }
+  | { kind: "closure"; functionId?: string }
+  | { kind: "boxed"; inner: IrType }
+  | { kind: "union"; members: IrType[] }
+  | { kind: "dynamic" };
+
+export interface IrModule {
+  functions: IrFunction[];
+}
+
+export interface IrFunction {
+  id: string;
+  exportName?: string;
+  params: IrBlockArg[];
+  returnType: IrType;
+  blocks: IrBlock[];
+  sourceName?: string;
+}
+
+export interface IrBlock {
+  id: string;
+  args: IrBlockArg[];
+  instructions: IrInstruction[];
+  terminator: IrTerminator;
+}
+
+export interface IrBlockArg {
+  id: string;
+  type: IrType;
+  sourceName?: string;
+}
+
+export interface IrValue {
+  id: string;
+  type: IrType;
+}
+
+export interface IrCallTarget {
+  kind: "direct" | "indirect";
+  functionId?: string;
+  callee: IrValue;
+}
+
+export interface IrCallSiteMeta {
+  siteId: string;
+  tsSignatureText?: string;
+  inferredArgTypes: IrType[];
+  inferredReturnType: IrType;
+}
+
+export type IrInstruction =
+  | { kind: "const"; out: IrValue; value: number | bigint | boolean | string | null }
+  | { kind: "prim"; out: IrValue; op: "add" | "sub" | "mul" | "div" | "eq" | "lte"; args: IrValue[] }
+  | { kind: "get_prop"; out: IrValue; object: IrValue; key: string | IrValue }
+  | { kind: "set_prop"; object: IrValue; key: string | IrValue; value: IrValue }
+  | { kind: "call"; out?: IrValue; target: IrCallTarget; args: IrValue[]; meta: IrCallSiteMeta }
+  | { kind: "closure"; out: IrValue; functionId: string; captures: IrValue[] }
+  | { kind: "box"; out: IrValue; value: IrValue; targetType: IrType }
+  | { kind: "unbox"; out: IrValue; value: IrValue; targetType: IrType };
+
+export type IrTerminator =
+  | { kind: "branch"; target: string; args: IrValue[] }
+  | { kind: "cond_branch"; condition: IrValue; thenBlock: string; thenArgs: IrValue[]; elseBlock: string; elseArgs: IrValue[] }
+  | { kind: "return"; value?: IrValue };
+```
+
+### Why block arguments
+
+Block arguments make control-flow merges explicit without introducing a
+separate phi node form. That maps cleanly both to Wasm structured blocks and to
+future MLIR-style lowering.
+
+## Call-site-aware call representation
+
+Each call instruction carries:
+
+- `siteId`
+- direct vs indirect target kind
+- resolved `functionId` when statically known
+- inferred argument types
+- inferred return type
+
+Representation:
+
+```ts
+{
+  kind: "call",
+  out: v3,
+  target: { kind: "direct", functionId: "fib", callee: v1 },
+  args: [v2],
+  meta: {
+    siteId: "fib:entry:call0",
+    inferredArgTypes: [{ kind: "f64" }],
+    inferredReturnType: { kind: "f64" }
+  }
+}
+```
+
+This is the right place for:
+
+- devirtualization candidates
+- monomorphization decisions
+- context-insensitive call graph edges
+- future call-site-sensitive cloning if needed
+
+## Call graph
+
+Build it directly from SSA IR:
+
+- nodes = `IrFunction.id`
+- edges = `call.meta.siteId`
+
+Each edge carries:
+
+- caller id
+- callee id if known
+- direct/indirect kind
+- argument types
+- inferred return type
+
+Example:
+
+```ts
+interface CallGraphEdge {
+  siteId: string;
+  callerId: string;
+  calleeId?: string;
+  kind: "direct" | "indirect";
+  argTypes: IrType[];
+  returnType: IrType;
+}
+```
+
+## Basic type propagation
+
+Start with a small context-insensitive constraint system:
+
+1. Seed parameter and local facts from the TS checker when available.
+2. Seed constant ops with exact primitive categories.
+3. Propagate primitive op requirements.
+   `add`, `sub`, `mul`, `lte` constrain operands/results toward numeric types.
+4. For direct calls, flow call argument facts into callee params.
+5. Flow callee return facts back into call results.
+6. Merge at block arguments using conservative unions.
+7. For indirect calls, use `dynamic` unless closure/callee identity is known.
+
+This is enough to support the first useful case:
+
+- recursive numeric kernels like `fib-recursive.js`
+- unannotated helper functions whose numeric type must be inferred from
+  exported typed callers plus body constraints
+
+without forcing a full optimizer framework immediately.
+
+## Closure representation
+
+Closures should be explicit before Wasm lowering:
+
+- closure instruction references the lifted function id
+- capture list is explicit SSA values
+
+Example:
+
+```ts
+v4 = closure @adder_impl captures [v1, v2]
+```
+
+That keeps semantic capture structure available for:
+
+- call-graph construction
+- capture boxing decisions
+- closure wrapper specialization
+
+instead of discovering it only while building backend structs.
+
+## Boxing and unboxing
+
+### Current state
+
+Today boxing/unboxing is largely a backend-lowering concern, which pollutes fast
+paths with generic value plumbing.
+
+### New rule
+
+In the new IR, boxing and unboxing should be explicit operations, but inserted
+late by a boundary-lowering pass:
+
+- keep core SSA instructions typed in their preferred specialized form
+- insert `box` / `unbox` only where dynamic boundaries require it
+- lower `box` / `unbox` to current runtime/import mechanisms during SSA-to-Wasm
+
+### Why this matters for `fib-recursive.js`
+
+`fib` should remain:
+
+- `f64` or `i32` parameters/results through the recursive SCC
+- direct calls on specialized values
+- no generic `externref` round-trips inside the recursive kernel
+
+Only the external/export boundary should need boxing if the public ABI demands
+it.
+
+## Monomorphization
+
+### Where it fits
+
+As an IR transform after initial SSA construction and basic propagation, before
+SSA-to-Wasm lowering.
+
+### What gets monomorphized first
+
+- function signatures for direct-call strongly typed kernels
+- closure wrapper signatures where captures and call arity are known
+
+Not first target:
+
+- object/container shapes
+- broad context-sensitive cloning
+
+### Why here
+
+At that point the compiler knows:
+
+- the call graph
+- propagated param/return facts
+- dynamic vs direct call boundaries
+
+but has not yet committed to backend locals, refs, and coercion code.
+
+## Example IR snippets
+
+### Simple function
+
+Source:
+
+```ts
+function add1(x) { return x + 1; }
+```
+
+IR:
+
+```text
+func @add1(%x: f64) -> f64
+entry():
+  %c1 = const 1 : f64
+  %r = prim add(%x, %c1) : f64
+  return %r
+```
+
+### Property access
+
+Source:
+
+```ts
+return obj.x;
+```
+
+IR:
+
+```text
+%v = get_prop %obj, "x" : dynamic
+return %v
+```
+
+### Function call
+
+Source:
+
+```ts
+return fib(n - 1);
+```
+
+IR:
+
+```text
+%c1 = const 1 : f64
+%n1 = prim sub(%n, %c1) : f64
+%r = call_direct @fib(%n1) [site_id=fib:call0] : f64
+return %r
+```
+
+### Closure
+
+Source:
+
+```ts
+function outer(a) { return (b) => a + b; }
+```
+
+IR:
+
+```text
+func @outer(%a: f64) -> closure
+entry():
+  %cl = closure @outer_lambda_0 captures [%a]
+  return %cl
+
+func @outer_lambda_0(%env_a: f64, %b: f64) -> f64
+entry():
+  %r = prim add(%env_a, %b) : f64
+  return %r
+```
+
+## Worked example: `fib-recursive.js`
+
+Source:
+
+```ts
+function fib(n) {
+  if (n <= 1) return n;
+  return fib(n - 1) + fib(n - 2);
+}
+```
+
+### Desired IR
+
+```text
+func @fib(%n: f64) -> f64
+entry():
+  %c1 = const 1 : f64
+  %cond = prim lte(%n, %c1) : bool
+  cond_branch %cond then bb_ret(%n) else bb_rec(%n)
+
+bb_ret(%v: f64):
+  return %v
+
+bb_rec(%n0: f64):
+  %c1a = const 1 : f64
+  %n1 = prim sub(%n0, %c1a) : f64
+  %r1 = call_direct @fib(%n1) [site_id=fib:rec1] : f64
+  %c2 = const 2 : f64
+  %n2 = prim sub(%n0, %c2) : f64
+  %r2 = call_direct @fib(%n2) [site_id=fib:rec2] : f64
+  %sum = prim add(%r1, %r2) : f64
+  return %sum
+```
+
+### Why this solves #1121 conceptually
+
+The recursive SCC exposes a stable numeric constraint cycle:
+
+- `lte`, `sub`, and `add` require numeric operands/results
+- direct recursive calls preserve the parameter/return relation
+- the exported `run` function can simply forward `f64` into `fib`
+
+That inference belongs in the middle-end, not in late backend coercion.
+
+It also directly addresses the specific gap that TypeScript does not infer here:
+
+- TS can leave `fib`'s parameter as implicit `any`
+- the middle-end should still infer `fib(number) -> number`
+- that inferred fact should then drive backend selection of the clean numeric
+  path
+
+## Lowering pseudocode
+
+```text
+buildIrFunction(tsFunction):
+  create IrFunction
+  create entry block
+  map TS params -> block args using checker seeds
+  lower body statements into SSA blocks
+
+lowerExpression(node):
+  switch node.kind
+    NumericLiteral:
+      return const(f64, value)
+    Identifier:
+      return current binding value
+    BinaryExpression(+,-,*,<=,...):
+      lhs = lowerExpression(node.left)
+      rhs = lowerExpression(node.right)
+      infer primitive op constraints
+      return prim(op, lhs, rhs)
+    PropertyAccessExpression:
+      obj = lowerExpression(node.expression)
+      return get_prop(obj, node.name.text)
+    CallExpression:
+      callee = lowerExpression(node.expression)
+      args = lowerArguments(node.arguments)
+      sig = checker.getResolvedSignature(node)
+      target = direct if statically known else indirect
+      return call(target, args, site metadata from checker)
+    ArrowFunction / FunctionExpression:
+      lifted = lower nested function separately
+      captures = collect referenced outer values
+      return closure(lifted, captures)
+
+runMiddleEnd(module):
+  construct call graph
+  run context-insensitive propagation to fixpoint
+  optionally monomorphize direct-call hot/safe candidates
+  insert explicit box/unbox only at dynamic boundaries
+  lower SSA blocks/instructions to WasmModule backend IR
+```
+
+## Migration guidance
+
+### Entry point
+
+Insert a new stage in `src/compiler.ts` between checker analysis and
+`generateModule(...)`:
+
+```text
+TypedAST -> buildSsaModule(ast) -> runMiddleEndPasses(ssa) -> lowerToWasm(ssa)
+```
+
+### Exit point
+
+The new layer should lower into the existing `WasmModule` structures from
+`src/ir/types.ts`.
+
+### Incremental rollout
+
+Use a flag-gated rollout:
+
+1. Introduce SSA IR data structures and builders for a small subset:
+   numeric expressions, direct calls, returns, `if`
+2. Lower that subset to current Wasm IR
+3. Use it first for small function bodies and numeric kernels
+4. Keep the existing AST-to-Wasm path as fallback for unsupported features
+5. Expand feature coverage gradually
+
+### First practical target
+
+Make the first supported slice cover:
+
+- direct functions
+- numeric arithmetic/comparisons
+- direct recursion
+- simple exported wrappers
+
+That is enough to attack `fib-recursive.js` cleanly.
+
+## Short design decisions
+
+### Why not reuse Wasm `Instr` as the middle-end?
+
+Because it is already committed to:
+
+- stack machine sequencing
+- Wasm block typing
+- Wasm locals/globals
+- runtime/import lowering details
+
+### Why keep the backend IR?
+
+Because it already works as the contract for emitters and many backend helpers.
+
+### Why start context-insensitive?
+
+Because it is enough for the first benchmark-driven wins and keeps the design
+small. The call-site metadata still leaves room for later context-sensitive
+specialization.
+
+## Acceptance summary
+
+This audit concludes:
+
+- the current compiler does **not** already have a meaningful middle-end IR
+- the current IR is **not** SSA
+- the current Wasm IR should **remain** the backend IR
+- the correct architectural move is to **insert** a minimal SSA middle-end
+
+That gives the cleanest place for:
+
+- call graphs
+- basic type propagation
+- recursive numeric inference
+- controlled monomorphization
+- explicit boxing/unboxing boundaries
+
+without discarding the current backend machinery.
+
+## Current State Analysis (no-IR)
+
+_Added 2026-04-19. Grounded in the source as it stands today. Complements the
+earlier audit by answering three questions concretely: what works without an
+IR, what is structurally limiting right now, and where the ceiling is._
+
+### Pipeline snapshot
+
+`src/compiler.ts` -> `src/codegen/index.ts::generateModule` (lines 194–385)
+runs a single long orchestration that interleaves:
+
+1. Declaration collection passes (`collectExternDeclarations`,
+   `collectAllSourceImports`, `collectDeclarations`,
+   `applyShapeInference` — `src/codegen/index.ts:213–267`)
+2. AST-walk codegen that directly builds `WasmModule`/`Instr[]`
+   (`compileDeclarations`, `src/codegen/declarations.ts`)
+3. Ten post-hoc repair passes over the finished `WasmModule`
+   (`src/codegen/index.ts:269–379`): `fixupStructNewArgCounts`,
+   `fixupStructNewResultCoercion`, `buildShapePropFlagsTable`,
+   `collectDeclaredFuncRefs`, `markLeafStructsFinal`, `eliminateDeadImports`,
+   `repairStructTypeMismatches`, `peepholeOptimize`, `stackBalance`,
+   `fixupExternConvertAny`.
+
+The total "emit then patch" surface is substantial:
+
+| Pass | File | Lines | Purpose |
+|------|------|-------|---------|
+| `stackBalance` | `src/codegen/stack-balance.ts` | 2,512 | fix stack-shape mismatches across `if`/`try`/`block` branches |
+| `fixups.ts` (struct/extern repair) | `src/codegen/fixups.ts` | 986 | rewrite emitted `struct.get`/`struct.set` when `externref` was used in place of a struct ref; fix `extern.convert_any` applied to wrong types |
+| `peephole.ts` | `src/codegen/peephole.ts` | 213 | remove redundant `ref.as_non_null`, `local.tee;drop`, increment dead-store, etc. |
+| `dead-elimination.ts` | `src/codegen/dead-elimination.ts` | 420 | strip speculatively registered imports/types |
+
+These passes exist because the direct AST -> Wasm emitter cannot reason about
+value flow before it has already written the instruction stream.
+
+### What Works (without an IR)
+
+- **Test262 honest baseline: 22,449 pass / 43,169 total ≈ 52.0%** (run
+  `068186ad`, `benchmarks/results/runs/index.json`; the two most recent
+  entries at `bf84cab3` show a regression to 7 pass that is unrelated to the
+  architecture — a broken build/runtime).
+- Feature coverage that the single-pass emitter handles well, verifiable from
+  the source tree:
+  - Arithmetic, comparisons, boolean logic (`src/codegen/binary-ops.ts`,
+    `expressions/unary.ts`)
+  - Closures with ref-cell-boxed mutable captures
+    (`src/codegen/closures.ts`; ref cell pattern in
+    `getOrRegisterRefCellType`)
+  - Classes, inheritance, `super`, getters/setters, static members
+    (`src/codegen/class-bodies.ts`, `new-super.ts`)
+  - Destructuring (pattern + default + rest)
+    (`src/codegen/statements/destructuring.ts` — 1,995 lines)
+  - Generators (`function*`) and async functions
+    (`src/codegen/statements/control-flow.ts`,
+    `src/codegen/expressions/misc.ts` — yield expression)
+  - `for-of`, `for-in`, labeled break/continue, try/catch/finally
+    (`src/codegen/statements/loops.ts` — 2,815 lines;
+    `statements/exceptions.ts`)
+  - Tail calls for direct recursion via `return_call` (CLAUDE.md key
+    pattern; emitted in `src/codegen/expressions/calls.ts`)
+  - TypedArray / DataView / ArrayBuffer, `delete` operator, native strings
+    (`src/codegen/native-strings.ts`, `typeof-delete.ts`)
+  - TDZ for module-level `let`/`const`
+    (`src/codegen/statements/tdz.ts`)
+  - Exceptions exported via a module exception tag
+    (`src/codegen/index.ts:352`)
+- The thing that works well structurally: **a node-local, type-directed
+  emitter**. When the TS checker has a concrete type at the node and the
+  operation has a direct Wasm opcode, emission is short, readable, and
+  correct. Pure typed TypeScript (not test262) looks roughly like a
+  straightforward transliteration.
+
+### What Is Limiting (no-IR pain points already in the code)
+
+These are structural, not style. Each exists because there is nowhere in the
+pipeline to hold "analyzed program facts" between phases.
+
+1. **`addUnionImports` late-import index shifting**
+   (`src/codegen/expressions/late-imports.ts:20–100+`). When a coercion or
+   property-access decision during expression lowering needs a new import,
+   the import is added *mid-compilation*. Because the backend IR stores raw
+   function indices (`funcIdx: number`), every already-emitted
+   `call`/`ref.func` in the module — plus the current function's body, every
+   entry on `fctx.savedBodies`, every parent on `ctx.funcStack`, every
+   `parentBodiesStack` entry, and the pending init body — must be walked and
+   rewritten. Call sites: 36+ across `type-coercion.ts`,
+   `property-access.ts`, `object-ops.ts`, `binary-ops.ts`. With symbolic
+   function references in an IR, this function would not exist.
+
+2. **`savedBody` swap pattern** (40+ occurrences in `closures.ts`,
+   `class-bodies.ts`, `function-body.ts`, `string-ops.ts`,
+   `expressions/misc.ts`). To compile "an expression into a separate buffer
+   and then splice it back", the codegen temporarily reassigns
+   `fctx.body = newBody`, emits, then restores. This compensates for the
+   fact that emission is a linear stream rather than a tree of values.
+   `type-coercion.ts:627` explicitly documents avoiding the swap "which
+   would break addUnionImports index shifting" — the two workarounds
+   interact.
+
+3. **`stack-balance.ts` (2,512 lines)** exists to repair
+   `if`/`else`/`try`/`block` arms whose branches produce mismatched stack
+   states. The header (`src/codegen/stack-balance.ts:1–27`) names three
+   whole classes of mismatch (extra pushes, missing pushes, wrong type in
+   fallthrough) that the emitter routinely produces and must retroactively
+   fix. An IR with explicit block arguments or explicit values could not
+   emit these mismatches in the first place.
+
+4. **`repairStructTypeMismatches`** (`src/codegen/fixups.ts:65–`). Scans
+   emitted `struct.get`/`struct.set` and rewrites the prior instruction
+   when it pushed `externref` instead of the required struct ref, splicing
+   in `any.convert_extern` + `ref.cast`. This is the direct consequence of
+   `checker/type-mapper.ts::mapTsTypeToWasm` collapsing most object types
+   to `externref` (`src/checker/type-mapper.ts:84–89`) before any
+   per-function refinement is possible.
+
+5. **`fixupExternConvertAny`** repairs invalid `extern.convert_any` already
+   in the module (`src/codegen/index.ts:377`). Same root cause — the
+   coercion logic optimistically inserts conversions during emission and
+   another pass cleans up the ones that turned out wrong.
+
+6. **Placeholder functions in the declaration pass**
+   (`src/codegen/declarations.ts:1834`: "Create placeholder function to be
+   filled in second pass"). Two-pass declaration collection works, but
+   every participating pass has to know that function bodies are not yet
+   compiled and must look up types out-of-band. An IR would hold
+   declared-but-not-lowered functions as first-class nodes.
+
+7. **Ad-hoc flow analysis lives in `FunctionContext`**
+   (`src/codegen/context/types.ts:94–185`). Fields that would belong on an
+   SSA IR are smeared across one stateful record:
+   `narrowedNonNull: Set<string>`, `safeIndexedArrays: Set<string>` (for
+   for-loop bounds-check elision), `tdzFlagLocals: Map<string, number>`,
+   `boxedCaptures: Map<…>`, `pendingCallbackWritebacks: Instr[]`,
+   `persistentCallbackWritebacks: Instr[]`, `catchRethrowStack`,
+   `finallyStack`, `savedBodies: Instr[][]`. Each entry is a one-off hack
+   to plumb a flow fact that would be an IR property. Any new
+   narrowing/flow feature adds another such field.
+
+8. **`applyShapeInference` is a hand-rolled one-off pre-pass**
+   (`src/codegen/index.ts:264`, `src/codegen/declarations.ts`). It
+   overrides TS types for array-like variables by scanning usage. This is
+   exactly the propagation pattern that #743, #684, #685 want to
+   generalize, but there is nowhere to hang a general solver, so it is
+   re-implemented per feature.
+
+9. **Type collapse happens at the wrong layer.**
+   `mapTsTypeToWasm` (`src/checker/type-mapper.ts:38–107`) decides early
+   that unions, objects, `any`, `unknown`, and anything the codegen can't
+   name become `externref`. Once collapsed, downstream passes cannot
+   distinguish "genuine heterogeneous union" from "numeric-only union I
+   could have unboxed" without re-asking the TS checker — which many
+   backend call sites do (`ctx.checker.getTypeAtLocation(...)` is
+   scattered through codegen).
+
+10. **Call-site facts are transient.**
+    `src/codegen/expressions/calls.ts` (6,558 lines) consults
+    `checker.getResolvedSignature` while compiling a single call and then
+    drops the information. There is no per-call-site record, no call-graph
+    edge, and no way for a later pass to cluster calls for
+    monomorphization. #743, #744, #746, #905, #1046, #1121, #1126 all
+    depend on such a record existing.
+
+### What Is Broken / The Ceiling
+
+Ceiling evidence, grouped by category. Each bullet cites either an
+existing issue or a concrete source pattern.
+
+**Fundamentally blocked without a middle-end IR**
+
+- **Whole-program type flow / interprocedural propagation** (#743
+  critical, #685 ready, #684 ready). The `performance` goal
+  (`plan/goals/performance.md:3`) states the compiler's speed thesis
+  ("type flow analysis eliminates externref overhead, monomorphization
+  specializes hot paths") but both capabilities are filed as hard/critical
+  because there is nowhere to host the solver. Every numeric test262 test
+  that goes through an untyped JS helper pays externref cost today.
+- **Function monomorphization for polymorphic call sites** (#744, sprint
+  42, ready). Requires per-call-site type records + call graph edges that
+  the emitter does not build.
+- **Tagged-union representation for `number | string`, `number | null`**
+  (#745, high). Requires deciding union shape globally; today every such
+  value is boxed to `externref` via `mapTsTypeToWasm:79–80`.
+- **Escape analysis / stack allocation** (#747, blocked). Needs a flow
+  graph — neither local nor interprocedural analysis exists.
+- **Link-time specialization for separately-compiled modules** (#904
+  high, #1046 ready). Needs stable call-site metadata across modules;
+  today, calls become `call`/`call_ref`/`call_indirect` at module boundary
+  and the edge is gone.
+- **Inline property tables / versioned shapes** (#746 blocked, #905
+  ready). Needs per-object-site shape facts surviving lowering.
+- **Numeric recursive-kernel inference without JSDoc** (#1121, #1122,
+  sprint 42). The original motivation of this issue (#1124). Direct
+  recursion with implicit-`any` parameters cannot be proven numeric
+  without a recursive SCC analysis on an IR.
+- **Safe int32 lowering for bitwise-coerced numeric loops** (#1120, #1126,
+  sprint 42). Needs range / bit-flow facts.
+
+**Fundamentally hard without a middle-end IR, independent of performance**
+
+- **`eval` with scope injection.** Not in the source; TypeScript strict
+  mode (all modules) rejects the assignable `eval` patterns at the front
+  end (`src/compiler/validation.ts:244–467` bars assignment to
+  `eval`/`arguments`). A full `eval` implementation would need either a
+  runtime scope object or recompilation, neither of which has a landing
+  place in a stream-emitter.
+- **`with` statement.** Skip-filtered in the test262 runner
+  (`tests/test262-runner.ts:194–199`: _"ES5 legacy: with statement (strict
+  mode disallowed)"_). Dynamic binding across blocks requires explicit
+  scope modelling.
+- **`Proxy` / `Reflect`.** Skip-filter at
+  `tests/test262-runner.ts:1934` and the `eval`/meta-object families
+  around it. Implementing traps needs a meta-object dispatch that only
+  makes sense if calls are uniformly routable — which in turn needs an IR
+  boundary.
+- **`FinalizationRegistry` / `WeakRef`.** Skip-filtered with explicit
+  issue reference (`tests/test262-runner.ts:215–233`, issue #988). Needs
+  GC finalizer callbacks and a runtime scheduling story.
+- **`SharedArrayBuffer`** (`tests/test262-runner.ts:209–214`, issue
+  #674). Needs shared Wasm memory; orthogonal to IR, listed for
+  completeness.
+- **Deep flow-sensitive type narrowing.** The current implementation is
+  `FunctionContext.narrowedNonNull: Set<string>` — a single bit per
+  variable, reset on branch join. Anything more (narrowing a union to
+  each arm of a `typeof`/`instanceof`, refining after a `throw`, keeping
+  narrowing alive across a loop back-edge) requires a CFG the compiler
+  does not have.
+
+**Partially broken today because of the ceiling**
+
+- **Closure capture types collapse to `externref`** whenever the TS
+  checker cannot prove a single Wasm kind — see `mapTsTypeToWasm:84–89`.
+  Fixed for specific cases by #686 (done) but each fix is a per-feature
+  hack rather than a general solution.
+- **Union dispatch via host imports.** Binary ops on heterogeneous unions
+  currently route through JS host imports (`__any_add`, `__box_number`,
+  `__unbox_number`) instead of dispatch-in-Wasm, because there is no
+  tagged-union representation (#745).
+- **No cross-function inlining beyond the per-call-site inline-small pass
+  (#465).** `InlinableFunctionInfo`
+  (`src/codegen/context/types.ts:70–79`) stores a shallow copy of a
+  compiled body and splices it at call sites with matching parameter
+  arity. This is mechanical, not profile- or type-guided.
+
+**Estimated ceiling of the no-IR approach**
+
+Speculative, but bounded by the structure:
+
+- **Current: ~52% pass.** (22,449 / 43,169 on `068186ad`.)
+- **Probable ceiling without an IR: ~60–65%.** More of the remaining CE
+  is from closure/type-capture edge cases, deeper narrowing, and numeric
+  inference failures that today degrade to `externref` and then fail at
+  runtime. Each of those can be pushed a little further with per-feature
+  hacks like `applyShapeInference` and `narrowedNonNull`, but the cost
+  curve is super-linear because each new hack has to interact correctly
+  with `addUnionImports`, `savedBody`, `stackBalance`, and
+  `repairStructTypeMismatches`.
+- **Truly out of reach without an IR (based on the skip filters and the
+  performance backlog): `eval`, `with`, `Proxy`/`Reflect`, finalization,
+  general monomorphization, escape analysis, link-time specialization.**
+  These are not "hard to prioritize" — they are "no natural location in
+  the pipeline".
+
+### Bottom line
+
+The current architecture is a typed front end with a Wasm-shaped backend
+IR and ten repair passes stitching them together. It is at ~52% test262
+and can probably be pushed into the low 60s by continuing the existing
+pattern of per-feature hacks. The cost is that each new feature compounds
+with the existing repair passes and state-ful `FunctionContext` fields,
+so the marginal cost of the next fix is rising — visible in the size of
+`stack-balance.ts` (2,512 lines), `fixups.ts` (986 lines),
+`calls.ts` (6,558 lines), and `destructuring.ts` (1,995 lines).
+
+Every issue on the `performance` goal that is marked `feasibility: hard`
+(#743, #744, #745, #747, #904, #1121, #1126) names the same missing
+piece: a place between the TypeScript checker and Wasm emission where
+typed program facts can live, be queried, and be mutated by passes. That
+is the middle-end IR the earlier section of this issue specifies. The
+evidence here is that the current compiler has reached the point where
+its repair-pass surface is itself a bottleneck, and further compounding
+will continue to slow per-feature work.

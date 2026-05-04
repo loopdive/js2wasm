@@ -1,0 +1,120 @@
+---
+id: 1217
+sprint: 46
+title: "ci(test262): smoke-canary — re-run main HEAD twice with fresh cache, fail if flip rate > 0"
+status: done
+created: 2026-04-30
+updated: 2026-05-01
+completed: 2026-05-01
+priority: medium
+feasibility: medium
+reasoning_effort: medium
+task_type: infrastructure
+area: ci
+language_feature: n/a
+goal: ci-hardening
+es_edition: n/a
+related: [1190, 1191, 1192, 1189]
+origin: split from #1190 acceptance criterion #5 — "Land a canary mechanism to detect future drift regressions". Sprint 46 closed #1190 by splitting open work into sub-issues; this is the canary one.
+---
+# #1217 — Smoke-canary: detect future test262 drift regressions
+
+## Problem
+
+After the sprint 45/46 drift fixes (cache-key invalidation #1171, CT
+exclusion #1192, baseline refresh #1191), residual non-deterministic
+drift still appears on no-op PRs (PR #104 saw 48 non-CT regressions on
+a docs-only change — see #1190 audit). We don't have an active mechanism
+to catch when drift gets *worse* — a future change to vitest config,
+node version, or test infrastructure could silently regress
+deterministic-ness without anyone noticing until the gate starts
+producing false positives at a higher rate.
+
+A smoke-canary closes that observability gap.
+
+## Fix
+
+Add a scheduled (or push-to-main-triggered) workflow that:
+
+1. Checks out `main` HEAD.
+2. Runs `Test262 Sharded` **twice** with **fresh cache** (no restore-keys).
+3. Compares the two results: flip count = number of tests that flipped
+   pass↔non-pass between the two runs.
+4. Posts the flip count to a status feed (similar to ci-status feed).
+5. Fails the workflow (or warns prominently) if flip count > N
+   (suggested initial threshold: N=10, tune after first runs).
+
+## Acceptance criteria
+
+- [ ] New workflow `.github/workflows/test262-canary.yml` runs on
+  schedule (suggested: nightly) and on `workflow_dispatch`.
+- [ ] Workflow runs main HEAD twice with `actions/cache` disabled or
+  with `key: 'no-cache'`.
+- [ ] Workflow output reports flip count distinctly from regression
+  count (this measures *engine determinism*, not compiler change).
+- [ ] If flip count > N, workflow fails OR posts a high-priority status.
+- [ ] Threshold N is documented in the workflow file with rationale.
+- [ ] Initial baseline of flip count is measured in the issue's
+  comments after first run.
+
+## Out of scope
+
+- Statistical merge-gate metric (#1190 Q2 — separate concern, deferred).
+- Per-test flake quarantine list (would solve the symptom but not the
+  observability problem).
+- Cross-Node-version flap detection (separate concern).
+
+## Why this scope
+
+The smoke-canary is the cheapest mechanism to **detect** drift
+regressions, not necessarily fix them. Once we know flip count, we can
+decide whether to invest in flap quarantine or runner-pool isolation.
+Without the canary, we're flying blind.
+
+## Implementation hints
+
+- Reuse the matrix shard structure from `.github/workflows/test262-sharded.yml`.
+- Cache step: either omit entirely or use a key that always misses
+  (e.g., `key: 'canary-${{ github.run_id }}-${{ matrix.chunk }}'`).
+- Diff script: a small node script that takes two JSONL files and counts
+  per-test status differences. Similar to `scripts/regression-diff.mjs`
+  but symmetric (no baseline/candidate distinction).
+- CPU budget: ~80 CPU-min × 2 = 160 CPU-min/run. Acceptable for nightly.
+
+## Implementation notes (2026-05-01)
+
+Shipped:
+
+- `.github/workflows/test262-canary.yml` — daily-scheduled (03:30 UTC)
+  + `workflow_dispatch` trigger. Two jobs:
+  - `canary-shard` with a 2D matrix `run: [a, b] × chunk: [1..16]` =
+    32 parallel shards. **No `actions/cache` step** — every chunk
+    compiles cold so the canary measures cold-start non-determinism.
+  - `compare` depends on `canary-shard`, downloads both runs'
+    artifacts, merges per-run, runs the diff script, fails the
+    workflow if flip count exceeds the threshold (default 10, override
+    via `workflow_dispatch.inputs.flip_threshold`).
+- `scripts/test262-canary-diff.ts` — symmetric diff. Categorises tests
+  as match / flip / noise / missing. "Flip" = `pass <-> non-pass` —
+  the headline metric. Last line is `FLIP_COUNT=N` for cheap CI grep.
+- Smoke-tested locally with synthetic JSONLs: correctly identifies
+  1 flip, 1 noise, 2 missing, 2 match.
+
+### Threshold rationale (initial)
+
+- `N=10` initial. Picked deliberately above the floor we expect on a
+  well-behaved run (~0–5 flips driven by wasmtime startup jitter and
+  vitest worker non-determinism) but below the sprint-45-era drift
+  levels (~30–50 flips).
+- Tune after the first 2–3 nightly runs once we have a real
+  distribution. Initial-baseline measurement is acceptance criterion
+  #6 — capture in this issue's notes after the first run lands.
+
+### Cost / observability
+
+- Cost: 2 × 16 chunks ≈ 32 parallel runners, ~5–10 min wall-clock,
+  ~160 CPU-min per run. One nightly = ~5,000 CPU-min/month — fine.
+- Observability: when the canary fails, the `test262-canary-report`
+  artifact has the full diff (flip list, noise list, missing list).
+  The PR-author or on-call dev can then decide whether to triage as
+  flap-worthy or shrug it off as transient.

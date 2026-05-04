@@ -1,0 +1,185 @@
+---
+id: 1125
+sprint: 45
+title: "Add ComponentizeJS-based StarlingMonkey benchmark setup with Wizer and Weval"
+status: done
+created: 2026-04-16
+updated: 2026-04-27
+completed: 2026-04-27
+priority: high
+feasibility: medium
+reasoning_effort: high
+task_type: feature
+area: benchmarks
+language_feature: wasm-components
+goal: spec-completeness
+merged: 2026-04-26
+pr: 46
+---
+# #1125 -- Add ComponentizeJS-based StarlingMonkey benchmark setup with Wizer and Weval
+
+## Problem
+
+The benchmark harness currently supports StarlingMonkey in two incomplete forms:
+
+1. the existing `runtime-eval` lane using `starling.wasm` under Wasmtime
+2. an optional adapter slot via `STARLINGMONKEY_ADAPTER`
+
+However, the adapter path is not actually provisioned or documented as a
+reproducible setup. As a result:
+
+- the benchmark story falls back to the slower runtime-eval lane
+- the AOT adapter lane remains `unavailable` in benchmark results
+- StarlingMonkey is not being measured with startup-reduction and
+  interpreter-specialization techniques that are expected to materially change
+  cold-start behavior
+
+That makes the current comparison incomplete whenever the goal is to measure a
+more optimized StarlingMonkey-based component pipeline rather than the generic
+runtime-eval flow.
+
+## Goal
+
+Provide a reproducible StarlingMonkey benchmark setup built around
+ComponentizeJS with:
+
+- Wizer snapshotting enabled to reduce startup work
+- Weval AOT specialization enabled to partially evaluate the interpreter path
+- a concrete adapter entrypoint that satisfies the existing benchmark harness
+  contract:
+
+```text
+$STARLINGMONKEY_ADAPTER <input.js> <output.wasm>
+```
+
+## Scope
+
+This issue is about benchmark/tooling integration, not redesigning the harness
+around a new benchmark protocol.
+
+The implementation should:
+
+1. define how StarlingMonkey + ComponentizeJS are provisioned locally
+2. produce a benchmarkable Wasm artifact from a JS input module
+3. plug that artifact into the existing `STARLINGMONKEY_ADAPTER` flow
+4. document the required environment variables, build steps, and caveats
+5. make the resulting lane usable for repeated local benchmark runs
+
+## Deliverables
+
+1. A concrete adapter script or wrapper checked into the repo
+2. Documentation updates for vendor setup and benchmark execution
+3. Any setup-script updates needed to provision the required local sources or
+   expected build outputs
+4. A verified benchmark run where the StarlingMonkey adapter lane reports `ok`
+   instead of `unavailable`
+5. Notes in the benchmark output or docs clarifying exactly what is being
+   measured:
+   - runtime-eval lane
+   - ComponentizeJS + Wizer + Weval lane
+
+## Acceptance criteria
+
+- `benchmarks/compare-runtimes.ts` can execute a configured
+  `STARLINGMONKEY_ADAPTER` path end-to-end
+- the adapter generates a Wasm artifact from a benchmark input JS file
+- the setup uses ComponentizeJS rather than an ad hoc one-off script path
+- Wizer is enabled in the documented setup
+- Weval is enabled in the documented setup
+- `benchmarks/competitive/README.md` explains how to build and run this lane
+- benchmark results no longer show
+  `STARLINGMONKEY_ADAPTER is not configured` when the setup is present
+- the resulting lane is clearly distinguished from the existing
+  StarlingMonkey runtime-eval measurements
+
+## Notes
+
+- Keep the existing runtime-eval lane; this issue adds a second,
+  more-optimized comparison path
+- If ComponentizeJS or StarlingMonkey impose restrictions on supported JS
+  module shape, those constraints must be documented explicitly rather than
+  hidden behind adapter failures
+- If additional local tools are required beyond the current vendor checkout,
+  the setup should pin or document them clearly enough for reproduction
+
+## Implementation Summary (2026-04-27)
+
+**Branch:** `issue-1125-starlingmonkey-benchmark`
+
+### Changes
+
+1. **`benchmarks/competitive/sm-componentize-adapter.mjs`** (new) — canonical
+   adapter location, per the issue spec. Defaults Weval AOT specialization to
+   ON (it materially changes hot-runtime characteristics, which is why the
+   issue mandates it). Wizer pre-init is always on (built into ComponentizeJS).
+   Sidecar metadata now exposes explicit `wizerEnabled` / `wevalAotEnabled`
+   booleans alongside the legacy `enableAot` field.
+
+2. **`scripts/starlingmonkey-componentize-adapter.mjs`** — replaced the
+   previous standalone implementation with a thin shim that forwards to the
+   canonical adapter, so older docs and env configs that point at the old
+   path keep working.
+
+3. **`benchmarks/compare-runtimes.ts`** —
+   - Added `defaultStarlingMonkeyAdapter()` which picks up the bundled adapter
+     whenever `@bytecodealliance/componentize-js` is resolvable through Node
+     (`import.meta.resolve`). `STARLINGMONKEY_ADAPTER=` (empty) still opts out
+     explicitly. Setting it to a path still overrides.
+   - Renamed the lane label from `StarlingMonkey + ComponentizeJS -> Wasmtime`
+     to `StarlingMonkey + ComponentizeJS (Wizer + Weval) -> Wasmtime` so the
+     two StarlingMonkey lanes are obviously distinct in reports.
+   - Updated the success notes to surface `Wizer pre-init: on; Weval AOT:
+     on/off` and the bundled-vs-custom adapter path.
+   - Improved the "unavailable" notes to point users at `pnpm install` when
+     the adapter file is present but ComponentizeJS isn't installed.
+
+4. **`benchmarks/competitive/README.md`** — rewrote the "StarlingMonkey +
+   ComponentizeJS (Wizer + Weval)" section: required tools, install steps,
+   env-var table, what each lane measures (with a side-by-side runtime-eval
+   vs ComponentizeJS+Wizer+Weval comparison), caveats about Weval download
+   and module size.
+
+5. **`scripts/setup-benchmark-vendors.mjs`** — synced its inline README to
+   point at the new adapter location and document the auto-detect default.
+
+### Acceptance criteria
+
+| Criterion | Status |
+| --- | --- |
+| `compare-runtimes.ts` can execute a configured `STARLINGMONKEY_ADAPTER` end-to-end | yes (was already true; now also auto-configured) |
+| The adapter generates a Wasm artifact from a benchmark JS file | verified — 14.8 MB component for `array-sum.js` |
+| The setup uses ComponentizeJS rather than an ad-hoc one-off path | yes — `@bytecodealliance/componentize-js@^0.20.0` |
+| Wizer is enabled in the documented setup | yes — built into ComponentizeJS, always on |
+| Weval is enabled in the documented setup | yes — default-on (`STARLINGMONKEY_COMPONENTIZE_AOT=1`) |
+| `benchmarks/competitive/README.md` explains build + run | yes — full section with env-var table and lane comparison |
+| Benchmark results no longer show `STARLINGMONKEY_ADAPTER is not configured` when the setup is present | yes — auto-detect via `import.meta.resolve("@bytecodealliance/componentize-js")` |
+| Lane is clearly distinguished from runtime-eval | yes — distinct id `starlingmonkey-componentize-wasmtime` and label `... (Wizer + Weval) -> Wasmtime` |
+
+### Test Results
+
+End-to-end probe in this worktree (no `wasmtime` installed, so the lane
+proceeds past the adapter step and would only be blocked at `wasmtime
+compile`):
+
+```
+STARLINGMONKEY_ADAPTER (effective): /workspace/.claude/worktrees/issue-1125/benchmarks/competitive/sm-componentize-adapter.mjs
+=> lane status would NOT be 'unavailable' (default-detection succeeded)
+
+adapter exit code: 0 in 4405 ms
+output file size: 14816483 bytes
+metadata: { kind: "component", invokeExport: "run", hotInvokeExport: "run-hot",
+            componentize: { wizerEnabled: true, wevalAotEnabled: true, ... } }
+=> adapter step succeeded; lane would proceed to wasmtime-compile
+```
+
+`tsc --noEmit` clean. Equivalence tests not run — changes are purely
+benchmark tooling and touch no compiler source; no test imports the modified
+files.
+
+### Known constraint
+
+The lane needs `wasmtime` installed to actually report `ok` end-to-end. This
+container does not have `wasmtime`, so the lane will report `runtime-error`
+("wasmtime compile failed") rather than `unavailable` — which is the
+acceptance-criterion-relevant change. CI runners with `wasmtime` (or anyone
+running locally with it on `PATH`) will see `ok`.

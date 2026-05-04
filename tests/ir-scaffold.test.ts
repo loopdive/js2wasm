@@ -21,6 +21,7 @@ import {
   asBlockId,
   asValueId,
   IrFunctionBuilder,
+  irVal,
   lowerFunctionAstToIr,
   planIrCompilation,
   verifyIrFunction,
@@ -84,8 +85,14 @@ describe("ir scaffold — phase 1", () => {
     // `if (cond) <then> else { <rest> }`. This unlocks recursive numeric
     // kernels (fib, factorial, …) whose typical shape is
     // `if (base) return n; return <recursive>`.
+    //
+    // #1169a (Slice 1) widens the selector to accept `string` params and
+    // `string` returns, plus string literals as expression leaves — so
+    // `nonNumeric()` and `stringParam(s)` now also enter the IR path.
     expect([...sel.funcs].sort()).toEqual([
       "compound",
+      "nonNumeric",
+      "stringParam",
       "trivial",
       "withBoolParam",
       "withIfElse",
@@ -103,7 +110,7 @@ describe("ir scaffold — phase 1", () => {
     const bad: IrFunction = {
       name: "bad",
       params: [],
-      resultTypes: [{ kind: "f64" }],
+      resultTypes: [irVal({ kind: "f64" })],
       blocks: [
         {
           id: bId,
@@ -114,13 +121,13 @@ describe("ir scaffold — phase 1", () => {
               kind: "const",
               value: { kind: "f64", value: 1 },
               result: vId,
-              resultType: { kind: "f64" },
+              resultType: irVal({ kind: "f64" }),
             },
             {
               kind: "const",
               value: { kind: "f64", value: 2 },
               result: vId,
-              resultType: { kind: "f64" },
+              resultType: irVal({ kind: "f64" }),
             },
           ],
           terminator: { kind: "return", values: [vId] },
@@ -135,7 +142,7 @@ describe("ir scaffold — phase 1", () => {
   });
 
   it("builder → verifier → (smoke) for a zero-arg function", () => {
-    const t: IrType = { kind: "f64" };
+    const t: IrType = irVal({ kind: "f64" });
     const b = new IrFunctionBuilder("smoke", [t], true);
     b.openBlock();
     const v = b.emitConst({ kind: "f64", value: 3.14 }, t);

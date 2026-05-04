@@ -1,4 +1,9 @@
 {
+  "statusLine": {
+    "type": "command",
+    "command": ".claude/statusline-command.sh",
+    "refreshInterval": 30
+  },
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   },
@@ -72,6 +77,17 @@
           {
             "type": "command",
             "command": ".claude/hooks/pre-merge.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "if": "Bash(git worktree add*)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/hooks/check-worktree-path.sh",
             "timeout": 5
           }
         ]

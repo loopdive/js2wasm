@@ -1,0 +1,114 @@
+---
+id: 1171
+sprint: 45
+title: "Fix test262 timeout non-determinism — raise testTimeout to 30s, bust CI cache on config change"
+status: done
+created: 2026-04-24
+updated: 2026-04-24
+completed: 2026-04-27
+priority: high
+feasibility: easy
+reasoning_effort: low
+task_type: bugfix
+area: ci
+goal: ci-hardening
+---
+# #1171 — Fix test262 timeout non-determinism
+
+## Problem
+
+With `describe.concurrent` (merged in PR #14), 9 compilations run simultaneously.
+Tests that normally compile in 8-9s sometimes slip past the 10s `testTimeout`
+under concurrent CPU load, flipping from `pass` → `compile_timeout` between runs
+on identical code. This produces up to ~224 test variance across runs on the same
+compiler state — unusable for reliable regression tracking.
+
+The compiler has its own internal 30s timeout (which records `compile_timeout`
+status). The vitest `testTimeout: 10000` is a second, unrelated ceiling that
+should not be the binding constraint.
+
+A second source: the CI `test262-cache-v2-*` key does not include
+`vitest.config.ts`, so parallelism/timeout config changes don't bust the cache.
+Stale `compile_timeout` results from before the `describe.concurrent` fix get
+replayed even though the same test would now pass.
+
+## Fix
+
+### 1. Raise `testTimeout` in `vitest.config.ts`
+
+```ts
+// BEFORE:
+testTimeout: 10000,
+
+// AFTER:
+testTimeout: 35000,  // above the compiler's own 30s internal timeout
+```
+
+35s gives the compiler's internal 30s timeout room to fire and record
+`compile_timeout` status before vitest kills the test. Vitest's timeout becomes
+the backstop for truly stuck tests, not the primary ceiling.
+
+### 2. Add `vitest.config.ts` to the CI cache key
+
+In `.github/workflows/test262-sharded.yml`, the `Cache test262 incremental cache`
+step uses:
+```yaml
+key: test262-cache-v2-${{ hashFiles('src/**/*.ts', 'scripts/test262-worker.mjs', 'scripts/compiler-fork-worker.mjs') }}-chunk-${{ matrix.chunk }}
+```
+
+Add `vitest.config.ts` to the hash inputs:
+```yaml
+key: test262-cache-v2-${{ hashFiles('src/**/*.ts', 'scripts/test262-worker.mjs', 'scripts/compiler-fork-worker.mjs', 'vitest.config.ts') }}-chunk-${{ matrix.chunk }}
+```
+
+This ensures any change to parallelism, timeout, or pool configuration forces
+a clean run rather than replaying stale cached results.
+
+## Acceptance criteria
+
+- [ ] `testTimeout` is 35000 in `vitest.config.ts`
+- [ ] `vitest.config.ts` is included in the CI cache key hash
+- [ ] Two consecutive local test262 runs on the same code produce the same pass count
+      (or within ±5 tests, accounting for genuine timing variance on slow tests)
+- [ ] No equivalence test regressions
+
+## Notes
+
+- Both changes are in files already touched by PR #14, so this is a natural follow-up
+- No compiler source changes needed
+- The combined effect: CI cache busts on this PR's merge, first clean run after
+  establishes a deterministic new baseline
+
+## Implementation Summary (2026-04-24)
+
+Two minimal edits, exactly as specified:
+
+1. **`vitest.config.ts`** — raised `testTimeout` from `10000` → `35000`
+   (35s), with a comment explaining that the value must sit above the
+   compiler's internal 30s timeout so `compile_timeout` status can be
+   recorded before vitest force-kills the test. The 10s ceiling caused
+   pass→compile_timeout flips under `describe.concurrent` CPU contention
+   since PR #14.
+2. **`.github/workflows/test262-sharded.yml`** — added `vitest.config.ts`
+   to the `hashFiles(...)` input of both `key:` and the `restore-keys:`
+   fallback for the `test262-cache-v2-*` cache. Any change to
+   concurrency/timeout/pool config now busts the cache, preventing stale
+   `compile_timeout` replays from pre-#1171 runs.
+
+## Test Results (2026-04-24)
+
+- YAML parses cleanly; jobs preserved (`test262-shards`, `merge-report`,
+  `regression-gate`, `promote-baseline`).
+- `vitest.config.ts` still valid — vitest loads without error on a small
+  sanity test.
+- No compiler source touched — cannot cause test regressions. The CI cache
+  bust is the intended side-effect.
+
+## Acceptance criteria — status
+
+- [x] `testTimeout` is 35000 in `vitest.config.ts`
+- [x] `vitest.config.ts` is included in the CI cache key hash (both `key:`
+      and `restore-keys:` fallback)
+- [ ] Two consecutive local test262 runs stability — to be validated on
+      PR CI. Local full test262 is out of scope for dev workflow.
+- [x] No equivalence test regressions (no compiler source changed)

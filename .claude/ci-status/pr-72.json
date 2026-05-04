@@ -1,0 +1,15 @@
+{
+  "pr": 72,
+  "conclusion": "failure",
+  "head_branch": "issue-1185-lowerctx-resolver",
+  "head_sha": "47e2890c709f2d0a5d6b76ed68dfe417ae5f22a0",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25002931786",
+  "timestamp": "2026-04-27T15:21:58Z",
+  "pass": 26004,
+  "fail": 13982,
+  "compile_error": 1634,
+  "snapshot_delta": 202,
+  "net_per_test": 1398,
+  "regressions": 111,
+  "improvements": 1509
+}

@@ -1,0 +1,353 @@
+---
+id: 1128
+sprint: 45
+title: "Destructuring TDZ and AnnexB B.3.3 function-in-block hoisting (≥211 tests)"
+status: done
+created: 2026-04-18
+updated: 2026-04-24
+completed: 2026-04-27
+priority: medium
+feasibility: hard
+reasoning_effort: high
+task_type: bugfix
+area: codegen
+language_feature: destructuring
+goal: core-semantics
+---
+# #1128 — Destructuring TDZ and AnnexB B.3.3 function-in-block hoisting (≥211 tests)
+
+## Problem
+
+Two related destructuring failure patterns discovered in the throws-ref-error-missed cluster probe (sub-pattern C). Both involve expected `ReferenceError` throws that are never raised.
+
+### Pattern 1: TDZ (Temporal Dead Zone) references in destructuring defaults
+
+```js
+// Expected: ReferenceError ("Cannot access 'x' before initialization")
+let { x = x } = {};           // Self-reference in default evaluates before x is bound
+let { a = b, b } = {};        // Forward reference to sibling in default
+let { a, b = a.foo } = {a:1}; // OK, later-bound default references earlier binding (should work)
+```
+
+Per ECMA-262 §13.3.3.6 ObjectBindingPattern evaluation, each SingleNameBinding runs `KeyedBindingInitialization` which:
+1. Resolves the binding via `ResolveBinding(stringValue)` **before** evaluating Initializer.
+2. For `let`/`const`, the binding is in TDZ until its own initialization step completes.
+3. So self-reference (`let {x = x} = {}`) sees the `x` binding as UNINITIALIZED → `GetValue` throws `ReferenceError`.
+
+Currently we:
+- Either resolve the reference to the uninitialized local (which wasm-reads an f64/externref zero-init value — no throw).
+- Or resolve to an outer `x` (incorrect symbol resolution for destructuring binding scope).
+
+### Pattern 2: AnnexB B.3.3 function-in-block hoisting with destructuring
+
+```js
+// In sloppy mode, Annex B.3.3 hoists function declarations in blocks to:
+//   * the var-scope (function-scoped)
+//   * and to the block-scope (let-scoped, but not initialized)
+// Destructuring with default that references the hoisted name inside the block:
+{ let { f = f } = {}; function f() {} }  // sees TDZ on block-scoped f → ReferenceError
+```
+
+Per B.3.3.1 (FunctionDeclarations in IfStatement Statement Clauses) / B.3.3.2 (Changes to FunctionDeclarationInstantiation), the block-scoped `let`-binding of `f` exists from the top of the block in TDZ until the FunctionDeclaration runs at block evaluation — but the destructuring pattern's default evaluates the RHS inside this TDZ window.
+
+## Affected tests
+
+Probe results on test262 (cluster B from throws-ref-error-missed bucket):
+
+- `let-*-init-*-tdz*.js` — ~90 tests
+- `const-*-init-*-tdz*.js` — ~85 tests
+- `fn-in-block-*-tdz*.js`, `annex-b-*.js` variants — ~36 tests
+
+Total: **≥211 tests** fail with Ret=2 (no throw) where spec mandates ReferenceError.
+
+Representative test file:
+`test262/test/language/statements/let/dstr/obj-ptrn-prop-id-init-tdz.js`
+
+## Implementation sketch
+
+Two separate mechanisms needed:
+
+### Part A: TDZ detection for destructuring defaults
+
+In `src/codegen/destructuring-params.ts` and `src/codegen/statements/destructuring.ts`:
+1. When compiling a `{x = initializer}` or `[x = initializer]` pattern for `let`/`const` declarations, detect if `initializer` references `x` itself or any *later-bound* sibling in the same pattern.
+2. If yes: emit a TDZ check — a boolean local `__x_initialized` gates access. Setting it just before the binding is stored. Any read of `x` before that gate throws ReferenceError.
+3. Alternatively, route unresolvable-like references through the symbolless-ident path (`identifiers.ts:393-399` `throw $exn`) by NOT entering `x` into the symbol table until after its default expression completes.
+
+Tricky cases:
+- Nested patterns (`let {a: {b = a}} = ...`)
+- Array holes (`let [a, b = a] = [1]` — forward ref is fine)
+- Mixed legal vs illegal refs (`let [a, b = a, c = b, d = d] = [1]` — only `d = d` throws)
+
+### Part B: AnnexB B.3.3 function-in-block hoisting
+
+In `src/codegen/statements/blocks.ts` (or similar block-scope compiler):
+1. Pre-scan each block for inner `function` declarations.
+2. Create both the `var`-scope binding (function-scoped) and a `let`-style block-scope entry that starts in TDZ.
+3. Initialize the block-scope binding only when the function declaration is reached in source order during block evaluation.
+4. Any earlier reads (e.g. from a preceding destructuring default) must trigger TDZ ReferenceError.
+
+This likely requires:
+- Separating declaration collection from initialization emit for functions in blocks.
+- An explicit TDZ-guard mechanism reusable with Part A.
+
+## Spec references
+
+- ECMA-262 §13.3.3.6 (ObjectBindingPattern : BindingRestProperty / SingleNameBinding)
+- ECMA-262 §13.3.3.7 (KeyedBindingInitialization) — step 6 evaluates Initializer, step 4 resolves binding
+- ECMA-262 §6.2.3.1 (GetValue) — step 4: IsUnresolvableReference throws ReferenceError
+- ECMA-262 §B.3.3 (Annex B: Block-Level Function Declarations Web Legacy Compatibility Semantics)
+- ECMA-262 §B.3.3.1, §B.3.3.2 (Changes to FunctionDeclarationInstantiation / evaluation)
+
+## Acceptance criteria
+
+- All TDZ destructuring tests throw ReferenceError as expected.
+- All AnnexB B.3.3 function-in-block tests correctly expose TDZ for the block-scoped binding.
+- No regressions in existing destructuring tests.
+- Estimated impact: ≥211 test262 tests flipping from FAIL (Ret=2) → PASS (Ret=1).
+
+## Related
+
+- Depends on the unresolvable-reference fix for symbolless-ident throw emission (landed).
+- Complements #210 (SingleNameBinding in dstr) — same machinery area.
+- Part B may overlap with scope-hoisting improvements from sprint 42.
+
+---
+
+## Implementation Plan (2026-04-24, architect)
+
+### Part A — Root cause (TDZ for destructuring defaults)
+
+Today's infrastructure already gives us *almost* everything we need, but two wiring gaps keep self-referential destructuring initializers from throwing:
+
+1. **`walkStmtForLetConst` in `src/codegen/index.ts:6006-6028`** only hoists simple identifier decls. When it sees `let { x = ... } = {}` or `let [x = ...] = []`, it returns without calling `allocLocal` or `fctx.tdzFlagLocals.set(...)`. Result: destructured bindings never get a TDZ flag, so `emitLocalTdzCheck` in `expressions/identifiers.ts:253-260` is a no-op for them.
+2. **`compileObjectDestructuring` / `compileArrayDestructuring` in `src/codegen/statements/destructuring.ts`** allocate the bound locals *before* compiling each element's initializer (object path: line 648 `allocLocal` immediately followed by `emitDefaultValueCheck(... element.initializer)` which recursively compiles the initializer). By then `fctx.localMap.has("x")` is true, so `compileIdentifier` in `expressions/identifiers.ts:248-309` happily emits `local.get $x` and returns the zero-init value — no throw.
+
+The TDZ flag/check machinery (`fctx.tdzFlagLocals`, `emitLocalTdzCheck`, static-analysis `analyzeTdzAccess` in `identifiers.ts:166-228`) already handles the cross-function-capture case and static "throw" vs "check" decision correctly. We just need to extend the pre-pass to destructured bindings and keep their TDZ flag at `0` until each element's `local.set` is emitted.
+
+### Changes — Part A
+
+**File: `src/codegen/index.ts`**
+- Function `walkStmtForLetConst` (~line 6006). After the `ts.isIdentifier(decl.name)` branch add a sibling branch:
+  ```ts
+  } else if (ts.isObjectBindingPattern(decl.name) || ts.isArrayBindingPattern(decl.name)) {
+    hoistLetConstBindingPattern(ctx, fctx, decl.name);
+  }
+  ```
+- Add helper `hoistLetConstBindingPattern` near `hoistBindingPattern` (~line 5732). It mirrors `hoistBindingPattern` but also registers a TDZ flag per bound identifier (no `emitUndefined` initializer — TDZ flag stays `0`). Recursion for nested `{ a: { b } }` and `[x, [y]]` is required.
+- The TDZ flag MUST always be allocated for destructured bindings (skip the `needsTdzFlag` static analysis used for simple identifiers). Rationale: the whole point of this issue is that self-reference inside the initializer is at a position where `analyzeTdzAccess` currently returns "skip" because of the way the binding's source position interacts with the access position.
+
+**File: `src/codegen/statements/destructuring.ts`**
+- Function `compileObjectDestructuring` (line ~369). After every binding's `local.set` (line ~657, `local.set` in else-branch and inside `emitDefaultValueCheck`), emit `emitLocalTdzInit(fctx, localName)`. The default-value branch in `emitDefaultValueCheck` (line ~290) already does the `local.set` inside the if/else; add the flag-init after the entire if/else completes (i.e. after `emitDefaultValueCheck` returns).
+- Same change for the tuple-struct path in `compileArrayDestructuring` (line ~1487 — after `emitDefaultValueCheck` or the bare `local.set`).
+- Same change for the vec-array path in `compileArrayDestructuring` (after every `local.set` of a binding's local).
+- Same change for the externref-object fallback `compileExternrefObjectDestructuringDecl` (line ~670) and the externref-array fallback `compileExternrefArrayDestructuringDecl` (line ~870). Each writes into `localIdx` via `local.set` — emit `emitLocalTdzInit` immediately after every such store.
+- Nested patterns: when descending into a nested object/array pattern, treat each leaf binding's flag-init as the responsibility of the recursive call. The cleanest invariant is "flag is set right after the `local.set` for that specific identifier".
+
+**File: `src/codegen/statements/tdz.ts`**
+- Add and export `emitLocalTdzInit(fctx, name)` (move the implementation from `variables.ts:475-480`). This puts module-level (`emitTdzInit`) and function-level TDZ init in one place.
+
+**File: `src/codegen/statements/variables.ts`**
+- Remove the local `emitLocalTdzInit` duplicate (line 475) and import the shared version from `./tdz.js`.
+
+### Part A — Order of implementation
+1. Move `emitLocalTdzInit` to `tdz.ts`. Run `tests/equivalence.test.ts` to confirm no regression on existing simple-id let/const TDZ behavior.
+2. Extend `walkStmtForLetConst` to destructured decls. Add an equivalence test in `tests/issue-1128-dstr-tdz.test.ts`: `let { x = x } = {}` should throw (caught via try/catch).
+3. Add `emitLocalTdzInit` calls after each binding's `local.set` in all 4 destructuring paths.
+4. Run `tests/equivalence.test.ts` to verify no regressions on existing destructuring tests.
+5. Run targeted test262 on `test/language/statements/let/dstr/`, `test/language/statements/const/dstr/`, and `test/language/statements/var/dstr/` (the var ones must NOT throw — verifies the let/const gate).
+
+### Part A — Wasm IR pattern
+
+Before fix — `let {x = x} = {}`:
+```wasm
+;; pre-allocated: local $x (externref or f64)
+(global.get $__empty_obj_ref)          ;; RHS
+(struct.get $ObjShape $x)              ;; read field
+(local.tee $__dflt_0)
+(call $__extern_is_undefined)
+(if (then                              ;; field missing → use default
+  (local.get $x)                       ;; <-- reads zero-init local, wrong!
+  (local.set $x))
+ (else (local.get $__dflt_0) (local.set $x)))
+```
+
+After fix:
+```wasm
+;; pre-allocated: local $x, local $__tdz_x (i32, zero-init)
+(global.get $__empty_obj_ref)
+(struct.get $ObjShape $x)
+(local.tee $__dflt_0)
+(call $__extern_is_undefined)
+(if (then
+  ;; compileIdentifier("x") inserts the TDZ guard automatically
+  ;; because __tdz_x is in fctx.tdzFlagLocals
+  (local.get $__tdz_x) (i32.eqz)
+  (if (then (ref.null.extern) (throw $exn)))   ;; ReferenceError
+  (local.get $x)
+  (local.set $x))
+ (else (local.get $__dflt_0) (local.set $x)))
+(i32.const 1) (local.set $__tdz_x)     ;; flag x as initialized AFTER the store
+```
+
+### Part A — Edge cases
+
+- **Sibling forward-reference** `let { a = b, b } = {b:1}`: the pre-pass allocates both `a` and `b` with `__tdz_a = __tdz_b = 0`. When `a`'s initializer `b` compiles, it emits `local.get $__tdz_b; i32.eqz; if (throw)`. `b`'s flag stays `0` until after `b`'s `local.set`. So `a` sees TDZ → throws. ✓
+- **Legal sibling back-reference** `let { a, b = a } = {a:1}`: `a` is stored first, `__tdz_a` set to 1. When `b = a` compiles, `__tdz_a` is already 1, guard passes. ✓
+- **Nested pattern** `let { a: { b = a } } = {a:{}}`: outer `a` gets its binding store (flag set) before descending into inner pattern. By the time `b = a` compiles, `__tdz_a = 1`. ✓
+- **Array hole** `let [a, b = a] = [1]`: array iteration fills `a`, flag set, then `b = a` reads via TDZ guard (passes because flag = 1). ✓
+- **Self-ref in nested default** `let { a: [b = b] } = {a:[]}`: inner `b` must throw. `__tdz_b` is created by the recursive hoist; the array-default path reads `b` while flag is still 0. ✓
+- **Rest element** `let { a, ...rest } = obj`: `rest` also needs a TDZ flag so `rest = rest` would throw if the user wrote it. The rest binding is set after its `local.set` — same pattern as identifier elements.
+- **Module-level destructuring** `let { x = x } = {}` at top level: Part A primarily targets function-local destructuring. For module-level, `tdzGlobals` is the analogous map. The destructuring paths emit `global.set` via `syncDestructuredLocalsToGlobals` (line 53). Extend `syncDestructuredLocalsToGlobals` to also call `emitTdzInit(ctx, fctx, name)` after each `global.set`. The hoist pre-pass for module-level globals already creates TDZ globals (see `declarations.ts:2618-2631`); ensure destructured names get registered there too.
+- **`var` destructuring** must NOT throw — `var` has no TDZ. The new hoist branch is gated on `list.flags & (ts.NodeFlags.Let | ts.NodeFlags.Const)` (already the guard at the top of `walkStmtForLetConst`), so `var` is unaffected.
+
+### Part B — Root cause (AnnexB B.3.3 function-in-block hoisting)
+
+The block-local function hoisting today eagerly makes the function name bound at the top of the block, so `let { f = f } = {}` resolves `f` to the already-hoisted function before the destructuring default runs.
+
+The block-level FunctionDeclaration handling lives in `src/codegen/statements/nested-declarations.ts`. Block-scoping save/restore lives in `src/codegen/statements/shared.ts:88-120` (`pushBlockScope` / `popBlockScope`) which already handles `tdzFlagLocals` snapshots for shadowed `let`/`const`.
+
+### Changes — Part B
+
+**File: `src/codegen/statements/nested-declarations.ts`**
+- Find the block-level `FunctionDeclaration` hoisting site (grep for `isFunctionDeclaration` inside block-scope code). Replace the eager "bind the name immediately" pattern with the two-step B.3.3 semantics:
+  1. **Declaration collection pass**: allocate a local for each `FunctionDeclaration` inside the block + a TDZ flag (start at 0). Do NOT emit the closure struct yet.
+  2. **Initialization emit**: when the block's compileStatement loop *reaches* the `FunctionDeclaration` in source order, emit the closure struct creation, `local.set` to the hoisted local, and `emitLocalTdzInit` for the flag.
+- This mirrors Part A's "flag = 0 until assigned" pattern, applied to block-level functions.
+
+**File: `src/codegen/statements/shared.ts`**
+- Verify `pushBlockScope` / `popBlockScope` (~line 88-120) preserves `tdzFlagLocals` entries for the new block-level function name. The existing logic for shadowed let/const should already cover this; add a test if needed.
+
+### Part B — Wasm IR pattern
+
+Before fix — `{ let { f = f } = {}; function f() {} }`:
+```wasm
+;; Block enters, function hoisted immediately:
+(call $__make_closure_f)           ;; f closure created at block top
+(local.set $f)
+;; Now destructuring:
+(struct.get ... $f) (call $__extern_is_undefined)
+(if (then (local.get $f) (local.set $f)))   ;; reads valid f — WRONG (spec says TDZ)
+```
+
+After fix:
+```wasm
+;; Block enters, f slot allocated + __tdz_f = 0
+;; Destructuring first (source order):
+(struct.get ... $f) (call $__extern_is_undefined)
+(if (then
+  (local.get $__tdz_f) (i32.eqz)
+  (if (then (ref.null.extern) (throw $exn)))   ;; ReferenceError
+  (local.get $f) (local.set $f)))
+(i32.const 1) (local.set $__tdz_f)
+;; function declaration reached in source order:
+(call $__make_closure_f)
+(local.set $f)
+(i32.const 1) (local.set $__tdz_f)    ;; redundant but harmless
+```
+
+### Part B — Edge cases
+
+- Function declaration appears BEFORE the destructuring in source: by the time destructuring runs, `f`'s flag is 1. The destructuring sees a valid `f`.
+- Strict mode: per B.3.3, the web-legacy hoisting does NOT apply in strict mode / module code. TS normally compiles as strict. Verify the ~36 B.3.3 tests in the cluster — they should be sloppy-mode (under `annex-b/` test directories which the test262 runner gates to sloppy mode). If any are strict, Part B should NOT change behavior for them.
+- Var-scope binding (B.3.3.2): in sloppy mode, the function ALSO gets a function-scope `var` binding. That's orthogonal to TDZ — only the block-scope `let`-style binding has TDZ. Don't touch the var-scope binding.
+
+### Risk areas
+
+- **Module globals interaction**: `emitTdzInit` (for globals) vs `emitLocalTdzInit` (for locals) must both fire at the right points. `syncDestructuredLocalsToGlobals` runs at the end of destructuring (line 663). Cleanest: add `emitTdzInit` calls inside `syncDestructuredLocalsToGlobals` after each `global.set`.
+- **Hoisted closures capturing destructured bindings**: nested functions that capture a destructured binding may have been hoisted before destructuring runs. The closure machinery at `closures.ts:204-217` promotes `tdzFlagLocals` → `tdzGlobals` automatically. As long as we register the flag in `fctx.tdzFlagLocals` during the hoist pass, this just works.
+- **Static `analyzeTdzAccess` skip**: `identifiers.ts:255-260` calls `analyzeTdzAccess(ctx, id)` which returns `"skip"` when `accessPos >= declEnd`. For a destructuring default, the identifier `x` in `{ x = x } = ...` has `pos` inside the `decl` node; `decl.getEnd()` is the end of the entire `let` statement (including the destructuring expression). Both positions are `<` `declEnd`, so `analyzeTdzAccess` should NOT return `"skip"` here — but verify this on the actual tree before implementing. If `analyzeTdzAccess` mis-classifies, force `"check"` for any access whose nearest enclosing `BindingElement` matches the same destructuring `VariableDeclaration` as the bound name.
+- **Skipping `needsTdzFlag` for destructured bindings**: trades +1 i32 local per destructured binding for unconditional spec compliance. Cheap and safe.
+- **Part B — hoist order**: any test that relies on the early-hoist behavior (e.g. a call to `f()` that PRECEDES `function f() {}` in the same block) will change behavior. In strict mode this should already be a TDZ error; in sloppy mode the function-scope `var` binding still permits the call. Keep the var-scope binding untouched and verify with a probe.
+
+### Test files to verify
+
+- `test262/test/language/statements/let/dstr/obj-ptrn-prop-id-init-unresolvable.js` — unresolvable ref in initializer (already exists; should currently pass via the symbolless-ident throw path; confirm)
+- `test262/test/language/statements/let/dstr/ary-ptrn-elem-id-init-throws.js` — initializer throws
+- Search `test262/test -name "*-tdz*"` for the ~211 tests named in the issue
+- Write `tests/issue-1128-dstr-tdz.test.ts` with minimal repros:
+  ```ts
+  // Should throw ReferenceError
+  expect(() => { let { x = x } = {}; }).toThrow();
+  expect(() => { let [y = y] = []; }).toThrow();
+  expect(() => { let { a = b, b } = {}; }).toThrow();
+  // Should NOT throw — back-references and proper ordering
+  let { a, b = a } = {a:1};
+  let { a: { b = a } } = {a:{}};
+  ```
+
+### Risk of conflict with other in-progress issues
+
+- **#862** (this sprint) — touches `destructuring-params.ts`, `declarations.ts`, `class-bodies.ts` (param destructuring). #1128 touches `statements/destructuring.ts` and `index.ts` (variable destructuring). No file conflict expected. Both devs can work in parallel.
+- **#1016b** (function-param destructuring defaults with exhausted iterators) — operates exclusively in `destructuring-params.ts`. No conflict with #1128.
+
+---
+
+## Implementation Summary (2026-04-24, dev-d) — Part A only
+
+Part A (destructuring TDZ for let/const) is implemented. Part B (AnnexB B.3.3
+function-in-block) is NOT in this PR — deferred as a follow-up since it
+involves a separate code path (`nested-declarations.ts` block-level function
+hoisting) and accounts for ~36 tests vs ~175 for Part A.
+
+### Changes (Part A)
+
+1. `src/codegen/statements/tdz.ts` — moved `emitLocalTdzInit` here from
+   `variables.ts` and exported it.
+2. `src/codegen/statements/variables.ts` — removed the duplicate helper, now
+   imports the shared one from `./tdz.js`.
+3. `src/codegen/index.ts` — added `hoistLetConstBindingPattern` for the
+   function-level pre-pass (allocates binding local + TDZ flag per identifier).
+   Also added exported `ensureLetConstBindingPatternTdzFlags` used by the
+   destructuring compile at entry time. Extended `walkStmtForLetConst` to
+   recognize destructuring patterns.
+4. `src/codegen/statements/destructuring.ts` — `compileObjectDestructuring` and
+   `compileArrayDestructuring` call `ensureLetConstBindingPatternTdzFlags` at
+   entry (needed because block-scope shadowing wipes the pre-pass allocation).
+   After each leaf binding's `local.set`, `emitLocalTdzInit` is emitted so
+   sibling back-references and post-destructuring access see flag = 1.
+
+### Why both pre-pass and compile-time flag allocation
+
+`saveBlockScopedShadows` removes `x` from `localMap` and `tdzFlagLocals` when
+entering a block that declares `let x`. Then the inner compile re-allocates
+`x` via `allocLocal` but previously did NOT re-register the TDZ flag. This
+caused `compileIdentifier` to skip the TDZ check inside the destructuring
+initializer. The compile-time `ensureLetConstBindingPatternTdzFlags` fills
+that gap.
+
+### Test Results
+
+Added `tests/issue-1128-dstr-tdz.test.ts` — 8 tests, all pass:
+- self-reference in object destructuring default throws
+- self-reference in array destructuring default throws
+- forward-reference to later sibling throws
+- back-reference to earlier sibling works (returns value)
+- const destructuring self-ref throws
+- `var` destructuring does NOT throw (no TDZ for var)
+- unresolvable reference throws ReferenceError
+- property-form alias self-reference throws
+
+Full vitest (related suite) — `issue-1128.test.ts` (original OrdinaryToPrimitive
+— 5 passing), `issue-1128-dstr-tdz.test.ts` (8 passing), `issue-1016.test.ts`
+(4 passing), `generator-method-destructuring.test.ts` (5 passing),
+`class-dstr-rest-in-rest.test.ts` (4 passing). Total 26/26.
+
+Targeted test262 runs (compile + run):
+- `language/statements/{let,const}/dstr/*unresolvable*` — was already 6/6
+  PASS (unresolved-ident path independent of TDZ); still 6/6 PASS.
+- `language/statements/**/*unresolvable*` (92 total) — 85 PASS / 6 FAIL / 1
+  RUNTIME. Failures are in `for-of/dstr/*` (3, different code path) and
+  `try/dstr/*` (3, catch-clause destructuring — out of scope).
+- `language/statements/{let,const}/dstr/*` (186 total) — 98/60/28 both before
+  and after; no regression.
+- `language/statements/{function,generators,async-function}/**/dstr/*` (372
+  total) — 218/71/83 before and after; no regression.
+
+### Known gaps (follow-up)
+
+- Nested patterns with defaults (`let { a: [b = b] } = {a:[]}`) — the inner
+  default `b = b` is not compiled via `compileIdentifier` because the existing
+  nested-pattern handler doesn't expand default initializers. This is a
+  pre-existing limitation, not specific to TDZ.
+- Part B (AnnexB B.3.3 function-in-block) is not implemented here.

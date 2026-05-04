@@ -1,9 +1,8 @@
 import type { Plugin, ViteDevServer } from "vite";
-import { readFileSync, readdirSync, existsSync, statSync, watch } from "fs";
+import { readFileSync, writeFileSync, readdirSync, existsSync, statSync, watch } from "fs";
 import { join, resolve } from "path";
-import { createHash } from "node:crypto";
 import { execSync } from "node:child_process";
-import type { WebSocket as WsType } from "ws";
+import type { ServerResponse } from "node:http";
 
 const projectRoot = resolve(import.meta.dirname, "..");
 
@@ -344,39 +343,144 @@ function loadBurndown(): { timestamps: string[]; remaining: number[]; completed:
 // ── Plugin ───────────────────────────────────────────────────
 
 export function dashboardPlugin(): Plugin {
-  const wsClients = new Set<WsType>();
+  const sseClients = new Set<ServerResponse>();
 
   function broadcast(data: any) {
-    const msg = JSON.stringify(data);
-    for (const ws of wsClients) {
+    const msg = `data: ${JSON.stringify(data)}\n\n`;
+    for (const res of sseClients) {
       try {
-        ws.send(msg);
+        res.write(msg);
       } catch {
-        wsClients.delete(ws);
+        sseClients.delete(res);
       }
     }
   }
 
+  // Regenerate dashboard/data/*.json from plan/ markdown files
+  function regenDashboardData() {
+    try {
+      execSync(`node ${join(projectRoot, "dashboard/build-data.js")}`, {
+        cwd: projectRoot,
+        stdio: "ignore",
+      });
+    } catch {
+      // non-fatal — stale data is better than a crash
+    }
+  }
+
+  // Regenerate sprint-stats.json from git tags (runs after plan/ changes)
+  function regenSprintStats() {
+    try {
+      execSync(`node --experimental-strip-types ${join(projectRoot, "scripts/sprint-stats.ts")}`, {
+        cwd: projectRoot,
+        stdio: "ignore",
+      });
+    } catch {
+      // non-fatal — stale data is better than a crash
+    }
+  }
+
+  // Fast path: patch a single issue's bucket in issues.json without full rebuild.
+  // Returns true if the patch succeeded; caller falls back to full regen on false.
+  function patchIssueInData(absPath: string): boolean {
+    const m = absPath.match(/plan[/\\]issues[/\\](ready|blocked|done|backlog|wont-fix|in-progress)[/\\](\d+)\.md$/);
+    if (!m) return false;
+    let content: string;
+    try {
+      content = readFileSync(absPath, "utf-8");
+    } catch {
+      return false;
+    }
+    const fm = parseFrontmatter(content);
+    if (!fm.id && !m[2]) return false;
+    const id = String(fm.id || m[2]);
+    const status: string = fm.status || m[1];
+    const bucketMap: Record<string, string> = {
+      ready: "ready",
+      blocked: "blocked",
+      done: "done",
+      backlog: "backlog",
+      "wont-fix": "backlog",
+      "in-progress": "inprogress",
+      in_progress: "inprogress",
+    };
+    const bucket = bucketMap[status] ?? "ready";
+    const issuesPath = join(projectRoot, "dashboard/data/issues.json");
+    let data: Record<string, any[]>;
+    try {
+      data = JSON.parse(readFileSync(issuesPath, "utf-8"));
+    } catch {
+      return false;
+    }
+    // Remove from all buckets
+    for (const key of Object.keys(data)) {
+      if (Array.isArray(data[key])) data[key] = data[key].filter((iss: any) => String(iss.id) !== id);
+    }
+    // Build updated entry
+    const dependsRaw = fm.depends_on ?? [];
+    const dependsOn = Array.isArray(dependsRaw)
+      ? dependsRaw
+      : String(dependsRaw)
+          .replace(/[\[\]]/g, "")
+          .split(",")
+          .map((s: string) => s.trim())
+          .filter(Boolean);
+    const entry = {
+      id,
+      title: fm.title ?? "",
+      priority: fm.priority ?? "",
+      feasibility: fm.feasibility ?? "",
+      depends_on: dependsOn,
+      goal: fm.goal ?? "",
+      status,
+      sprint: String(fm.sprint ?? ""),
+    };
+    if (!data[bucket]) data[bucket] = [];
+    data[bucket].push(entry);
+    try {
+      writeFileSync(issuesPath, JSON.stringify(data, null, 2));
+    } catch {
+      return false;
+    }
+    return true;
+  }
+
   // Debounced file change handler
   let changeTimer: ReturnType<typeof setTimeout> | null = null;
-  function onFileChange(path: string) {
+  function onFileChange(event: string, relPath: string) {
     if (changeTimer) clearTimeout(changeTimer);
     changeTimer = setTimeout(() => {
-      broadcast({ type: "refresh", path, timestamp: Date.now() });
-    }, 500);
+      const absPath = relPath.startsWith("/") ? relPath : join(projectRoot, relPath);
+      const isIssueMd = /plan[/\\]issues[/\\][^/\\]+[/\\]\d+\.md$/.test(absPath);
+      const isSprintFile = /plan[/\\](sprints|issues[/\\]sprints)/.test(absPath);
+
+      if (isIssueMd && event === "change") {
+        // Fast path: patch only the changed issue in issues.json
+        if (!patchIssueInData(absPath)) regenDashboardData();
+      } else {
+        // Full rebuild for renames (moves), sprint files, backlog, etc.
+        regenDashboardData();
+        if (isSprintFile) regenSprintStats();
+      }
+      broadcast({ type: "refresh", path: relPath, timestamp: Date.now() });
+    }, 300);
   }
 
   return {
     name: "dashboard",
     configureServer(server: ViteDevServer) {
       // Watch project dirs for changes
-      const watchDirs = [join(projectRoot, "plan"), join(projectRoot, "benchmarks/results")];
+      const watchDirs = [
+        join(projectRoot, "plan"),
+        join(projectRoot, "benchmarks/results"),
+        join(projectRoot, "dashboard/data"),
+      ];
 
       for (const dir of watchDirs) {
         if (existsSync(dir)) {
           try {
-            watch(dir, { recursive: true }, (_event, filename) => {
-              if (filename) onFileChange(String(filename));
+            watch(dir, { recursive: true }, (event, filename) => {
+              if (filename) onFileChange(event ?? "change", String(filename));
             });
           } catch {
             // fs.watch with recursive may not be supported — non-fatal
@@ -384,51 +488,17 @@ export function dashboardPlugin(): Plugin {
         }
       }
 
-      // WebSocket endpoint for live updates
-      server.httpServer?.on("upgrade", (req, socket, head) => {
-        if (req.url !== "/dashboard-ws") return;
-
-        // Manual WebSocket handshake
-        const key = req.headers["sec-websocket-key"];
-        if (!key) {
-          socket.destroy();
-          return;
-        }
-        // createHash imported at top level from node:crypto
-        const accept = createHash("sha1")
-          .update(key + "258EAFA5-E914-47DA-95CA-5AB5DC587183")
-          .digest("base64");
-
-        socket.write(
-          "HTTP/1.1 101 Switching Protocols\r\n" +
-            "Upgrade: websocket\r\n" +
-            "Connection: Upgrade\r\n" +
-            `Sec-WebSocket-Accept: ${accept}\r\n` +
-            "\r\n",
-        );
-
-        // Wrap raw socket in a minimal WS-like interface
-        const ws = {
-          send(data: string) {
-            const buf = Buffer.from(data);
-            const header = Buffer.alloc(buf.length < 126 ? 2 : 4);
-            header[0] = 0x81; // text frame, FIN
-            if (buf.length < 126) {
-              header[1] = buf.length;
-            } else {
-              header[1] = 126;
-              header.writeUInt16BE(buf.length, 2);
-            }
-            socket.write(Buffer.concat([header, buf]));
-          },
-          close() {
-            socket.destroy();
-          },
-        } as unknown as WsType;
-
-        wsClients.add(ws);
-        socket.on("close", () => wsClients.delete(ws));
-        socket.on("error", () => wsClients.delete(ws));
+      // SSE endpoint for live updates — no upgrade dance, works through Vite middleware
+      server.middlewares.use("/dashboard-sse", (req, res) => {
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+          "Access-Control-Allow-Origin": "*",
+        });
+        res.write("retry: 3000\n\n");
+        sseClients.add(res);
+        req.on("close", () => sseClients.delete(res));
       });
 
       // API endpoints
@@ -438,12 +508,12 @@ export function dashboardPlugin(): Plugin {
         // Serve dashboard HTML
         if (url.pathname === "/dashboard" || url.pathname === "/dashboard/") {
           const dashHtml = readFileSync(join(projectRoot, "dashboard/index.html"), "utf-8");
-          // Inject live-reload WebSocket client and API-based data loading
+          // Inject live-reload SSE client and API-based data loading
           const injectedHtml = dashHtml
             .replace(
               '<script src="data.js" onerror=""></script>',
               `<script>
-// Live dashboard — data loaded via API, auto-refreshes via WebSocket
+// Live dashboard — data loaded via API, auto-refreshes via SSE
 window.__DASHBOARD_API__ = true;
 </script>`,
             )
@@ -483,23 +553,18 @@ async function loadBurndown() {
 }
 loadBurndown();
 
-// WebSocket live reload
-(function connectWS() {
-  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const ws = new WebSocket(proto + '//' + location.host + '/dashboard-ws');
-  ws.onmessage = (e) => {
-    try {
-      const msg = JSON.parse(e.data);
-      if (msg.type === 'refresh') {
-        console.log('[dashboard] File changed:', msg.path, '— refreshing...');
-        main().catch(console.error);
-        loadBurndown();
-      }
-    } catch {}
-  };
-  ws.onclose = () => setTimeout(connectWS, 3000);
-  ws.onerror = () => ws.close();
-})();`,
+// SSE live reload
+const _es = new EventSource('/dashboard-sse');
+_es.onmessage = (e) => {
+  try {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'refresh') {
+      console.log('[dashboard] File changed:', msg.path, '— refreshing...');
+      main().catch(console.error);
+      loadBurndown();
+    }
+  } catch {}
+};`,
             );
           res.setHeader("Content-Type", "text/html");
           res.end(injectedHtml);

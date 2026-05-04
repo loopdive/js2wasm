@@ -1,0 +1,33 @@
+---
+id: 885
+sprint: 33
+title: "README: update with real conformance numbers, architecture diagram, comparison table"
+status: done
+created: 2026-03-31
+updated: 2026-04-14
+completed: 2026-04-14
+priority: high
+feasibility: easy
+goal: platform
+---
+# #885 -- README update for STF application
+
+## Problem
+
+README has outdated conformance numbers and lacks the comparison table and architecture overview needed for funding applications.
+
+## Requirements
+
+1. **Conformance section**: Update with real number (17,252 / 35.9%), methodology (test262, cache-disabled, isolated worktree)
+2. **Comparison table**: Move the table from blog/ai-agent-team-workflow.md into README — shows js2wasm vs Javy, Porffor, JAWSM, etc.
+3. **Architecture diagram**: Simple text/mermaid diagram showing TypeScript → tsc parser → codegen → Wasm IR → emitter → .wasm
+4. **Key differentiators**: WasmGC (no runtime), standalone WASI mode, dual-mode (JS host optional), AI agent team workflow
+5. **Getting started**: Quick example (compile a function, run it)
+6. **Roadmap**: Link to sprint plans and dependency graph
+
+## Acceptance criteria
+
+- README has current conformance number
+- Comparison table with 8+ projects
+- Architecture section with diagram
+- "Why js2wasm" section highlighting sovereign tech aspects (no vendor lock-in, standalone, open source)

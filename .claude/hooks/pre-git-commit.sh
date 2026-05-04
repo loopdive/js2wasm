@@ -25,9 +25,9 @@ fi
 # For git commit: check code word and inject guidance
 # NOTE: formatting + linting now handled by husky + lint-staged (git pre-commit hook)
 if echo "$CMD" | grep -q 'git commit'; then
-  # Verify code word from pre-commit checklist
-  if ! echo "$CMD" | grep -q 'CHECKLIST-FOXTROT'; then
-    echo "BLOCKED: Missing code word. Read plan/method/pre-commit-checklist.md for instructions." >&2
+  # Verify checklist sign-off phrase from pre-commit checklist
+  if ! echo "$CMD" | grep -q 'Checklist completed\.' && ! echo "$CMD" | grep -q 'CHECKLIST-FOXTROT'; then
+    echo "BLOCKED: Missing checklist sign-off. Read plan/method/pre-commit-checklist.md for instructions." >&2
     exit 2
   fi
   CHECKLIST=$(head -15 /workspace/plan/method/pre-commit-checklist.md 2>/dev/null)

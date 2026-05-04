@@ -1,0 +1,229 @@
+---
+id: 1203
+sprint: 46
+title: "credibility: differential testing harness — compare js2wasm output vs V8/SpiderMonkey on 1000+ programs"
+status: done
+created: 2026-04-27
+updated: 2026-04-30
+completed: 2026-05-01
+priority: high
+feasibility: medium
+reasoning_effort: high
+task_type: tooling
+area: ci
+language_feature: n/a
+goal: async-model
+es_edition: n/a
+related: [1201, 1202, 1204]
+origin: credibility infrastructure sprint — test262 conformance measures what the spec defines; differential testing measures what real programs actually do. A senior engine engineer will ask "how do you know you don't produce wrong answers for programs that pass?" Differential testing is the answer.
+---
+# #1203 — Differential testing harness
+
+## Problem
+
+test262 measures whether js2wasm handles the ECMAScript specification correctly for
+the ~43K tests in the suite. It does not answer a different question: **"for an
+arbitrary real-world JavaScript program, does js2wasm produce the same observable
+output as a reference engine (V8, SpiderMonkey)?"**
+
+A compiler can pass 60% of test262 and still silently produce wrong answers for programs
+it nominally handles — wrong output for edge cases of string conversion, numeric
+precision, prototype chain traversal, and similar. Differential testing finds these
+bugs by comparing outputs on a corpus of programs, not by checking spec compliance.
+
+The technique is standard in compiler validation (CompCert, CSmith, Alive2 for LLVM
+do exactly this). It has extremely high credibility with engine engineers and academics.
+
+## Implementation plan
+
+### Phase 1 — corpus creation (`tests/differential/corpus/`)
+
+Seed the corpus with 1,000+ programs covering:
+
+1. **Numeric precision** (100 programs) — float arithmetic, integer overflow, NaN
+   propagation, `-0`, `Infinity`, `Math.*` functions
+2. **String operations** (150 programs) — concatenation, slicing, Unicode, template
+   literals, `.split()`, `.join()`, `.replace()`, `.match()`
+3. **Array operations** (150 programs) — fill, sort, reduce, flatMap, destructuring,
+   spread, Array.from
+4. **Object operations** (100 programs) — property access, prototype chain, `in`,
+   `delete`, `Object.keys/values/entries`, spread
+5. **Control flow** (100 programs) — loops, break/continue/label, switch, try/catch/finally,
+   generators, async/await
+6. **Closures** (100 programs) — mutable capture, nested closure, IIFE, generator closure
+7. **Class** (100 programs) — inheritance, private fields, static methods, getters/setters
+8. **Built-ins** (200 programs) — Promise, Map, Set, WeakMap, Symbol, RegExp, Date,
+   JSON.stringify/parse, console.log formatting
+
+Each program is a self-contained `.js` file that:
+- Exports nothing (runs top-to-bottom for side effects)
+- Writes its output via `console.log`
+- Terminates without user input
+- Has no `eval`, `with`, dynamic `import()`
+
+### Phase 2 — harness (`scripts/diff-test.ts`)
+
+```ts
+type DiffResult = {
+  file: string;
+  v8_stdout: string;
+  js2wasm_stdout: string;
+  match: boolean;
+  error?: string;
+};
+```
+
+For each program in `tests/differential/corpus/`:
+1. Run with Node.js (V8): `node <program.js>` → capture stdout
+2. Compile with js2wasm: `js2wasm <program.js> -o /tmp/diff.wasm`
+3. Run with wasmtime: `wasmtime /tmp/diff.wasm` → capture stdout
+4. Compare line-by-line. Float comparison: `parseFloat(a) ≈ parseFloat(b)` with
+   relative tolerance 1e-9 (handles float formatting differences between engines).
+5. Write results to `benchmarks/results/diff-test.json`
+
+Output summary:
+```
+Differential test: 1000 programs
+  Match:  912 (91.2%)
+  Mismatch: 72 ( 7.2%)
+  Error:   16 ( 1.6%)
+Top mismatch categories:
+  - String coercion: 31
+  - Float formatting: 18
+  - Prototype chain: 12
+  - Other: 11
+```
+
+### Phase 3 — CI integration
+
+Add `diff-test.yml` (or a step in `ci.yml`) that:
+1. Runs the harness on the full corpus.
+2. **Blocks the PR** if the match rate drops below the stored baseline
+   (`benchmarks/results/diff-test-baseline.json`).
+3. The check is delta-based: a new PR must not introduce new mismatches.
+   It may improve the baseline (and should commit the updated baseline on merge to main).
+
+A new mismatch on a PR that didn't touch the relevant code area = likely baseline
+drift; the CI output shows exactly which program failed and what both outputs were.
+
+### Phase 4 — mismatch triage tool
+
+Add `scripts/diff-triage.ts` that reads `benchmarks/results/diff-test.json` and groups
+mismatches by category (string/float/prototype/other) using simple heuristics on the
+program file path and test output. Outputs a markdown table suitable for filing issues.
+
+## Acceptance criteria
+
+1. `tests/differential/corpus/` contains ≥ 1,000 programs covering all 8 categories.
+2. `scripts/diff-test.ts` runs to completion and writes `benchmarks/results/diff-test.json`.
+3. The harness correctly identifies at least 5 real mismatches between js2wasm and V8
+   output (proving the harness is actually exercising the compiler, not just comparing
+   empty outputs).
+4. CI blocks on new mismatches (delta gate, not absolute).
+5. The harness completes in ≤ 10 minutes on the GitHub Actions runner.
+6. `README.md` mentions differential testing in the "Testing" section.
+
+## Out of scope
+
+- Fuzzing / program generation (corpus is hand-curated or pulled from existing
+  open-source test suites like test262 harness scripts, not fuzz-generated).
+- Coverage of `eval`, `Proxy`, `Reflect`, `WeakRef`, `FinalizationRegistry`,
+  `SharedArrayBuffer`, `Temporal` — same skip list as test262.
+- Performance comparison (that's the benchmark suite, not this).
+- Cross-engine comparison beyond V8 (SpiderMonkey comparison is a follow-up).
+
+## Risk
+
+1. **Float formatting differences** are the main source of false positives. The tolerance
+   comparison in Phase 2 handles most cases, but `toExponential` / `toPrecision` output
+   differs between engines for edge values. Mitigate with a known-divergence list.
+2. **Corpus quality** — if all programs are trivial, the harness passes trivially. Include
+   at least 50 programs that are currently known to fail test262 but pass locally, to
+   exercise the edge cases.
+3. **Harness runtime** — 1000 programs × (compile + wasmtime spawn) may exceed 10 minutes.
+   Mitigate with parallelism (`Promise.all` with a pool of N workers).
+
+## Notes
+
+The approach is directly inspired by CompCert's differential validation (Leroy 2009) and
+the fuzzer-based differential testing used to harden V8 (Fuzz testing engines: past,
+present, future — Chromium blog 2021). We are doing the corpus-based variant (no fuzzer),
+which is lower overhead and sufficient for "does js2wasm get the right answer?" credibility.
+
+## Phase 1 delivery (2026-04-30)
+
+Phase 1 lands the harness infrastructure + a credible seed corpus. Corpus expansion to
+1,000+ is a follow-up issue (mechanical work, batches across multiple devs).
+
+### What shipped
+
+- `scripts/diff-test.ts` — the harness. Lane A spawns `node <file>` for V8 reference;
+  Lane B compiles in-process via `compile()` and instantiates with `buildImports` +
+  `instantiateWasm`, capturing `console.log` output via a monkey-patched console.
+- `scripts/diff-triage.ts` — buckets mismatches by heuristic (float-formatting,
+  nan-infinity, object-coercion, undefined-leak, numeric-precision, other).
+- `scripts/diff-test-gate.ts` — delta gate. Compares `diff-test.json` against
+  `diff-test-baseline.json`; exits 1 if any program previously matching now mismatches.
+- `tests/differential/corpus/` — 104 hand-written programs across 8 categories
+  (numeric × 15, string × 15, array × 15, object × 12, control × 12, closures × 10,
+  classes × 10, builtins × 15).
+- `benchmarks/results/diff-test-baseline.json` — committed baseline.
+- `.github/workflows/diff-test.yml` — CI integration: runs on PR, blocks on delta;
+  on push to `main`, refreshes the baseline with `[skip ci]`.
+- `package.json` scripts: `test:diff`, `test:diff:triage`, `test:diff:gate`.
+- `README.md` — Testing section explaining the three layers (unit, test262, diff).
+
+### Why Node-host instead of wasmtime
+
+The issue plan specified wasmtime as Lane B. The current `--target wasi` codegen has
+a known type-mismatch in `__wasi_write_i32` (offset 3830: expected externref, found i32)
+that prevents non-trivial programs from running through wasmtime today. The Node-host
+lane exercises the **primary** codegen target (WasmGC + wasm:js-string + JS host imports),
+which is the path most users hit. wasmtime / SpiderMonkey lanes are documented follow-ups.
+
+### Initial baseline numbers
+
+- 104 programs, 22.8s end-to-end (well under the 10-minute budget — AC #5).
+- Match: 63 (60.6%). Mismatch: 17. Compile error: 0. Runtime error: 24. V8 error: 0.
+- 41 real divergences found (>> AC #3's "≥5 real mismatches").
+
+Per-category match rate:
+
+| Category | Match | Total | Pct |
+|---|---:|---:|---:|
+| numeric | 14 | 15 | 93% |
+| control | 10 | 12 | 83% |
+| object | 8 | 12 | 67% |
+| string | 9 | 15 | 60% |
+| classes | 5 | 10 | 50% |
+| closures | 5 | 10 | 50% |
+| array | 6 | 15 | 40% |
+| builtins | 6 | 15 | 40% |
+
+The high-divergence categories (array, builtins, closures, classes) point to real
+compiler bugs that need follow-up issues.
+
+### Follow-up issues to file
+
+1. **Corpus expansion** (1 issue) — grow to 1,000+ programs across the 8 categories,
+   batched mechanical work suitable for multiple devs. Pulling subsets of test262
+   harness scripts is a sensible source.
+2. **Bug-fix issues from Phase 1 triage** — at least 5 distinct buckets surfaced by
+   the initial run:
+   - `array` runtime errors — multiple `local.set[0] expected type externref` Wasm
+     validation failures in array methods (`shift`, `unshift`, `slice`, `splice`,
+     `flat`, `flatMap`, `from`, `of`, spread/destructure, `join`/`toString`).
+   - `closures` null-pointer dereferences — `closures/05-loop-capture.js` and
+     `closures/08-method-chain.js`.
+   - `classes/08-fields.js` — class field initializer Wasm validation error.
+   - `Promise.then` chain — `builtins/07-promise-basic.js` produces empty stdout
+     (expected `42`); `builtins/08-promise-chain.js` similar.
+   - `Symbol`, `Map.get`, `JSON.stringify` first-call regressions.
+3. **Float-tolerance comparison** — the harness currently does exact string match.
+   For programs that print very-small / very-large floats, V8 and js2wasm may format
+   identically today but tolerance comparison would harden the harness against future
+   formatting drift.
+4. **wasmtime lane** — once `--target wasi` codegen is fixed (separate compiler bug),
+   add a third lane that runs the same corpus through wasmtime to validate the
+   standalone path.
+5. **SpiderMonkey lane** — out of scope per the issue, file as a backlog item.

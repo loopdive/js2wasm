@@ -1,0 +1,70 @@
+---
+id: 1169o
+sprint: 47
+title: "IR Phase 4 Slice 12 — dynamic element access + array literals through IR"
+status: done
+created: 2026-05-01
+updated: 2026-05-01
+completed: 2026-05-02
+priority: high
+feasibility: medium
+reasoning_effort: medium
+task_type: feature
+area: ir
+language_feature: array-literals, element-access, computed-property
+goal: builtin-methods
+depends_on: [1169n]
+required_by: [1169p, 1169q, 1231, 1238]
+es_edition: ES2020
+related: [1169, 1168]
+---
+# #1169o — IR Phase 4 Slice 12: dynamic element access + array literals
+
+## Problem
+
+`isPhase1Expr` in `src/ir/select.ts` rejects two very common patterns:
+
+1. **Dynamic element access** — `arr[i]` where `i` is not a string literal.
+   Currently only `obj["string-key"]` passes the element-access guard (line
+   ~1085). Numeric index access (`arr[0]`, `arr[i]`) fails, disqualifying
+   all array-indexing functions.
+
+2. **Array literals** — `[1, 2, 3]`, `[]`, `[a, b, c]`. `ArrayLiteralExpression`
+   has no branch in `isPhase1Expr`, so any function creating an array literal
+   falls back to legacy.
+
+## What this unlocks
+
+Array indexing and array creation are fundamental patterns in test262 numeric
+and algorithmic tests. This slice, combined with #1169n (missing operators),
+covers the vast majority of remaining numeric/algorithmic test262 cases.
+
+## Acceptance criteria
+
+1. `isPhase1Expr` accepts `ElementAccessExpression` when the argument is a
+   Phase-1 expression (not restricted to string literals)
+2. `isPhase1Expr` accepts `ArrayLiteralExpression` when all elements are
+   Phase-1 expressions (spread elements restricted — no unpacking arbitrary
+   iterables)
+3. IR lowering emits correct `array.get` / `array.set` / `array.new_fixed`
+   instructions for the above
+4. For typed arrays (`number[]`, `i32[]`), the existing `ArrayTypeAnnotation`
+   path is reused / extended
+5. Equivalence tests pass; test262 does not regress; net improvement expected
+
+## Implementation notes
+
+- Element access: check operand `IrType` — if `array<T>`, emit `array.get`
+  with i32-coerced index; if object-shaped, fall back to legacy (or property
+  lookup by dynamic key — deferred)
+- Array literal: emit `array.new_fixed` with element count; type inferred from
+  element types (all numeric → `array<f64>`, all i32-shaped → `array<mut i32>`,
+  mixed → `array<externref>`)
+- Spread in array literal (`[...a, b]`) — deferred; reject in selector if
+  spread elements present
+
+## Out of scope
+
+- Dynamic property access on non-array objects (`obj[dynamic]` — shape
+  inference required)
+- Array prototype methods (`.map`, `.filter`, etc.) — see #1169p

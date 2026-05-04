@@ -1,0 +1,377 @@
+---
+id: 862
+sprint: 45
+title: "Iterator protocol missing on function-declaration binding-pattern params"
+status: done
+created: 2026-03-29
+updated: 2026-04-27
+completed: 2026-04-27
+priority: medium
+feasibility: hard
+reasoning_effort: max
+goal: crash-free
+test262_fail: 212
+---
+# #862 — Iterator protocol missing on function-declaration binding-pattern params
+
+## Problem
+
+~212 test262 tests fail, mostly iterator/destructuring step-err and rest-id-iter-step-err patterns, across:
+
+- `test/language/statements/function/dstr/*`
+- `test/language/statements/class/dstr/meth-ary-ptrn-*`
+- `test/language/statements/class/dstr/meth-static-ary-ptrn-*`
+- Similar patterns under `expressions/function/dstr/` (some, not all)
+
+The tests define an iterator whose `.next()` throws and expect the thrown error to propagate through the destructuring binding. In the compiler, this works for arrow / function-expression forms but NOT for function declarations.
+
+## Root cause (verified 2026-04-21 on PR #256)
+
+There are two type paths for unannotated binding-pattern parameters:
+
+| Form | Handler | Param WasmType | Iterator protocol? |
+|------|---------|----------------|--------------------|
+| `const f = ([,]) => {}` | `closures.ts:895-898` | `externref` | YES — `__array_from_iter` in `destructureParamArray` |
+| `const f = function([,]) {}` | `closures.ts:895-898` | `externref` | YES — same path |
+| `function f([,]) {}` | `declarations.ts:1820-1870` | `(ref null tupleStruct)` | **NO** |
+| `class C { m([,]) {} }` | `class-bodies.ts` | `(ref null tupleStruct)` | **NO** |
+
+The arrow path was fixed in #1151 by widening binding-pattern params to `externref`, which routes through the `__array_from_iter` fallback in `destructuring-params.ts:682+`. The iterator protocol fires there (via `Array.from`) and throws from `.next()` propagate.
+
+The function-declaration path never widens. TypeScript infers `[any?]` as the param type, `resolveWasmType` maps that to a tuple struct, and `destructureParamArray` takes the ref/ref_null branch (line 542+) which walks the struct by index — no iterator protocol at all. If the caller passes an externref (a generator), the call site either nulls out the arg (failed ref cast) or drops it silently, and the function body never observes the iterator.
+
+## What's already tried
+
+- **PR #255** widened the function-declaration path to `externref` to match closures.ts. CI rejected: net **-181 pass**, 260 regressions (assertion_fail 165). The broader externref path diverged from tuple-struct consumers.
+- **PR #256** (merged) added the narrow TS2345 false-positive suppression. Unblocks non-test262 users but test262 runs with `skipSemanticDiagnostics: true` so no test262 delta. Kept as a standalone win.
+- **Sprint-31 regression warning**: wrapping generator bodies in `try/catch_all` caused 880 regressions by catching SyntaxErrors that should be compile-time. DO NOT try that approach.
+
+## ECMAScript spec reference
+
+- [§7.4.2 IteratorNext](https://tc39.es/ecma262/#sec-iteratornext) — if `.next()` throws, the error propagates immediately
+- [§7.4.7 IteratorClose](https://tc39.es/ecma262/#sec-iteratorclose) — step 6: if `.return()` throws, that error replaces the original completion
+- [§13.3.3.6 IteratorBindingInitialization](https://tc39.es/ecma262/#sec-runtime-semantics-iteratorbindinginitialization) — binding patterns in ArgumentListEvaluation must drive the iterator protocol regardless of declaration form
+- [§13.15.5.3 Runtime Semantics: DestructuringAssignmentEvaluation](https://tc39.es/ecma262/#sec-runtime-semantics-destructuringassignmentevaluation)
+
+## Implementation plan (draft — architect should refine)
+
+The goal is to make function-declaration binding-pattern params apply the iterator protocol without the regressions PR #255 produced.
+
+**Constraint:** arrow/function-expression forms already work via closures.ts `externref` widening. Function declarations and class methods do not.
+
+### Option 1 — Mirror closures.ts widening, narrowly
+
+Widen binding-pattern params in `declarations.ts:1820-1870` and `class-bodies.ts` to `externref`, matching closures.ts. PR #255 tried this and regressed. The regressions came from call sites that previously passed typed struct refs (e.g. `function f([x, y]) { ... }` called with a typed array literal) no longer matching the signature. Before retrying:
+
+1. Characterize the 260 PR #255 regressions by file pattern. Are they all calls where the caller has a concrete struct type that now gets boxed to externref?
+2. If yes, the call-site coercion path needs a fast path: when caller has `(ref $tupleStruct)` and callee wants `externref`, use `extern.convert_any` directly (cheap) instead of falling through `__box_number` or the vec-copy loop.
+3. Inside `destructureParamArray`'s externref branch, the `direct ref.test` for `__vec_externref` (line 564) is tried first, but the callers passing struct refs are more common — reorder tests so the fast path for struct refs doesn't get stuck in the generator fallback.
+
+### Option 2 — Add iterator protocol to the ref_null path
+
+Keep the signature `(ref null tupleStruct)` and add iterator protocol detection inside `destructureParamArray`'s ref branch. Before walking the struct, check if the param was originally passed as an externref-wrapped iterable (e.g. via a caller-side marker or by retrying as externref if ref.is_null). This avoids the broader widening but is complex and requires caller cooperation.
+
+### Option 3 — Static call-site check
+
+If the compiler can see at call time that an argument is externref / iterable / generator-typed, emit a specialized call variant that goes through the externref destructure path. Only widens where needed. Scope: ~200 LOC in the call-resolution pass, but hard to get right for indirect calls.
+
+**Recommendation:** Option 1 with careful coercion path is likely the cleanest. Senior dev or architect should spike on a probe of 10-20 of the PR #255 regression files to understand the shape before coding.
+
+## Acceptance criteria
+
+- All 212 step-err tests either pass (iterator error propagates) or fail with a meaningful error message (not empty).
+- Zero test262 regressions (<10 per current self-merge bar).
+- Equivalence tests pass on the branch.
+
+## Regression warnings (read before coding)
+
+- **PR #255 pattern (broad externref widening)**: 260 regressions, assertion_fail bucket 165. Do not repeat without a narrowing mechanism.
+- **Sprint-31 (try/catch_all generator wrap)**: 880 regressions from catching SyntaxErrors. Do not wrap generator bodies in catch_all.
+
+## History
+
+- **2026-04-18**: PR #254 (`issue-1127-dstr-init`) related work. Closed without merge.
+- **2026-04-21**: PR #255 attempted broad externref widening → -181 net → closed without merge.
+- **2026-04-21**: PR #256 landed the narrow TS2345 suppression (net +0, 0 regressions, unblocks non-test262 users). The test262 needle remains at -212 on this issue; root cause relocated to iterator protocol on function-declaration ref_null path.
+
+---
+
+## Implementation Plan (2026-04-24, architect)
+
+### Root cause (verified against current source)
+
+Two code paths choose the Wasm type for a binding-pattern parameter:
+
+| Form | File / function | Current behavior |
+|------|-----------------|------------------|
+| Arrow / function-expression | `src/codegen/closures.ts:885-910` (`compileArrowAsClosure`) | Unconditionally widens to externref when `ts.isArrayBindingPattern(p.name) || ts.isObjectBindingPattern(p.name)` (lines 905-908). Routes through `destructureParamArray`'s externref branch → `__array_from_iter` → iterator protocol runs. ✓ |
+| Function declaration (regular) | `src/codegen/declarations.ts:1824-1878` | Only widens to externref when `restBindingOverridesToExternref(param)` is true (line 1778-1787 — only when pattern has a `...rest` element). Regular `[a, b]` stays at the TS-inferred type (`[any?]` → tuple struct `(ref null $__tuple_any_0)`). `destructureParamArray` enters the `ref/ref_null` branch (line 793+) and walks via `struct.get` — NO iterator protocol. ✗ |
+| Function declaration (generator) | `src/codegen/declarations.ts:1789-1819` | Same as regular. ✗ |
+| Class method | `src/codegen/class-bodies.ts:976-987` (and the static-method variant ~line 685-695) | `resolveWasmType(ctx, paramType)` only. No binding-pattern widening. ✗ |
+
+The upstream consumer `destructureParamArray` in `src/codegen/destructuring-params.ts:535-1128` has TWO cleanly separated branches:
+- Lines 547-778 (`paramType.kind === "externref"`): contains the full iterator-protocol path — `__array_from_iter` fallback (line 673-747), `__extern_length`/`__extern_get_idx`, `buildVecFromExternref` (line 762). When `.next()` throws, the throw propagates because `__array_from_iter` invokes `Array.from(iterable)` synchronously.
+- Lines 793+ (`paramType.kind === "ref"/"ref_null"`): struct walk via `struct.get` by index. Fine for Wasm-originated tuple structs; broken for JS iterables.
+
+### Why PR #255 regressed 260 tests (re-read before coding)
+
+PR #255 replicated `closures.ts`'s widening in `declarations.ts`. The regression pattern (`assertion_fail bucket 165`) indicates that compilation succeeded but runtime values were wrong. The most likely cause:
+
+**At the call site**, when a caller of `f([x, y])` previously passed a typed tuple-struct ref matching `f`'s param type, the widening changed `f`'s signature to `externref`. Then:
+
+1. `coerceType(ref $tupleStruct → externref)` in `type-coercion.ts:1380-1409` emits `extern.convert_any` + `__make_iterable` call.
+2. Inside `f`, `destructureParamArray`'s externref branch enters the `ref.test` ladder at lines 562-669. The tuple struct is NOT a registered vec type (`ctx.vecTypeMap` contains only `__vec_*` entries), so every `ref.test` fails.
+3. Control falls through to the `__array_from_iter` fallback at lines 674-747. `__array_from_iter` calls `Array.from(externref)`, which iterates the wrapped tuple struct via JS reflection — but the struct's JS representation (once `__make_iterable` has attached `Symbol.iterator`) yields fields boxed as externref.
+4. The materialized array is then walked by `__extern_get_idx` returning boxed externrefs. For numeric elements, the value is boxed via `__box_number`. When `destructureParamArray` then assigns to a local that was pre-allocated as `f64` via `ensureBindingLocals` (because TS inferred `[any?]` → `[f64?]`), the coercion `externref → f64` at lines 1103-1107 silently returns `NaN` for non-number boxed values. → assertion failures in tests expecting specific values.
+
+The reordering fix (PR #255 Option 1 step 3 in the issue) only partially addresses this. We need to add a tuple-struct fast path to `destructureParamArray`'s externref branch BEFORE doing any caller-side widening.
+
+### Changes
+
+**File: `src/codegen/destructuring-params.ts`**
+- Function `destructureParamArray` (line 535). Hoist the existing tuple-struct walk (lines 797-901) into a new helper `destructureParamTupleStruct(ctx, fctx, tupleLocal, pattern, tupleTypeIdx)`. The helper takes the tuple struct ref as input and emits the same struct.get-by-index walk that lines 814-867 do today.
+- In the externref branch's `ref.test` ladder (lines 590-669), AFTER the direct `ref.test $__vec_externref` cast (lines 562-570) but BEFORE the per-vec-type loop, add a new fast path:
+  ```
+  for each (typeIdx, structName) in ctx.typeIdxToStructName:
+    let fields = ctx.structFields.get(structName)
+    if not fields or fields.length === 0: continue
+    if not all fields named "_0", "_1", ...: continue       // tuple struct check
+    if fields.length !== pattern.elements.length: continue  // arity match
+    
+    emit:
+      local.get $anyTmp
+      ref.test $tupleStruct
+      if
+        local.get $anyTmp
+        ref.cast $tupleStruct
+        local.set $tupleLocal
+        // call destructureParamTupleStruct(ctx, fctx, tupleLocal, pattern, typeIdx) inline
+        // mark resultLocal as "handled" so the iterator fallback is skipped
+      end
+  ```
+  Use a sentinel local `$dstrDone: i32` set to 1 inside the if-then; gate the existing iterator fallback with `if dstrDone == 0 { ... }`. (Mirrors the `resultLocal != null` check at line 740.)
+
+**File: `src/codegen/declarations.ts`**
+- Function body hoisting param types around line 1795 (generator path) and 1848 (regular path). Replace the current:
+  ```ts
+  let wasmType: ValType = restBindingOverridesToExternref(param)
+    ? { kind: "externref" }
+    : resolveWasmType(ctx, paramType);
+  ```
+  with a broader widening:
+  ```ts
+  const hasBindingPattern = ts.isArrayBindingPattern(param.name) || ts.isObjectBindingPattern(param.name);
+  let wasmType: ValType =
+    hasBindingPattern && !param.type
+      ? { kind: "externref" }
+      : restBindingOverridesToExternref(param)
+        ? { kind: "externref" }
+        : resolveWasmType(ctx, paramType);
+  ```
+  The `!param.type` gate preserves user intent: when the user wrote `function f([x, y]: [number, number])`, keep the tuple-struct type and avoid the externref roundtrip. This is narrower than PR #255 and aligned with how `closures.ts:905` widens.
+
+**File: `src/codegen/class-bodies.ts`**
+- Apply the same widening in the non-static method param loop (line 976-987) and the constructor/static variant (~line 685-695). Use the `hasBindingPattern && !param.type → externref` gate.
+
+**File: `src/codegen/function-body.ts`**
+- The param-default-value emit code (~line 255-316) handles `paramType.kind === "externref"` separately. With more params now externref, verify the `__extern_is_undefined` path (line 270-281) is reached for the new cases. Should already work — no change expected, but spot-check during dev.
+
+### Wasm IR pattern
+
+Before fix — `function f([...r]) {}` called with `f(gen)`:
+```wasm
+;; caller (current — fails because gen is not a tuple struct)
+(call $gen) (local.set $iter)
+(local.get $iter) (extern.convert_any) (ref.cast $__tuple_any_0)  ;; TRAPS
+(call $f)
+
+;; callee prologue (current, unreachable due to trap)
+(local.get 0)                     ;; param: (ref null $__tuple_any_0)
+(struct.get $__tuple_any_0 $_0)   ;; no iterator protocol!
+```
+
+After fix — same source:
+```wasm
+;; caller: f's signature is now (externref) -> ...
+(call $gen) (local.set $iter)
+(local.get $iter) (call $f)
+
+;; callee prologue (new): destructureParamArray's externref branch
+(local.get 0) (any.convert_extern) (local.set $anyTmp)
+(local.get $anyTmp) (ref.test $__vec_externref)
+(if (then ... direct vec path ...)
+ (else
+   (local.get $anyTmp) (ref.test $__tuple_any_0)
+   (if (then ... NEW tuple-struct fast path via destructureParamTupleStruct ...)
+    (else
+      ;; Not a known Wasm struct — call Array.from to drive iterator protocol
+      (local.get 0) (call $__array_from_iter) (local.set $fbMatTmp)
+      ;; If __array_from_iter throws (gen.next() threw), exception propagates
+      ;; out of f via the exn tag — unwinds to caller's try/catch
+      ;; ... build vec_externref, then walk for rest copy ...
+      (struct.new $__vec_externref) (local.set $resultLocal))))
+```
+
+### Edge cases
+
+- **Caller passes a Wasm-native tuple struct**: `f([1,2])` where the literal compiles to a tuple struct. The new `ref.test $tupleStruct` fast path catches it and destructures via direct `struct.get`. No boxing overhead, values preserve types. **This is the fix for PR #255's 260 regressions.**
+- **Caller passes a Wasm vec struct**: `f(arr)` where `arr` is a `__vec_f64`. The existing per-vec-type conversion loop (lines 592-669) handles this. Elements get boxed via `boxToExternref`.
+- **Caller passes a JS generator**: new behavior falls through to `__array_from_iter`. `.next()` throws propagate.
+- **Caller passes `null`/`undefined`**: handled by `emitExternrefDestructureGuard` at line 549 (throws TypeError per spec §14.3.3.1).
+- **Empty pattern `function f([]) {}` called with `f(iter)`**: per spec, `IteratorBindingInitialization` for an empty `BindingElementList` is a no-op — no iterator step is performed. The current code already skips the destructure for `pattern.elements.length === 0`; preserve that gate.
+- **Pattern with defaults `function f([a = 1] = [iter]) {}`**: the default-value path compiles via `emitNestedBindingDefault` and `compileExpression(initializer, paramType)`. Since `paramType` is now `externref`, ensure the array literal in the default is force-vec'd (see `closures.ts:684-697` for the existing pattern). Replicate that flag-flip in the regular function-decl param-default emit (currently `function-body.ts:255-316`).
+- **Nested binding pattern `function f([[a, b], c]) {}` called with `f([gen, 3])`**: outer extracts element 0 as externref-wrapped, then recursively calls `destructureParamArray` with the nested pattern. Inside the recursion, the iterator protocol is driven for the nested element. Verify with a nested test.
+- **Async generator parameter**: `async function f([a, b]) {}` — async functions use the same param path. Widening applies uniformly.
+- **`arguments` object**: `arguments[0]` should yield the externref param (the originally-passed iterable), not the destructured tuple. This matches JS semantics. Verify against `arguments.length` tests.
+
+### Order of implementation
+
+1. **Preserve the tuple-struct fast path FIRST**: hoist `destructureParamTupleStruct` helper from existing code (no behavior change), then add the `ref.test $tupleStruct` fast path inside the externref branch. Run `tests/equivalence.test.ts` — must be a no-op for current tests.
+2. **Narrow widening in `declarations.ts`** (`!param.type` gate, both generator and regular paths). Run equivalence tests.
+3. **Narrow widening in `class-bodies.ts`** (same pattern). Run equivalence tests.
+4. **Push a PR** to expose the branch to CI. Read `.claude/ci-status/pr-<N>.json` and sample regressions by bucket.
+5. **If regressions > 20**: sample ~10 failing files. Look for the same boxing-loss pattern PR #255 hit — if so, the tuple-struct fast path missed a case. Tune `ref.test` ordering or add a missing tuple shape.
+6. **If regressions < 10**: self-merge per `dev-self-merge` skill.
+
+### Test file to write first
+
+`tests/issue-862-func-decl-iter.test.ts`:
+```ts
+// Positive: iterator protocol drives destructuring
+it("function declaration param destructuring calls .next() and propagates throws", () => {
+  function* gen() { yield 1; throw new Error("stop"); }
+  function f([a, b]) { return [a, b]; }
+  expect(() => f(gen())).toThrow("stop");
+});
+
+// Positive: rest element triggers IteratorStep per element
+it("rest element iterator step error propagates", () => {
+  let count = 0;
+  function* gen() { count++; yield 1; count++; throw new Error("at 2"); }
+  function f([...r]) { return r; }
+  expect(() => f(gen())).toThrow("at 2");
+  expect(count).toBe(2);
+});
+
+// Preserve existing: Wasm-native tuple still works without boxing
+it("function declaration accepts Wasm-native array literal preserving types", () => {
+  function f([a, b]) { return a + b; }
+  expect(f([3, 4])).toBe(7);          // numeric preserved, not NaN
+});
+
+// Class methods
+it("class method param destructuring drives iterator protocol", () => {
+  function* gen() { throw new Error("step-err"); }
+  class C { m([x]) { return x; } }
+  expect(() => new C().m(gen())).toThrow("step-err");
+});
+```
+
+### Risk areas
+
+- **Cached function types**: the widening changes `f`'s signature. The compiler's `funcMap` and cached `typeIdx` values must reflect the new types. `addFuncType` is called once per function — confirm this happens AFTER the widening decision. Grep `funcMap.get` for any path that bypasses re-resolution.
+- **Generator function bodies**: `compileFunctionBody` → `emitGeneratorBody` in `function-body.ts` passes params through intermediate locals. With param type now `externref`, the intermediate locals must follow. Spot-check the generator emit code for hardcoded ref/ref_null handling.
+- **Async function bodies**: `unwrapPromiseType` only affects return type. Param widening should be safe.
+- **Method param defaults** (`closures.ts:729-810`): with widened param type, the `paramType.kind === "externref"` branch must handle the force-vec flag for array-pattern defaults. Already done at line 782-795 for arrows; replicate for method-param-default emit if needed.
+- **`arguments` object reconstruction** (`emitArgumentsObject`): reads `params` types — now the binding-pattern params are externref. `arguments[0]` yields the externref (the original passed value), which matches JS semantics. Verify with a test that reads `arguments[0]` from a function with a binding-pattern param.
+- **Coordination with #1128 (same sprint)**: #1128 touches `statements/destructuring.ts` + `index.ts` (variable destructuring). #862 touches `destructuring-params.ts` + `declarations.ts` + `class-bodies.ts` (param destructuring). **No file conflict.** Both devs can work in parallel.
+
+### Wasm opcode summary (all already supported)
+
+- `any.convert_extern`, `extern.convert_any`
+- `ref.test <typeIdx>`, `ref.cast <typeIdx>`
+- `struct.get <typeIdx> <fieldIdx>`
+- `array.new_default`, `array.get`, `array.set`, `array.copy`
+- `struct.new <typeIdx>`
+
+No new Wasm opcodes needed.
+
+### Acceptance check
+
+After the fix, `function f([...r]) {}` called with `f(gen())` where `gen` throws on `.next()`:
+- `f`'s signature is `(externref) → ...`.
+- Caller pushes `gen()` (externref), calls `f`.
+- `destructureParamArray` enters the externref branch, falls through to `__array_from_iter` (no vec/tuple `ref.test` matches a generator).
+- `__array_from_iter(gen)` → `Array.from(gen)` → invokes `.next()` → throws `Test262Error`.
+- Exception propagates out of `f` via `exnTag`. Caller's `assert.throws(Test262Error, ...)` catches it.
+- `iter.next()` after the throw is called by the test — iterator is already closed from the first throw. Spec-compliant.
+
+---
+
+## Implementation Summary (2026-04-25, dev-a)
+
+Three files modified, all scoped as narrowly as the architect spec + tech lead
+directive allowed:
+
+1. **`src/codegen/destructuring-params.ts`** — added a tuple-struct fast path
+   at the top of the externref branch in `destructureParamArray`. Iterates
+   `ctx.mod.types`, and for each Wasm struct with fields named `_0`, `_1`, …
+   (the compiler's tuple-struct naming convention) emits:
+   ```
+   if __dparam_done == 0 {
+     if ref.test anyTmp $tupleN {
+       local.get anyTmp; ref.cast $tupleN; local.set $tup
+       ⟨recursive destructureParamArray emits struct.get walk⟩
+       i32.const 1; local.set __dparam_done
+     }
+   }
+   ```
+   The rest of the externref branch (vec-type try-cast loop, `__array_from_iter`
+   fallback, and the final recursive destructure into `__vec_externref`) is
+   wrapped in `if __dparam_done == 0 { ⟨existing code⟩ }`. This prevents the
+   PR #255 regression pattern where a tuple-struct caller's typed numeric
+   fields would be boxed via `__box_number` through `Array.from` and then
+   return NaN when unboxed.
+
+2. **`src/codegen/declarations.ts`** — added `bindingPatternParamNeedsWiden`
+   helper and applied it in both the generator path (~line 1795) and regular
+   path (~line 1848). Narrowed with `!param.type` so users who wrote explicit
+   type annotations keep the tuple-struct specialization.
+
+3. **`src/codegen/class-bodies.ts`** — same widening in the method-param loop
+   (~line 976-987). **Deliberately did NOT touch the constructor / static
+   constructor path (~line 685-695)** per tech-lead directive — PR #59
+   retrospective showed the class constructor argument path has different
+   null-handling invariants, and fixing one path at a time is mandatory.
+
+### Test file
+
+`tests/issue-862-func-decl-iter.test.ts` — four positive test cases:
+- Iterator throw from `function* gen()` propagates through function-declaration
+  param destructuring.
+- Rest element (`[...r]`) triggers iterator step, throw propagates.
+- Wasm-native array literal caller preserves numeric types (regression
+  guard for the PR #255 NaN pattern).
+- Class method with generator param drives iterator protocol.
+
+All 4 tests pass locally.
+
+### Pre-existing failures NOT caused by this PR
+
+- `tests/equivalence/destructuring-initializer.test.ts` (3 tests),
+  `tests/equivalence/binding-null-guard.test.ts` (1 test),
+  `tests/equivalence/destructuring-extended.test.ts` (1 test) — fail on
+  unmodified `main` with `__throw_type_error: function import requires a
+  callable` (test helper doesn't provide the runtime-only import). Verified
+  by stashing this branch and running the same tests on `origin/main`.
+
+### Acceptance criteria status (see #862 for original)
+
+- [x] All 4 positive test cases in `tests/issue-862-func-decl-iter.test.ts` pass.
+- [x] PR #255's tuple-struct numeric caller regression guarded by the fast
+      path (see third test case).
+- [ ] Zero test262 regressions: to be verified on PR CI.
+- [ ] 212 step-err tests now pass or fail meaningfully: to be verified on
+      PR CI.
+
+### Deviations from architect spec
+
+- **Did not touch the class constructor path** (architect plan mentioned
+  class-bodies.ts:685-695). Tech lead explicitly directed "do NOT touch the
+  class constructor argument path" — PR #59 retrospective shows it's
+  different invariants.
+- **Did not hoist `destructureParamTupleStruct` into a separate helper**.
+  The architect's step 1 was a pure refactor; instead the fast path uses a
+  recursive `destructureParamArray` call into a `ref_null` tuple-struct
+  paramType, which hits the existing tuple-struct walk (lines 797-901)
+  without needing to extract a helper. Shorter and functionally equivalent.

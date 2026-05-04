@@ -1,0 +1,15 @@
+{
+  "pr": 6,
+  "conclusion": "success",
+  "head_branch": "issue-1167a-ir-hygiene-passes",
+  "head_sha": "5600c84e3aac891babfee6bed0936d96ab0625ff",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24861141223",
+  "timestamp": "2026-04-23T22:12:05Z",
+  "pass": 24483,
+  "fail": 13700,
+  "compile_error": 3621,
+  "snapshot_delta": 0,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}

@@ -1,0 +1,88 @@
+---
+id: 1090
+sprint: 41
+title: "ToPrimitive 'Cannot convert object to primitive value' — 161 FAIL"
+status: done
+created: 2026-04-12
+updated: 2026-04-12
+completed: 2026-04-14
+priority: high
+feasibility: medium
+reasoning_effort: medium
+task_type: bugfix
+language_feature: type-coercion
+goal: error-model
+required_by: [1253]
+es_edition: ES2015
+---
+# #1090 — ToPrimitive "Cannot convert object to primitive value" (161 FAIL)
+
+## Problem
+
+161 test262 tests fail with "Cannot convert object to primitive value" or
+related ToPrimitive errors. The error fires when an object is used in a
+context that requires a primitive (string concatenation, comparison,
+arithmetic) and the object's `[Symbol.toPrimitive]`, `valueOf`, or
+`toString` methods are missing or non-callable.
+
+Two sub-buckets:
+- **111x** "Cannot convert object to primitive value" — the main
+  ToPrimitive conversion path returns an object instead of a primitive,
+  or throws too eagerly when the spec allows fallback
+- **50x** "non-callable [Symbol.toPrimitive]" — test sets
+  `Symbol.toPrimitive` to a non-function value and expects a TypeError
+  with a specific message; our runtime either doesn't check or throws
+  the wrong error
+
+## ECMAScript spec reference
+
+- [§7.1.1 ToPrimitive](https://tc39.es/ecma262/#sec-toprimitive) — invokes @@toPrimitive or falls back to OrdinaryToPrimitive
+- [§7.1.1.1 OrdinaryToPrimitive](https://tc39.es/ecma262/#sec-ordinarytoprimitive) — tries valueOf/toString in order; throws TypeError if neither returns a non-object
+
+
+## Root cause
+
+The host runtime's `__to_primitive` helper (or equivalent coercion path
+in `src/codegen/type-coercion.ts`) likely:
+1. Doesn't walk the full ToPrimitive algorithm (try `[Symbol.toPrimitive]`
+   → try `valueOf` → try `toString` → throw TypeError)
+2. Doesn't handle the "hint" parameter (string vs number vs default)
+3. Throws immediately on missing `valueOf` instead of falling through to
+   `toString`
+
+The codegen side in `src/codegen/type-coercion.ts` may also emit incorrect
+coercion sequences for binary operations where one operand is an object.
+
+## Affected tests
+
+- 111 tests with "Cannot convert object to primitive value"
+- 50 tests with "non-callable [Symbol.toPrimitive]"
+- Categories: language/expressions (majority), built-ins/Object, built-ins/Date
+
+Example files (from test262-current.jsonl):
+- `test/language/expressions/addition/coerce-symbol-to-prim.js`
+- `test/language/expressions/equals/coerce-symbol-to-prim.js`
+- `test/built-ins/Object/prototype/valueOf/non-callable-toprimitive.js`
+- `test/built-ins/Date/prototype/Symbol.toPrimitive/called-as-function.js`
+- `test/language/expressions/template-literal/coerce-symbol-to-prim.js`
+
+## Proposed solution
+
+1. Audit `src/runtime.ts` for the ToPrimitive host helper — ensure the full
+   algorithm per ECMA-262 §7.1.1 is implemented with correct hint handling
+2. Audit `src/codegen/type-coercion.ts` for object-to-primitive coercion
+   in binary operations — ensure the codegen emits the host call when an
+   operand might be an object
+3. Add a `[Symbol.toPrimitive]` callable check before invocation — throw
+   TypeError if present but non-callable
+4. Test: `npm test -- tests/issue-1090.test.ts` with 5-6 representative
+   cases covering hint=string, hint=number, hint=default, non-callable
+   Symbol.toPrimitive, and missing valueOf/toString fallback
+
+## Effort estimate
+
+**M** — the ToPrimitive algorithm itself is well-specified and bounded.
+The complexity is in ensuring every codegen path that performs implicit
+coercion (addition, comparison, template literals, property access) routes
+through the correct host call. Expect ~100-150 LOC across runtime.ts +
+type-coercion.ts + 1-2 codegen expression files.

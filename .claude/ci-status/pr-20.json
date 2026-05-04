@@ -1,0 +1,15 @@
+{
+  "pr": 20,
+  "conclusion": "success",
+  "head_branch": "issue-991-996-compile-timeouts",
+  "head_sha": "bc152ee2489e9aeae41fe712c537fa901b9d6e82",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24917376084",
+  "timestamp": "2026-04-25T00:07:49Z",
+  "pass": 25504,
+  "fail": 13832,
+  "compile_error": 2413,
+  "snapshot_delta": 73,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}

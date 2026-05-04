@@ -1,0 +1,19 @@
+{
+  "pr": 200,
+  "conclusion": "success",
+  "head_branch": "issue-1269-struct-field-phase3",
+  "head_sha": "9bb4b6b959618dd536c1b45d20e67144607d9c69",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25268130112",
+  "timestamp": "2026-05-03T03:11:16Z",
+  "pass": 26259,
+  "fail": 13885,
+  "compile_error": 1537,
+  "snapshot_delta": -14,
+  "net_per_test": 72,
+  "regressions": 50,
+  "regressions_real": 14,
+  "regressions_wasm_change": 14,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 36,
+  "improvements": 86
+}

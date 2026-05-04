@@ -192,7 +192,7 @@
       }
 
       .hero-sub {
-        max-width: 560px;
+        max-width: 620px;
         font-size: 18px;
         line-height: 1.7;
         color: var(--fg-soft);
@@ -403,6 +403,13 @@
         color: var(--fg-faint);
         margin: 0 0 28px;
       }
+      .edition-timeline-section {
+        width: 100%;
+        margin: 28px 0 0;
+        --t262-edition-font-mono: var(--mono);
+        --t262-edition-text: var(--fg);
+        --t262-edition-text-muted: var(--fg-faint);
+      }
       .diagram-legend {
         display: flex;
         flex-wrap: wrap;
@@ -585,6 +592,33 @@
         text-align: left;
         margin-top: 6px;
         opacity: 0.5;
+      }
+
+      .adr-list {
+        list-style: none;
+        margin: 16px 0 0 0;
+        padding: 0;
+        max-width: 720px;
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+      .adr-list li {
+        font-size: 14px;
+        line-height: 1.5;
+      }
+      .adr-list a {
+        color: var(--fg-soft);
+        text-decoration: none;
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 1px;
+        transition:
+          color 0.15s ease,
+          border-color 0.15s ease;
+      }
+      .adr-list a:hover {
+        color: var(--fg);
+        border-color: var(--fg-soft);
       }
 
       .code-section {
@@ -972,6 +1006,25 @@
         transition: background 0.14s ease;
       }
 
+      /* #1201 — live test262 pass-count badge alongside the feature name. */
+      .feat-row-counts {
+        font-family: var(--mono);
+        font-size: 10px;
+        color: var(--fg-faint);
+        margin-left: 8px;
+        font-weight: normal;
+        white-space: nowrap;
+      }
+      .feat-row-counts[data-tone="pass"] {
+        color: var(--ok, #4ade80);
+      }
+      .feat-row-counts[data-tone="partial"] {
+        color: var(--warn, #facc15);
+      }
+      .feat-row-counts[data-tone="fail"] {
+        color: var(--err, #f87171);
+      }
+
       .feat-row:last-child {
         border-bottom: none;
       }
@@ -1099,6 +1152,11 @@
         padding-bottom: 2px;
         line-height: 1.4;
       }
+      .feat-section[data-generated-edition] .feat-note {
+        display: block;
+        padding: 12px 24px 18px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      }
 
       .feat-badge {
         font-size: 24px;
@@ -1150,9 +1208,10 @@
             </span>
           </h1>
           <p class="hero-sub">
-            The JS
+            JS
             <sup>2</sup>
-            compiler is a Loopdive project focused on ahead-of-time compilation of real JavaScript to WebAssembly.
+            is a research preview of an open source compiler focused on compiling JavaScript to WebAssembly ahead of
+            time, developed at Loopdive.
           </p>
           <div class="hero-actions">
             <a class="btn-solid" href="./playground/">Playground</a>
@@ -1171,27 +1230,33 @@
             JavaScript and npm packages, running modules without embedding a JS runtime and enabling more secure,
             flexible dependency management.
           </p>
+          <p>
+            The project is motivated by the idea that JavaScript, despite being a dynamic language, can be compiled
+            efficiently ahead of time without limiting it to an incompatible subset or shipping a full JS runtime like
+            V8 or SpiderMonkey.
+          </p>
+          <p>The project is guided by the following goals:</p>
         </div>
         <div class="features-grid">
           <article class="feature-card">
             <div class="feature-icon"><img src="./javascript-logo-white.svg" alt="JavaScript logo" /></div>
-            <h3>Not a New Language</h3>
+            <h3>JS Ecosystem Compatible</h3>
             <p>
-              Compile existing JavaScript and TypeScript without rewriting into a new language or restricted subset.
-              Target compatibility with the JavaScript ecosystem.
+              Compile existing code without rewriting it into a restricted subset, and stay compatible with the full JS
+              ecosystem, the web, and NPM. Access Web APIs without writing glue code.
             </p>
           </article>
           <article class="feature-card">
             <div class="feature-icon"><img src="./wasm-logo-white.svg" alt="WebAssembly logo" /></div>
-            <h3>JS Host or Standalone</h3>
+            <h3>No Embedded Runtime</h3>
             <p>
-              Deploy compiled modules across JavaScript hosts and standalone WebAssembly runtimes without embedding a JS
-              engine in the module or hand-writing glue code.
+              Deploy compiled JavaScript modules in standalone WebAssembly runtimes such as Wasmtime without embedding a
+              JS engine or interpreter, reducing module size and runtime overhead.
             </p>
           </article>
           <article class="feature-card">
             <div class="feature-icon">🔒</div>
-            <h3>Module Sandboxing</h3>
+            <h3>Sandbox Untrusted Code</h3>
             <p>
               Reduce supply chain attack surface by isolating JavaScript modules from each other inside the same
               application and keeping filesystem, network, DOM, and globals behind explicit imports.
@@ -1200,10 +1265,10 @@
 
           <article class="feature-card">
             <div class="feature-icon">🧩</div>
-            <h3>Dependency Injection</h3>
+            <h3>Plug &amp; Play</h3>
             <p>
-              Link modules through explicit imports so consumers can choose implementations, control upgrades, and swap
-              dependencies for each environment.
+              Dynamic module linking allows to make code more modular so consumers can choose implementations, control
+              upgrades, and swap dependencies for each environment.
             </p>
           </article>
         </div>
@@ -1245,10 +1310,12 @@
 
         <div class="conformance-diagrams">
           <div class="diagram-panel">
-            <t262-donut
-              src="./benchmarks/results/test262-report.json"
-              style="--t262-bg: var(--bg, #060a14)"
-            ></t262-donut>
+            <div id="conformance-donut-slot">
+              <t262-donut
+                src="./benchmarks/results/test262-report.json"
+                style="--t262-bg: var(--bg, #060a14)"
+              ></t262-donut>
+            </div>
           </div>
           <div class="diagram-panel">
             <h3 class="diagram-title">ECMAScript Conformance Pass Rate Over Time</h3>
@@ -1268,6 +1335,12 @@
               </span>
             </div>
           </div>
+        </div>
+        <div class="edition-timeline-section">
+          <t262-edition-timeline
+            id="conformance-edition-timeline"
+            src="./benchmarks/results/test262-editions.json"
+          ></t262-edition-timeline>
         </div>
 
         <div class="feat-filter">
@@ -1417,7 +1490,7 @@ outer: for (let i = 0; i &lt; 3; i++) {
                   >
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="language/statements">
                 <span class="feat-badge full">✓</span>
                 <span class="feat-name">for-in</span>
                 <span class="feat-desc">Iterate over object property names</span>
@@ -1437,7 +1510,7 @@ local.set $keys
                   >
                 </details>
               </div>
-              <div class="feat-row" data-sloppy>
+              <div class="feat-row" data-t262-paths="language/arguments-object" data-sloppy>
                 <span class="feat-badge none">✗</span>
                 <span class="feat-name">arguments object (full)</span>
                 <span class="feat-desc">Legacy arguments — partial, rest params preferred</span>
@@ -1456,7 +1529,7 @@ function legacy() {
                   </div>
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="language/eval-code,built-ins/eval">
                 <span class="feat-badge partial">⚠</span>
                 <span class="feat-host">host</span>
                 <span class="feat-name">eval()</span>
@@ -1483,7 +1556,7 @@ function legacy() {
             </div>
             <div class="feat-section">
               <div class="feat-edition">ES5</div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="language/block-scope">
                 <span class="feat-badge full">✓</span>
                 <span class="feat-name">Variables (var, let, const)</span>
                 <span class="feat-desc">Block-scoped and function-scoped variable declarations</span>
@@ -1508,7 +1581,7 @@ var legacy = true;</pre
                   >
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="language/function-code">
                 <span class="feat-badge full">✓</span>
                 <span class="feat-name">Functions &amp; closures</span>
                 <span class="feat-desc">Named functions, expressions, and lexical closures</span>
@@ -1602,7 +1675,7 @@ try {
                   >
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/Object">
                 <span class="feat-badge full">✓</span>
                 <span class="feat-name">Objects</span>
                 <span class="feat-desc">Literals, property access, methods, and shorthand syntax</span>
@@ -1629,7 +1702,7 @@ const obj = {
                   >
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/String">
                 <span class="feat-badge full">✓</span>
                 <span class="feat-name">Strings</span>
                 <span class="feat-desc">String methods, concatenation, and manipulation</span>
@@ -1652,7 +1725,7 @@ const obj = {
                   >
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/Number">
                 <span class="feat-badge full">✓</span>
                 <span class="feat-name">Numbers</span>
                 <span class="feat-desc">Math operations, parseInt, Number methods</span>
@@ -1676,7 +1749,7 @@ parseInt("42");
                   >
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/JSON">
                 <span class="feat-badge full">✓</span>
                 <span class="feat-host">host</span>
                 <span class="feat-name">JSON</span>
@@ -1695,7 +1768,7 @@ const str = JSON.stringify({ a: 1 });</pre
                   >
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/Error,built-ins/NativeErrors">
                 <span class="feat-badge full">✓</span>
                 <span class="feat-name">Error types</span>
                 <span class="feat-desc">Error, TypeError, RangeError, SyntaxError and more</span>
@@ -1714,7 +1787,7 @@ throw new RangeError("out of bounds");</pre
                   >
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/Array">
                 <span class="feat-badge partial">⚠</span>
                 <span class="feat-host">host</span>
                 <span class="feat-name">Arrays</span>
@@ -1741,7 +1814,7 @@ const found = arr.find(x =&gt; x &gt; 5);</pre
                   </div>
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/RegExp">
                 <span class="feat-badge partial">⚠</span>
                 <span class="feat-host">host</span>
                 <span class="feat-name">Regular expressions</span>
@@ -1850,7 +1923,7 @@ const greet = () =&gt; "hello";</pre
                   >
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="language/destructuring">
                 <span class="feat-badge full">✓</span>
                 <span class="feat-name">Destructuring</span>
                 <span class="feat-desc">Extract values from arrays and objects</span>
@@ -1951,7 +2024,7 @@ const obj = { [key]: 42 };</pre
                   >
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/GeneratorFunction,built-ins/GeneratorPrototype">
                 <span class="feat-badge full">✓</span>
                 <span class="feat-name">Generators (function*, yield)</span>
                 <span class="feat-desc">Pausable functions that produce sequences</span>
@@ -2018,7 +2091,10 @@ class Dog extends Animal { }</pre
                   </div>
                 </details>
               </div>
-              <div class="feat-row">
+              <div
+                class="feat-row"
+                data-t262-paths="built-ins/Map,built-ins/Set,built-ins/MapIteratorPrototype,built-ins/SetIteratorPrototype"
+              >
                 <span class="feat-badge partial">⚠</span>
                 <span class="feat-host">host</span>
                 <span class="feat-name">Map / Set</span>
@@ -2044,7 +2120,7 @@ s.has(2); // true</pre
                   <div class="feat-explain">Core operations work. Some iteration edge cases incomplete.</div>
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/Symbol">
                 <span class="feat-badge partial">⚠</span>
                 <span class="feat-host">host</span>
                 <span class="feat-name">Symbol</span>
@@ -2069,7 +2145,10 @@ obj[id] = 42;</pre
                   </div>
                 </details>
               </div>
-              <div class="feat-row">
+              <div
+                class="feat-row"
+                data-t262-paths="built-ins/TypedArray,built-ins/TypedArrayConstructors,built-ins/ArrayBuffer,built-ins/DataView,built-ins/Uint8Array"
+              >
                 <span class="feat-badge partial">⚠</span>
                 <span class="feat-host">host</span>
                 <span class="feat-name">TypedArray / ArrayBuffer</span>
@@ -2095,7 +2174,7 @@ view[0] = 42;</pre
                   <div class="feat-explain">Int8 through Float64 arrays work. BigInt64Array not yet.</div>
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="language/import,language/export,language/module-code">
                 <span class="feat-badge partial">⚠</span>
                 <span class="feat-name">Modules (import / export)</span>
                 <span class="feat-desc">ES module system for code organization</span>
@@ -2114,7 +2193,7 @@ export function bar() { return 1; }</pre
                   <div class="feat-explain">Static imports work. Dynamic import() not yet.</div>
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/Proxy,built-ins/Reflect">
                 <span class="feat-badge none">✗</span>
                 <span class="feat-name">Proxy / Reflect</span>
                 <span class="feat-desc">Object behavior interception and reflection</span>
@@ -2124,7 +2203,7 @@ export function bar() { return 1; }</pre
                   <div class="feat-explain">Requires runtime trap dispatch. Not AOT-compilable.</div>
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/Promise">
                 <span class="feat-badge none">✗</span>
                 <span class="feat-host">host</span>
                 <span class="feat-name">Promise .then / .catch / .finally</span>
@@ -2140,7 +2219,10 @@ export function bar() { return 1; }</pre
             </div>
             <div class="feat-section">
               <div class="feat-edition">ES2017</div>
-              <div class="feat-row">
+              <div
+                class="feat-row"
+                data-t262-paths="built-ins/AsyncFunction,built-ins/AsyncGeneratorFunction,built-ins/AsyncGeneratorPrototype,built-ins/AsyncIteratorPrototype,built-ins/AsyncFromSyncIteratorPrototype"
+              >
                 <span class="feat-badge full">✓</span>
                 <span class="feat-host">host</span>
                 <span class="feat-name">async / await</span>
@@ -2179,7 +2261,7 @@ Object.values({ x: 10 });
                   >
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/SharedArrayBuffer,built-ins/Atomics">
                 <span class="feat-badge none">✗</span>
                 <span class="feat-host">host</span>
                 <span class="feat-name">SharedArrayBuffer / Atomics</span>
@@ -2193,7 +2275,7 @@ Object.values({ x: 10 });
             </div>
             <div class="feat-section">
               <div class="feat-edition">ES2018</div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/Object">
                 <span class="feat-badge full">✓</span>
                 <span class="feat-name">Object spread / rest</span>
                 <span class="feat-desc">Object spread in literals and rest in destructuring</span>
@@ -2291,7 +2373,7 @@ const { a, ...rest } = obj;</pre
                   >
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/BigInt">
                 <span class="feat-badge partial">⚠</span>
                 <span class="feat-host">host</span>
                 <span class="feat-name">BigInt</span>
@@ -2328,7 +2410,7 @@ const sum = big + 1n;</pre
             </div>
             <div class="feat-section">
               <div class="feat-edition">ES2021</div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/WeakRef,built-ins/FinalizationRegistry">
                 <span class="feat-badge none">✗</span>
                 <span class="feat-host">host</span>
                 <span class="feat-name">WeakRef / FinalizationRegistry</span>
@@ -2621,7 +2703,7 @@ buf.resize(16);</pre
             </div>
             <div class="feat-section">
               <div class="feat-edition">ES2025</div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/Set">
                 <span class="feat-badge none">✗</span>
                 <span class="feat-host">host</span>
                 <span class="feat-name">Set methods (union, intersection, difference)</span>
@@ -2637,7 +2719,7 @@ a.union(b); // {1,2,3,4}</pre
                   <div class="feat-explain">ES2025 Set methods. Requires host import for Set operations.</div>
                 </details>
               </div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/Iterator">
                 <span class="feat-badge none">✗</span>
                 <span class="feat-host">host</span>
                 <span class="feat-name">Iterator helpers (map, filter, take)</span>
@@ -2800,7 +2882,7 @@ RegExp.$1; // "123" — deprecated</pre
             </div>
             <div class="feat-section">
               <div class="feat-edition">Proposals</div>
-              <div class="feat-row">
+              <div class="feat-row" data-t262-paths="built-ins/Temporal">
                 <span class="feat-badge none">✗</span>
                 <span class="feat-name">Temporal</span>
                 <span class="feat-desc">Modern date and time API</span>
@@ -2857,7 +2939,7 @@ match (value) {
 
       <section class="section-pad" id="wasm-hosts">
         <div class="intro">
-          <h2>Tiny modules that start and run fast.</h2>
+          <h2>Lean modules that load and run fast.</h2>
           <p>
             When running outside of a JS engine like found in browsers or Node.js, compatibility today typically means
             embedding a JS interpreter inside the WebAssembly module. This increases module size and slows execution.
@@ -2888,48 +2970,11 @@ match (value) {
             </div>
           </div>
         </div>
-
-        <div class="host-bench-group" id="wasmtime-bench-group" style="display: none">
-          <h3 class="host-bench-title">Wasmtime</h3>
-          <p class="host-bench-subcopy">
-            Compare direct AOT WebAssembly output against interpreter-bundling approaches in a standalone WebAssembly
-            runtime. Benchmark data is collected when Wasmtime is available in the CI environment.
-          </p>
-          <div class="conformance-diagrams">
-            <div class="diagram-panel">
-              <perf-benchmark-chart
-                src="./benchmarks/results/wasm-host-wasmtime-coldstart.json"
-                mode="absolute-lower-better"
-                baseline-label="JS (V8)"
-                title="Cold Start"
-                legend="Median startup time for standalone Wasmtime execution, with JS-host baseline marker (lower is better)"
-              ></perf-benchmark-chart>
-            </div>
-            <div class="diagram-panel">
-              <perf-benchmark-chart
-                src="./benchmarks/results/wasm-host-wasmtime-hot-runtime.json"
-                mode="absolute-lower-better"
-                baseline-label="JS (V8)"
-                title="Hot Runtime"
-                legend="Median amortized runtime per call after one module load in Wasmtime, with JS-host baseline marker (lower is better)"
-              ></perf-benchmark-chart>
-            </div>
-            <div class="diagram-panel">
-              <perf-benchmark-chart
-                src="./benchmarks/results/wasm-host-wasmtime-module-size.json"
-                mode="absolute-lower-better"
-                baseline-label="JS (V8)"
-                title="Module Size"
-                legend="Raw .wasm or component size for the standalone Wasmtime comparison, with JS baseline marker (lower is better)"
-              ></perf-benchmark-chart>
-            </div>
-          </div>
-        </div>
       </section>
 
       <hr class="divider" />
 
-      <section class="section-pad" id="how-it-works">
+      <section class="section-pad" id="approach">
         <div class="intro">
           <h2>Compiled ahead of time, no interpreter.</h2>
           <p>
@@ -2971,25 +3016,25 @@ export function run() {
               <span class="how-step-size" id="how-fib-wasm-size">(0.2 KB gzipped)</span>
             </h3>
             <pre class="how-code wat">
-;; simplified — actual output includes
-;; box/unbox for externref returns
-(func $fibonacci (param f64) (result externref)
+;; Actual compiler output — number → f64 throughout.
+;; No boxing, no anyref, no dispatch overhead.
+(func $fibonacci (param f64) (result f64)
   local.get 0
   f64.const 1
   f64.le
-  if
-    local.get 0
-    call $__box_number
-    return
-  end
-  local.get 0  f64.const 1  f64.sub
-  call $fibonacci  call $__unbox_number
-  local.get 0  f64.const 2  f64.sub
-  call $fibonacci  call $__unbox_number
-  f64.add
-  call $__box_number)
+  (if
+    (then
+      local.get 0
+      return)
+    (else
+      local.get 0  f64.const 1  f64.sub
+      call $fibonacci
+      local.get 0  f64.const 2  f64.sub
+      call $fibonacci
+      f64.add
+      return)))
 
-(func $run (export "run") (result externref)
+(func $run (export "run") (result f64)
   f64.const 10
   call $fibonacci)</pre
             >
@@ -3090,6 +3135,65 @@ console.log(instance.exports.run()); // &rarr; 55</pre
             to create the host import object, then instantiate with the standard WebAssembly API.
           </p>
         </div>
+
+        <div class="how-step" style="margin-top: 56px">
+          <h3 class="how-step-title">Architecture</h3>
+          <p class="how-sub">
+            Architecture Decision Records (ADRs) document the non-obvious choices behind js2wasm &mdash; why WasmGC over
+            linear memory, why ahead-of-time compilation over a JIT, how closures and objects are laid out. Each record
+            captures the context, the decision, and its consequences in a few hundred words. Together they make the
+            design auditable for external contributors and reviewers.
+            <a href="./docs/adr/">Read the index &rarr;</a>
+          </p>
+          <ul class="adr-list">
+            <li>
+              <a href="./docs/adr/0001-hybrid-compilation-strategy.html">
+                ADR-001 &mdash; Hybrid static&ndash;dynamic compilation strategy
+              </a>
+            </li>
+            <li>
+              <a href="./docs/adr/0002-architectural-approach.html">
+                ADR-002 &mdash; Architectural approach: AOT + WasmGC
+              </a>
+            </li>
+            <li><a href="./docs/adr/0003-wasmgc.html">ADR-003 &mdash; WasmGC over linear memory</a></li>
+            <li><a href="./docs/adr/0004-aot.html">ADR-004 &mdash; AOT compilation over JIT/interpreter</a></li>
+            <li>
+              <a href="./docs/adr/0005-object-layout.html">
+                ADR-005 &mdash; Object layout via WasmGC struct types (closed-world)
+              </a>
+            </li>
+            <li>
+              <a href="./docs/adr/0006-boundary-guards.html">ADR-006 &mdash; Boundary guards at host-import surfaces</a>
+            </li>
+            <li>
+              <a href="./docs/adr/0007-closure-conversion.html">
+                ADR-007 &mdash; Closure conversion via WasmGC ref-cell structs
+              </a>
+            </li>
+            <li>
+              <a href="./docs/adr/0008-dual-string-backend.html">
+                ADR-008 &mdash; Dual string backend: wasm:js-string vs WasmGC i16 arrays
+              </a>
+            </li>
+            <li>
+              <a href="./docs/adr/0009-typescript-annotations.html">
+                ADR-009 &mdash; TypeScript annotations as inference seeds, not ground truth
+              </a>
+            </li>
+            <li><a href="./docs/adr/0010-eval-host-import.html">ADR-010 &mdash; Dynamic eval() via host import</a></li>
+            <li>
+              <a href="./docs/adr/0011-implementation-language.html">
+                ADR-011 &mdash; Implementation language: TypeScript with the typescript package
+              </a>
+            </li>
+            <li>
+              <a href="./docs/adr/0012-intermediate-representation.html">
+                ADR-012 &mdash; Intermediate representation: multi-stage typed IR
+              </a>
+            </li>
+          </ul>
+        </div>
       </section>
 
       <hr class="divider" />
@@ -3139,14 +3243,33 @@ console.log(instance.exports.run()); // &rarr; 55</pre
     <script type="module" src="./components/t262-charts.js"></script>
     <script type="module" src="./components/perf-benchmark-chart.js"></script>
     <script>
-      fetch("./benchmarks/results/wasm-host-wasmtime-coldstart.json")
-        .then((r) => r.json())
-        .then((d) => {
-          if (Array.isArray(d) && d.length > 0) {
-            document.getElementById("wasmtime-bench-group").style.display = "";
-          }
-        })
-        .catch(() => {});
+      (async () => {
+        const group = document.getElementById("wasmtime-bench-group");
+        if (!(group instanceof HTMLElement)) return;
+        const panels = Array.from(group.querySelectorAll("[data-benchmark-src]"));
+        let visibleCount = 0;
+        await Promise.all(
+          panels.map(async (panel) => {
+            if (!(panel instanceof HTMLElement)) return;
+            const src = panel.dataset.benchmarkSrc;
+            if (!src) return;
+            try {
+              const resp = await fetch(src);
+              if (!resp.ok) return;
+              const data = await resp.json();
+              if (Array.isArray(data) && data.length > 0) {
+                panel.style.display = "";
+                visibleCount += 1;
+              }
+            } catch {
+              // Leave unavailable benchmark panels hidden.
+            }
+          }),
+        );
+        if (visibleCount > 0) {
+          group.style.display = "";
+        }
+      })();
     </script>
     <script src="./components/trend-chart.js"></script>
 
@@ -3572,7 +3695,7 @@ console.log(instance.exports.run()); // &rarr; 55</pre
       // Hero wave is WebGL-rendered and only animates while visible.
 
       // Minimal syntax highlighter for feature code examples
-      // Syntax highlight feature examples and how-it-works code blocks with shiki
+      // Syntax highlight feature examples and approach code blocks with shiki
       (async function highlightWithShiki() {
         try {
           const { codeToHtml } = await import("https://esm.sh/shiki@4.0.2/bundle/web");
@@ -3832,6 +3955,258 @@ console.log(instance.exports.run()); // &rarr; 55</pre
         }
       })();
 
+      const PROPOSAL_LABEL = "Proposals";
+      const isEditionScope = (edition) =>
+        edition === "ES1" ||
+        edition === "ES2" ||
+        edition === "ES3" ||
+        edition === "≤ ES3" ||
+        edition === "ES5" ||
+        /^ES20\d{2}$/.test(edition);
+      const normalizeEditionLabel = (edition) => (edition === "≤ ES3" || edition === "ES3" ? "ES3 / Core" : edition);
+      const PUBLISHED_EDITION_RELEASE_MONTH = 6;
+      const latestPublishedEditionYear = (referenceDate = new Date()) => {
+        const date =
+          referenceDate instanceof Date && Number.isFinite(referenceDate.getTime()) ? referenceDate : new Date();
+        return date.getUTCMonth() + 1 >= PUBLISHED_EDITION_RELEASE_MONTH
+          ? date.getUTCFullYear()
+          : date.getUTCFullYear() - 1;
+      };
+      const loadEditionBuckets = (() => {
+        let pending;
+        return async () => {
+          if (!pending) {
+            pending = (async () => {
+              const editionsResp = await fetch("./benchmarks/results/test262-editions.json");
+              if (!editionsResp.ok) throw new Error("edition data unavailable");
+              const editions = await editionsResp.json();
+              if (!Array.isArray(editions) || editions.length === 0) {
+                throw new Error("edition data unavailable");
+              }
+
+              const editionList = editions
+                .filter((edition) => isEditionScope(String(edition?.edition || "")))
+                .map((edition) => ({
+                  ...edition,
+                  rawEdition: String(edition.edition || ""),
+                  normalizedEdition: normalizeEditionLabel(String(edition.edition || "")),
+                }));
+              const proposalBucket =
+                editions.find((edition) => String(edition?.edition || "") === PROPOSAL_LABEL) ?? null;
+
+              return {
+                editionList,
+                editionMap: new Map(editionList.map((edition) => [edition.normalizedEdition, edition])),
+                proposalBucket,
+              };
+            })();
+          }
+          return pending;
+        };
+      })();
+
+      (async function hydrateConformanceEditionFilter() {
+        const donutSlot = document.getElementById("conformance-donut-slot");
+        const editionTimeline = document.getElementById("conformance-edition-timeline");
+        if (!donutSlot || !(editionTimeline instanceof HTMLElement)) return;
+
+        const donutStyle = "--t262-bg: var(--bg, #060a14)";
+        const renderDonut = (summary, captionMain = "ECMAScript") => {
+          const pass = Number(summary?.pass ?? 0);
+          const fail = Number(summary?.fail ?? 0);
+          const ce = Number(summary?.ce ?? 0);
+          const skip = Number(summary?.skip ?? 0);
+          const total = Number(summary?.total ?? pass + fail + ce + skip);
+          let donut = donutSlot.querySelector("t262-donut");
+          if (!(donut instanceof HTMLElement)) {
+            donut = document.createElement("t262-donut");
+            donutSlot.replaceChildren(donut);
+          }
+          donut.setAttribute("pass", String(pass));
+          donut.setAttribute("fail", String(fail));
+          donut.setAttribute("ce", String(ce));
+          donut.setAttribute("skip", String(skip));
+          donut.setAttribute("total", String(total));
+          donut.setAttribute("caption-main", captionMain);
+          donut.setAttribute("caption-sub", "conformance");
+          donut.setAttribute("style", donutStyle);
+        };
+
+        try {
+          const reportResp = await fetch("./benchmarks/results/test262-report.json");
+          if (!reportResp.ok) throw new Error("conformance data unavailable");
+
+          const report = await reportResp.json();
+          const overallSummary = report?.summary;
+          if (!overallSummary) throw new Error("overall summary unavailable");
+
+          const overall = {
+            pass: Number(overallSummary.pass ?? 0),
+            fail: Number(overallSummary.fail ?? 0),
+            ce: Number(overallSummary.compile_error ?? 0) + Number(overallSummary.compile_timeout ?? 0),
+            skip: Number(overallSummary.skip ?? 0),
+            total: Number(overallSummary.total ?? 0),
+          };
+          const fullSummary = report?.full_summary ?? overallSummary;
+          const withProposal = {
+            pass: Number(fullSummary.pass ?? overall.pass ?? 0),
+            fail: Number(fullSummary.fail ?? overall.fail ?? 0),
+            ce: Number(fullSummary.compile_error ?? 0) + Number(fullSummary.compile_timeout ?? 0),
+            skip: Number(fullSummary.skip ?? overall.skip ?? 0),
+            total: Number(fullSummary.total ?? overall.total ?? 0),
+          };
+          const proposalDiffers =
+            withProposal.pass !== overall.pass ||
+            withProposal.fail !== overall.fail ||
+            withProposal.ce !== overall.ce ||
+            withProposal.skip !== overall.skip ||
+            withProposal.total !== overall.total;
+
+          const applyScopeFromDetail = (detail) => {
+            if (!detail) return;
+            if (Number.isFinite(detail.publishedLimitRank)) {
+              window.__conformancePublishedLimitRank = detail.publishedLimitRank;
+            }
+
+            const currentScope = detail.scope || "overall";
+            window.__conformanceEditionScope = currentScope;
+            if (currentScope === "overall") {
+              renderDonut(overall);
+              applyFeatureEditionScope("overall");
+              return;
+            }
+            if (currentScope === "overall+proposal") {
+              renderDonut(withProposal, "ECMAScript + proposals");
+              applyFeatureEditionScope("overall+proposal");
+              return;
+            }
+
+            const scope = detail.scopeMap instanceof Map ? detail.scopeMap.get(currentScope) : null;
+            if (!scope) return;
+            renderDonut(scope.summary, scope.captionMain);
+            applyFeatureEditionScope(currentScope);
+          };
+
+          editionTimeline.addEventListener("edition-change", (event) => {
+            applyScopeFromDetail(event.detail);
+          });
+
+          if (report.timestamp) {
+            editionTimeline.setAttribute("reference-timestamp", report.timestamp);
+          } else {
+            editionTimeline.removeAttribute("reference-timestamp");
+          }
+          if (proposalDiffers) {
+            editionTimeline.setAttribute("show-proposals", "");
+          } else {
+            editionTimeline.removeAttribute("show-proposals");
+          }
+          editionTimeline.setAttribute("value", "overall");
+        } catch {
+          window.__conformanceEditionScope = "overall";
+        }
+      })();
+
+      const featureEditionRank = new Map([
+        ["ES1", 0],
+        ["ES2", 1],
+        ["ES3 / Core", 2],
+        ["ES5", 3],
+        ["ES2015", 4],
+        ["ES2016", 5],
+        ["ES2017", 6],
+        ["ES2018", 7],
+        ["ES2019", 8],
+        ["ES2020", 9],
+        ["ES2021", 10],
+        ["ES2022", 11],
+        ["ES2023", 12],
+        ["ES2024", 13],
+        ["ES2025", 14],
+        ["ES2026", 15],
+        ["Legacy / Deprecated", 98],
+        ["Proposals", 99],
+      ]);
+
+      const getFeatureSectionLabel = (section) =>
+        section.querySelector(".feat-edition-label")?.textContent?.trim() ||
+        section.querySelector(".feat-edition")?.textContent?.trim() ||
+        "";
+      const isStandardFeatureEditionLabel = (label) => {
+        const rank = featureEditionRank.get(label);
+        return typeof rank === "number" && rank < 98;
+      };
+      const getFeatureScopeLimitRank = (scopeValue) => {
+        if (!scopeValue || scopeValue === "overall" || scopeValue === "overall+proposal") return null;
+        return featureEditionRank.get(normalizeEditionLabel(scopeValue)) ?? null;
+      };
+      const getPublishedFeatureLimitRank = () => {
+        const explicit = Number(window.__conformancePublishedLimitRank);
+        if (Number.isFinite(explicit)) return explicit;
+        const fallbackLabel = normalizeEditionLabel(`ES${latestPublishedEditionYear(new Date())}`);
+        return featureEditionRank.get(fallbackLabel) ?? Number.MAX_SAFE_INTEGER;
+      };
+      const applyFeatureEditionScope = (scopeValue = "overall") => {
+        if (scopeValue === "overall+proposal") {
+          document.querySelectorAll(".feat-section").forEach((section) => {
+            section.hidden = false;
+          });
+          return;
+        }
+        if (scopeValue === "overall") {
+          const publishedLimitRank = getPublishedFeatureLimitRank();
+          document.querySelectorAll(".feat-section").forEach((section) => {
+            const label = getFeatureSectionLabel(section);
+            const rank = featureEditionRank.get(label);
+            if (label === "Proposals") {
+              section.hidden = true;
+              return;
+            }
+            if (typeof rank === "number" && isStandardFeatureEditionLabel(label)) {
+              section.hidden = rank > publishedLimitRank;
+              return;
+            }
+            section.hidden = false;
+          });
+          return;
+        }
+        const limitRank = getFeatureScopeLimitRank(scopeValue);
+        document.querySelectorAll(".feat-section").forEach((section) => {
+          const label = getFeatureSectionLabel(section);
+          const rank = featureEditionRank.get(label);
+          if (typeof rank !== "number") {
+            section.hidden = true;
+            return;
+          }
+          if (!isStandardFeatureEditionLabel(label)) {
+            section.hidden = true;
+            return;
+          }
+          section.hidden = rank > limitRank;
+        });
+      };
+
+      const sortFeatureSectionsChronologically = () => {
+        document.querySelectorAll(".feat-panel").forEach((panel) => {
+          const sections = Array.from(panel.children).filter(
+            (child) => child instanceof HTMLElement && child.classList.contains("feat-section"),
+          );
+          if (sections.length < 2) return;
+
+          sections
+            .slice()
+            .sort(
+              (a, b) =>
+                (featureEditionRank.get(getFeatureSectionLabel(a)) ?? Number.MAX_SAFE_INTEGER) -
+                (featureEditionRank.get(getFeatureSectionLabel(b)) ?? Number.MAX_SAFE_INTEGER),
+            )
+            .forEach((section) => panel.appendChild(section));
+        });
+      };
+
+      sortFeatureSectionsChronologically();
+      applyFeatureEditionScope();
+
       (function hydrateEditionPassBars() {
         const strictToggle = document.getElementById("strict-only-toggle");
         const hostToggle = document.getElementById("host-support-toggle");
@@ -3846,36 +4221,45 @@ console.log(instance.exports.run()); // &rarr; 55</pre
           return 0;
         };
 
-        const updateEditionPassBars = () => {
+        const ensureEditionLabel = (section) => {
+          const el = section.querySelector(".feat-edition");
+          if (!(el instanceof HTMLElement)) return null;
+          let labelSpan = el.querySelector(".feat-edition-label");
+          if (!labelSpan) {
+            const label = (el.textContent || "").trim();
+            labelSpan = document.createElement("span");
+            labelSpan.className = "feat-edition-label";
+            labelSpan.textContent = label;
+            el.textContent = "";
+            el.appendChild(labelSpan);
+          }
+          return { el, labelSpan };
+        };
+
+        const ensureEditionPassBar = (header) => {
+          let bar = header.querySelector(".feat-edition-passbar");
+          if (!bar) {
+            bar = document.createElement("span");
+            bar.className = "feat-edition-passbar";
+            bar.innerHTML = `
+              <span class="feat-edition-passbar-track">
+                <span class="feat-edition-passbar-fill"></span>
+              </span>
+              <span class="feat-edition-passbar-text"></span>
+            `;
+            header.appendChild(bar);
+          }
+          return bar;
+        };
+
+        const renderHeuristicEditionPassBars = () => {
           const strictOnly = strictToggle ? strictToggle.checked : true;
           const hostEnabled = hostToggle ? hostToggle.checked : true;
 
           document.querySelectorAll(".feat-section").forEach((section) => {
-            const el = section.querySelector(".feat-edition");
-            if (!el) return;
-
-            let labelSpan = el.querySelector(".feat-edition-label");
-            if (!labelSpan) {
-              const label = (el.textContent || "").trim();
-              labelSpan = document.createElement("span");
-              labelSpan.className = "feat-edition-label";
-              labelSpan.textContent = label;
-              el.textContent = "";
-              el.appendChild(labelSpan);
-            }
-
-            let bar = el.querySelector(".feat-edition-passbar");
-            if (!bar) {
-              bar = document.createElement("span");
-              bar.className = "feat-edition-passbar";
-              bar.innerHTML = `
-                <span class="feat-edition-passbar-track">
-                  <span class="feat-edition-passbar-fill"></span>
-                </span>
-                <span class="feat-edition-passbar-text"></span>
-              `;
-              el.appendChild(bar);
-            }
+            const header = ensureEditionLabel(section)?.el;
+            if (!header) return;
+            const bar = ensureEditionPassBar(header);
 
             const rows = Array.from(section.querySelectorAll(".feat-row")).filter((row) => {
               if (strictOnly && row.hasAttribute("data-sloppy")) return false;
@@ -3890,6 +4274,69 @@ console.log(instance.exports.run()); // &rarr; 55</pre
             if (fill) fill.style.width = `${Math.max(0, Math.min(100, pct))}%`;
             if (text) text.textContent = `${pct}%`;
           });
+        };
+
+        const ensureGeneratedEditionSection = (panel, label) => {
+          const existing = Array.from(panel.querySelectorAll(".feat-section")).find(
+            (section) => getFeatureSectionLabel(section) === label,
+          );
+          if (existing) return existing;
+
+          const section = document.createElement("div");
+          section.className = "feat-section";
+          section.dataset.generatedEdition = "true";
+          section.innerHTML = `
+            <div class="feat-edition">${label}</div>
+            <div class="feat-note">
+              Tracked via the current Test262 edition buckets. Curated landing-page feature examples for this edition are not listed yet.
+            </div>
+          `;
+          panel.appendChild(section);
+          return section;
+        };
+
+        const updateEditionPassBars = async () => {
+          try {
+            const { editionList, editionMap, proposalBucket } = await loadEditionBuckets();
+            const panel = document.querySelector(".feat-panel");
+            if (panel instanceof HTMLElement) {
+              editionList.forEach((edition) => {
+                ensureGeneratedEditionSection(panel, edition.normalizedEdition);
+              });
+              sortFeatureSectionsChronologically();
+              applyFeatureEditionScope(window.__conformanceEditionScope || "overall");
+            }
+
+            document.querySelectorAll(".feat-section").forEach((section) => {
+              const ensured = ensureEditionLabel(section);
+              if (!ensured) return;
+              const label = ensured.labelSpan.textContent?.trim() || "";
+              const bucket = label === "Proposals" ? proposalBucket : editionMap.get(label);
+              const existingBar = ensured.el.querySelector(".feat-edition-passbar");
+
+              if (!bucket) {
+                existingBar?.remove();
+                return;
+              }
+
+              const bar = ensureEditionPassBar(ensured.el);
+              const fill = bar.querySelector(".feat-edition-passbar-fill");
+              const text = bar.querySelector(".feat-edition-passbar-text");
+              const pct = Math.max(0, Math.min(100, Number(bucket.pct ?? 0)));
+              const title = `${bucket.pass.toLocaleString()} pass, ${bucket.fail.toLocaleString()} fail, ${bucket.ce.toLocaleString()} CE, ${bucket.skip.toLocaleString()} skip (${bucket.total.toLocaleString()} total)`;
+              if (fill instanceof HTMLElement) {
+                fill.style.width = `${pct}%`;
+                fill.title = title;
+              }
+              if (text instanceof HTMLElement) {
+                text.textContent = `${pct}%`;
+                text.title = title;
+              }
+              bar.title = title;
+            });
+          } catch {
+            renderHeuristicEditionPassBars();
+          }
         };
 
         updateEditionPassBars();
@@ -3924,6 +4371,65 @@ console.log(instance.exports.run()); // &rarr; 55</pre
           labelEl.textContent = `JavaScript feature areas implemented (${implemented}/${total} with >50% tests passing)`;
         } catch {
           // Keep the build-time fallback when the report file is unavailable.
+        }
+      })();
+
+      // #1201 — hydrate feature rows with live test262 pass counts.
+      // Each `.feat-row[data-t262-paths]` declares one or more depth-2
+      // test262 path prefixes (e.g. `built-ins/Array,built-ins/Map`).
+      // We sum pass/total across the listed paths and append a small
+      // `<span class="feat-row-counts">N/T</span>` next to the feature
+      // name. Falls back gracefully (no count shown) if the fetch fails
+      // or a path isn't present in the categories data — a wrong
+      // mapping is then visible as a missing count rather than a
+      // misleading number.
+      (async function hydrateFeatureRowCounts() {
+        try {
+          const resp = await fetch("./benchmarks/results/test262-categories.json");
+          if (!resp.ok) return;
+          const payload = await resp.json();
+          const categories = payload?.categories;
+          if (!Array.isArray(categories) || categories.length === 0) return;
+          const byPath = new Map();
+          for (const cat of categories) {
+            const key = cat?.path ?? cat?.name;
+            if (typeof key === "string") byPath.set(key, cat);
+          }
+          const rows = document.querySelectorAll(".feat-row[data-t262-paths]");
+          for (const row of rows) {
+            const paths = (row.getAttribute("data-t262-paths") || "")
+              .split(",")
+              .map((p) => p.trim())
+              .filter(Boolean);
+            let pass = 0;
+            let total = 0;
+            for (const p of paths) {
+              const cat = byPath.get(p);
+              if (!cat) continue;
+              pass += Number(cat.pass ?? 0);
+              const skip = Number(cat.skip ?? 0);
+              total += Number(cat.total ?? 0) - skip;
+            }
+            if (total <= 0) continue;
+            // Only render the count if at least one of the listed
+            // paths was found — otherwise leave the static badge alone
+            // so a stale mapping is visible rather than misleading.
+            const span = document.createElement("span");
+            span.className = "feat-row-counts";
+            span.textContent = `${pass}/${total}`;
+            const ratio = pass / total;
+            if (ratio >= 0.8) span.dataset.tone = "pass";
+            else if (ratio >= 0.5) span.dataset.tone = "partial";
+            else span.dataset.tone = "fail";
+            // Append inside `.feat-name` to stay within its grid cell —
+            // the row uses a 3-col template (`30px 1fr 24px`) so any
+            // sibling span would land in column 3 (the badge column)
+            // and break alignment.
+            const nameEl = row.querySelector(".feat-name");
+            if (nameEl) nameEl.appendChild(span);
+          }
+        } catch {
+          // Static badges remain — graceful fallback.
         }
       })();
 

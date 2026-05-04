@@ -1,0 +1,27 @@
+---
+id: 128
+sprint: 2
+title: "Issue 128: BigInt type"
+status: done
+created: 2026-03-11
+updated: 2026-04-14
+completed: 2026-03-11
+goal: compilable
+---
+# Issue 128: BigInt type
+
+## Summary
+
+154 test262 tests use BigInt. Currently all skipped.
+
+## Approach
+
+BigInt maps naturally to wasm's `i64` type:
+1. BigInt literals (`42n`) → i64.const
+2. BigInt arithmetic → i64.add, i64.sub, etc.
+3. BigInt comparison → i64.eq, i64.lt_s, etc.
+4. Mixed BigInt/number operations → compile error (matches JS semantics)
+
+## Complexity
+
+M — New literal type + i64 codegen path + type checking.

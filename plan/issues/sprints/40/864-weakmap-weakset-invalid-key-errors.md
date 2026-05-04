@@ -1,0 +1,40 @@
+---
+id: 864
+sprint: 40
+title: "WeakMap/WeakSet invalid key errors (45 FAIL)"
+status: done
+created: 2026-03-29
+updated: 2026-04-14
+completed: 2026-04-14
+priority: low
+feasibility: easy
+reasoning_effort: medium
+goal: compilable
+test262_fail: 45
+---
+# #864 -- WeakMap/WeakSet invalid key errors (45 FAIL)
+
+## Problem
+
+45 tests fail with "Invalid value used as weak map key" or "Invalid value used in weak set". These tests use objects or symbols as keys in WeakMap/WeakSet, which should be valid, but the compiler's runtime representation converts these to primitive types (externref/f64) that V8's WeakMap rejects.
+
+## Root cause
+
+When objects are passed through externref, they may be boxed as numbers or lose their object identity. WeakMap/WeakSet require object references (or registered symbols) as keys, but the compiler's type coercion may convert valid objects to invalid key types.
+
+## Acceptance criteria
+
+- 45 WeakMap/WeakSet tests pass
+- Object identity preserved when used as WeakMap/WeakSet keys
+
+## Implementation Summary
+
+### Root Cause
+
+The runtime's `_wasmStructProps` WeakMap (sidecar property store) crashed when a primitive value was passed as a key. This happened when extern class methods were called on wrapper objects or type coercion converted objects to primitives.
+
+### Fix
+
+Added `_canBeWeakKey()` guard to `_getSidecar`, `_sidecarGet`, `_sidecarSet`, `_sidecarDelete`, and `_getSidecarDescs` in `src/runtime.ts`. Primitives silently skip sidecar storage instead of throwing.
+
+WeakMap symbol key tests pass — the existing `__box_symbol` coercion correctly converts i32 symbol IDs to real JS Symbols.

@@ -1,0 +1,31 @@
+---
+id: 124
+sprint: 1
+title: "delete operator"
+status: wont-fix
+created: 2026-03-11
+updated: 2026-04-14
+completed: 2026-03-12
+task_type: feature
+language_feature: delete-operator
+goal: test-infrastructure
+---
+# Issue 124: delete operator
+
+## Summary
+
+232 test262 tests use the `delete` operator. Currently all skipped.
+
+## Problem
+
+`delete obj.prop` removes a property from an object at runtime. In wasm with
+WasmGC structs, fields are fixed at compile time and cannot be removed.
+
+## Approach
+
+Could be partially supported for Map/object-as-map patterns where properties
+are stored in a hashtable. For struct-based objects, delete is meaningless.
+
+## Complexity
+
+M — Partial support for dynamic objects only.

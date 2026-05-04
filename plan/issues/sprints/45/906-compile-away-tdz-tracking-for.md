@@ -1,0 +1,127 @@
+---
+id: 906
+sprint: 45
+title: "Compile away TDZ tracking for definite-assignment top-level numeric locals"
+status: done
+created: 2026-04-02
+updated: 2026-04-27
+completed: 2026-04-27
+priority: high
+feasibility: medium
+reasoning_effort: high
+goal: error-model
+depends_on: [800, 898]
+required_by: [908]
+files:
+  src/codegen/index.ts:
+    modify:
+      - "Avoid emitting module-level TDZ globals for top-level locals that are provably initialized before first read"
+  src/codegen/expressions.ts:
+    modify:
+      - "Treat simple top-level definite-assignment cases as compile-time-safe instead of preserving runtime TDZ state"
+---
+# #906 -- Compile away TDZ tracking for definite-assignment top-level numeric locals
+
+## Problem
+
+This simple top-level loop still emits runtime TDZ tracking for `result`:
+
+```ts
+function squared(n) {
+  return n * n;
+}
+
+let result = 0;
+
+for (let i = 0; i < 10000; i++) {
+  result += squared(10);
+}
+
+console.log(result);
+```
+
+Current emitted WAT includes:
+
+```wat
+(global $__mod_result (mut f64) (f64.const 0))
+(global $__tdz_result (mut i32) (i32.const 0))
+...
+f64.const 0
+global.set 2
+i32.const 1
+global.set 3
+```
+
+For this example, the TDZ state is known statically:
+
+- `result` is initialized immediately
+- all later reads occur after that initializer
+- there is no closure, deferred execution, or interleaving control flow that can observe an uninitialized read
+
+The runtime TDZ global and writes are unnecessary overhead.
+
+## Goal
+
+Compile away TDZ tracking for top-level/module-init locals when definite-assignment analysis can prove the variable is initialized before every read.
+
+## Requirements
+
+1. Recognize simple top-level/module-init definite-assignment patterns like the example above
+2. Avoid creating `__tdz_*` globals or locals for those proven-safe bindings
+3. Avoid emitting initialization writes such as `global.set __tdz_result`
+4. Preserve runtime TDZ behavior for genuinely dynamic or ambiguous cases
+5. Add regression coverage using the example above
+
+## ECMAScript spec reference
+
+- [§14.3.1 Let and Const Declarations](https://tc39.es/ecma262/#sec-let-and-const-declarations) — variables are in TDZ from scope entry until their declaration is evaluated
+- [§9.1.1.1.4 InitializeBinding](https://tc39.es/ecma262/#sec-declarative-environment-records-initializebinding-n-v) — removes TDZ for the binding
+- [§9.1.1.1.2 GetBindingValue](https://tc39.es/ecma262/#sec-declarative-environment-records-getbindingvalue-n-s) — step 3: throw ReferenceError if binding is uninitialized
+
+
+## Acceptance criteria
+
+- the example above no longer emits `__tdz_result`
+- the example above no longer emits TDZ writes in `__module_init`
+- runtime TDZ checks remain for cases that cannot be proven safe statically
+
+## Implementation notes
+
+- Added `computeElidableTopLevelTdzNames` in `src/codegen/expressions/identifiers.ts`
+  that walks the source file, finds every Identifier resolving to a top-level
+  let/const declaration, and runs `analyzeTdzAccess` on each. If every read
+  returns `"skip"`, the name is elided.
+- `src/codegen/declarations.ts` calls this helper just before allocating the
+  TDZ flag globals and removes elidable names from `ctx.tdzLetConstNames`.
+  The downstream code paths (`emitTdzInit`, `emitTdzCheck`, the read-site
+  analysis at `expressions/identifiers.ts:340`) all already short-circuit
+  when `tdzGlobals.get(name)` is undefined, so no other call sites needed
+  changes.
+- Conservative behaviour preserved: hoisted function declarations that read
+  a top-level let/const, forward references, closures captured before init,
+  and reads inside a loop that wraps the declaration all still emit runtime
+  TDZ tracking (because `analyzeTdzAccess` returns `"throw"` or `"check"`
+  for those cases).
+
+## Test results
+
+- `tests/issue-906.test.ts` — 11/11 pass (new). Covers the issue's exact
+  example, multi-decl elision, hoisted-function preserve, forward-reference
+  preserve, arrow-before-init preserve, arrow-after-init elide, loop reads
+  not containing decl elide, unused let elide, end-to-end loop sum.
+- `tests/issue-800.test.ts` — 7/7 pass (existing static TDZ optimization).
+- `tests/issue-899.test.ts` — 7/7 pass (existing closure-capture TDZ).
+- `tests/issue-723-tdz.test.ts` — 7/7 pass (runtime TDZ enforcement).
+- `tests/issue-1053-arguments-global-staleness.test.ts` — 1/1 pass.
+- `tests/equivalence/var-hoisting-scope.test.ts` — 12/12 pass.
+- `tests/equivalence/scope-and-error-handling.test.ts` — 5/5 pass.
+- `tests/equivalence/global-type-checks.test.ts` — 9/9 pass.
+- `tests/equivalence/global-index-shift-trycatch.test.ts` and
+  `multi-file-compilation.test.ts` — 35/35 combined pass.
+- Pre-existing failures (verified to fail on `origin/main` without this
+  change too, unrelated):
+  - `tests/equivalence/tdz-reference-error.test.ts` — 6 fails (validator
+    emits TDZ violations as `severity: "warning"`, tests expect `"error"`).
+  - `tests/issue-790.test.ts` — 4 fails (function-local TDZ runtime
+    behaviour, unrelated to module-level optimization).
+

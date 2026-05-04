@@ -115,10 +115,28 @@ function normalizeIssueStatus(rawStatus) {
   return "ready";
 }
 
+// When the same issue ID appears in multiple sprint snapshot directories
+// (e.g. a done issue in sprints/42/ and a carry-forward in sprints/45/),
+// prefer the version with the highest-priority status so that done issues
+// don't show up as "ready" in a later sprint's board.
+const STATUS_PRIORITY = {
+  done: 0,
+  "wont-fix": 1,
+  blocked: 2,
+  review: 3,
+  "in-progress": 4,
+  ready: 5,
+  deferred: 6,
+  backlog: 7,
+};
+function issueStatusPriority(status) {
+  return STATUS_PRIORITY[status] ?? 8;
+}
+
 function loadIssues() {
   if (!existsSync(ISSUE_ROOT)) return [];
   const trackedFiles = getTrackedMarkdownFiles("plan/issues");
-  return walkFiles(ISSUE_ROOT)
+  const raw = walkFiles(ISSUE_ROOT)
     .filter((file) => isIssueFileName(file.split("/").pop()))
     .filter((file) => !trackedFiles || trackedFiles.has(file))
     .map((file) => {
@@ -127,6 +145,17 @@ function loadIssues() {
       const fm = parseFrontmatter(text);
       const id = String(fm.id || f.replace(".md", ""));
       const title = fm.title || extractTitle(text);
+      // Sprint membership: prefer explicit `sprint:` frontmatter, but fall
+      // back to the parent directory name. The repo convention is that an
+      // issue file at `plan/issues/sprints/<N>/<id>-…md` belongs to sprint
+      // <N>, even when the frontmatter omits the field. (The dashboard
+      // previously dropped 55+ sprint-47 issues that didn't have an explicit
+      // `sprint:` line — that's the root cause behind "sprint shows only one
+      // ticket" reports.)
+      const dirSegments = file.split("/");
+      const sprintsIdx = dirSegments.lastIndexOf("sprints");
+      const sprintFromDir =
+        sprintsIdx >= 0 && sprintsIdx + 1 < dirSegments.length - 1 ? dirSegments[sprintsIdx + 1] : "";
       return {
         id,
         title,
@@ -135,10 +164,20 @@ function loadIssues() {
         depends_on: fm.depends_on || [],
         goal: fm.goal || "",
         status: normalizeIssueStatus(fm.status),
-        sprint: fm.sprint || "",
+        sprint: fm.sprint || sprintFromDir,
       };
-    })
-    .sort((a, b) => String(b.id).localeCompare(String(a.id), undefined, { numeric: true })); // newest first
+    });
+
+  // Deduplicate by ID — same issue can appear in multiple sprint snapshot dirs.
+  // Keep the copy with the highest-priority status (done beats ready/deferred).
+  const byId = new Map();
+  for (const issue of raw) {
+    const existing = byId.get(issue.id);
+    if (!existing || issueStatusPriority(issue.status) < issueStatusPriority(existing.status)) {
+      byId.set(issue.id, issue);
+    }
+  }
+  return [...byId.values()].sort((a, b) => String(b.id).localeCompare(String(a.id), undefined, { numeric: true })); // newest first
 }
 
 const issues = {
@@ -148,7 +187,6 @@ const issues = {
   inprogress: [],
   review: [],
   done: [],
-  wontfix: [],
 };
 
 for (const iss of loadIssues()) {
@@ -160,10 +198,9 @@ for (const iss of loadIssues()) {
     issues.inprogress.push(iss);
   } else if (iss.status === "review") {
     issues.review.push(iss);
-  } else if (iss.status === "done") {
+  } else if (iss.status === "done" || iss.status === "wont-fix") {
+    // wont-fix is a label, not a separate lane — shown in Done with a tag
     issues.done.push(iss);
-  } else if (iss.status === "wont-fix") {
-    issues.wontfix.push(iss);
   } else {
     issues.ready.push(iss);
   }
@@ -176,7 +213,6 @@ const allIssueEntries = [
   ...issues.review,
   ...issues.blocked,
   ...issues.done,
-  ...issues.wontfix,
 ];
 const issueIdsBySprint = new Map();
 const completedIssueIdsBySprint = new Map();
@@ -185,7 +221,7 @@ for (const issue of allIssueEntries) {
   if (!Number.isFinite(sprintNumber)) continue;
   if (!issueIdsBySprint.has(sprintNumber)) issueIdsBySprint.set(sprintNumber, new Set());
   issueIdsBySprint.get(sprintNumber).add(String(issue.id));
-  if (issue.status === "done") {
+  if (issue.status === "done" || issue.status === "wont-fix") {
     if (!completedIssueIdsBySprint.has(sprintNumber)) completedIssueIdsBySprint.set(sprintNumber, new Set());
     completedIssueIdsBySprint.get(sprintNumber).add(String(issue.id));
   }
@@ -193,7 +229,7 @@ for (const issue of allIssueEntries) {
 
 writeFileSync(join(OUT, "issues.json"), JSON.stringify(issues, null, 2));
 console.log(
-  `Issues: ${issues.backlog.length} backlog, ${issues.ready.length} ready, ${issues.inprogress.length} in-progress, ${issues.review.length} in-review, ${issues.blocked.length} blocked, ${issues.done.length} done, ${issues.wontfix.length} wont-fix`,
+  `Issues: ${issues.backlog.length} backlog, ${issues.ready.length} ready, ${issues.inprogress.length} in-progress, ${issues.review.length} in-review, ${issues.blocked.length} blocked, ${issues.done.length} done (incl. wont-fix)`,
 );
 
 // ── Load test262 runs ────────────────────────────────────────
@@ -288,9 +324,27 @@ for (const entry of sprintFiles) {
     explicitCarryOver,
   });
 }
-const maxSprintNumber = Math.max(...sprints.map((s) => s.sprintNumber || 0), 0);
+// Determine isClosed / isPlanning using explicit frontmatter status where available.
+// Legacy sprints (status === "") fall back to the maxSprintNumber heuristic, but
+// only compared against other legacy sprints so that new "planning" sprints don't
+// push the current active sprint into isClosed.
+const CLOSED_STATUSES = new Set(["closed", "done"]);
+const ACTIVE_STATUSES = new Set(["planned", "active"]);
+const PLANNING_STATUSES = new Set(["planning"]);
+const explicitlyClosedMax = Math.max(
+  ...sprints.filter((s) => CLOSED_STATUSES.has(s.status)).map((s) => s.sprintNumber || 0),
+  0,
+);
 for (const sprint of sprints) {
-  sprint.isClosed = Boolean(sprint.sprintNumber && sprint.sprintNumber < maxSprintNumber) || sprint.explicitCarryOver;
+  sprint.isPlanning = PLANNING_STATUSES.has(sprint.status);
+  if (CLOSED_STATUSES.has(sprint.status)) {
+    sprint.isClosed = true;
+  } else if (ACTIVE_STATUSES.has(sprint.status) || PLANNING_STATUSES.has(sprint.status)) {
+    sprint.isClosed = false;
+  } else {
+    // Legacy sprint with no status field: closed if at or below the explicit threshold.
+    sprint.isClosed = sprint.sprintNumber <= explicitlyClosedMax || sprint.explicitCarryOver;
+  }
 }
 writeFileSync(join(OUT, "sprints.json"), JSON.stringify(sprints, null, 2));
 console.log(`Sprints: ${sprints.length} entries`);

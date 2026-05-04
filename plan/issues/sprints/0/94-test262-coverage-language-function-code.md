@@ -1,0 +1,25 @@
+---
+id: 94
+sprint: 0
+title: "Issue 94: Test262 coverage — language/function-code"
+status: done
+created: 2026-03-09
+updated: 2026-04-14
+completed: 2026-03-09
+goal: test-infrastructure
+---
+# Issue 94: Test262 coverage — language/function-code
+
+## Status: DONE
+
+## Summary
+
+Added `language/statements/function` to the test262 runner (language/expressions/function and language/expressions/call were already present).
+
+## Results
+
+4/5 compilable function tests pass. Most tests skipped due to unsupported features (destructuring, default-parameters, rest-parameters, arrow-function, class).
+
+## Tests
+
+6773 test262 tests total, 412 pass, 0 fail

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
-import ts from "typescript";
+import { ts, forEachChild } from "./ts-api.js";
 
 interface ClassUsageInfo {
   constructorArgCounts: number[];
@@ -102,6 +102,22 @@ export function preprocessImports(source: string): PreprocessResult {
 
   for (const stmt of sf.statements) {
     if (!ts.isImportDeclaration(stmt)) continue;
+
+    // Import attributes (TS 5.3+ / TS7) — `import x from "m" with { type: "json" }`.
+    // We don't yet resolve JSON imports at compile time (tracked as a
+    // follow-up to #1288 — JSON imports COULD be inlined statically by reading
+    // the JSON file at compile time, but that's out of scope for the shim).
+    // Per #1288: emit a one-line note and continue; do NOT throw. The TS7
+    // native-preview parser surfaces this shape unconditionally, and TS5 has
+    // supported the syntax since 5.3.
+    const attrs = (stmt as ts.ImportDeclaration & { attributes?: { elements?: readonly unknown[] } }).attributes;
+    if (attrs && Array.isArray(attrs.elements) && attrs.elements.length > 0) {
+      const spec = ts.isStringLiteral(stmt.moduleSpecifier) ? stmt.moduleSpecifier.text : "<unknown>";
+      console.warn(
+        `[js2wasm] Import attributes on \`${spec}\` are accepted but not yet acted on (#1288); ` +
+          `the import is processed as if no attributes were present. JSON inlining tracked as a follow-up.`,
+      );
+    }
 
     const moduleSpec = ts.isStringLiteral(stmt.moduleSpecifier) ? stmt.moduleSpecifier.text : "";
     const clause = stmt.importClause;
@@ -310,7 +326,7 @@ export function preprocessImports(source: string): PreprocessResult {
       maxCallArgs.set(name, Math.max(existing, node.arguments.length));
     }
 
-    ts.forEachChild(node, visit);
+    forEachChild(node, visit);
   }
 
   visit(sf);

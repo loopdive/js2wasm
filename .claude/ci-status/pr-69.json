@@ -1,0 +1,15 @@
+{
+  "pr": 69,
+  "conclusion": "failure",
+  "head_branch": "issue-1179-followup-mul-overflow",
+  "head_sha": "ee21702dfdbfd3d7a4dc2d5772a34740da13535b",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24992783967",
+  "timestamp": "2026-04-27T11:44:47Z",
+  "pass": 25826,
+  "fail": 13922,
+  "compile_error": 1860,
+  "snapshot_delta": -8,
+  "net_per_test": -8,
+  "regressions": 137,
+  "improvements": 129
+}

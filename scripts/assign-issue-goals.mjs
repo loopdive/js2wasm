@@ -102,6 +102,13 @@ function issueIdFromPath(file) {
   return path.basename(file, ".md");
 }
 
+function sprintFromPath(file) {
+  const m = file.match(/\/sprints\/(\d+)\//);
+  if (m) return m[1];
+  if (/\/backlog\//.test(file)) return "backlog";
+  return "";
+}
+
 function canonicalGoal(value) {
   const trimmed = String(value || "").trim();
   if (!trimmed) return "";
@@ -139,7 +146,7 @@ function scoreGoal(text, file, frontmatter, explicitGoals = new Set()) {
   const languageFeature = String(frontmatter.language_feature || "").toLowerCase();
   const esEdition = String(frontmatter.es_edition || "").toLowerCase();
   const status = String(frontmatter.status || "").toLowerCase();
-  const sprint = String(frontmatter.sprint || "").toLowerCase();
+  const sprint = sprintFromPath(file).toLowerCase();
   const currentGoal = canonicalGoal(frontmatter.goal);
   const combined = `${title}\n${taskType}\n${languageFeature}\n${esEdition}\n${status}\n${sprint}\n${lower}`;
   const filepath = file.toLowerCase();

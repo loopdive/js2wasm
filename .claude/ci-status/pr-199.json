@@ -1,0 +1,19 @@
+{
+  "pr": 199,
+  "conclusion": "success",
+  "head_branch": "issue-1280-ir-while-for",
+  "head_sha": "53d1930cdcf83fc40fcac2c394391504db637163",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25268151426",
+  "timestamp": "2026-05-03T03:15:34Z",
+  "pass": 26260,
+  "fail": 13877,
+  "compile_error": 1540,
+  "snapshot_delta": -13,
+  "net_per_test": 36,
+  "regressions": 54,
+  "regressions_real": 14,
+  "regressions_wasm_change": 14,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 40,
+  "improvements": 50
+}

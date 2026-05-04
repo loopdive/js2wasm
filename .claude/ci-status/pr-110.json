@@ -1,14 +1,17 @@
 {
   "pr": 110,
   "conclusion": "failure",
-  "head_branch": "issue-1063-lodash-closure-ref",
-  "head_sha": "ff55acacc8103f93abc54c4ee406f8996a565f49",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24289834229",
-  "timestamp": "2026-04-11T19:32:28Z",
-  "pass": 20636,
-  "fail": 16624,
-  "compile_error": 4561,
-  "delta": 92,
-  "regressions": 1,
-  "improvements": 93
+  "head_branch": "issue-diff-test-ci-fix",
+  "head_sha": "d8d39dc9353a329b53c24dd6e596cab628cc0663",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25190688313",
+  "timestamp": "2026-04-30T21:49:16Z",
+  "pass": 25820,
+  "fail": 13924,
+  "compile_error": 1847,
+  "snapshot_delta": -19,
+  "net_per_test": -10,
+  "regressions": 145,
+  "regressions_real": 40,
+  "compile_timeouts": 105,
+  "improvements": 135
 }

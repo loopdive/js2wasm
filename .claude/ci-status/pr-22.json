@@ -1,0 +1,15 @@
+{
+  "pr": 22,
+  "conclusion": "success",
+  "head_branch": "issue-1025-binding-element-ref-is-null",
+  "head_sha": "43d9981159447fc19e7396abd38546245102543c",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24925070118",
+  "timestamp": "2026-04-25T06:56:49Z",
+  "pass": 25349,
+  "fail": 13821,
+  "compile_error": 2575,
+  "snapshot_delta": -66,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}

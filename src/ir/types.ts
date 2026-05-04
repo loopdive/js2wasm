@@ -34,6 +34,8 @@ export interface WasmModule {
   dataSegments: { offset: number; bytes: Uint8Array }[];
   /** Whether the module has top-level executable statements (module init code) */
   hasTopLevelStatements?: boolean;
+  /** Wasm start function index — runs automatically on instantiation (#907) */
+  startFuncIdx?: number;
 }
 
 export type TypeDef = FuncTypeDef | StructTypeDef | ArrayTypeDef | RecGroupDef | SubTypeDef;

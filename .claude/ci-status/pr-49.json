@@ -1,0 +1,15 @@
+{
+  "pr": 49,
+  "conclusion": "failure",
+  "head_branch": "issue-1109-typeof-regexp-stack-balance-v2",
+  "head_sha": "1b03a15d53f1993c2d2791e6c649755c06378c1b",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24970226607",
+  "timestamp": "2026-04-26T23:59:18Z",
+  "pass": 25817,
+  "fail": 13952,
+  "compile_error": 1836,
+  "snapshot_delta": 10,
+  "net_per_test": 11,
+  "regressions": 137,
+  "improvements": 148
+}

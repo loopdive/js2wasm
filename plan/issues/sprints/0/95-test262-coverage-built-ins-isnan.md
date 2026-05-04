@@ -1,0 +1,21 @@
+---
+id: 95
+sprint: 0
+title: "Issue 95: Test262 coverage — built-ins/isNaN + isFinite"
+status: done
+created: 2026-03-09
+updated: 2026-04-14
+completed: 2026-03-09
+goal: test-infrastructure
+---
+# Issue 95: Test262 coverage — built-ins/isNaN + isFinite
+
+## Status: DONE
+
+## Summary
+
+`built-ins/isNaN` and `built-ins/isFinite` were already present in the test262 runner. All compilable tests pass.
+
+## Tests
+
+6773 test262 tests total, 412 pass, 0 fail

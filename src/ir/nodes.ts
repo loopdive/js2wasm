@@ -51,11 +51,294 @@ export type IrSymRef = IrFuncRef | IrGlobalRef | IrTypeRef;
 // IR types
 // ---------------------------------------------------------------------------
 //
-// IrType is a thin wrapper around the backend ValType, but we keep it as a
-// distinct alias so the middle-end can later grow richer types (union-of-N,
-// nullable annotations, narrowed types) that lower to the same ValType.
+// IrType is the middle-end's own type. It is a discriminated union over the
+// shapes the middle-end needs to describe:
+//
+//   { kind: "val",   val: ValType }      A single concrete Wasm value type —
+//                                        the 1:1 wrapper around a backend
+//                                        ValType (i32, f64, externref, …).
+//   { kind: "union", members: ValType[] } A tagged union of ValTypes, lowered
+//                                        to a canonical WasmGC struct with a
+//                                        `$tag: i32` discriminator + one or
+//                                        more `$val` fields. V1 scope:
+//                                        homogeneous-width members only
+//                                        (e.g. `f64|bool`, `f64|null`).
+//                                        Members containing `externref` /
+//                                        `ref` / `funcref` fall back to
+//                                        `dynamic` upstream.
+//   { kind: "boxed", inner: ValType }    A heap-allocated single-field box
+//                                        (`struct (field $val inner)`) —
+//                                        lets the middle-end materialise
+//                                        scalars on the heap when a
+//                                        downstream pass needs a reference.
+//
+// Every IrType use-site that would have passed a raw `ValType` now either
+//   (a) wraps with `irVal(v)` to produce `{ kind: "val", val: v }`, or
+//   (b) reads back via `asVal(t)` which returns the underlying `ValType`
+//       when `t.kind === "val"`, otherwise `null`.
+//
+// Lowering contract (in `lower.ts`):
+//   { kind: "val",   val }     → `val` (unchanged).
+//   { kind: "union", members } → ref to the canonical `$union_<members>`
+//                                struct (registered once per module via
+//                                `passes/tagged-union-types.ts`).
+//   { kind: "boxed", inner }   → ref to a single-field struct with the
+//                                inner ValType as its `$val`.
 
-export type IrType = ValType;
+/**
+ * A canonical object shape — a sorted list of named fields with their IR
+ * types. Equal shapes (same names, same types in the same canonical order)
+ * resolve to the same WasmGC struct via the lowerer's resolver. Carrying
+ * the field types as `IrType` (not `ValType`) lets a struct-of-string or
+ * struct-of-object compose cleanly: the resolver recursively materializes
+ * field types when registering the WasmGC struct.
+ *
+ * Names must be unique. The constructor in `from-ast.ts` sorts by name
+ * before constructing the IrType so structurally-identical shapes compare
+ * equal regardless of source order.
+ */
+export interface IrObjectShape {
+  readonly fields: readonly { readonly name: string; readonly type: IrType }[];
+}
+
+/**
+ * Slice 3 (#1169c) — a closure's caller-visible signature. Used both as
+ * the IR-level type discriminator for closure values and as the resolver
+ * lookup key for the supertype struct + lifted func type. The implicit
+ * `__self` struct param at index 0 of the lifted body is NOT present in
+ * `params` — it's added by the resolver when synthesizing the func type.
+ */
+export interface IrClosureSignature {
+  readonly params: readonly IrType[];
+  readonly returnType: IrType;
+}
+
+/**
+ * Slice 4 (#1169d) — descriptor for one field on a class.
+ */
+export interface IrClassFieldDescriptor {
+  readonly name: string;
+  readonly type: IrType;
+}
+
+/**
+ * Slice 4 (#1169d) — descriptor for one instance method on a class. The
+ * implicit `this` receiver is NOT listed in `params` — the lowerer
+ * prepends it when emitting the call. A void method has
+ * `returnType: null`.
+ */
+export interface IrClassMethodDescriptor {
+  readonly name: string;
+  readonly params: readonly IrType[];
+  readonly returnType: IrType | null;
+}
+
+/**
+ * Slice 4 (#1169d) — symbolic descriptor for a class declared in the
+ * compilation unit. Carries the structural info the IR builder needs to
+ * type-check `new`/field-access/method-call expressions on instances of
+ * this class without consulting the lowering resolver.
+ *
+ *   - `className`        unique discriminator (one class per name per unit)
+ *   - `fields`           user fields in canonical order (alphabetical)
+ *                        — the lowerer maps each field `name` to a Wasm
+ *                        struct field index via `resolveClass`, which knows
+ *                        about the legacy `__tag` prefix at field 0.
+ *   - `methods`          instance methods with caller-visible signatures.
+ *                        Static methods are out of slice 4 scope and are
+ *                        not listed.
+ *   - `constructorParams` user-visible param list for `new C(...)`.
+ *
+ * Class methods themselves are NOT IR-claimable in slice 4 — they remain
+ * on the legacy class-bodies path. The IR only references them by name
+ * (`<className>_<methodName>`) at call-site lowering, where the resolver
+ * maps the name to the legacy-allocated funcIdx.
+ */
+export interface IrClassShape {
+  readonly className: string;
+  readonly fields: readonly IrClassFieldDescriptor[];
+  readonly methods: readonly IrClassMethodDescriptor[];
+  readonly constructorParams: readonly IrType[];
+}
+
+export type IrType =
+  // The optional `signed` flag (#1126 Stage 1) is a *value-domain* fact, not
+  // a Wasm-storage fact: both `int32` and `uint32` lower to the same Wasm
+  // `i32` storage but are distinguished at op-selection time (`i32.shr_s`
+  // vs `i32.shr_u`, `f64.convert_i32_s` vs `_u`, signed vs unsigned cmp).
+  // Default (undefined) is "signed" for backward compat — every existing
+  // `val: { kind: "i32" }` callsite preserves its current semantics.
+  // Stage 1 only adds the field; producers / consumers come in Stages 2-3.
+  | { readonly kind: "val"; readonly val: ValType; readonly signed?: boolean }
+  // Backend-agnostic string marker (#1169a). The actual Wasm representation
+  // is decided at lowering time via `IrLowerResolver.resolveString`:
+  //   - host-strings backend  → `externref`
+  //   - native-strings backend → `(ref $AnyString)`
+  // Keeping the IR type backend-agnostic mirrors how `union`/`boxed` defer
+  // their concrete struct to the resolver. From the middle-end's point of
+  // view a `string` value is a single SSA def with no member structure.
+  | { readonly kind: "string" }
+  // Backend-agnostic object-shape marker (#1169b). The actual WasmGC struct
+  // is registered lazily by `IrLowerResolver.resolveObject`. Like `union`
+  // and `boxed`, the IR carries enough information to drive the resolver
+  // without committing to a specific Wasm typeIdx until lowering time.
+  | { readonly kind: "object"; readonly shape: IrObjectShape }
+  // Backend-agnostic closure marker (#1169c). Carries the caller-visible
+  // signature only — captures are an implementation detail of the
+  // closure-construction site, not a type-system property. Two closure
+  // values with the same signature but different captures share the same
+  // IrType (matches the legacy funcref-wrapper supertype pattern). The
+  // resolver registers a base WasmGC struct per signature plus a subtype
+  // struct per (signature, captureFieldTypes) pair.
+  | { readonly kind: "closure"; readonly signature: IrClosureSignature }
+  // Slice 4 (#1169d) — symbolic class instance reference. The Wasm-level
+  // value type is `(ref $ClassStruct)` where the struct is registered by
+  // the legacy `collectClassDeclaration` pass; the resolver maps
+  // `shape.className` to the concrete struct typeIdx + the fieldIdx /
+  // method funcIdx tables. The IR carries the full shape so the
+  // AST→IR lowerer can statically resolve field types and method
+  // signatures without resolver round-trips.
+  | { readonly kind: "class"; readonly shape: IrClassShape }
+  // Slice 10 (#1169i) — opaque externref reference to a host-class value
+  // (RegExp, Uint8Array, DataView, Map, Date, …). The Wasm-level type is
+  // always `externref` — the IR carries the className for static method
+  // / property dispatch at lowering time. The AST→IR layer tags
+  // `extern.new`, `extern.regex`, and method-call results with this
+  // type so subsequent receiver lookups can dispatch by className
+  // without a TS-checker round trip. See `src/ir/from-ast.ts`'s
+  // `lowerExternMethodCall` and the `extern.*` IR instr kinds.
+  | { readonly kind: "extern"; readonly className: string }
+  | { readonly kind: "union"; readonly members: readonly ValType[] }
+  // Slice 3 (#1169c) repurposes `boxed` as the ref-cell type for mutable
+  // captures. The inner ValType is the cell's stored type; the resolver
+  // delegates to `getOrRegisterRefCellType` so legacy and IR ref cells
+  // share the same WasmGC struct.
+  | { readonly kind: "boxed"; readonly inner: ValType };
+
+/** Wrap a plain ValType as an IrType — the common path for Phase 1/2 callers. */
+export function irVal(v: ValType): IrType {
+  return { kind: "val", val: v };
+}
+
+/**
+ * Wrap a ValType as an IrType with an explicit signedness fact (#1126 Stage 1).
+ * Use this only for `i32` ValTypes where the value-domain (signed `int32` vs
+ * unsigned `uint32`) is known. For non-i32 ValTypes the `signed` flag is
+ * meaningless; callers should use `irVal()` instead.
+ *
+ * The flag is read by Stage 3 emit decisions (signed vs unsigned shifts,
+ * comparisons, conversions back to f64). For Stage 1 it is purely additive —
+ * no existing emitter consults it yet.
+ */
+export function irValSigned(v: ValType, signed: boolean): IrType {
+  return { kind: "val", val: v, signed };
+}
+
+/**
+ * Return the single underlying ValType for a `val`-kind IrType, else `null`.
+ * Call sites that previously did `t.kind === "f64"` against an `IrType` now
+ * do `asVal(t)?.kind === "f64"`.
+ */
+export function asVal(t: IrType): ValType | null {
+  return t.kind === "val" ? t.val : null;
+}
+
+/**
+ * Structural equality for IrType. Two types are equal iff they have the same
+ * shape and their underlying ValType members compare structurally equal.
+ *
+ * Used by the verifier and by migration assertions. We keep the implementation
+ * local to avoid pulling a full deep-equal dep into the IR layer.
+ */
+export function irTypeEquals(a: IrType, b: IrType): boolean {
+  if (a.kind !== b.kind) return false;
+  if (a.kind === "val" && b.kind === "val") {
+    if (!valTypeEquals(a.val, b.val)) return false;
+    // #1126 Stage 1 — `signed` is a domain fact, not a Wasm-storage fact.
+    // Two `val` types differ if they disagree on signedness (e.g. an
+    // i32 inferred as `int32` in one branch vs `uint32` in another would
+    // join to `f64` in the lattice; we never want them to compare equal
+    // here). `undefined` is treated as "signed" (the legacy default).
+    const aSigned = a.signed ?? true;
+    const bSigned = b.signed ?? true;
+    return aSigned === bSigned;
+  }
+  if (a.kind === "string" && b.kind === "string") return true;
+  if (a.kind === "boxed" && b.kind === "boxed") return valTypeEquals(a.inner, b.inner);
+  if (a.kind === "union" && b.kind === "union") {
+    if (a.members.length !== b.members.length) return false;
+    for (let i = 0; i < a.members.length; i++) {
+      if (!valTypeEquals(a.members[i]!, b.members[i]!)) return false;
+    }
+    return true;
+  }
+  if (a.kind === "object" && b.kind === "object") {
+    return objectShapeEquals(a.shape, b.shape);
+  }
+  if (a.kind === "closure" && b.kind === "closure") {
+    return closureSignatureEquals(a.signature, b.signature);
+  }
+  if (a.kind === "class" && b.kind === "class") {
+    return classShapeEquals(a.shape, b.shape);
+  }
+  // Slice 10 (#1169i) — extern is keyed solely on className. Two
+  // `IrType.extern` values represent the same class iff their names
+  // match.
+  if (a.kind === "extern" && b.kind === "extern") {
+    return a.className === b.className;
+  }
+  return false;
+}
+
+/**
+ * Slice 4 (#1169d): structural equality for class shapes. `className` is
+ * the discriminator — every class is unique within a compilation unit, so
+ * two `IrClassShape` values with the same `className` represent the same
+ * class. We don't recurse into `fields` / `methods` / `constructorParams`
+ * because they're a deterministic projection of `className` (one
+ * declaration per class per unit). Cross-unit class types are out of
+ * slice 4 scope.
+ */
+export function classShapeEquals(a: IrClassShape, b: IrClassShape): boolean {
+  return a.className === b.className;
+}
+
+/**
+ * Structural equality for closure signatures. Recurses through param /
+ * return IrTypes via `irTypeEquals` so a closure-of-closure or a
+ * closure-of-object compares correctly.
+ */
+export function closureSignatureEquals(a: IrClosureSignature, b: IrClosureSignature): boolean {
+  if (a.params.length !== b.params.length) return false;
+  for (let i = 0; i < a.params.length; i++) {
+    if (!irTypeEquals(a.params[i]!, b.params[i]!)) return false;
+  }
+  return irTypeEquals(a.returnType, b.returnType);
+}
+
+/**
+ * Structural equality for object shapes. Field lists must be parallel
+ * (same length, same order, same name and IrType per slot). Recursing
+ * via `irTypeEquals` lets nested object fields compare correctly.
+ */
+export function objectShapeEquals(a: IrObjectShape, b: IrObjectShape): boolean {
+  if (a.fields.length !== b.fields.length) return false;
+  for (let i = 0; i < a.fields.length; i++) {
+    const fa = a.fields[i]!;
+    const fb = b.fields[i]!;
+    if (fa.name !== fb.name) return false;
+    if (!irTypeEquals(fa.type, fb.type)) return false;
+  }
+  return true;
+}
+
+function valTypeEquals(a: ValType, b: ValType): boolean {
+  if (a.kind !== b.kind) return false;
+  if (a.kind === "ref" || a.kind === "ref_null") {
+    return (a as { typeIdx: number }).typeIdx === (b as { typeIdx: number }).typeIdx;
+  }
+  return true;
+}
 
 // ---------------------------------------------------------------------------
 // SSA values
@@ -173,13 +456,31 @@ export type IrBinop =
   | "i32.ne"
   // i32 logical (for bool && / || — operands assumed 0|1)
   | "i32.and"
-  | "i32.or";
+  | "i32.or"
+  // Slice 11 (#1169n) — JS bitwise ops on f64 operands.
+  // Each lowers to: ToInt32(lhs); ToInt32(rhs); i32.<op>; convert back to f64.
+  // The `js.*` prefix marks them as composite (multi-Wasm-instr) ops; the
+  // lowerer's `case "binary"` arm dispatches on this prefix to emit the
+  // ToInt32 / convert dance using a per-function shared scratch local.
+  // Result type is f64 for all.
+  | "js.bitand"
+  | "js.bitor"
+  | "js.bitxor"
+  | "js.shl"
+  | "js.shr_s"
+  | "js.shr_u";
 
 /**
  * Typed unary primitive. `f64.neg` negates a number. `i32.eqz` implements
  * bool negation (`!x` where x is bool — 0↔1).
+ *
+ * Slice 12 (#1169o) adds `i32.trunc_sat_f64_s` — saturating f64 → i32
+ * truncation. Used to convert a JS-style f64 array index into the i32
+ * the backend `vec.get` instruction expects. Saturation handles
+ * NaN→0 and out-of-range values gracefully (no trap), matching what
+ * test262's array-indexing patterns expect.
  */
-export type IrUnop = "f64.neg" | "i32.eqz";
+export type IrUnop = "f64.neg" | "i32.eqz" | "i32.trunc_sat_f64_s";
 
 export interface IrInstrBinary extends IrInstrBase {
   readonly kind: "binary";
@@ -221,6 +522,1055 @@ export interface IrInstrRawWasm extends IrInstrBase {
   readonly stackDelta: number;
 }
 
+/**
+ * Box a scalar into a tagged-union struct. `toType` must be an `IrType.union`
+ * whose `members` contains `value`'s static ValType. Lowering emits
+ * `struct.new $union_<members>` with the matching tag constant + the value
+ * in the `$val` field. Result is `(ref $union_<members>)` / the `toType`.
+ */
+export interface IrInstrBox extends IrInstrBase {
+  readonly kind: "box";
+  readonly value: IrValueId;
+  readonly toType: IrType;
+}
+
+/**
+ * Unbox a tagged-union value to one of its member ValTypes. The caller must
+ * have proved the tag already (via `tag.test` earlier in the same IR path);
+ * lowering emits a plain `struct.get $val` without a tag check at runtime.
+ * A debug-mode assertion can still verify the tag.
+ */
+export interface IrInstrUnbox extends IrInstrBase {
+  readonly kind: "unbox";
+  readonly value: IrValueId;
+  readonly tag: ValType;
+}
+
+/**
+ * Runtime tag discriminator — result (via `IrInstrBase.result`) is `i32`,
+ * 1 if `value`'s runtime tag matches `tag`, else 0. `value` must be a
+ * tagged-union type containing `tag` as a member. Lowers to
+ * `struct.get $tag; i32.const <N>; i32.eq`.
+ */
+export interface IrInstrTagTest extends IrInstrBase {
+  readonly kind: "tag.test";
+  readonly value: IrValueId;
+  readonly tag: ValType;
+}
+
+// ---------------------------------------------------------------------------
+// String operations (#1169a — IR Phase 4 Slice 1)
+// ---------------------------------------------------------------------------
+//
+// All string ops are backend-agnostic at the IR level: they carry the raw
+// JS string value (for `string.const`) or operand IDs, and rely on the
+// `IrLowerResolver` to emit the appropriate backend op sequence (host
+// `wasm:js-string` builtins vs. native NativeString GC structs).
+
+/**
+ * Materialize a string literal as an SSA value of `IrType.string`. The
+ * backend representation is determined by `IrLowerResolver.emitStringConst`:
+ *   - host strings → register a `string_constants.<value>` global import,
+ *                    emit `global.get`.
+ *   - native       → emit inline `array.new_fixed` of the WTF-16 code units,
+ *                    then `struct.new $NativeString`.
+ */
+export interface IrInstrStringConst extends IrInstrBase {
+  readonly kind: "string.const";
+  /** Raw JS string; the lowerer treats `value.length` as UTF-16 code units. */
+  readonly value: string;
+}
+
+/**
+ * Concatenate two strings — the ECMAScript `s1 + s2` operator restricted to
+ * the case where both operands are statically known to be strings. Result
+ * type: `IrType.string`.
+ */
+export interface IrInstrStringConcat extends IrInstrBase {
+  readonly kind: "string.concat";
+  readonly lhs: IrValueId;
+  readonly rhs: IrValueId;
+}
+
+/**
+ * String equality. `===` and `!==` are both modeled via this single instr —
+ * `negate: true` ↔ `!==`. Result type: `i32` (bool).
+ */
+export interface IrInstrStringEq extends IrInstrBase {
+  readonly kind: "string.eq";
+  readonly lhs: IrValueId;
+  readonly rhs: IrValueId;
+  readonly negate: boolean;
+}
+
+/**
+ * String length — corresponds to the JS `s.length` property access. Despite
+ * the underlying Wasm op returning `i32`, the IR result is `f64` to match
+ * JS Number semantics, so consumers can compose with the rest of the
+ * numeric IR without an extra coercion step. Lowering inserts the
+ * `f64.convert_i32_s` after the backend's length op.
+ */
+export interface IrInstrStringLen extends IrInstrBase {
+  readonly kind: "string.len";
+  readonly value: IrValueId;
+}
+
+// ---------------------------------------------------------------------------
+// Object operations (#1169b — IR Phase 4 Slice 2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Materialize an object literal as a WasmGC struct. `shape` declares the
+ * struct's field layout (already canonically sorted by name); `values` is
+ * parallel to `shape.fields` and must have the same length. Lowering emits
+ * each value in canonical order followed by `struct.new $obj_<shape>`.
+ *
+ * Result type: `{ kind: "object", shape }`.
+ */
+export interface IrInstrObjectNew extends IrInstrBase {
+  readonly kind: "object.new";
+  readonly shape: IrObjectShape;
+  readonly values: readonly IrValueId[];
+}
+
+/**
+ * Read a named field from an object. `value` must be of `IrType.object`
+ * with a shape whose `fields` contain `name`. Lowering emits
+ * `struct.get $obj_<shape> <fieldIdx>`.
+ *
+ * Result type: the field's IrType (must match `resultType`).
+ */
+export interface IrInstrObjectGet extends IrInstrBase {
+  readonly kind: "object.get";
+  readonly value: IrValueId;
+  readonly name: string;
+}
+
+/**
+ * Write a named field on an object. `value` must be `IrType.object`,
+ * `newValue` must match the field's IrType. Void result. Lowering emits
+ * `struct.set $obj_<shape> <fieldIdx>`.
+ */
+export interface IrInstrObjectSet extends IrInstrBase {
+  readonly kind: "object.set";
+  readonly value: IrValueId;
+  readonly name: string;
+  readonly newValue: IrValueId;
+}
+
+// ---------------------------------------------------------------------------
+// Closure + ref-cell operations (#1169c — IR Phase 4 Slice 3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Materialize a closure value. `liftedFunc` names the lifted top-level
+ * function (registered in the IR module as a synthesized BuiltFn).
+ * `signature` is the caller-visible signature (used to look up the
+ * supertype struct + funcref type). `captures` populates the subtype's
+ * capture fields parallel to `captureFieldTypes`.
+ *
+ * Lowering emits:
+ *   ref.func $lifted
+ *   <push each capture>
+ *   struct.new $closure_<signature>_<captureSig>
+ *
+ * Result type: `{ kind: "closure"; signature }`. The Wasm-level value
+ * type is the supertype struct so call_ref against the base func type
+ * accepts any subtype.
+ */
+export interface IrInstrClosureNew extends IrInstrBase {
+  readonly kind: "closure.new";
+  readonly liftedFunc: IrFuncRef;
+  readonly signature: IrClosureSignature;
+  /** Capture-field IrTypes in struct field order (post-funcref). */
+  readonly captureFieldTypes: readonly IrType[];
+  /** SSA values populating the capture fields, parallel to captureFieldTypes. */
+  readonly captures: readonly IrValueId[];
+}
+
+/**
+ * Read a capture field from the implicit `__self` closure struct. Only
+ * valid inside a lifted closure body whose IrFunction carries
+ * `closureSubtype` metadata. `index` is the 0-based capture position
+ * (post-funcref).
+ *
+ * Lowering emits:
+ *   <self>
+ *   ref.cast $self_subtype
+ *   struct.get $self_subtype (index+1)
+ */
+export interface IrInstrClosureCap extends IrInstrBase {
+  readonly kind: "closure.cap";
+  /** SSA value of the closure-typed __self param (the lifted func's param 0). */
+  readonly self: IrValueId;
+  readonly index: number;
+}
+
+/**
+ * Invoke a closure value. `callee` must be `IrType.closure`. `args` must
+ * match the signature's params arity and types.
+ *
+ * Lowering emits:
+ *   <emit callee>          ;; pushes self
+ *   <emit args>
+ *   <emit callee>          ;; pushes self again — second use forces a Wasm local
+ *   struct.get $base_struct $func
+ *   call_ref $base_funcType
+ *
+ * Result type: `signature.returnType`.
+ */
+export interface IrInstrClosureCall extends IrInstrBase {
+  readonly kind: "closure.call";
+  readonly callee: IrValueId;
+  readonly args: readonly IrValueId[];
+}
+
+/**
+ * Wrap a primitive value in a fresh ref cell. Lowering:
+ *   <emit value>
+ *   struct.new $refcell_<inner>
+ *
+ * Result type: `{ kind: "boxed"; inner: <ValType of value> }`.
+ */
+export interface IrInstrRefCellNew extends IrInstrBase {
+  readonly kind: "refcell.new";
+  readonly value: IrValueId;
+}
+
+/**
+ * Read the inner value out of a ref cell. `cell` must be `IrType.boxed`.
+ * Result type is `irVal(cell.inner)`.
+ *
+ * Lowering: `<emit cell>; struct.get $refcell 0`.
+ */
+export interface IrInstrRefCellGet extends IrInstrBase {
+  readonly kind: "refcell.get";
+  readonly cell: IrValueId;
+}
+
+/**
+ * Write a new value through a ref cell. `cell` must be `IrType.boxed`,
+ * `value` ValType must equal `cell.inner`. Void result.
+ *
+ * Lowering: `<emit cell>; <emit value>; struct.set $refcell 0`.
+ */
+export interface IrInstrRefCellSet extends IrInstrBase {
+  readonly kind: "refcell.set";
+  readonly cell: IrValueId;
+  readonly value: IrValueId;
+}
+
+// ---------------------------------------------------------------------------
+// Class operations (#1169d — IR Phase 4 Slice 4)
+// ---------------------------------------------------------------------------
+//
+// Class instances live as `(ref $ClassStruct)` at the Wasm level. The IR
+// represents them via `IrType.class` carrying the full `IrClassShape`, and
+// `IrInstrClass*` ops symbolically reference the class through `shape`.
+// The lowerer's `resolveClass` maps `shape.className` → struct typeIdx +
+// constructor / method funcIdx + per-field index, all of which were
+// allocated by the legacy `collectClassDeclaration` pass before the IR
+// runs.
+//
+// Slice 4 keeps class methods themselves on the legacy path. The IR only
+// claims OUTER functions that USE class instances — `class.call` resolves
+// to a direct `call $<className>_<methodName>` against the legacy-compiled
+// method body, with `this` prepended as the first argument.
+
+/**
+ * Construct a class instance via the legacy-registered constructor.
+ *
+ * Lowering:
+ *   <emit each arg in order>
+ *   call $<className>_new
+ *
+ * Result type: `{ kind: "class"; shape }`. The Wasm-level value type is
+ * `(ref $ClassStruct)` (non-null) — `<className>_new` is registered with
+ * a non-null ref result by `collectClassDeclaration`.
+ */
+export interface IrInstrClassNew extends IrInstrBase {
+  readonly kind: "class.new";
+  readonly shape: IrClassShape;
+  readonly args: readonly IrValueId[];
+}
+
+/**
+ * Read a named field from a class instance. `value` must be `IrType.class`
+ * with a shape containing `fieldName`. Lowering emits:
+ *   <emit value>
+ *   struct.get $<className> <wasmFieldIdx>
+ *
+ * The wasm field index accounts for the legacy `__tag` prefix at field 0
+ * — see `IrLowerResolver.resolveClass`.
+ *
+ * Result type: the field's IrType (also placed in `resultType`).
+ */
+export interface IrInstrClassGet extends IrInstrBase {
+  readonly kind: "class.get";
+  readonly value: IrValueId;
+  readonly fieldName: string;
+}
+
+/**
+ * Write a named field on a class instance. Void result. Lowering emits:
+ *   <emit value>
+ *   <emit newValue>
+ *   struct.set $<className> <wasmFieldIdx>
+ *
+ * The legacy `collectClassDeclaration` pass widens all class fields to
+ * `mutable: true`, so `struct.set` is always valid.
+ */
+export interface IrInstrClassSet extends IrInstrBase {
+  readonly kind: "class.set";
+  readonly value: IrValueId;
+  readonly fieldName: string;
+  readonly newValue: IrValueId;
+}
+
+/**
+ * Invoke an instance method. `receiver` must be `IrType.class` whose
+ * shape contains `methodName`. The implicit `this` is prepended as the
+ * first call argument. Lowering emits:
+ *   <emit receiver>
+ *   <emit each arg in order>
+ *   call $<className>_<methodName>
+ *
+ * Result type: the method descriptor's `returnType`. A void method has
+ * `result: null` and `resultType: null`; the AST→IR lowerer rejects
+ * such calls in expression position so we never see a void method as
+ * `lowerExpr` output.
+ */
+export interface IrInstrClassCall extends IrInstrBase {
+  readonly kind: "class.call";
+  readonly receiver: IrValueId;
+  readonly methodName: string;
+  readonly args: readonly IrValueId[];
+}
+
+// ---------------------------------------------------------------------------
+// Slot ops + for-of (#1169e — IR Phase 4 Slice 6)
+// ---------------------------------------------------------------------------
+//
+// Slice 6 introduces the first STATEMENT-level loop to the IR. Before this
+// slice the IR could only express tail-shaped programs (return / if-else
+// terminating in return); for-of bodies in contrast have non-terminating
+// statement sequences and need cross-iteration mutable state (the loop
+// counter, the element binding, any outer-scope accumulator the body
+// updates).
+//
+// To avoid adding general structured-CFG recovery to the lowerer (which
+// today inlines `br` / `br_if` recursively without a Wasm `block` / `loop`
+// concept), Slice 6 takes a HIGH-LEVEL approach: a single `forof.vec`
+// instruction declaratively encodes the loop, and the lowerer emits a
+// known-good Wasm pattern directly. The body's IR instrs are still real
+// IR (so the optimisation passes can rewrite them) but mutable
+// cross-iteration state lives in WASM-LOCAL slots accessed via
+// `slot.read` / `slot.write`.
+
+/**
+ * Read a Wasm-local slot. `index` is the function-level slot index assigned
+ * at IR build time (allocated via `IrFunctionBuilder.declareSlot`). The slot's
+ * declared type must be a primitive ValType; the result IrType is `irVal`
+ * of that ValType.
+ *
+ * Lowering: `local.get <slotIndex>`.
+ */
+export interface IrInstrSlotRead extends IrInstrBase {
+  readonly kind: "slot.read";
+  readonly slotIndex: number;
+}
+
+/**
+ * Write a value to a Wasm-local slot. The value's IrType must be `val` with
+ * a ValType matching the slot's declared type. Void result.
+ *
+ * Lowering: `<emit value>; local.set <slotIndex>`.
+ */
+export interface IrInstrSlotWrite extends IrInstrBase {
+  readonly kind: "slot.write";
+  readonly slotIndex: number;
+  readonly value: IrValueId;
+}
+
+/**
+ * Read `vec.length` (i32) from a vec struct. The vec must have an IrType
+ * that the lowerer's resolver recognises as a vec (typeIdx with a layout of
+ * `{ length: i32, data: (ref $arr) }`). Result is f64 (matching JS Number
+ * semantics — same approach as `string.len`); lowering inserts the
+ * `f64.convert_i32_s` after the i32 read.
+ */
+export interface IrInstrVecLen extends IrInstrBase {
+  readonly kind: "vec.len";
+  readonly vec: IrValueId;
+}
+
+/**
+ * Index into a vec struct's data array. `index` must be an SSA value of
+ * IrType `irVal({ kind: "i32" })` (f64-to-i32 conversion happens at the
+ * caller — for-of always uses an i32 counter so this is always already i32).
+ *
+ * `resultType` carries the vec element's IrType (the lowerer matches it
+ * against the vec struct's data array's element type).
+ *
+ * Lowering: `<emit vec>; struct.get $vec data; <emit index>; array.get $arr`.
+ */
+export interface IrInstrVecGet extends IrInstrBase {
+  readonly kind: "vec.get";
+  readonly vec: IrValueId;
+  readonly index: IrValueId;
+}
+
+/**
+ * Statement-level `for (const <bind> of <vec>) <body>` loop instruction.
+ *
+ * Encodes the array fast path declaratively. The lowerer emits:
+ *   <emit vec>
+ *   local.set <vecSlot>
+ *   local.get <vecSlot>
+ *   struct.get $vec data
+ *   local.set <dataSlot>
+ *   local.get <vecSlot>
+ *   struct.get $vec length
+ *   local.set <lenSlot>
+ *   i32.const 0
+ *   local.set <counterSlot>
+ *   block
+ *     loop
+ *       local.get <counterSlot>
+ *       local.get <lenSlot>
+ *       i32.ge_s
+ *       br_if 1                  ;; exit loop
+ *       local.get <dataSlot>
+ *       local.get <counterSlot>
+ *       array.get $arr
+ *       local.set <elementSlot>
+ *       <body instrs>
+ *       local.get <counterSlot>
+ *       i32.const 1
+ *       i32.add
+ *       local.set <counterSlot>
+ *       br 0                     ;; continue
+ *     end
+ *   end
+ *
+ * The vec must have a non-null ref type pointing to a registered vec struct
+ * (the resolver's `resolveVec` resolves it to typeIdx + length/data field
+ * indices + element array typeIdx + element ValType). Nullable vec types
+ * are not in slice 6 — the selector keeps them on the legacy path.
+ *
+ * Slot indices are pre-allocated via `IrFunctionBuilder.declareSlot` before
+ * the from-ast layer emits this instr.
+ *
+ * Result: void (`result: null`).
+ */
+export interface IrInstrForOfVec extends IrInstrBase {
+  readonly kind: "forof.vec";
+  /** SSA value of the iterable. Lowered as the vec ref. */
+  readonly vec: IrValueId;
+  /** Element type — must match the vec's data array's element ValType. */
+  readonly elementType: IrType;
+  /** Pre-allocated slot indices (Wasm local indices) for the loop's state. */
+  readonly counterSlot: number;
+  readonly lengthSlot: number;
+  readonly vecSlot: number;
+  readonly dataSlot: number;
+  readonly elementSlot: number;
+  /** Body instrs emitted inside the loop. */
+  readonly body: readonly IrInstr[];
+}
+
+// ---------------------------------------------------------------------------
+// Coercion + iterator protocol (#1182 — IR Phase 4 Slice 6 part 3)
+// ---------------------------------------------------------------------------
+//
+// Slice 6 part 3 widens the for-of bridge to the host iterator protocol
+// — `for (const x of <set>)`, `for (const x of <map>)`, generators, and
+// any other JS iterable that responds to `Symbol.iterator`. A new
+// declarative `forof.iter` instr (parallel to `forof.vec`) carries the
+// loop's state slots and body buffer; the lowerer emits the
+// `block { loop { ... } }` Wasm pattern with calls to the existing
+// `__iterator` / `__iterator_next` / `__iterator_done` /
+// `__iterator_value` / `__iterator_return` host imports (registered
+// lazily by `addIteratorImports`).
+//
+// The granular `iter.*` instrs (iter.new / iter.next / iter.done /
+// iter.value / iter.return) are part of the IR surface even though
+// `forof.iter` doesn't decompose into them at the body-buffer level.
+// Future passes that want to reason about iterator manipulation
+// outside a for-of loop (e.g., a generator's next() inlined into a
+// caller, or async-iter in slice 7) can produce these directly.
+
+/**
+ * Coerce a reference-typed IR value to externref. Used by the iterator-
+ * protocol arm of `lowerForOfStatement` to feed an arbitrary iterable
+ * into the externref-typed `__iterator` host import.
+ *
+ * The input value must have a reference IrType (val/ref, val/ref_null,
+ * val/externref, object, class, closure, or string). Numeric values
+ * (i32, f64, etc.) cannot be coerced — the from-ast layer rejects them
+ * upstream.
+ *
+ * Lowering:
+ *   - val/externref input → no-op (input already externref)
+ *   - any other ref input → `extern.convert_any` after pushing the value.
+ *
+ * Result type: `irVal({ kind: "externref" })`.
+ */
+export interface IrInstrCoerceToExternref extends IrInstrBase {
+  readonly kind: "coerce.to_externref";
+  readonly value: IrValueId;
+}
+
+// ---------------------------------------------------------------------------
+// Generator / async ops (#1169f — IR Phase 4 Slice 7)
+// ---------------------------------------------------------------------------
+
+/**
+ * Slice 7a (#1169f) — push a yielded value onto the generator function's
+ * `__gen_buffer` Wasm-local. The lowerer dispatches on the value's IrType:
+ *   - `irVal({ kind: "f64" })` → `__gen_push_f64(buffer, value)`
+ *   - (later slices: `i32` → `__gen_push_i32`; `externref` → `__gen_push_ref`)
+ *
+ * Result is void (`result: null`, `resultType: null`). Only valid inside
+ * functions whose `funcKind === "generator"`. The lowerer reads the
+ * `IrFunction.generatorBufferSlot` for the `local.get` of the buffer.
+ *
+ * Lowering pattern (slice 7a — f64 only):
+ *   local.get $__gen_buffer
+ *   <emit value>
+ *   call $__gen_push_f64
+ */
+export interface IrInstrGenPush extends IrInstrBase {
+  readonly kind: "gen.push";
+  readonly value: IrValueId;
+}
+
+/**
+ * Slice 6 part 3 (#1182) — opaque iterator handle for the host iterator
+ * protocol. Calls `__iterator(iterable)` to obtain the iterator object.
+ *
+ * Lowering:
+ *   <emit iterable>           ;; pushes externref
+ *   call $__iterator           ;; -> externref (the iterator)
+ *
+ * Result type: `irVal({ kind: "externref" })`.
+ */
+export interface IrInstrIterNew extends IrInstrBase {
+  readonly kind: "iter.new";
+  readonly iterable: IrValueId;
+  /** True if this is a `for await` loop — calls `__async_iterator` instead. False for slice 6. */
+  readonly async: boolean;
+}
+
+/**
+ * Call iter.next() and return the result object handle (externref).
+ * The result is later split into `done` / `value` via separate instrs
+ * so the optimizer can decide whether to evaluate `value` (skip if done).
+ *
+ * Lowering: <emit iter>; call $__iterator_next  -> externref
+ *
+ * Result type: `irVal({ kind: "externref" })`. Side-effecting (advances
+ * the iterator) — DCE must not eliminate it.
+ */
+export interface IrInstrIterNext extends IrInstrBase {
+  readonly kind: "iter.next";
+  readonly iter: IrValueId;
+}
+
+/**
+ * Test whether an iterator-result object's `.done` is true.
+ *
+ * Lowering: <emit resultObj>; call $__iterator_done -> i32
+ *
+ * Result type: `irVal({ kind: "i32" })`. The operand field is named
+ * `resultObj` (not `result`) to avoid colliding with the SSA-def
+ * `result` field inherited from `IrInstrBase`.
+ */
+export interface IrInstrIterDone extends IrInstrBase {
+  readonly kind: "iter.done";
+  readonly resultObj: IrValueId;
+}
+
+/**
+ * Read the `.value` slot of an iterator-result object.
+ *
+ * Lowering: <emit resultObj>; call $__iterator_value -> externref
+ *
+ * Result type: `irVal({ kind: "externref" })`. See `IrInstrIterDone`
+ * for the `resultObj` naming rationale.
+ */
+export interface IrInstrIterValue extends IrInstrBase {
+  readonly kind: "iter.value";
+  readonly resultObj: IrValueId;
+}
+
+/**
+ * Call `iter.return()` if defined. Used by the iterator-close try/finally
+ * so abrupt exits notify the iterator (slice 6 step E, deferred to a
+ * try/finally-aware follow-up).
+ *
+ * Lowering: <emit iter>; call $__iterator_return
+ *
+ * Result type: void (`result: null`). Side-effecting.
+ */
+export interface IrInstrIterReturn extends IrInstrBase {
+  readonly kind: "iter.return";
+  readonly iter: IrValueId;
+}
+
+/**
+ * Statement-level `for (const <bind> of <iterable>) <body>` loop using
+ * the host iterator protocol. The lowerer emits:
+ *
+ *   <emit iterable>
+ *   call $__iterator
+ *   local.set <iterSlot>
+ *   block
+ *     loop
+ *       local.get <iterSlot>
+ *       call $__iterator_next
+ *       local.tee <resultSlot>
+ *       call $__iterator_done
+ *       br_if 1                  ;; exit loop on done=true
+ *       local.get <resultSlot>
+ *       call $__iterator_value
+ *       local.set <elementSlot>
+ *       <body instrs>
+ *       br 0                     ;; continue
+ *     end
+ *   end
+ *   local.get <iterSlot>
+ *   call $__iterator_return       ;; normal-exit close
+ *
+ * The iterable must be an IR value of externref type (the from-ast
+ * layer inserts a `coerce.to_externref` if the source value isn't
+ * already externref). Slot indices are pre-allocated via
+ * `IrFunctionBuilder.declareSlot`.
+ *
+ * Result: void (`result: null`).
+ */
+export interface IrInstrForOfIter extends IrInstrBase {
+  readonly kind: "forof.iter";
+  /** SSA value of the iterable as externref (caller pre-coerces). */
+  readonly iterable: IrValueId;
+  /** Pre-allocated externref slot for the iterator handle. */
+  readonly iterSlot: number;
+  /** Pre-allocated externref slot for the iterator-result object. */
+  readonly resultSlot: number;
+  /** Pre-allocated externref slot for the current element value. */
+  readonly elementSlot: number;
+  /** Body instrs emitted inside the loop. */
+  readonly body: readonly IrInstr[];
+}
+
+/**
+ * Slice 7a (#1169f) — generator function epilogue. Pushes the buffer + the
+ * pending-throw cell (always `ref.null.extern` in slice 7a) and calls
+ * `__create_generator(buffer, pendingThrow)` to produce the Generator-like
+ * object the function returns.
+ *
+ * Lowering pattern (slice 7a — synchronous-throw subset):
+ *   local.get $__gen_buffer
+ *   ref.null.extern                ;; pendingThrow always null in 7a
+ *   call $__create_generator
+ *   ;; result: externref Generator object — left on stack for the
+ *   ;; surrounding `return` terminator.
+ *
+ * Slice 7a does NOT yet emit the try/catch wrapping that legacy uses for
+ * deferred-throw semantics (#928). Throws inside the body propagate
+ * immediately (matches V8 generators on the FIRST `.next()` call but
+ * differs from spec on subsequent calls). A future slice (7-throw) will
+ * add the wrapping by carrying the preceding body instrs in this instr,
+ * similar to `forof.vec.body`.
+ *
+ * Result type: `irVal({ kind: "externref" })` — the Generator object.
+ * The function's terminator should be `return [result]`.
+ */
+export interface IrInstrGenEpilogue extends IrInstrBase {
+  readonly kind: "gen.epilogue";
+}
+
+/**
+ * Slice 7b (#1169f) — `yield* <iterable>` delegation. Drains the inner
+ * iterable into the outer generator's `__gen_buffer` by calling the
+ * `__gen_yield_star(buf, iterable)` host import (signature
+ * `(externref, externref) → void`; the host iterates the inner via
+ * `Symbol.iterator` and pushes each value).
+ *
+ * The `inner` operand MUST already be coerced to externref by the
+ * caller (`lowerYield` in `from-ast.ts` inserts a `coerce.to_externref`
+ * upstream). The lowerer just emits the buffer-load, value, and call.
+ *
+ * Result is void. Only valid inside `funcKind === "generator"`. The
+ * lowerer reads `IrFunction.generatorBufferSlot` for the buffer
+ * `local.get`.
+ *
+ * Lowering pattern:
+ *   local.get $__gen_buffer
+ *   <emit inner>          ;; already externref
+ *   call $__gen_yield_star
+ *
+ * Spec divergence note: ECMA-262 §27.5.3.7 says `yield*` evaluates to
+ * the inner iterator's `return` value (the `IteratorResult.value` when
+ * `done` becomes true). Under the eager-buffer model this is discarded;
+ * `yield*` evaluates to `undefined`. Matches the legacy compiler's
+ * behaviour (`misc.ts:177-202`).
+ */
+export interface IrInstrGenYieldStar extends IrInstrBase {
+  readonly kind: "gen.yieldStar";
+  readonly inner: IrValueId;
+}
+
+// ---------------------------------------------------------------------------
+// Extern class ops (#1169i — IR Phase 4 Slice 10)
+// ---------------------------------------------------------------------------
+//
+// The legacy compiler registers a fixed set of "extern classes" in
+// `src/codegen/index.ts` (`ctx.externClasses`) that map host JS classes
+// like RegExp, Uint8Array, DataView, Map, etc. to a per-class import
+// surface — `<className>_new` for construction, `<className>_<method>`
+// for methods, `<className>_get_<prop>` / `<className>_set_<prop>` for
+// properties. The IR doesn't try to model the structure of these values:
+// at the Wasm level they're all opaque externref handles.
+//
+// Slice 10 surfaces five thin IR instrs that delegate to the legacy
+// import registration. Each carries a `className` string that the
+// resolver maps to the legacy-registered import names; the result of
+// `extern.new` / `extern.regex` / method calls is tagged as
+// `IrType.extern { className }` so subsequent receiver lookups can
+// dispatch the same way without a TS-checker round trip.
+
+/**
+ * Slice 10 (#1169i) — `new ExternClass(arg1, arg2, ...)` where
+ * `ExternClass` is a host-provided builtin (RegExp, Uint8Array, …). The
+ * Wasm-level result is opaque externref; downstream code accesses it
+ * via `extern.call` / `extern.prop`.
+ *
+ * Lowering:
+ *   <emit each arg>
+ *   call $<className>_new
+ *
+ * Result type: `{ kind: "extern", className }`.
+ */
+export interface IrInstrExternNew extends IrInstrBase {
+  readonly kind: "extern.new";
+  readonly className: string;
+  readonly args: readonly IrValueId[];
+}
+
+/**
+ * Slice 10 (#1169i) — method call on an extern-class value. `receiver`
+ * is the externref handle; `method` names a method registered on the
+ * class via `ctx.externClasses`.
+ *
+ * Lowering:
+ *   <emit receiver>
+ *   <emit each arg>
+ *   call $<className>_<method>
+ *
+ * Result type: matches the registered method's first result. Void
+ * methods carry `result: null` and `resultType: null`.
+ */
+export interface IrInstrExternCall extends IrInstrBase {
+  readonly kind: "extern.call";
+  readonly className: string;
+  readonly method: string;
+  readonly receiver: IrValueId;
+  readonly args: readonly IrValueId[];
+}
+
+/**
+ * Slice 10 (#1169i) — property read on an extern-class value.
+ *
+ * Lowering:
+ *   <emit receiver>
+ *   call $<className>_get_<property>
+ *
+ * Result type: the property's registered ValType, wrapped as `IrType.val`.
+ */
+export interface IrInstrExternProp extends IrInstrBase {
+  readonly kind: "extern.prop";
+  readonly className: string;
+  readonly property: string;
+  readonly receiver: IrValueId;
+}
+
+/**
+ * Slice 10 (#1169i) — property write on an extern-class value (for
+ * non-readonly props).
+ *
+ * Lowering:
+ *   <emit receiver>
+ *   <emit value>
+ *   call $<className>_set_<property>
+ */
+export interface IrInstrExternPropSet extends IrInstrBase {
+  readonly kind: "extern.propSet";
+  readonly className: string;
+  readonly property: string;
+  readonly receiver: IrValueId;
+  readonly value: IrValueId;
+}
+
+/**
+ * Slice 10 (#1169i) — RegExp literal `/pattern/flags`. Lowers to
+ * `RegExp_new(pattern, flags)`. The pattern + flags are registered as
+ * string-literal globals (the legacy `collectStringLiterals` pass
+ * already collects RegExp pattern/flags as string literals — see
+ * `src/codegen/index.ts:3274-3278` — so by the time the IR emits this
+ * instr the corresponding string globals exist).
+ *
+ * Result type: `{ kind: "extern", className: "RegExp" }`.
+ */
+export interface IrInstrRegExpLiteral extends IrInstrBase {
+  readonly kind: "extern.regex";
+  readonly pattern: string;
+  readonly flags: string;
+}
+
+// ---------------------------------------------------------------------------
+// String for-of (#1183 — IR Phase 4 Slice 6 part 4)
+// ---------------------------------------------------------------------------
+//
+// Slice 6 part 4 adds the string fast path. When `iterableType.kind ===
+// "string"` and the compiler is in native-strings mode, the for-of loop
+// iterates code units via `__str_charAt(str, i)` — a counter loop with
+// a `(ref $AnyString, i32) -> (ref $AnyString)` host helper. In host-
+// strings mode the dispatch falls through to `forof.iter` (#1182).
+//
+// `forof.string` is a STATEMENT-level declarative instr that mirrors
+// `forof.vec` and `forof.iter`. Carries the string SSA value, the four
+// slot indices (counter / length / str / element), and the body buffer.
+
+/**
+ * Statement-level `for (const c of <string>) <body>` loop using the
+ * native-strings counter pattern. Emitted only when the resolver
+ * reports `nativeStrings(): true` — host-strings mode falls through
+ * to `forof.iter` upstream in `lowerForOfStatement`.
+ *
+ * The lowerer emits:
+ *   <emit str>
+ *   local.set <strSlot>
+ *   local.get <strSlot>
+ *   struct.get $AnyString $len
+ *   local.set <lengthSlot>
+ *   i32.const 0
+ *   local.set <counterSlot>
+ *   block
+ *     loop
+ *       local.get <counterSlot>
+ *       local.get <lengthSlot>
+ *       i32.ge_s
+ *       br_if 1
+ *       local.get <strSlot>
+ *       local.get <counterSlot>
+ *       call $__str_charAt
+ *       local.set <elementSlot>
+ *       <body instrs>
+ *       local.get <counterSlot>
+ *       i32.const 1
+ *       i32.add
+ *       local.set <counterSlot>
+ *       br 0
+ *     end
+ *   end
+ *
+ * Slot types (set by from-ast):
+ *   counterSlot — i32
+ *   lengthSlot  — i32
+ *   strSlot     — `(ref $AnyString)` (resolver.resolveString())
+ *   elementSlot — `(ref $AnyString)` — each iteration produces a
+ *                 single-char string
+ *
+ * Result: void (`result: null`).
+ */
+export interface IrInstrForOfString extends IrInstrBase {
+  readonly kind: "forof.string";
+  /** SSA value of the string (IrType.string). */
+  readonly str: IrValueId;
+  readonly counterSlot: number;
+  readonly lengthSlot: number;
+  readonly strSlot: number;
+  readonly elementSlot: number;
+  /** Body instrs emitted inside the loop. */
+  readonly body: readonly IrInstr[];
+}
+
+// ---------------------------------------------------------------------------
+// Exception handling — throw / try / catch / finally (#1169h — IR Slice 9)
+// ---------------------------------------------------------------------------
+//
+// Slice 9 introduces the IR's first non-linear control flow: an exception
+// thrown inside a `try` body bypasses the static block graph and lands in
+// the matching catch clause (or unwinds out of the function). The
+// implementation uses two new declarative node kinds — `throw` and `try` —
+// that mirror the slice-6 forof.vec / forof.iter pattern: the body buffers
+// are self-contained Instr[] sequences that the lowerer expands to Wasm
+// `try`/`catch`/`catch_all` ops directly. This keeps the IR's block-graph
+// model simple (no exceptional-edge terminators) while still expressing
+// structured exception handling at the source level.
+//
+// Tag: slice 9 reuses the legacy `__exn` tag (signature `(externref)`) so
+// IR-compiled throws can be caught by legacy-compiled handlers and vice
+// versa. The lowerer's `IrLowerResolver.ensureExnTag()` resolves the tag
+// index at emit time.
+
+/**
+ * Slice 9 (#1169h) — throw an exception. The `value` is coerced to externref
+ * upstream (the `__exn` tag's signature is `(externref)`). After throw,
+ * control transfers to the nearest enclosing catch matching the tag, or
+ * unwinds out of the function.
+ *
+ * The instr produces NO SSA value (control doesn't fall through), so
+ * `result` and `resultType` are always null. The verifier treats it as a
+ * "stop" instr — instructions after it in the same block are unreachable
+ * in source but still validated structurally.
+ *
+ * Lowering:
+ *   <emit value>          ;; pushes externref
+ *   throw $__exn
+ */
+export interface IrInstrThrow extends IrInstrBase {
+  readonly kind: "throw";
+  readonly value: IrValueId;
+}
+
+// ---------------------------------------------------------------------------
+// Generic structured loops (#1280 — IR Phase 4 Slice 12)
+// ---------------------------------------------------------------------------
+//
+// Slice 12 extends the IR's loop coverage beyond the iterator-shaped
+// `forof.*` family. `while.loop` and `for.loop` are statement-level
+// declarative instructions that wrap a condition buffer, a body buffer,
+// and (for `for.loop`) an update buffer. The lowerer emits the
+// canonical `block { loop { <cond>; i32.eqz; br_if 1; <body>; <update?>;
+// br 0 } }` Wasm pattern.
+//
+// Cross-iteration mutable state lives in slots (same convention as the
+// `forof.*` family) — outer-scope `let` bindings that the source code
+// reassigns inside / through the loop are slot-bound during from-ast
+// lowering via the existing `mutatedLets` analysis. SSA values defined
+// inside the body register against the surrounding block via the
+// recursive walks in `lower.ts::registerInstrDefs` /
+// `allocLocalForInstr`; uses inside the body are recorded against a
+// synthetic block id (-1) so any outer-defined operand crosses the
+// loop boundary and pre-materializes into a Wasm local before the
+// loop op runs.
+
+/**
+ * Slice 12 (#1280) — `while (cond) body` loop.
+ *
+ * Lowering pattern:
+ *   block
+ *     loop
+ *       <cond instrs>          ;; computes condValue
+ *       <emit condValue>       ;; pushes the i32 boolean
+ *       i32.eqz
+ *       br_if 1                ;; exit on falsy
+ *       <body instrs>
+ *       br 0                   ;; continue
+ *     end
+ *   end
+ *
+ * `condValue` MUST be the SSA result of an instruction in `cond` (or
+ * an outer-scope value that's loaded into `cond`'s last instr). The
+ * resolver coerces non-i32 values to i32 via the standard truthy
+ * lowering path — for now the from-ast layer enforces an i32 result.
+ *
+ * Result: void (`result: null`).
+ */
+export interface IrInstrWhileLoop extends IrInstrBase {
+  readonly kind: "while.loop";
+  /** Instructions that compute the condition. Re-evaluated per iteration. */
+  readonly cond: readonly IrInstr[];
+  /** SSA value of the condition (an i32 boolean). */
+  readonly condValue: IrValueId;
+  /** Body instructions executed each iteration when the cond is truthy. */
+  readonly body: readonly IrInstr[];
+}
+
+/**
+ * Slice 12 (#1280) — `for (init; cond; update) body` loop.
+ *
+ * The init clause is emitted by the from-ast layer as ordinary IR
+ * statements BEFORE the `for.loop` instr (init is just a let-decl or
+ * an assignment expression statement, no special encoding needed).
+ * The instr carries cond, body, update.
+ *
+ * Lowering pattern:
+ *   block
+ *     loop
+ *       <cond instrs>
+ *       <emit condValue>
+ *       i32.eqz
+ *       br_if 1
+ *       <body instrs>
+ *       <update instrs>        ;; runs after body, before re-evaluating cond
+ *       br 0
+ *     end
+ *   end
+ *
+ * Result: void (`result: null`).
+ */
+export interface IrInstrForLoop extends IrInstrBase {
+  readonly kind: "for.loop";
+  /** Instructions that compute the condition. Re-evaluated per iteration. */
+  readonly cond: readonly IrInstr[];
+  /** SSA value of the condition (an i32 boolean). */
+  readonly condValue: IrValueId;
+  /** Body instructions executed each iteration when the cond is truthy. */
+  readonly body: readonly IrInstr[];
+  /** Update instructions executed after the body each iteration. */
+  readonly update: readonly IrInstr[];
+}
+
+/**
+ * Slice 9 (#1169h) — try / catch / finally as a declarative statement-level
+ * instr. Mirrors the slice-6 `forof.vec` shape: the body / catch handler /
+ * finally are self-contained Instr[] buffers, and the lowerer emits the
+ * structured Wasm `try`/`catch`/`catch_all` op directly without
+ * restructuring the IR's block graph.
+ *
+ * Encoding:
+ *   - `body`              the try block's instructions.
+ *   - `catchClause`       optional. When present, encodes a source-level
+ *                         `catch (e) { ... }` (or `catch { ... }`).
+ *                            * `payloadSlot` — slot of `(externref)` that
+ *                              receives the thrown value at handler entry
+ *                              (or -1 when there is no source binding).
+ *                            * `body`        — handler instructions.
+ *   - `finallyBody`       optional. When present, the lowerer inlines this
+ *                         buffer at every "abrupt completion" path:
+ *                            * normal exit of try body
+ *                            * normal exit of catch body
+ *                            * a synthesized catch_all that re-throws
+ *
+ * Acceptable shapes (selector-enforced):
+ *   try { ... } catch (e) { ... }              catchClause set
+ *   try { ... } catch { ... }                  catchClause set, payloadSlot=-1
+ *   try { ... } finally { ... }                finallyBody set
+ *   try { ... } catch (e) { ... } finally { ... }   both set
+ *
+ * Result is void (`result: null`).
+ */
+export interface IrInstrTry extends IrInstrBase {
+  readonly kind: "try";
+  /** Try block instructions. */
+  readonly body: readonly IrInstr[];
+  /** Optional source-level catch handler. */
+  readonly catchClause?: {
+    /**
+     * Externref-typed slot index that the lowerer writes the caught
+     * exception into at handler entry. `-1` when the source has no
+     * binding (`catch { ... }`).
+     */
+    readonly payloadSlot: number;
+    readonly body: readonly IrInstr[];
+  };
+  /** Optional finally body, inlined at every exit path. */
+  readonly finallyBody?: readonly IrInstr[];
+}
+
 export type IrInstr =
   | IrInstrConst
   | IrInstrCall
@@ -229,7 +1579,79 @@ export type IrInstr =
   | IrInstrBinary
   | IrInstrUnary
   | IrInstrSelect
-  | IrInstrRawWasm;
+  | IrInstrRawWasm
+  | IrInstrBox
+  | IrInstrUnbox
+  | IrInstrTagTest
+  | IrInstrStringConst
+  | IrInstrStringConcat
+  | IrInstrStringEq
+  | IrInstrStringLen
+  | IrInstrObjectNew
+  | IrInstrObjectGet
+  | IrInstrObjectSet
+  | IrInstrClosureNew
+  | IrInstrClosureCap
+  | IrInstrClosureCall
+  | IrInstrRefCellNew
+  | IrInstrRefCellGet
+  | IrInstrRefCellSet
+  | IrInstrClassNew
+  | IrInstrClassGet
+  | IrInstrClassSet
+  | IrInstrClassCall
+  | IrInstrSlotRead
+  | IrInstrSlotWrite
+  | IrInstrVecLen
+  | IrInstrVecGet
+  | IrInstrForOfVec
+  | IrInstrCoerceToExternref
+  | IrInstrIterNew
+  | IrInstrIterNext
+  | IrInstrIterDone
+  | IrInstrIterValue
+  | IrInstrIterReturn
+  | IrInstrForOfIter
+  | IrInstrGenPush
+  | IrInstrGenEpilogue
+  | IrInstrGenYieldStar
+  | IrInstrForOfString
+  // Slice 9 (#1169h) — exception handling.
+  | IrInstrThrow
+  | IrInstrTry
+  // Slice 10 (#1169i) — extern class ops.
+  | IrInstrExternNew
+  | IrInstrExternCall
+  | IrInstrExternProp
+  | IrInstrExternPropSet
+  | IrInstrRegExpLiteral
+  // Slice 12 (#1280) — generic structured loops.
+  | IrInstrWhileLoop
+  | IrInstrForLoop;
+
+// ---------------------------------------------------------------------------
+// Slot definitions (#1169e — IR Phase 4 Slice 6)
+// ---------------------------------------------------------------------------
+
+/**
+ * Slice 6 (#1169e) — declaration of one Wasm-local slot used for cross-
+ * iteration mutable state. Slots are allocated by the IR builder and
+ * surface in the lowered Wasm function as additional locals appended
+ * after the params and the SSA-driven locals.
+ *
+ *   - `index`        stable slot index, used by `slot.read` / `slot.write`.
+ *                    NOT a Wasm local index — the lowerer translates slot
+ *                    index N to Wasm local index `params + ssaLocals + N`.
+ *   - `name`         debug name for the local.
+ *   - `type`         primitive ValType (i32 / f64 / etc.) — slots only
+ *                    carry primitives; reference-typed cross-iteration
+ *                    state is rare in slice-6 loop bodies.
+ */
+export interface IrSlotDef {
+  readonly index: number;
+  readonly name: string;
+  readonly type: ValType;
+}
 
 // ---------------------------------------------------------------------------
 // Terminators
@@ -308,6 +1730,65 @@ export interface IrFunction {
   readonly exported: boolean;
   /** Highest IrValueId allocated + 1 (useful for re-entering the builder). */
   readonly valueCount: number;
+  /**
+   * Slice 3 (#1169c): for closure-lifted bodies only, identifies the
+   * subtype struct that captures live on. Set by `liftClosureBody` in
+   * `from-ast.ts`. The lowerer reads this when emitting `closure.cap`
+   * to compute the correct ref.cast target. Absent for nested function
+   * declarations (which don't take a __self param) and for outer
+   * functions.
+   */
+  readonly closureSubtype?: {
+    readonly signature: IrClosureSignature;
+    readonly captureFieldTypes: readonly IrType[];
+  };
+  /**
+   * Slice 6 (#1169e): Wasm-local slots used for cross-iteration mutable
+   * state in for-of loops. Empty for functions that don't contain a
+   * for-of (or any other slot user). Slot indices are stable; the
+   * lowerer maps slot index N to Wasm local index
+   *   `params.length + ssaLocalCount + N`
+   * — i.e. slots come AFTER the SSA-driven locals.
+   */
+  readonly slots?: readonly IrSlotDef[];
+  /**
+   * Slice 7a (#1169f) — distinguishes regular / generator / async
+   * functions. Set by `lowerFunctionAstToIr` from the AST node's
+   * `asteriskToken` and `async` modifier. The lowerer reads this to:
+   *   - `"generator"`: select the externref Wasm-result type regardless
+   *     of the source-level annotation (the function returns a
+   *     Generator-like object, not the source-declared yield element
+   *     type), AND register the function name in `ctx.generatorFunctions`
+   *     downstream (for any name-based dispatch the legacy already wires).
+   *   - `"async"`: register in `ctx.asyncFunctions` so the export glue's
+   *     `wrapAsyncReturn` wraps the result in `Promise.resolve`. (Slice
+   *     7d, not 7a.)
+   *   - `"regular"`: no special treatment (default if absent).
+   */
+  readonly funcKind?: "regular" | "generator" | "async";
+  /**
+   * Slice 7a (#1169f) — for `funcKind === "generator"` functions only,
+   * the slot index (in `slots`) of the `__gen_buffer` Wasm-local. The
+   * lowerer reads this when emitting `gen.push` / `gen.epilogue` to
+   * produce the `local.get $__gen_buffer` op.
+   */
+  readonly generatorBufferSlot?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Module — collection of IR functions visible simultaneously
+// ---------------------------------------------------------------------------
+//
+// Module-scope passes (e.g. `inlineSmall` in Phase 3b — #1167b) need to see
+// every IR-path function at once. The AST→IR lowerer emits per-function, so
+// `integration.ts` accumulates the per-function results into an `IrModule`
+// container between the build phase and the lower phase.
+//
+// The container holds only functions for now. Globals/types/imports remain
+// resolved lazily via the symbolic-ref mechanism.
+
+export interface IrModule {
+  readonly functions: readonly IrFunction[];
 }
 
 // ---------------------------------------------------------------------------

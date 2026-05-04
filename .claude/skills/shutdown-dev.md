@@ -76,9 +76,7 @@ If there are unmerged commits: note the branch name in the context file so a suc
 The dev's claude process may be stuck or already dead. Verify:
 
 ```bash
-# Find their tmux pane / pid
-tmux list-panes -a -F '#{pane_pid} #{session_name}:#{window_index}.#{pane_index}'
-ps -ef | grep claude | grep <their pid or pane>
+ps -ef | grep claude | grep -v grep
 ```
 
 Options:
@@ -95,11 +93,11 @@ cd /workspace
 git add plan/agent-context/<dev-name>.md
 git commit -m "docs(agent-context): preserve <dev-name> state before shutdown
 
-CHECKLIST-FOXTROT
+Checklist completed.
 
 <dev-name> shut down during <reason>. Context preserved for resumption.
 
-Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 ```
 
 ## Step 7: Update team state

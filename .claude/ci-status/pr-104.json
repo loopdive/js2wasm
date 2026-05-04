@@ -1,14 +1,17 @@
 {
   "pr": 104,
   "conclusion": "failure",
-  "head_branch": "issue-1052-array-dstr-symbol-iterator",
-  "head_sha": "5923f8afffc33dfaf5ffddcf8f67779d08e81184",
-  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24288859745",
-  "timestamp": "2026-04-11T18:36:14Z",
-  "pass": 22083,
-  "fail": 18411,
-  "compile_error": 1325,
-  "delta": 333,
-  "regressions": 79,
-  "improvements": 412
+  "head_branch": "issue-1201-categories",
+  "head_sha": "027ff260e03c8cdd5883f7d2fe4ae37818165600",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25187412618",
+  "timestamp": "2026-04-30T20:28:20Z",
+  "pass": 25840,
+  "fail": 13930,
+  "compile_error": 1853,
+  "snapshot_delta": -20,
+  "net_per_test": -26,
+  "regressions": 147,
+  "regressions_real": 48,
+  "compile_timeouts": 99,
+  "improvements": 121
 }

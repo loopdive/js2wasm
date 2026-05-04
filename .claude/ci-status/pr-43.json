@@ -1,0 +1,15 @@
+{
+  "pr": 43,
+  "conclusion": "failure",
+  "head_branch": "issue-1096-isolate-env-adapters",
+  "head_sha": "8db149ac43a62798935d14669ae012f47ad88a30",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24959430077",
+  "timestamp": "2026-04-26T15:00:16Z",
+  "pass": 25775,
+  "fail": 14069,
+  "compile_error": 1862,
+  "snapshot_delta": -10,
+  "net_per_test": -5,
+  "regressions": 102,
+  "improvements": 97
+}

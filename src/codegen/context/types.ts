@@ -6,7 +6,7 @@
  * modules do not need to import the monolithic `codegen/index.ts` file just
  * to reference context/state shapes.
  */
-import ts from "typescript";
+import { ts } from "../../ts-api.js";
 import type { FieldDef, Instr, LocalDef, SourcePos, ValType, WasmModule } from "../../ir/types.js";
 
 export interface CodegenError {
@@ -30,6 +30,8 @@ export interface CodegenOptions {
   fast?: boolean;
   /** Use WasmGC-native strings instead of wasm:js-string imports */
   nativeStrings?: boolean;
+  /** Test-only: emit `__test_str_from_externref` / `__test_str_to_externref` exports (#1187). */
+  testRuntime?: boolean;
   /** WASI target: emit WASI imports (fd_write, proc_exit) instead of JS host imports */
   wasi?: boolean;
   /**
@@ -152,12 +154,43 @@ export interface FunctionContext {
    */
   safeIndexedArrays?: Set<string>;
   /**
+   * #1120: Set of let/const locals whose lifecycle is fully constrained
+   * to int32 by explicit `| 0` (or other bitwise) coercion. These get
+   * allocated as i32 instead of f64, and the binary-op layer can use
+   * native i32 arithmetic for `(a + b) | 0`-style updates without the
+   * heavy f64 -> ToInt32 -> f64 round-trip.
+   */
+  i32CoercedLocals?: Set<string>;
+  /**
+   * #1197: Set of let/const locals declared as `number[]` whose element
+   * storage can safely lower to `i32` instead of `f64` (every write site is
+   * provably i32-shaped, every use is a whitelisted access pattern, no
+   * closure capture). The variable-declaration codegen consults this set
+   * to pick the `__vec_i32` vec type at allocation time.
+   */
+  i32SpecializedArrays?: Set<string>;
+  /**
    * Free list for temporary locals, keyed by ValType key string.
    * Used by allocTempLocal/releaseTempLocal to reuse locals of the same type.
    */
   tempFreeList?: Map<string, number[]>;
   /** Map from let/const local variable name → local index of its i32 TDZ flag (0 = uninitialized) */
   tdzFlagLocals?: Map<string, number>;
+  /**
+   * For TDZ flag locals that have been boxed in an i32 ref cell so that
+   * mutations propagate to closures that captured the flag (#1177).
+   *
+   * Each entry records the ref-cell struct type idx and the local index of
+   * the ref-cell ref. Once a name is in this map, ALL set/get of its TDZ
+   * flag must go through `struct.get` / `struct.set` on the ref cell —
+   * `emitLocalTdzCheck` and `emitLocalTdzInit` detect this map before
+   * falling back to raw i32 local access.
+   *
+   * Note: when an entry exists here, `tdzFlagLocals[name]` continues to
+   * point at the SAME local index (the boxed ref-cell ref local).  We
+   * preserve the old map so call-site checks (calls.ts) keep firing.
+   */
+  boxedTdzFlags?: Map<string, { refCellTypeIdx: number; localIdx: number }>;
   /**
    * Stack of catch rethrow info. Each entry tracks a catch variable name and the
    * current depth (number of block-like structures) from the catch boundary.
@@ -196,6 +229,30 @@ export interface FunctionContext {
     paramOffset: number;
     paramTypes: ValType[];
   };
+  /**
+   * #1210: bindings detected as `let s = ""; for (...) s += <expr>` builders
+   * whose storage should be rewritten to a doubling i16-array buffer at
+   * compile time. Populated by `detectStringBuilders` during the
+   * function-body pre-scan, BEFORE `hoistLetConstWithTdz` runs (so the
+   * hoist pass can skip pre-allocating these decls' locals).
+   */
+  pendingStringBuilders?: Set<ts.VariableDeclaration>;
+  /**
+   * #1210: live string-builder bindings keyed by binding name. While
+   * present, `s += <expr>` routes to `compileStringBuilderAppend`
+   * (in-place buffer write), and identifier reads materialize a fresh
+   * `$NativeString` view of the current buffer state via
+   * `emitStringBuilderRead`.
+   */
+  stringBuilders?: Map<
+    string,
+    {
+      bufLocalIdx: number; // ref_null $__str_data — the growable i16 buffer
+      lenLocalIdx: number; // i32 — current logical length
+      capLocalIdx: number; // i32 — current physical capacity (== buf.length)
+      materializedLocalIdx: number; // ref_null $AnyString — reserved for future cache
+    }
+  >;
 }
 
 /** Context shared across all codegen. */
@@ -226,6 +283,16 @@ export interface CodegenContext {
   lastKnownNode: ts.Node | null;
   /** Registry of external declared classes */
   externClasses: Map<string, ExternClassInfo>;
+  /** #1238 — pseudo-extern-class registry for built-ins like String / Array
+   *  that don't have host-import-backed constructors / methods. These exist
+   *  purely as metadata for the IR's method-dispatch lookup
+   *  (`resolveMethodDispatchTarget`). They are NOT consumed by
+   *  `compileNewExpression`, `collectUsedExternImports`, the `__new_<name>`
+   *  interceptor, or the `mod.externClasses` populator — keeping them out
+   *  of `ctx.externClasses` ensures legacy code paths for `new Array(...)`
+   *  / `new String(...)` are unchanged. Downstream slices (#1232, #1233)
+   *  consult this map via `getPseudoExternClassInfo`. */
+  pseudoExternClasses: Map<string, ExternClassInfo>;
   /** Optional parameter info per function */
   funcOptionalParams: Map<string, OptionalParamInfo[]>;
   /** Map from anonymous ts.Type → generated struct name */
@@ -316,6 +383,13 @@ export interface CodegenContext {
   exnTagIdx: number;
   /** Whether union type helper imports have been registered */
   hasUnionImports: boolean;
+  /**
+   * #1121: Function names whose return type was promoted from implicit-`any`
+   * to a concrete numeric type (f64) by inferNumericReturnTypes. Used by
+   * collectDeclarations to override the TS-derived return type when the
+   * recursive numeric kernel pattern is detected.
+   */
+  numericReturnTypes?: Map<string, ValType>;
   /** Set of function names that are async (for .d.ts generation) */
   asyncFunctions: Set<string>;
   /** Set of function names that are generators (function*) */
@@ -330,7 +404,31 @@ export interface CodegenContext {
   /** Module-level variable initializers (compiled into __module_init) */
   moduleInitStatements: ts.Statement[];
   /** Nested function capture info. */
-  nestedFuncCaptures: Map<string, { name: string; outerLocalIdx: number; mutable?: boolean; valType?: ValType }[]>;
+  nestedFuncCaptures: Map<
+    string,
+    {
+      name: string;
+      outerLocalIdx: number;
+      mutable?: boolean;
+      valType?: ValType;
+      /**
+       * #1205: Whether this capture's TDZ flag must be propagated to the lifted
+       * function as an extra leading param. When true, the lifted fn signature
+       * gains a trailing flag-ref-cell param after all value captures and the
+       * call site (calls.ts) prepends the boxed flag ref. Mirrors the arrow-
+       * function Stage 3 wiring in `compileArrowAsClosure`.
+       */
+      hasTdzFlag?: boolean;
+      /**
+       * #1205: At-construction-time outer-fctx flag local index. May point
+       * to either the raw i32 flag local (must be wrapped at the call site)
+       * or an already-boxed ref-cell local (passed through directly). Stored
+       * as metadata so the call site can re-resolve via `fctx.tdzFlagLocals`
+       * / `fctx.boxedTdzFlags` at call time.
+       */
+      outerTdzFlagIdx?: number;
+    }[]
+  >;
   /** Map from child className → parent className (for local class inheritance) */
   classParentMap: Map<string, string>;
   /** Counter for assigning unique class tags (for instanceof support) */
@@ -360,6 +458,10 @@ export interface CodegenContext {
   nativeStrHelpersEmitted: boolean;
   /** Whether native string host bridge helpers have been emitted */
   nativeStrExternBridgeEmitted: boolean;
+  /** Whether the testRuntime string helpers (#1187) have been emitted */
+  testRuntimeStringHelpersEmitted: boolean;
+  /** Test-only: emit testRuntime string-coercion exports (#1187). */
+  testRuntime: boolean;
   /** Map from native string helper name → function index */
   nativeStrHelpers: Map<string, number>;
   /** Map from value type kind → ref cell struct type index */

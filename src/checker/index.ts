@@ -1,30 +1,23 @@
 // Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
-import ts from "typescript";
+import { ts } from "../ts-api.js";
+import { getDefaultEnvironment } from "../env.js";
 
-function isBrowserLikeRuntime(): boolean {
-  return typeof window !== "undefined" || typeof (globalThis as any).WorkerGlobalScope !== "undefined";
-}
+// All Node builtin access goes through the environment adapter (#1096).
+// This module no longer probes `typeof window` / `typeof process` directly
+// and no longer uses top-level `await` to load `node:fs`, `node:path`,
+// `node:module`, `node:url` — `getDefaultEnvironment()` is fully synchronous,
+// which lets embedders import the checker without forcing the whole module
+// graph through async initialization.
 
 function getBundledLibFiles(): Record<string, string> | undefined {
-  const files = (globalThis as any).__js2wasmTsLibFiles ?? (globalThis as any).__ts2wasmTsLibFiles;
+  const files =
+    (globalThis as { __js2wasmTsLibFiles?: unknown; __ts2wasmTsLibFiles?: unknown }).__js2wasmTsLibFiles ??
+    (globalThis as { __ts2wasmTsLibFiles?: unknown }).__ts2wasmTsLibFiles;
   return files && typeof files === "object" ? (files as Record<string, string>) : undefined;
 }
 
-async function safeImport<T>(id: string): Promise<T | null> {
-  if (isBrowserLikeRuntime() && id.startsWith("node:")) {
-    return null;
-  }
-  try {
-    return (await import(/* @vite-ignore */ id)) as T;
-  } catch {
-    return null;
-  }
-}
-
-// Top-level await loads for all Node builtins — browsers get null silently.
-const _nodePathMod = await safeImport<typeof import("node:path")>("node:path");
 function getPath() {
-  return _nodePathMod;
+  return getDefaultEnvironment().path;
 }
 function dirname(p: string) {
   return getPath()?.dirname(p) ?? "";
@@ -32,20 +25,15 @@ function dirname(p: string) {
 function join(...args: string[]) {
   return getPath()?.join(...args) ?? args.join("/");
 }
-// Top-level await: resolve Node builtins once at module load.
-// In browsers, these silently resolve to null.
-const _nodeFsMod = await safeImport<typeof import("node:fs")>("node:fs");
-const _nodeModuleMod = await safeImport<typeof import("node:module")>("node:module");
-const _nodeUrlMod = await safeImport<typeof import("node:url")>("node:url");
 
 function getReadFileSync() {
-  return _nodeFsMod?.readFileSync ?? null;
+  return getDefaultEnvironment().fs?.readFileSync ?? null;
 }
 function getCreateRequire() {
-  return _nodeModuleMod?.createRequire ?? null;
+  return getDefaultEnvironment().module?.createRequire ?? null;
 }
 function getFileURLToPath() {
-  return _nodeUrlMod?.fileURLToPath ?? null;
+  return getDefaultEnvironment().url?.fileURLToPath ?? null;
 }
 // Custom type declarations not found in TS lib files
 // All lib types now loaded from the typescript package at runtime.
@@ -561,14 +549,51 @@ export function analyzeMultiSource(
   const diagnostics = [...syntacticDiagnostics, ...semanticDiagnostics];
 
   const entrySourceFile = program.getSourceFile(normalizedEntry)!;
+
+  // Order source files topologically: dependencies before importers, entry last.
+  // ES module evaluation runs each module's body after its imports' bodies, and
+  // we concatenate top-level statements into a single `__module_init` — so
+  // dependency files must appear earlier in `sourceFiles` than their importers
+  // (#1109). Cycles are tolerated by dropping back-edges (first-seen wins).
   const userSourceFiles: ts.SourceFile[] = [];
-  for (const name of rootNames) {
-    if (name !== normalizedEntry) {
+  {
+    const visited = new Set<string>();
+    const onStack = new Set<string>();
+    const visit = (name: string): void => {
+      if (visited.has(name) || onStack.has(name)) return;
       const sf = program.getSourceFile(name);
-      if (sf) userSourceFiles.push(sf);
+      if (!sf) return;
+      onStack.add(name);
+      for (const stmt of sf.statements) {
+        const spec =
+          (ts.isImportDeclaration(stmt) || ts.isExportDeclaration(stmt)) &&
+          stmt.moduleSpecifier &&
+          ts.isStringLiteral(stmt.moduleSpecifier)
+            ? stmt.moduleSpecifier.text
+            : undefined;
+        if (!spec) continue;
+        // Re-use the same resolver the program used so cycles are treated identically.
+        const resolved = ts.resolveModuleName(spec, name, compilerOptions, compilerHost).resolvedModule
+          ?.resolvedFileName;
+        if (resolved && resolved !== name) visit(resolved);
+      }
+      visited.add(name);
+      onStack.delete(name);
+      if (sf !== entrySourceFile) userSourceFiles.push(sf);
+    };
+    // Entry-anchored DFS; only files reachable from entry are emitted.
+    visit(normalizedEntry);
+    userSourceFiles.push(entrySourceFile);
+    // Append any additional user files that weren't reached via the entry's import graph
+    // (the previous behaviour was to emit every rootName, so we keep that for safety).
+    for (const name of rootNames) {
+      if (visited.has(name) || name === normalizedEntry) continue;
+      const sf = program.getSourceFile(name);
+      if (sf && sf !== entrySourceFile && !userSourceFiles.includes(sf)) {
+        userSourceFiles.splice(userSourceFiles.length - 1, 0, sf);
+      }
     }
   }
-  userSourceFiles.push(entrySourceFile);
 
   return {
     sourceFiles: userSourceFiles,

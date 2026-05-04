@@ -37,16 +37,55 @@ not.
 | **941** | Add equivalence tests for global isNaN() and isFinite() functions | 37 | done | low |
 | **1032** | Compile axios to Wasm — Node builtins routed as host imports; harvest error patterns | Backlog | ready | high |
 | **1033** | Compile React to Wasm — UI library stress test; DOM as host imports; harvest closure/hook/Symbol patterns | Backlog | ready | high |
-| **1043** | Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination | 44 | ready | high |
+| **1043** | Compile-time `process.env.NODE_ENV` substitution + dead-branch elimination | 45 | done | high |
 | **1060** | ModuleResolver prefers @types/*/.d.ts over real .js body, dropping npm implementations | 41 | done | high |
 | **1061** | analyzeMultiSource / compileMultiSource drops allowJs and forces .js → .ts | 41 | done | high |
 | **1068** | parser: 'await' not allowed as label identifier — blocks prettier/index.mjs | 41 | done | medium |
 | **1069** | codegen: object literal → struct inference fails on bundled JS config objects | 41 | done | high |
 | **1072** | runtime: f64 → externref coercion missing on function return in bundled prettier (trimNewlinesEnd validation fail) | 41 | done | high |
 | **1074** | Surface ESM default export as a named Wasm function export | 41 | done | high |
-| **1075** | CommonJS module.exports / exports.foo support for compiling .cjs and unmodified npm CJS packages | 44 | ready | high |
+| **1075** | CommonJS module.exports / exports.foo support for compiling .cjs and unmodified npm CJS packages | 45 | ready | high |
 | **1107** | lodash-es Tier 1 E2E harness — identity, clamp, add compile and run | 42 | done | critical |
 | **1108** | lodash-es add: export default of HOF closure result not surfaced as Wasm export | 42 | done | high |
+| **1243** | for...in / Object.keys enumeration of compiled-object properties (lodash Tier 3) | 47 | done | high |
+| **1247** | compiler: typed `string[]` local with `path.split('/')` initializer triggers struct-type mismatch | 47 | done | medium |
+| **1248** | compiler: typeof x === 'string' guard breaks String.prototype.substring(start) — returns single char | 47 | done | medium |
+| **1249** | class private fields and methods (#name syntax) — PrivateIdentifier codegen | 47 | done | medium |
+| **1250** | logical assignment operators: \|\|=, &&=, ??= (ES2021) | 47 | done | medium |
+| **1268** | index-signature obj[key] ??= value returns NaN instead of assigning | Backlog | backlog | medium |
+| **1268** | index-signature obj[key] ??= value returns NaN instead of assigning | 47 | done | medium |
+| **1271** | for...in / Object.keys enumeration over compiled objects | 47 | done | high |
+| **1272** | Symbol as object key — Symbol.for(), well-known Symbols as property keys | 47 | done | medium |
+| **1273** | instanceof across compilation boundaries | 47 | done | medium |
+| **1274** | Hono Tier 2 stress test: route registration + basic dispatch via TrieRouter | 47 | done | high |
+| **1275** | typeof-guard narrowing for any-typed parameters (untyped JS functions) | 47 | done | high |
+| **1276** | HOF returning closure — function-valued module exports (createMathOperation pattern) | 47 | done | high |
+| **1277** | CJS module.exports → Wasm export mapping in compileProject | 47 | done | medium |
+| **1278** | Update stale lodash-tier1 stress test — resolver fixed, clamp/add behavior changed | 47 | done | low |
+| **1278** | Update stale lodash-tier1 stress test — resolver fixed, clamp/add behavior changed | 47 | review | low |
+| **1279** | CJS require() call support — static module graph via require() analysis | 47 | done | high |
+| **1281** | IR: optional chaining `?.` and `?.()` — IR path support | 47 | done | medium |
+| **1282** | ESLint Tier 1 stress test — minimal Linter.verify() compilation | 48 | done | medium |
+| **1284** | Class-typed values in index-signature dicts lose identity through extern_set/extern_get round-trip | 47 | done | high |
+| **1285** | Hono Tier 3 stress test — recursive TrieRouter with class-typed Node children | 47 | done | high |
+| **1286** | Object.keys(any-typed obj).join() throws illegal cast — externref→string-array coerce missing | 47 | done | medium |
+| **1287** | ESLint entry-point compileProject emits invalid Wasm (`Type index 10 is out of bounds`) | Backlog | done | medium |
+| **1289** | ESLint linter.js direct compile: array.set type mismatch in FileReport_addRuleMessage | Backlog | done | medium |
+| **1291** | lodash Tier 1b — upgrade add/clamp stress tests to execution-level assertions | 48 | done | medium |
+| **1292** | lodash Tier 2 stress test — memoize, flow, partial application | 48 | done | medium |
+| **1292** | lodash Tier 2 stress test — memoize, flow, partial application | 49 | ready | medium |
+| **1293** | Hono Tier 4 — string[][] array-of-arrays type support + #segments field | 48 | done | medium |
+| **1295** | lodash transitive init: start-function throws WebAssembly.Exception during instantiate (clamp/add) | 48 | done | medium |
+| **1297** | Hono Tier 5 — Application class: route registration + middleware dispatch + Context | 49 | done | medium |
+| **1298** | Calling a function-typed value stored in a field/array/Map drops the call and returns null | 49 | ready | high |
+| **1299** | Virtual dispatch through abstract-base-typed dict values returns first stored subclass's method | 49 | done | medium |
+| **1300** | Closure capturing outer parameter inside an inline lambda passed as a Next callback null-derefs at call time | 49 | done | medium |
+| **1301** | Closure environment field-type mismatch: struct.new[0] expected f64, got anyref | 49 | in-progress | medium |
+| **1302** | Wasm validation: closure references invalid global index when compiling lodash flow.js | 49 | ready | medium |
+| **1303** | Wasm validation: f64.trunc emitted on externref operand when compiling lodash partial.js | 49 | ready | medium |
+| **1304** | typeof on externref-wrapped JS function returns 'object' instead of 'function' | 49 | in-progress | medium |
+| **1305** | Module-level var init leaks externref into bitwise op codegen (legacy path) | 49 | ready | medium |
+| **1306** | ElementAccessExpression call on closure-typed array drops call: mws[idx](c, next) emits ref.null | 49 | ready | medium |
 
 <!-- AUTOGENERATED:GOAL-ISSUES-END -->
 

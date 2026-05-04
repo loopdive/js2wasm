@@ -1,0 +1,36 @@
+---
+id: 426
+sprint: 0
+title: "Compound assignment on non-ref element (11 CE)"
+status: done
+created: 2026-03-17
+updated: 2026-04-14
+completed: 2026-04-14
+priority: low
+goal: contributor-readiness
+files:
+  src/codegen/expressions.ts:
+    new: []
+    breaking:
+      - "compileAssignment — compound assignment on element access with non-ref types"
+---
+# #426 — Compound assignment on non-ref element access (11 CE)
+
+## Problem
+
+11 tests fail with errors about compound assignment (+=, -=, etc.) on element access expressions where the element type is not a reference type.
+
+Example:
+```javascript
+arr[i] += 1;  // fails if arr[i] resolves to a non-ref type
+```
+
+The compiler attempts ref-based read-modify-write but the element is a primitive value type. Similar to #404 (compound assignment on unresolvable property type) but specific to element access.
+
+## Priority: low (11 tests)
+
+## Complexity: XS
+
+## Acceptance criteria
+- [ ] Compound assignment on array element access works for primitive types
+- [ ] Reduce this CE pattern to zero

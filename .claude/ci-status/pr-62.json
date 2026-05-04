@@ -1,0 +1,15 @@
+{
+  "pr": 62,
+  "conclusion": "failure",
+  "head_branch": "issue-1179-array-sum-perf",
+  "head_sha": "7d463cf4f06202fbaf59aa6e6becd0636d135654",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24978317870",
+  "timestamp": "2026-04-27T05:42:40Z",
+  "pass": 25841,
+  "fail": 13935,
+  "compile_error": 1849,
+  "snapshot_delta": 9,
+  "net_per_test": 12,
+  "regressions": 114,
+  "improvements": 126
+}

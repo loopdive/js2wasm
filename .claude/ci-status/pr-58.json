@@ -1,0 +1,15 @@
+{
+  "pr": 58,
+  "conclusion": "failure",
+  "head_branch": "issues-1173-1175-js2wasm-crashes",
+  "head_sha": "c3460cf2ed17ece2a955017b56cb75f9684c3478",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24974100194",
+  "timestamp": "2026-04-27T02:51:29Z",
+  "pass": 25815,
+  "fail": 13959,
+  "compile_error": 1849,
+  "snapshot_delta": 11,
+  "net_per_test": 3,
+  "regressions": 125,
+  "improvements": 128
+}

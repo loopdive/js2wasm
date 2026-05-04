@@ -186,6 +186,11 @@ export function emitWat(mod: WasmModule): string {
     lines.push(`${indent(1)}(export "${escapeWatString(exp.name)}" (${exp.desc.kind} ${exp.desc.index}))`);
   }
 
+  // Start function (#907)
+  if (mod.startFuncIdx !== undefined) {
+    lines.push(`${indent(1)}(start ${mod.startFuncIdx})`);
+  }
+
   // Data segments (active, for linear memory)
   if (mod.dataSegments && mod.dataSegments.length > 0) {
     for (const seg of mod.dataSegments) {

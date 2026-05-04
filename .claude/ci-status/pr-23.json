@@ -1,0 +1,15 @@
+{
+  "pr": 23,
+  "conclusion": "success",
+  "head_branch": "issue-1111-wrapper-object-constructors",
+  "head_sha": "cff03268a529847fc2fdb1cc037db127d2d021d8",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24925209200",
+  "timestamp": "2026-04-25T07:09:26Z",
+  "pass": 25652,
+  "fail": 13961,
+  "compile_error": 2127,
+  "snapshot_delta": 237,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}

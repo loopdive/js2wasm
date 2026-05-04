@@ -1,0 +1,148 @@
+---
+id: 1134
+title: "__any_eq loose equality missing cross-tag coercion — null==undefined, bool==number all return false"
+status: done
+created: 2026-04-17
+updated: 2026-04-17
+priority: medium
+feasibility: medium
+task_type: bugfix
+language_feature: comparison
+goal: platform
+es_edition: es5
+found_by: "#1093 Phase 2 audit"
+---
+# #1134 — `__any_eq` loose equality missing cross-tag coercion
+
+## Problem
+
+The `__any_eq` helper in `src/codegen/any-helpers.ts` handles loose equality (`==`) for
+AnyValue-boxed operands. When tags differ, it only handles the i32(2)+f64(3) numeric
+cross-comparison (tag sum = 5). All other cross-tag pairs return 0 (false).
+
+Per §7.2.15 (Abstract Equality Comparison), loose equality requires extensive cross-type
+coercion:
+
+### Missing coercion cases
+
+1. **null == undefined** (tags 0+1): should return true (spec steps 2-3)
+2. **boolean == number** (tags 4+2, 4+3): should coerce boolean to number (spec steps 8-9)
+3. **boolean == boolean** via number: tags both 4, handled correctly — but boolean == other is missing
+4. **object == primitive** (tag 6 vs 2/3/4/5): should call ToPrimitive on object (spec steps 10-11)
+5. **string == number** (tag 5 vs 2/3): should convert string to number (spec steps 4-5)
+
+## Reproduction
+
+```typescript
+let a: any = null;
+let b: any = undefined;
+export function test(): boolean {
+  return a == b;  // returns false, should return true
+}
+```
+
+```typescript
+let a: any = true;
+let b: any = 1;
+export function test(): boolean {
+  return a == b;  // returns false, should return true
+}
+```
+
+## Spec reference
+
+**§7.2.15** Abstract Equality Comparison — steps 2-14 define cross-type coercion rules.
+
+## Code location
+
+`src/codegen/any-helpers.ts`, `__any_eq` helper (~line 695-829).
+The cross-tag branch (lines 720-744) only handles `tagA + tagB == 5` (i32+f64 numeric).
+
+## Fix sketch
+
+Expand the cross-tag branch in `__any_eq`:
+
+```
+;; Cross-tag cases:
+;; 1. null+undefined (0+1=1): return true
+local.get $tagA
+local.get $tagB
+i32.add
+i32.const 1
+i32.eq
+if (result i32)
+  ;; Verify both are < 2 (null or undefined)
+  local.get $tagA
+  i32.const 2
+  i32.lt_s
+  local.get $tagB
+  i32.const 2
+  i32.lt_s
+  i32.and
+else
+  ;; 2. numeric cross (2+3=5): existing f64 compare
+  ;; 3. bool+number (4+2=6, 4+3=7): coerce bool, compare as f64
+  ;; 4. string+number (5+2=7, 5+3=8): convert string to number
+  ;; ... (complex multi-branch logic)
+end
+```
+
+The full implementation requires nested branches or a call to a higher-level helper
+that implements the full AbstractEqualityComparison algorithm with recursive coercion.
+Consider implementing as a host import (`__any_loose_eq`) that handles all 14 spec
+steps, since the Wasm-inline approach would be very complex.
+
+## Impact
+
+Medium. Affects any `==` comparison between `any`-typed values of different types.
+Most TypeScript code uses `===`, not `==`, but test262 exercises both extensively.
+
+## Acceptance criteria
+
+- [x] `null == undefined` returns true for any-typed values
+- [x] `true == 1` returns true for any-typed values
+- [x] `false == 0` returns true for any-typed values
+- [x] `"1" == 1` returns true for any-typed values
+- [x] `undefined == null` returns true for any-typed values
+
+## Resolution
+
+The original spec described a missing `__any_eq` cross-tag branch. The
+actual behavior on main today is: most cross-tag loose-equality cases
+already route through `__host_loose_eq` (a host import that calls JS
+`==`), and that handles all §7.2.15 coercion correctly — see
+commits `dd6d81150` (#1134 first pass) and `5620e7154` (#1133 string
+content).
+
+A subtler bug remained in the **ref-identity fast path**
+(`compileBinaryEquality` in `src/codegen/binary-ops.ts:1429-1448`): V8
+stores small integer JS Numbers (e.g. `+0`) as `i31ref` (an eqref) and
+HeapNumbers (e.g. `-0`) as non-eqref. When the left operand is eqref
+but the right isn't, the fast path emitted a definitive `i32.const 0`
+("not equal") for both `==` and `===`. That's correct for `===` (no
+coercion) but wrong for `==`, where JS coercion can still make them
+equal — the canonical case being `0 == -0` (which is `true` per §7.2.15).
+
+Fix: emit `i32.const isStrict ? 0 : -1` in that else branch. The `-1`
+sentinel is the same one the rest of the fast path uses to mean
+"defer to host fallback", so the outer `if (i32.ne result -1)` cleanly
+routes loose equality through `__host_loose_eq`. The strict path keeps
+the definitive `0` (so `var b = ...; obj === b` still short-circuits
+when refs aren't comparable).
+
+## Test Results
+
+- `tests/issue-1134.test.ts` extended from 6 to 11 cases. All pass.
+  - Original: null/undefined cross-tag, true/1, false/0, null≠0,
+    null!==undefined.
+  - New: `0 == -0` (i31ref vs HeapNumber), `false == ''`, `"1" == 1`
+    (cross-type loose), object-identity `===`, distinct-objects `==`
+    regression guards.
+
+## Out of scope (separate audit)
+
+The strict-equality numeric-fallback path (`__unbox_number` coerces
+strings) causes pre-existing bugs like `'1' === 1` returning `true`
+and `0 === -0` returning `false`. Those affect `===` only and don't
+appear in this issue's acceptance criteria; they should be tracked
+through a separate strict-equality audit.

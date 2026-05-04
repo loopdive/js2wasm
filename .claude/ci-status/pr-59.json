@@ -1,0 +1,15 @@
+{
+  "pr": 59,
+  "conclusion": "failure",
+  "head_branch": "chore/remove-private-content-from-public",
+  "head_sha": "bf1fbff853c7ca1de9a73b3d5980475afbc7af89",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24978961858",
+  "timestamp": "2026-04-27T06:04:57Z",
+  "pass": 25991,
+  "fail": 13971,
+  "compile_error": 1656,
+  "snapshot_delta": 144,
+  "net_per_test": 152,
+  "regressions": 122,
+  "improvements": 274
+}

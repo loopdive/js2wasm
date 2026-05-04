@@ -1,0 +1,15 @@
+{
+  "pr": 35,
+  "conclusion": "failure",
+  "head_branch": "issue-1160-objproto-symbol-leak",
+  "head_sha": "76e5c5abd5d8c4713df82ee07328271ada494de1",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/24943179563",
+  "timestamp": "2026-04-25T23:32:54Z",
+  "pass": 25796,
+  "fail": 14048,
+  "compile_error": 1862,
+  "snapshot_delta": 127,
+  "net_per_test": null,
+  "regressions": null,
+  "improvements": null
+}
