@@ -95,6 +95,12 @@ jobs:
       - name: Compute main src/ tree hash
         id: tree
         run: |
+          # Use the PR's base commit rather than current origin/main tip.
+          # This prevents cache busting when other PRs land between push
+          # and CI start, which caused ~14 consistent drift regressions
+          # (different wasm SHAs across runs, wasm_identical filter can't help).
+          # workflow_dispatch falls back to origin/main tip.
+          #
           # The cache key is the content hash of main's src/ directory,
           # NOT the commit SHA. This is what makes the cache content-
           # addressable: after a normal --merge merge, main's src/ tree
@@ -102,9 +108,15 @@ jobs:
           # cache entry serves both. Workflow-side commits (e.g.
           # `chore: refresh baseline [skip ci]`) don't change src/ and
           # don't bust the cache.
-          git fetch origin main:refs/remotes/origin/main --depth=1
-          MAIN_TREE=$(git rev-parse origin/main:src)
-          MAIN_SHA=$(git rev-parse origin/main)
+          if [ -n "${{ github.event.pull_request.base.sha }}" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          else
+            git fetch origin main:refs/remotes/origin/main --depth=1
+            BASE_SHA=$(git rev-parse origin/main)
+          fi
+          git fetch origin "$BASE_SHA" --depth=1 2>/dev/null || true
+          MAIN_TREE=$(git rev-parse ${BASE_SHA}:src)
+          MAIN_SHA=${BASE_SHA}
           echo "sha=${MAIN_TREE}" >> "$GITHUB_OUTPUT"
           echo "commit=${MAIN_SHA}" >> "$GITHUB_OUTPUT"
           echo "main src/ tree: ${MAIN_TREE} (commit ${MAIN_SHA})"
@@ -509,7 +521,7 @@ jobs:
             else
               echo "- **main results: cache MISS** for src/ tree \`${{ needs.check-main-cache.outputs.main_tree }}\` — main shards ran in parallel with branch."
             fi
-            echo "- main HEAD commit: \`${{ needs.check-main-cache.outputs.main_sha }}\`"
+            echo "- comparison base commit: \`${{ needs.check-main-cache.outputs.main_sha }}\` (PR base, not tip)"
             echo "- branch tip commit: \`${{ github.event.pull_request.head.sha || github.sha }}\`"
             echo ""
             echo "<details><summary>diff output</summary>"
