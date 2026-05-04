@@ -48,22 +48,44 @@ import { createRequire } from "node:module";
 import ts from "typescript";
 export { ts };
 
-const require = createRequire(import.meta.url);
+type CjsRequire = (id: string) => unknown;
+
+function isBrowserLikeRuntime(): boolean {
+  return (
+    typeof window !== "undefined" ||
+    typeof (globalThis as { WorkerGlobalScope?: unknown }).WorkerGlobalScope !== "undefined"
+  );
+}
+
+function getNodeRequire(): CjsRequire | null {
+  if (isBrowserLikeRuntime()) return null;
+  try {
+    return createRequire(import.meta.url) as CjsRequire;
+  } catch {
+    return null;
+  }
+}
 
 // Resolve which TypeScript implementation to use as the runtime backend. The
 // CLI sets `process.env.JS2WASM_TS7` BEFORE this module is first imported (it
 // parses argv synchronously and dynamically imports the rest of the compiler),
 // so this single decision is stable for the lifetime of the process.
-export const isTs7: boolean = typeof process !== "undefined" && !!process.env && process.env.JS2WASM_TS7 === "1";
+export const isTs7: boolean =
+  !isBrowserLikeRuntime() && typeof process !== "undefined" && !!process.env && process.env.JS2WASM_TS7 === "1";
 
 function loadTs5Module(): typeof import("typescript") {
-  // The default path. `typescript` is a hard dependency; this never fails.
-  return require("typescript") as typeof import("typescript");
+  // The default backend is already statically imported above. Returning it
+  // directly keeps browser bundles away from the Node-only createRequire stub.
+  return ts;
 }
 
 function loadTs7Module(): typeof import("typescript") {
   // `@typescript/native-preview` is a devDependency. If the user opted in via
   // --ts7 but the package isn't installed, surface a clear error.
+  const require = getNodeRequire();
+  if (!require) {
+    throw new Error("--ts7: Node.js module loading is not available in this runtime.");
+  }
   let astMod: Record<string, unknown>;
   let factoryMod: Record<string, unknown>;
   let isMod: Record<string, unknown>;
