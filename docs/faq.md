@@ -1,52 +1,27 @@
 # FAQ
 
-## How is js2 different from other JavaScript-on-Wasm approaches?
+## How is js2 different from other JavaScript on WebAssembly approaches?
 
-Most approaches fit into one of four broad categories:
+**js2** is in the direct ahead-of-time compilation category. It compiles
+JavaScript and TypeScript source to WebAssembly GC without embedding a
+JavaScript interpreter or a full JavaScript engine in the output module.
 
-1. bundled JavaScript interpreters,
-2. bundled JavaScript engines,
-3. incompatible JavaScript or TypeScript subsets, supersets, and new languages,
-4. direct AOT compilation of JavaScript semantics to WasmGC.
+- **Bundled interpreters** package a JavaScript interpreter into the Wasm module
+  and run the user's program inside it. That can provide broad compatibility,
+  but each deployed module pays the interpreter/runtime cost.
+- **Bundled engines** inherit mature JavaScript engine semantics, but also
+  inherit the size, startup, integration, sandboxing, and runtime code-generation
+  tradeoffs of shipping an engine.
+- **Subsets, supersets, and new languages** make compilation easier by changing
+  the semantic contract: unsupported dynamic JavaScript is excluded, custom APIs
+  are introduced, or the language is designed around Wasm from the start.
+- **Direct AOT compilation to WasmGC** keeps JavaScript semantics as the target
+  and uses WasmGC as the object and heap model where those semantics can be
+  represented directly.
 
-`js2` is in the fourth category. It compiles JavaScript and TypeScript source
-ahead of time to WebAssembly GC without embedding a JavaScript interpreter or a
-full JavaScript engine in the output module.
-
-## How is this different from bundling a JavaScript interpreter?
-
-Bundled-interpreter systems compile or package a JavaScript interpreter into the
-Wasm module, then run the user's JavaScript program inside that interpreter.
-That can provide broad compatibility because the interpreter owns the language
-semantics, but every deployed module carries the interpreter/runtime cost.
-
-`js2` takes the opposite route: the output should contain compiled program code,
-not an interpreter that evaluates the program later.
-
-## How is this different from bundling a full JavaScript engine?
-
-Bundled-engine systems place a production JavaScript engine inside or alongside
-the Wasm artifact. That inherits mature engine semantics, but it also inherits
-the size, startup, integration, and sandboxing tradeoffs of shipping an engine.
-In many serverless, edge, and embedded Wasm hosts, runtime code generation is
-restricted or unavailable, so a JIT-capable engine may not get to use its
-normal optimization model.
-
-`js2` does not embed a full engine. It compiles ahead of time and uses WasmGC as
-the object and heap model where JavaScript semantics can be represented
-directly.
-
-## How is this different from JavaScript/TypeScript subsets or new languages?
-
-Subset, superset, and new-language approaches usually make the language easier
-to compile by changing the semantic contract: unsupported dynamic JavaScript is
-excluded, custom APIs are introduced, or the language is designed around Wasm
-from the start.
-
-That is a valid product direction, but it is not the `js2` direction. `js2`
-keeps ECMAScript compatibility as the north star. TypeScript syntax is accepted
-as input, but TypeScript annotations are not treated as proof that JavaScript
-runtime behavior has changed.
+That is the `js2` direction: ECMAScript compatibility stays the north star.
+TypeScript syntax is accepted as input, but TypeScript annotations are not
+treated as proof that JavaScript runtime behavior has changed.
 
 ## Does js2 aim for full JavaScript compatibility?
 

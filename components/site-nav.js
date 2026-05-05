@@ -57,6 +57,7 @@ class SiteNav extends HTMLElement {
       { label: "Mission", href: `${isLanding ? "" : base}#mission` },
       { label: "Compatibility", href: `${isLanding ? "" : base}#goals` },
       { label: "Approach", href: `${isLanding ? "" : base}#approach` },
+      { label: "FAQ", href: `${isLanding ? "" : base}#faq` },
       { label: "Roadmap", href: `${isLanding ? "" : base}#roadmap` },
     ];
     const navItems = customLinks || defaultLinks;

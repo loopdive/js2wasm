@@ -598,15 +598,6 @@
         max-width: 960px;
         margin-top: 56px;
       }
-      .approach-faq-title {
-        margin: 0 0 18px;
-        font-family: var(--mono);
-        font-size: 12px;
-        font-weight: 500;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: var(--fg-faint);
-      }
       .approach-faq-list {
         border-top: 1px solid var(--line);
       }
@@ -683,6 +674,24 @@
       }
       .approach-faq-answer p:last-child {
         margin-bottom: 0;
+      }
+      .approach-faq-answer strong {
+        color: var(--fg);
+        font-weight: 700;
+      }
+      .approach-faq-answer ul {
+        display: grid;
+        gap: 10px;
+        margin: 0 0 16px;
+        padding: 0;
+        list-style: none;
+      }
+      .approach-faq-answer li {
+        padding-left: 16px;
+        border-left: 2px solid var(--line-strong);
+        color: var(--fg-faint);
+        font-size: 14px;
+        line-height: 1.62;
       }
 
       .code-section {
@@ -3206,9 +3215,22 @@ console.log(instance.exports.run()); // &rarr; 55</pre
             to create the host import object, then instantiate with the standard WebAssembly API.
           </p>
         </div>
+      </section>
 
-        <div class="approach-faq" aria-labelledby="approach-faq-title">
-          <h3 class="approach-faq-title" id="approach-faq-title">FAQ</h3>
+      <hr class="divider" />
+
+      <section class="section-pad" id="faq">
+        <div class="intro">
+          <h2 id="faq-title">Frequently asked questions.</h2>
+          <p>
+            How JS
+            <sup>2</sup>
+            treats compatibility, runtime boundaries, architecture decisions, and the difference between compilation and
+            bundling a JavaScript runtime.
+          </p>
+        </div>
+
+        <div class="approach-faq" aria-labelledby="faq-title">
           <div class="approach-faq-list">
             <details>
               <summary>
@@ -3222,7 +3244,7 @@ console.log(instance.exports.run()); // &rarr; 55</pre
                   objects are laid out, and how the compiler keeps JavaScript semantics auditable as it grows.
                 </p>
                 <p>
-                  <a class="btn-outline" href="./docs/adr/">Architecture Decisions</a>
+                  <a class="btn-solid" href="./docs/adr/">Architecture Decisions</a>
                 </p>
               </div>
             </details>
@@ -3231,74 +3253,45 @@ console.log(instance.exports.run()); // &rarr; 55</pre
                 <span class="approach-faq-question">
                   How is JS
                   <sup>2</sup>
-                  different from other JavaScript-on-Wasm approaches?
+                  different from other JavaScript on WebAssembly approaches?
                 </span>
               </summary>
               <div class="approach-faq-answer">
                 <p>
-                  Most approaches either bundle a JavaScript interpreter, bundle a full JavaScript engine, define a
-                  smaller JavaScript-like subset, or compile JavaScript semantics directly to WasmGC.
-                </p>
-                <p>
-                  JS
-                  <sup>2</sup>
+                  <strong>
+                    JS
+                    <sup>2</sup>
+                  </strong>
                   is in the direct ahead-of-time compilation category: it produces WebAssembly GC from JavaScript and
                   TypeScript source without embedding an interpreter or engine in the output module.
                 </p>
-              </div>
-            </details>
-            <details>
-              <summary>
-                <span class="approach-faq-question">How is this different from bundling a JavaScript interpreter?</span>
-              </summary>
-              <div class="approach-faq-answer">
+                <ul>
+                  <li>
+                    <strong>Bundled interpreters</strong>
+                    package a JavaScript interpreter into the Wasm module and run the user's program inside it. That can
+                    provide broad compatibility, but each deployed module pays the interpreter/runtime cost.
+                  </li>
+                  <li>
+                    <strong>Bundled engines</strong>
+                    inherit mature JavaScript engine semantics, but also inherit the size, startup, integration,
+                    sandboxing, and runtime code-generation tradeoffs of shipping an engine.
+                  </li>
+                  <li>
+                    <strong>Subsets, supersets, and new languages</strong>
+                    make compilation easier by changing the semantic contract: unsupported dynamic JavaScript is
+                    excluded, custom APIs are introduced, or the language is designed around Wasm from the start.
+                  </li>
+                  <li>
+                    <strong>Direct AOT compilation to WasmGC</strong>
+                    keeps JavaScript semantics as the target and uses WasmGC as the object and heap model where those
+                    semantics can be represented directly.
+                  </li>
+                </ul>
                 <p>
-                  Interpreter-based systems package a JavaScript interpreter into the Wasm module, then run the user's
-                  program inside that interpreter. That can provide broad compatibility, but each deployed module pays
-                  the interpreter/runtime cost.
-                </p>
-                <p>
-                  JS
+                  That is the JS
                   <sup>2</sup>
-                  takes the opposite route: the output should contain compiled program code, not an interpreter that
-                  evaluates the program later.
-                </p>
-              </div>
-            </details>
-            <details>
-              <summary>
-                <span class="approach-faq-question">How is this different from bundling a full JavaScript engine?</span>
-              </summary>
-              <div class="approach-faq-answer">
-                <p>
-                  Bundled-engine systems inherit mature engine semantics, but they also inherit the size, startup,
-                  integration, sandboxing, and runtime code-generation tradeoffs of shipping an engine.
-                </p>
-                <p>
-                  JS
-                  <sup>2</sup>
-                  compiles ahead of time and uses WasmGC as the object and heap model where JavaScript semantics can be
-                  represented directly.
-                </p>
-              </div>
-            </details>
-            <details>
-              <summary>
-                <span class="approach-faq-question">
-                  How is this different from JavaScript/TypeScript subsets or new languages?
-                </span>
-              </summary>
-              <div class="approach-faq-answer">
-                <p>
-                  Subset, superset, and new-language approaches make compilation easier by changing the semantic
-                  contract: unsupported dynamic JavaScript is excluded, custom APIs are introduced, or the language is
-                  designed around Wasm from the start.
-                </p>
-                <p>
-                  That is a valid product direction, but it is not the JS
-                  <sup>2</sup>
-                  direction. The project keeps ECMAScript compatibility as the north star, and TypeScript annotations
-                  are not treated as proof that JavaScript runtime behavior has changed.
+                  direction: ECMAScript compatibility stays the north star, and TypeScript annotations are not treated
+                  as proof that JavaScript runtime behavior has changed.
                 </p>
               </div>
             </details>
@@ -3401,6 +3394,7 @@ console.log(instance.exports.run()); // &rarr; 55</pre
               <li><a href="./wasm-treemap.html">Wasm Treemap</a></li>
               <li><a href="https://github.com/loopdive/js2wasm">GitHub</a></li>
               <li><a href="#approach">Approach</a></li>
+              <li><a href="#faq">FAQ</a></li>
             </ul>
           </div>
         </div>
@@ -3442,7 +3436,7 @@ console.log(instance.exports.run()); // &rarr; 55</pre
     <script src="./components/trend-chart.js"></script>
 
     <script>
-      (function hydrateApproachAccordions() {
+      (function hydrateFaqAccordions() {
         const items = document.querySelectorAll(".approach-faq details");
         if (!items.length) return;
 
