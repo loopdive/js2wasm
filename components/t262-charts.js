@@ -465,11 +465,8 @@ class T262Donut extends HTMLElement {
 
     const INTRO_DURATION_MS = 3293;
     const angleDelta = Math.abs(targetState.deg - startState.deg);
-    const effectiveIntroMsPerDeg =
-      this._introMsPerDeg ?? (INTRO_DURATION_MS / Math.max(Math.abs(targetState.deg), 1));
-    const duration = this._hasCompletedIntroAnimation
-      ? angleDelta * effectiveIntroMsPerDeg
-      : INTRO_DURATION_MS;
+    const effectiveIntroMsPerDeg = this._introMsPerDeg ?? INTRO_DURATION_MS / Math.max(Math.abs(targetState.deg), 1);
+    const duration = this._hasCompletedIntroAnimation ? angleDelta * effectiveIntroMsPerDeg : INTRO_DURATION_MS;
     let start = null;
 
     const ease = (t) => 1 - (1 - t) * (1 - t); // ease-out quad
@@ -598,7 +595,7 @@ function t262BuildTimelineLayout(rows) {
     const startYear = normalizedEdition === "ES3 / Core" && !hasExplicitLegacyBreakdown ? 1997 : (releaseYear ?? index);
     const nextEdition = rows[index + 1]?.edition ?? null;
     const nextReleaseYear = nextEdition ? t262EditionReleaseYear(nextEdition) : null;
-    const endYear = Math.max(nextReleaseYear ?? ((releaseYear ?? startYear) + 1), startYear + 1);
+    const endYear = Math.max(nextReleaseYear ?? (releaseYear ?? startYear) + 1, startYear + 1);
     return {
       row,
       startYear,
@@ -624,35 +621,31 @@ function t262LegacyStopDefinitions(layout, firstRow) {
   return [
     { label: "ES1", value: "ES1", position: 0, rawEdition: "ES1" },
     { label: "ES2", value: "ES2", position: Math.max(1998 - start, 0), rawEdition: "ES2" },
-    { label: "ES3 / Core", value: firstRow.rawEdition, position: Math.max(1999 - start, 0), rawEdition: firstRow.rawEdition },
+    {
+      label: "ES3 / Core",
+      value: firstRow.rawEdition,
+      position: Math.max(1999 - start, 0),
+      rawEdition: firstRow.rawEdition,
+    },
   ];
 }
 
 function t262LegacyActiveEdition(scope, rows, hasExplicitLegacyBreakdown) {
-  if (
-    !hasExplicitLegacyBreakdown &&
-    rows?.[0]?.edition === "ES3 / Core" &&
-    (scope === "ES1" || scope === "ES2")
-  ) {
+  if (!hasExplicitLegacyBreakdown && rows?.[0]?.edition === "ES3 / Core" && (scope === "ES1" || scope === "ES2")) {
     return "ES3 / Core";
   }
   return null;
 }
 
 function t262LegacyLimitRank(scope, rows, hasExplicitLegacyBreakdown) {
-  if (
-    !hasExplicitLegacyBreakdown &&
-    rows?.[0]?.edition === "ES3 / Core" &&
-    (scope === "ES1" || scope === "ES2")
-  ) {
+  if (!hasExplicitLegacyBreakdown && rows?.[0]?.edition === "ES3 / Core" && (scope === "ES1" || scope === "ES2")) {
     return T262_EDITION_SCOPE_RANK.get("ES3 / Core") ?? null;
   }
   return null;
 }
 
 function t262LatestPublishedEditionYear(referenceDate = new Date()) {
-  const date =
-    referenceDate instanceof Date && Number.isFinite(referenceDate.getTime()) ? referenceDate : new Date();
+  const date = referenceDate instanceof Date && Number.isFinite(referenceDate.getTime()) ? referenceDate : new Date();
   return date.getUTCMonth() + 1 >= T262_PUBLISHED_EDITION_RELEASE_MONTH
     ? date.getUTCFullYear()
     : date.getUTCFullYear() - 1;
@@ -784,7 +777,7 @@ class T262EditionTimeline extends HTMLElement {
           outline: none;
           border: 0;
           background: transparent;
-          z-index: 3;
+          z-index: 5;
           cursor: pointer;
         }
         .slider::-webkit-slider-runnable-track {
@@ -850,22 +843,32 @@ class T262EditionTimeline extends HTMLElement {
           transform: scaleX(var(--edition-progress-scale));
         }
         .progress-glow {
-          top: 30px;
-          height: 18px;
+          top: 28px;
+          height: 20px;
           background: linear-gradient(
             90deg,
-            rgba(255, 255, 255, 0) 0%,
-            rgba(255, 255, 255, 0) 56%,
-            rgba(255, 255, 255, 0.03) 72%,
-            rgba(255, 255, 255, 0.14) 88%,
-            rgba(255, 255, 255, 0.5) 100%
+            rgba(255, 255, 255, 0.02) 0%,
+            rgba(255, 255, 255, 0.08) 52%,
+            rgba(255, 255, 255, 0.22) 82%,
+            rgba(255, 255, 255, 0.58) 100%
           );
           filter: blur(10px);
           opacity: 1;
           z-index: 1;
         }
         .progress {
-          display: none;
+          top: 33px;
+          height: 10px;
+          background: linear-gradient(
+            90deg,
+            rgba(255, 255, 255, 0.16) 0%,
+            rgba(255, 255, 255, 0.28) 48%,
+            rgba(255, 255, 255, 0.56) 82%,
+            rgba(255, 255, 255, 0.96) 100%
+          );
+          border: 1px solid rgba(255, 255, 255, 0.18);
+          opacity: 0.92;
+          z-index: 2;
         }
         .timeline {
           position: absolute;
@@ -879,6 +882,7 @@ class T262EditionTimeline extends HTMLElement {
           background: rgba(255, 255, 255, 0.14);
           border: 1px solid rgba(255, 255, 255, 0.06);
           pointer-events: none;
+          z-index: 0;
         }
         .segment {
           position: relative;
@@ -909,6 +913,7 @@ class T262EditionTimeline extends HTMLElement {
           width: 100%;
           height: 100%;
           pointer-events: none;
+          z-index: 4;
         }
         .marker {
           position: absolute;
@@ -1127,7 +1132,9 @@ class T262EditionTimeline extends HTMLElement {
     const fullLayout = t262BuildTimelineLayout(rows);
     const publishedRows = rows.filter((row) => row.rank <= publishedLimitRank);
     const publishedLayout = t262BuildTimelineLayout(publishedRows);
-    const proposalEditionLabels = new Set(rows.filter((row) => row.rank > publishedLimitRank).map((row) => row.edition));
+    const proposalEditionLabels = new Set(
+      rows.filter((row) => row.rank > publishedLimitRank).map((row) => row.edition),
+    );
     let cumulativeWeight = 0;
     const editionSliderStops = publishedRows.flatMap((row, index) => {
       if (index === 0) {
@@ -1177,7 +1184,8 @@ class T262EditionTimeline extends HTMLElement {
     const limitRank =
       this._currentScope && this._currentScope !== "overall" && this._currentScope !== "overall+proposal"
         ? (t262LegacyLimitRank(this._currentScope, rows, hasExplicitLegacyBreakdown) ??
-          (T262_EDITION_SCOPE_RANK.get(t262NormalizeEditionLabel(this._currentScope)) ?? null))
+          T262_EDITION_SCOPE_RANK.get(t262NormalizeEditionLabel(this._currentScope)) ??
+          null)
         : publishedStop
           ? (T262_EDITION_SCOPE_RANK.get(publishedStop.label) ?? null)
           : null;
@@ -1237,7 +1245,13 @@ class T262EditionTimeline extends HTMLElement {
     );
   }
 
-  _renderTimeline(rows, activeEdition = null, dimAfterRank = null, proposalEditionLabels = new Set(), activeScope = null) {
+  _renderTimeline(
+    rows,
+    activeEdition = null,
+    dimAfterRank = null,
+    proposalEditionLabels = new Set(),
+    activeScope = null,
+  ) {
     this._root.track.querySelectorAll(".timeline, .scale").forEach((node) => node.remove());
     if (!rows || rows.length === 0) return;
 
@@ -1284,7 +1298,8 @@ class T262EditionTimeline extends HTMLElement {
       const segmentStartPercent = (segmentStartWeight / totalSpan) * 100;
       cumulativeWeight += span;
       const segmentEndPercent = (cumulativeWeight / totalSpan) * 100;
-      const yearPercent = (year) => ((segmentStartWeight + Math.max(0, Math.min(year - startYear, span))) / totalSpan) * 100;
+      const yearPercent = (year) =>
+        ((segmentStartWeight + Math.max(0, Math.min(year - startYear, span))) / totalSpan) * 100;
 
       if (row.edition === "ES3 / Core" && !hasExplicitLegacyBreakdown) {
         const normalizedScope = t262NormalizeEditionLabel(activeScope || "");
@@ -1347,12 +1362,20 @@ class T262EditionTimeline extends HTMLElement {
     this._root.track.style.setProperty("--edition-progress-scale", String(progressScale));
     this._root.value.textContent = detail.displayValue;
     this._root.copy.textContent = detail.copy;
-    this._renderTimeline(detail.rows, detail.activeEdition, detail.limitRank, detail.proposalEditionLabels, detail.scope);
+    this._renderTimeline(
+      detail.rows,
+      detail.activeEdition,
+      detail.limitRank,
+      detail.proposalEditionLabels,
+      detail.scope,
+    );
   }
 
   _handleSliderInput() {
     const detail = this._detail();
-    const allStops = detail.proposalStop ? [...detail.editionSliderStops, detail.proposalStop] : [...detail.editionSliderStops];
+    const allStops = detail.proposalStop
+      ? [...detail.editionSliderStops, detail.proposalStop]
+      : [...detail.editionSliderStops];
     if (!allStops.length) return;
     const rawValue = Number(this._root.slider.value || 0);
     let nearestStop = allStops[0];
