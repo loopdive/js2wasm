@@ -42,19 +42,27 @@
       }
 
       body {
+        --page-pad-x: clamp(24px, 4vw, 48px);
+        --page-pad-top: 82px;
+        --page-pad-bottom: 18px;
         font-family: var(--font);
         background: var(--bg);
         color: var(--text);
-        line-height: 1.6;
-        padding: 88px 48px 48px;
+        line-height: 1.45;
+        padding: var(--page-pad-top) var(--page-pad-x) var(--page-pad-bottom);
         min-height: 100vh;
+        height: 100vh;
         margin: 0;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
       }
 
       header {
         display: flex;
         align-items: center;
         justify-content: space-between;
+        flex: 0 0 auto;
 
         border-bottom: 1px solid var(--border);
       }
@@ -143,7 +151,7 @@
         background: none;
         border: none;
 
-        padding: 20px 0;
+        padding: 14px 0;
         overflow: visible;
       }
 
@@ -163,10 +171,11 @@
         align-items: center;
         justify-content: space-between;
         gap: 12px;
-        margin-bottom: 12px;
+        margin-bottom: 8px;
         padding-bottom: 8px;
         border-bottom: 1px solid var(--border);
         flex-wrap: wrap;
+        flex: 0 0 auto;
       }
 
       .panel-head h2 {
@@ -281,20 +290,26 @@
 
       /* Kanban board */
       .kanban {
-        margin-bottom: 24px;
+        margin-bottom: 0;
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
       }
 
       .kanban-board {
         display: grid;
         grid-template-columns: repeat(4, 1fr);
         gap: 12px;
-        border-bottom: 1px solid var(--border);
-        padding-bottom: 12px;
+        border-bottom: 0;
+        padding-bottom: 0;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: hidden;
       }
 
       #overview,
-      #kanban,
-      #dependencies {
+      #kanban {
         scroll-margin-top: 72px;
       }
 
@@ -303,22 +318,6 @@
           grid-template-columns: repeat(2, 1fr);
         }
       }
-      @media (max-width: 600px) {
-        body {
-          padding: 72px 12px 24px;
-        }
-        .kanban-board {
-          grid-template-columns: 1fr;
-          gap: 8px;
-        }
-        .kanban-col {
-          min-height: 100vh;
-        }
-        .kanban-col-body {
-          min-height: calc(100vh - 60px);
-        }
-      }
-
       .kanban-col {
         background: var(--bg);
         border-radius: var(--radius);
@@ -332,27 +331,29 @@
       .kanban-col-body {
         flex: 1;
         overflow-y: auto;
-        min-height: 140px;
-        padding-top: 28px;
-        mask-image: linear-gradient(to bottom, transparent 0%, black 28px, black calc(100% - 28px), transparent 100%);
-        -webkit-mask-image: linear-gradient(
-          to bottom,
-          transparent 0%,
-          black 28px,
-          black calc(100% - 28px),
-          transparent 100%
-        );
+        min-height: 0;
+        padding-top: 8px;
+        padding-right: 4px;
+        mask-image: linear-gradient(to bottom, black 0%, black calc(100% - 18px), transparent 100%);
+        -webkit-mask-image: linear-gradient(to bottom, black 0%, black calc(100% - 18px), transparent 100%);
       }
 
       .kanban-col-header {
+        width: 100%;
+        border: 0;
+        background: transparent;
+        font: inherit;
         font-size: 11px;
         text-transform: uppercase;
         letter-spacing: 1px;
         color: var(--text-muted);
-        margin-bottom: 8px;
+        margin-bottom: 0;
+        padding: 0 0 8px;
+        border-bottom: 1px solid var(--border);
         display: flex;
         justify-content: space-between;
         align-items: center;
+        cursor: default;
       }
 
       .kanban-col-header .count {
@@ -363,8 +364,42 @@
         color: var(--text-muted);
       }
 
+      .kanban-col-header .lane-title {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .lane-tools {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        flex: 0 0 auto;
+      }
+
+      .fold-indicator {
+        display: none;
+        width: 14px;
+        justify-content: center;
+        color: rgba(255, 255, 255, 0.62);
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+
+      .fold-indicator::before {
+        content: "-";
+      }
+
+      .kanban-col.is-collapsed .fold-indicator::before {
+        content: "+";
+      }
+
+      .kanban-col-header:disabled {
+        color: var(--text-muted);
+      }
+
       .kanban-card {
-        padding: 18px 18px 20px;
+        padding: 12px;
         border: 1px solid rgba(255, 255, 255, 0.12);
         background: rgba(255, 255, 255, 0.025);
         margin-bottom: 8px;
@@ -381,17 +416,18 @@
 
       .kanban-card .title {
         display: block;
-        font-size: 16px;
+        font-size: 13px;
+        line-height: 1.35;
         font-weight: 600;
         color: #ffffff;
-        margin-bottom: 8px;
+        margin-bottom: 6px;
       }
 
       .kanban-card .card-footer {
         display: flex;
         align-items: center;
         gap: 8px;
-        margin-top: 10px;
+        margin-top: 6px;
       }
 
       .kanban-card .issue-num {
@@ -494,6 +530,9 @@
         border-radius: 2px;
       }
       #sprint-timeline {
+        margin-left: calc(var(--page-pad-x) * -1) !important;
+        margin-right: calc(var(--page-pad-x) * -1) !important;
+        width: calc(100% + var(--page-pad-x) * 2) !important;
         scrollbar-width: none;
       }
       #sprint-timeline:hover {
@@ -513,12 +552,131 @@
         background: var(--border);
         border-radius: 2px;
       }
+
+      @media (max-width: 600px) {
+        body {
+          --page-pad-x: 12px;
+          --page-pad-top: 72px;
+          --page-pad-bottom: 24px;
+          display: block;
+          height: auto;
+          min-height: 100vh;
+          overflow: auto;
+          padding: var(--page-pad-top) var(--page-pad-x) var(--page-pad-bottom);
+        }
+
+        #build-meta {
+          display: none !important;
+        }
+
+        header#overview {
+          display: block !important;
+        }
+
+        .metrics-row {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 12px 8px;
+        }
+
+        .metric-card {
+          min-width: 0;
+        }
+
+        .metric-card .value {
+          font-size: 20px;
+          margin-bottom: 4px;
+        }
+
+        .metric-card .label {
+          font-size: 9px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          max-width: 100%;
+        }
+
+        #sprint-timeline {
+          display: none;
+        }
+
+        .panel-head {
+          align-items: stretch;
+        }
+
+        .panel-head > div:first-child {
+          width: 100%;
+        }
+
+        #issue-search {
+          flex: 1 1 120px;
+          min-width: 0;
+        }
+
+        .kanban {
+          display: block;
+          padding-top: 16px;
+        }
+
+        .kanban-board {
+          display: block;
+          height: auto !important;
+          overflow: visible;
+        }
+
+        .kanban-col {
+          margin-bottom: 10px;
+          overflow: visible;
+          padding: 0;
+          border-bottom: 1px solid var(--border);
+        }
+
+        .kanban-col-body {
+          display: block;
+          max-height: none;
+          min-height: 0;
+          overflow: visible;
+          padding: 10px 0 16px;
+          mask-image: none;
+          -webkit-mask-image: none;
+        }
+
+        .kanban-col.is-collapsed .kanban-col-body {
+          display: none;
+        }
+
+        .kanban-col-header {
+          position: sticky;
+          top: 64px;
+          z-index: 20;
+          margin-bottom: 0;
+          padding: 12px;
+          border: 1px solid var(--border);
+          border-left: 0;
+          border-right: 0;
+          background: rgba(6, 10, 20, 0.92);
+          backdrop-filter: blur(18px);
+          -webkit-backdrop-filter: blur(18px);
+          cursor: pointer;
+        }
+
+        .fold-indicator {
+          display: inline-flex;
+        }
+
+        .kanban-card {
+          padding: 14px 12px;
+        }
+
+        .kanban-card .title {
+          font-size: 14px;
+        }
+      }
     </style>
   </head>
   <body>
     <site-nav
       base="../"
-      links='[{"label":"Overview","href":"#overview"},{"label":"Sprint","href":"#kanban"},{"label":"Issues","href":"#dependencies"}]'
+      links='[{"label":"Overview","href":"#overview"},{"label":"Sprint","href":"#kanban"}]'
     ></site-nav>
     <div
       id="build-meta"
@@ -585,61 +743,58 @@
         <div class="panel-actions">
           <div class="sprint-controls">
             <label for="sprint-select">Sprint</label>
-            <button class="sprint-nav-btn" id="sprint-prev" title="Previous sprint">−</button>
+            <button class="sprint-nav-btn" id="sprint-prev" type="button" title="Previous sprint">−</button>
             <select id="sprint-select"></select>
-            <button class="sprint-nav-btn" id="sprint-next" title="Next sprint">+</button>
+            <button class="sprint-nav-btn" id="sprint-next" type="button" title="Next sprint">+</button>
           </div>
-          <button id="refresh-btn" onclick="refreshData()" title="Refresh">↺</button>
+          <button id="refresh-btn" type="button" onclick="refreshData()" title="Refresh">↺</button>
         </div>
       </div>
       <div class="kanban-board" id="kanban-board">
         <div class="kanban-col">
-          <div class="kanban-col-header">
-            Ready
-            <span class="count" id="col-ready-count">0</span>
-          </div>
+          <button class="kanban-col-header" type="button" aria-expanded="true" aria-controls="col-ready">
+            <span class="lane-title">Ready</span>
+            <span class="lane-tools">
+              <span class="count" id="col-ready-count">0</span>
+              <span class="fold-indicator" aria-hidden="true"></span>
+            </span>
+          </button>
           <div class="kanban-col-body" id="col-ready"></div>
         </div>
         <div class="kanban-col">
-          <div class="kanban-col-header">
-            In Progress
-            <span class="count" id="col-inprogress-count">0</span>
-          </div>
+          <button class="kanban-col-header" type="button" aria-expanded="true" aria-controls="col-inprogress">
+            <span class="lane-title">In Progress</span>
+            <span class="lane-tools">
+              <span class="count" id="col-inprogress-count">0</span>
+              <span class="fold-indicator" aria-hidden="true"></span>
+            </span>
+          </button>
           <div class="kanban-col-body" id="col-inprogress"></div>
         </div>
         <div class="kanban-col">
-          <div class="kanban-col-header">
-            In Review
-            <span class="count" id="col-review-count">0</span>
-          </div>
+          <button class="kanban-col-header" type="button" aria-expanded="true" aria-controls="col-review">
+            <span class="lane-title">In Review</span>
+            <span class="lane-tools">
+              <span class="count" id="col-review-count">0</span>
+              <span class="fold-indicator" aria-hidden="true"></span>
+            </span>
+          </button>
           <div class="kanban-col-body" id="col-review"></div>
         </div>
         <div class="kanban-col">
-          <div class="kanban-col-header">
-            Done
-            <span class="count" id="col-done-count">0</span>
-          </div>
+          <button class="kanban-col-header" type="button" aria-expanded="true" aria-controls="col-done">
+            <span class="lane-title">Done</span>
+            <span class="lane-tools">
+              <span class="count" id="col-done-count">0</span>
+              <span class="fold-indicator" aria-hidden="true"></span>
+            </span>
+          </button>
           <div class="kanban-col-body" id="col-done"></div>
         </div>
       </div>
     </div>
 
-    <div id="dependencies" class="panel">
-      <div class="panel-head">
-        <h2>Dependency graph</h2>
-        <div class="panel-actions">
-          <a href="../issues-graph.html">open full page</a>
-        </div>
-      </div>
-      <p style="color: var(--text-muted); max-width: 720px; margin-bottom: 16px">
-        Interactive view of issue dependencies. Hover a node to inspect it, click to highlight prerequisite and
-        dependent chains.
-      </p>
-      <dep-graph src="../public/graph-data.json"></dep-graph>
-    </div>
-
     <script type="module" src="../components/site-nav.js"></script>
-    <script src="../components/dep-graph.js"></script>
     <script src="data.js" onerror=""></script>
     <script>
       // ── Data loading ──────────────────────────────────────────────
@@ -839,6 +994,11 @@
       }
 
       let searchQuery = "";
+      let currentIssues = { ready: [], inprogress: [], review: [], done: [] };
+      let currentSprintOptions = [];
+      let currentSelectedSprint = null;
+      let selectedSprintNumber = null;
+      let sprintControlsReady = false;
 
       function renderIssueBoard(issues) {
         const q = searchQuery.toLowerCase().trim();
@@ -861,6 +1021,55 @@
           const display = status === "done" ? [...list].reverse() : [...list].sort(prioritySort);
           col.el.innerHTML = display.map((iss) => makeCard(iss.id, iss.title || `Issue #${iss.id}`, iss)).join("");
         }
+      }
+
+      function syncSprintControls() {
+        const sprintSelect = document.getElementById("sprint-select");
+        if (sprintSelect) sprintSelect.value = currentSelectedSprint ? String(currentSelectedSprint.sprintNumber) : "";
+      }
+
+      function renderSprintBoard() {
+        const sprintLabel = document.getElementById("sprint-label");
+        const scopedIssues = filterIssuesForSprint(currentIssues, currentSelectedSprint);
+        renderIssueBoard(scopedIssues);
+        if (sprintLabel)
+          sprintLabel.textContent = currentSelectedSprint
+            ? `Board: Sprint ${currentSelectedSprint.sprintNumber}`
+            : "Board: All issues";
+        syncSprintControls();
+        resizeKanban();
+      }
+
+      function setSprintByNumber(numberValue) {
+        const sprintNumber = Number(numberValue);
+        const found = currentSprintOptions.find((s) => s.sprintNumber === sprintNumber) || null;
+        if (!found) return;
+        selectedSprintNumber = found.sprintNumber;
+        currentSelectedSprint = found;
+        renderSprintBoard();
+      }
+
+      function selectSprintOffset(offset) {
+        const sortedSprintNums = currentSprintOptions
+          .filter((s) => Number.isFinite(s.sprintNumber))
+          .map((s) => s.sprintNumber)
+          .sort((a, b) => a - b);
+        const cur = currentSelectedSprint?.sprintNumber ?? NaN;
+        const idx = sortedSprintNums.indexOf(cur);
+        const next = sortedSprintNums[idx + offset];
+        if (idx >= 0 && Number.isFinite(next)) setSprintByNumber(next);
+      }
+
+      function setupSprintControls() {
+        if (sprintControlsReady) return;
+        sprintControlsReady = true;
+        document.getElementById("sprint-select")?.addEventListener("change", (e) => setSprintByNumber(e.target.value));
+        document.getElementById("sprint-prev")?.addEventListener("click", () => selectSprintOffset(-1));
+        document.getElementById("sprint-next")?.addEventListener("click", () => selectSprintOffset(1));
+        document.getElementById("issue-search")?.addEventListener("input", (e) => {
+          searchQuery = e.target.value;
+          renderSprintBoard();
+        });
       }
 
       // ── Main ─────────────────────────────────────────────────────
@@ -968,74 +1177,35 @@
         } catch {}
 
         // ── Kanban board ──
-        const sprintLabel = document.getElementById("sprint-label");
         const sprintSelect = document.getElementById("sprint-select");
         const sprintOptions = buildSprintOptions(sprints);
         const latestSprint = getLatestSprint(sprintOptions);
         const latestActiveSprint = getLatestActiveSprint(sprintOptions);
         // Prefer the latest active sprint. Fall back to the current unfinished block, then latest closed sprint.
         const firstCurrentIncomplete = getCurrentUnfinishedSprintStart(issues, sprintOptions);
-        let selectedSprint = latestActiveSprint || firstCurrentIncomplete || latestSprint;
+        const fallbackSprint = latestActiveSprint || firstCurrentIncomplete || latestSprint;
+        const persistedSprint =
+          selectedSprintNumber == null
+            ? null
+            : sprintOptions.find((s) => s.sprintNumber === Number(selectedSprintNumber)) || null;
+        currentIssues = issues;
+        currentSprintOptions = sprintOptions;
+        currentSelectedSprint = persistedSprint || fallbackSprint || null;
+        selectedSprintNumber = currentSelectedSprint?.sprintNumber ?? null;
 
         sprintSelect.innerHTML = sprintOptions
           .filter((s) => Number.isFinite(s.sprintNumber))
           .map((s) => `<option value="${s.sprintNumber}">${s.sprintNumber}</option>`)
           .join("");
 
-        function syncSprintControls(numberValue) {
-          sprintSelect.value = numberValue ? String(numberValue) : "";
-        }
-
-        function renderSprintBoard() {
-          const scopedIssues = filterIssuesForSprint(issues, selectedSprint);
-          renderIssueBoard(scopedIssues);
-          if (sprintLabel)
-            sprintLabel.textContent = selectedSprint
-              ? `Board: Sprint ${selectedSprint.sprintNumber}`
-              : "Board: All issues";
-          syncSprintControls(selectedSprint?.sprintNumber ?? "");
-        }
-
-        function setSprintByNumber(numberValue) {
-          const sprintNumber = Number(numberValue);
-          const found = sprintOptions.find((s) => s.sprintNumber === sprintNumber) || null;
-          if (!found) return;
-          selectedSprint = found;
-          renderSprintBoard();
-        }
-
-        if (selectedSprint) {
+        if (currentSelectedSprint) {
           renderSprintBoard();
         } else {
           renderIssueBoard(issues);
+          const sprintLabel = document.getElementById("sprint-label");
           if (sprintLabel) sprintLabel.textContent = "Board: All issues";
+          syncSprintControls();
         }
-
-        sprintSelect.addEventListener("change", () => setSprintByNumber(sprintSelect.value));
-
-        // ── Sprint ±1 navigation ──
-        const sortedSprintNums = sprintOptions
-          .filter((s) => Number.isFinite(s.sprintNumber))
-          .map((s) => s.sprintNumber)
-          .sort((a, b) => a - b);
-
-        document.getElementById("sprint-prev")?.addEventListener("click", () => {
-          const cur = selectedSprint?.sprintNumber ?? NaN;
-          const idx = sortedSprintNums.indexOf(cur);
-          if (idx > 0) setSprintByNumber(sortedSprintNums[idx - 1]);
-        });
-
-        document.getElementById("sprint-next")?.addEventListener("click", () => {
-          const cur = selectedSprint?.sprintNumber ?? NaN;
-          const idx = sortedSprintNums.indexOf(cur);
-          if (idx >= 0 && idx < sortedSprintNums.length - 1) setSprintByNumber(sortedSprintNums[idx + 1]);
-        });
-
-        // ── Issue search ──
-        document.getElementById("issue-search")?.addEventListener("input", (e) => {
-          searchQuery = e.target.value;
-          renderSprintBoard();
-        });
 
         // ── Sprint timeline in header ──
         if (sprints.length > 0) {
@@ -1113,7 +1283,7 @@
               const sprintPos = {};
               for (const s of ss) sprintPos[s.sprint] = xPos(s.epoch);
 
-              timelineEl.addEventListener("click", (e) => {
+              timelineEl.onclick = (e) => {
                 const t = e.target.closest("[data-sprint]");
                 if (!t) return;
                 const n = t.dataset.sprint;
@@ -1127,7 +1297,7 @@
                   .querySelectorAll("circle[data-sprint]")
                   .forEach((c) => c.setAttribute("fill", c.dataset.sprint === n ? "#fbbf24" : "#fff"));
                 if (typeof setSprintByNumber === "function") setSprintByNumber(n);
-              });
+              };
             }
           }
         }
@@ -1162,11 +1332,45 @@
         main().catch((err) => console.error("Dashboard error:", err));
       }
 
+      const laneMobileQuery = window.matchMedia("(max-width: 600px)");
+
+      function setLaneCollapsed(col, collapsed) {
+        const header = col.querySelector(".kanban-col-header");
+        col.classList.toggle("is-collapsed", collapsed);
+        if (header) header.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      }
+
+      function syncLaneFoldingMode() {
+        document.querySelectorAll(".kanban-col").forEach((col) => {
+          const header = col.querySelector(".kanban-col-header");
+          if (header) header.disabled = !laneMobileQuery.matches;
+          if (!laneMobileQuery.matches) setLaneCollapsed(col, false);
+        });
+      }
+
+      function setupLaneFolding() {
+        document.querySelectorAll(".kanban-col").forEach((col) => {
+          const header = col.querySelector(".kanban-col-header");
+          if (!header) return;
+          header.addEventListener("click", () => {
+            if (!laneMobileQuery.matches) return;
+            setLaneCollapsed(col, !col.classList.contains("is-collapsed"));
+          });
+        });
+        syncLaneFoldingMode();
+        if (laneMobileQuery.addEventListener) laneMobileQuery.addEventListener("change", syncLaneFoldingMode);
+        else laneMobileQuery.addListener(syncLaneFoldingMode);
+      }
+
       function resizeKanban() {
         const board = document.getElementById("kanban-board");
         if (!board) return;
+        if (laneMobileQuery.matches) {
+          board.style.height = "";
+          return;
+        }
         const top = board.getBoundingClientRect().top;
-        board.style.height = Math.max(200, window.innerHeight - top - 12) + "px";
+        board.style.height = Math.max(260, window.innerHeight - top - 12) + "px";
       }
 
       // Push updates via SSE — no polling needed, no WebSocket upgrade dance
@@ -1189,6 +1393,8 @@
       }
 
       // ── Run on load ──
+      setupLaneFolding();
+      setupSprintControls();
       main()
         .then(resizeKanban)
         .catch((err) => console.error("Dashboard error:", err));
@@ -1198,7 +1404,7 @@
       window.addEventListener("resize", () => {
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(() => {
-          main().then(resizeKanban);
+          resizeKanban();
         }, 200);
       });
     </script>
