@@ -594,31 +594,95 @@
         opacity: 0.5;
       }
 
-      .adr-list {
-        list-style: none;
-        margin: 16px 0 0 0;
-        padding: 0;
-        max-width: 720px;
-        display: grid;
-        grid-template-columns: 1fr;
-        gap: 8px;
+      .approach-faq {
+        max-width: 960px;
+        margin-top: 56px;
       }
-      .adr-list li {
-        font-size: 14px;
-        line-height: 1.5;
+      .approach-faq-title {
+        margin: 0 0 18px;
+        font-family: var(--mono);
+        font-size: 12px;
+        font-weight: 500;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--fg-faint);
       }
-      .adr-list a {
-        color: var(--fg-soft);
-        text-decoration: none;
+      .approach-faq-list {
+        border-top: 1px solid var(--line);
+      }
+      .approach-faq details {
         border-bottom: 1px solid var(--line);
-        padding-bottom: 1px;
-        transition:
-          color 0.15s ease,
-          border-color 0.15s ease;
       }
-      .adr-list a:hover {
+      .approach-faq details.is-animating {
+        overflow: hidden;
+      }
+      .approach-faq summary {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 18px;
+        gap: 18px;
+        align-items: center;
+        padding: 20px 0;
+        color: var(--fg-soft);
+        cursor: pointer;
+        list-style: none;
+        transition: color 0.15s ease;
+      }
+      .approach-faq summary::-webkit-details-marker {
+        display: none;
+      }
+      .approach-faq summary::after {
+        content: "";
+        width: 10px;
+        height: 10px;
+        border-right: 2px solid var(--fg-faint);
+        border-bottom: 2px solid var(--fg-faint);
+        justify-self: end;
+        transform: rotate(45deg);
+        transition:
+          border-color 0.15s ease,
+          transform 0.2s ease;
+      }
+      .approach-faq summary:hover,
+      .approach-faq details[open] summary {
         color: var(--fg);
+      }
+      .approach-faq summary:hover::after,
+      .approach-faq details[open] summary::after {
         border-color: var(--fg-soft);
+      }
+      .approach-faq details[open] summary::after {
+        transform: rotate(-135deg);
+      }
+      .approach-faq-question {
+        min-width: 0;
+        font-size: 16px;
+        line-height: 1.45;
+      }
+      .approach-faq-answer {
+        max-width: 820px;
+        padding: 0 42px 22px 0;
+        opacity: 0;
+        transform: translateY(-4px);
+        transition:
+          opacity 0.18s ease,
+          transform 0.18s ease;
+      }
+      .approach-faq details[open] .approach-faq-answer {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      .approach-faq details.is-collapsing .approach-faq-answer {
+        opacity: 0;
+        transform: translateY(-4px);
+      }
+      .approach-faq-answer p {
+        margin: 0 0 14px;
+        color: var(--fg-faint);
+        font-size: 14px;
+        line-height: 1.68;
+      }
+      .approach-faq-answer p:last-child {
+        margin-bottom: 0;
       }
 
       .code-section {
@@ -1180,6 +1244,9 @@
       @media (max-width: 980px) {
         .feat-panel {
           columns: 1;
+        }
+        .approach-faq-answer {
+          padding-right: 0;
         }
         .feat-row details pre,
         .how-code {
@@ -2983,6 +3050,10 @@ match (value) {
             via WasmGC. When deployed with explicit imports, the module boundary can reduce ambient access and limit
             supply-chain attack surface.
           </p>
+          <p>
+            The goal is 100% compatibility with the JavaScript and npm ecosystem while adding a module security and
+            module composition layer around compiled units.
+          </p>
         </div>
 
         <div class="how-sidebyside">
@@ -3136,63 +3207,160 @@ console.log(instance.exports.run()); // &rarr; 55</pre
           </p>
         </div>
 
-        <div class="how-step" style="margin-top: 56px">
-          <h3 class="how-step-title">Architecture</h3>
-          <p class="how-sub">
-            Architecture Decision Records (ADRs) document the non-obvious choices behind js2wasm &mdash; why WasmGC over
-            linear memory, why ahead-of-time compilation over a JIT, how closures and objects are laid out. Each record
-            captures the context, the decision, and its consequences in a few hundred words. Together they make the
-            design auditable for external contributors and reviewers.
-            <a href="./docs/adr/">Read the index &rarr;</a>
-          </p>
-          <ul class="adr-list">
-            <li>
-              <a href="./docs/adr/0001-hybrid-compilation-strategy.html">
-                ADR-001 &mdash; Hybrid static&ndash;dynamic compilation strategy
-              </a>
-            </li>
-            <li>
-              <a href="./docs/adr/0002-architectural-approach.html">
-                ADR-002 &mdash; Architectural approach: AOT + WasmGC
-              </a>
-            </li>
-            <li><a href="./docs/adr/0003-wasmgc.html">ADR-003 &mdash; WasmGC over linear memory</a></li>
-            <li><a href="./docs/adr/0004-aot.html">ADR-004 &mdash; AOT compilation over JIT/interpreter</a></li>
-            <li>
-              <a href="./docs/adr/0005-object-layout.html">
-                ADR-005 &mdash; Object layout via WasmGC struct types (closed-world)
-              </a>
-            </li>
-            <li>
-              <a href="./docs/adr/0006-boundary-guards.html">ADR-006 &mdash; Boundary guards at host-import surfaces</a>
-            </li>
-            <li>
-              <a href="./docs/adr/0007-closure-conversion.html">
-                ADR-007 &mdash; Closure conversion via WasmGC ref-cell structs
-              </a>
-            </li>
-            <li>
-              <a href="./docs/adr/0008-dual-string-backend.html">
-                ADR-008 &mdash; Dual string backend: wasm:js-string vs WasmGC i16 arrays
-              </a>
-            </li>
-            <li>
-              <a href="./docs/adr/0009-typescript-annotations.html">
-                ADR-009 &mdash; TypeScript annotations as inference seeds, not ground truth
-              </a>
-            </li>
-            <li><a href="./docs/adr/0010-eval-host-import.html">ADR-010 &mdash; Dynamic eval() via host import</a></li>
-            <li>
-              <a href="./docs/adr/0011-implementation-language.html">
-                ADR-011 &mdash; Implementation language: TypeScript with the typescript package
-              </a>
-            </li>
-            <li>
-              <a href="./docs/adr/0012-intermediate-representation.html">
-                ADR-012 &mdash; Intermediate representation: multi-stage typed IR
-              </a>
-            </li>
-          </ul>
+        <div class="approach-faq" aria-labelledby="approach-faq-title">
+          <h3 class="approach-faq-title" id="approach-faq-title">FAQ</h3>
+          <div class="approach-faq-list">
+            <details>
+              <summary>
+                <span class="approach-faq-question">Which architecture decisions are guiding your approach?</span>
+              </summary>
+              <div class="approach-faq-answer">
+                <p>
+                  Architecture Decision Records document the non-obvious choices behind JS
+                  <sup>2</sup>
+                  &mdash; why WasmGC over linear memory, why ahead-of-time compilation over a JIT, how closures and
+                  objects are laid out, and how the compiler keeps JavaScript semantics auditable as it grows.
+                </p>
+                <p>
+                  <a class="btn-outline" href="./docs/adr/">Architecture Decisions</a>
+                </p>
+              </div>
+            </details>
+            <details>
+              <summary>
+                <span class="approach-faq-question">
+                  How is JS
+                  <sup>2</sup>
+                  different from other JavaScript-on-Wasm approaches?
+                </span>
+              </summary>
+              <div class="approach-faq-answer">
+                <p>
+                  Most approaches either bundle a JavaScript interpreter, bundle a full JavaScript engine, define a
+                  smaller JavaScript-like subset, or compile JavaScript semantics directly to WasmGC.
+                </p>
+                <p>
+                  JS
+                  <sup>2</sup>
+                  is in the direct ahead-of-time compilation category: it produces WebAssembly GC from JavaScript and
+                  TypeScript source without embedding an interpreter or engine in the output module.
+                </p>
+              </div>
+            </details>
+            <details>
+              <summary>
+                <span class="approach-faq-question">How is this different from bundling a JavaScript interpreter?</span>
+              </summary>
+              <div class="approach-faq-answer">
+                <p>
+                  Interpreter-based systems package a JavaScript interpreter into the Wasm module, then run the user's
+                  program inside that interpreter. That can provide broad compatibility, but each deployed module pays
+                  the interpreter/runtime cost.
+                </p>
+                <p>
+                  JS
+                  <sup>2</sup>
+                  takes the opposite route: the output should contain compiled program code, not an interpreter that
+                  evaluates the program later.
+                </p>
+              </div>
+            </details>
+            <details>
+              <summary>
+                <span class="approach-faq-question">How is this different from bundling a full JavaScript engine?</span>
+              </summary>
+              <div class="approach-faq-answer">
+                <p>
+                  Bundled-engine systems inherit mature engine semantics, but they also inherit the size, startup,
+                  integration, sandboxing, and runtime code-generation tradeoffs of shipping an engine.
+                </p>
+                <p>
+                  JS
+                  <sup>2</sup>
+                  compiles ahead of time and uses WasmGC as the object and heap model where JavaScript semantics can be
+                  represented directly.
+                </p>
+              </div>
+            </details>
+            <details>
+              <summary>
+                <span class="approach-faq-question">
+                  How is this different from JavaScript/TypeScript subsets or new languages?
+                </span>
+              </summary>
+              <div class="approach-faq-answer">
+                <p>
+                  Subset, superset, and new-language approaches make compilation easier by changing the semantic
+                  contract: unsupported dynamic JavaScript is excluded, custom APIs are introduced, or the language is
+                  designed around Wasm from the start.
+                </p>
+                <p>
+                  That is a valid product direction, but it is not the JS
+                  <sup>2</sup>
+                  direction. The project keeps ECMAScript compatibility as the north star, and TypeScript annotations
+                  are not treated as proof that JavaScript runtime behavior has changed.
+                </p>
+              </div>
+            </details>
+            <details>
+              <summary>
+                <span class="approach-faq-question">
+                  Does JS
+                  <sup>2</sup>
+                  aim for full JavaScript compatibility?
+                </span>
+              </summary>
+              <div class="approach-faq-answer">
+                <p>
+                  Yes. Compatibility is incomplete today because JS
+                  <sup>2</sup>
+                  is an active compiler effort, but the project is driven by ECMAScript semantics and Test262
+                  conformance rather than by defining a permanent JavaScript-like subset.
+                </p>
+                <p>
+                  The long-term target is 100% compatibility with JavaScript and npm packages, with compiled modules
+                  gaining explicit security boundaries and composition points instead of being rewritten for a new
+                  language.
+                </p>
+                <p>
+                  Dynamic features may require guards, boxed representations, host fallbacks, or separately compiled
+                  units. The goal is to isolate those costs to the code paths that need them.
+                </p>
+              </div>
+            </details>
+            <details>
+              <summary>
+                <span class="approach-faq-question">Does "no bundled runtime" mean no helper code at all?</span>
+              </summary>
+              <div class="approach-faq-answer">
+                <p>
+                  No. Real JavaScript semantics still require helpers for builtins, coercions, interop, dynamic values,
+                  and host boundaries.
+                </p>
+                <p>
+                  The distinction is that JS
+                  <sup>2</sup>
+                  does not ship a fixed interpreter or engine whose cost is paid by every program. The compiler should
+                  emit or retain only the support code the compiled program needs.
+                </p>
+              </div>
+            </details>
+            <details>
+              <summary>
+                <span class="approach-faq-question">Why does WasmGC matter?</span>
+              </summary>
+              <div class="approach-faq-answer">
+                <p>
+                  Without WasmGC, a JavaScript compiler usually needs a custom object heap in linear memory or a bundled
+                  runtime that manages its own objects.
+                </p>
+                <p>
+                  WasmGC gives the compiler host-managed structs, arrays, references, and function references that can
+                  represent many JavaScript object shapes more directly.
+                </p>
+              </div>
+            </details>
+          </div>
         </div>
       </section>
 
@@ -3274,6 +3442,67 @@ console.log(instance.exports.run()); // &rarr; 55</pre
     <script src="./components/trend-chart.js"></script>
 
     <script>
+      (function hydrateApproachAccordions() {
+        const items = document.querySelectorAll(".approach-faq details");
+        if (!items.length) return;
+
+        const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+        const timing = { duration: 240, easing: "cubic-bezier(0.2, 0, 0, 1)" };
+
+        const clearAnimationState = (details) => {
+          details.classList.remove("is-animating", "is-collapsing");
+          details.style.height = "";
+          delete details.dataset.animating;
+        };
+
+        const animateOpen = (details) => {
+          const startHeight = `${details.offsetHeight}px`;
+          details.open = true;
+          const endHeight = `${details.offsetHeight}px`;
+
+          details.dataset.animating = "true";
+          details.classList.add("is-animating");
+          details.style.height = startHeight;
+
+          const animation = details.animate({ height: [startHeight, endHeight] }, timing);
+          animation.onfinish = () => clearAnimationState(details);
+          animation.oncancel = () => clearAnimationState(details);
+        };
+
+        const animateClose = (details, summary) => {
+          const startHeight = `${details.offsetHeight}px`;
+          const endHeight = `${summary.offsetHeight}px`;
+
+          details.dataset.animating = "true";
+          details.classList.add("is-animating", "is-collapsing");
+          details.style.height = startHeight;
+
+          const animation = details.animate({ height: [startHeight, endHeight] }, timing);
+          animation.onfinish = () => {
+            details.open = false;
+            clearAnimationState(details);
+          };
+          animation.oncancel = () => clearAnimationState(details);
+        };
+
+        items.forEach((details) => {
+          const summary = details.querySelector("summary");
+          if (!(summary instanceof HTMLElement)) return;
+
+          summary.addEventListener("click", (event) => {
+            if (prefersReducedMotion.matches) return;
+            event.preventDefault();
+            if (details.dataset.animating) return;
+
+            if (details.open) {
+              animateClose(details, summary);
+            } else {
+              animateOpen(details);
+            }
+          });
+        });
+      })();
+
       (function mountPuzzleBackground() {
         const canvas = document.querySelector(".puzzle-bg");
         if (!(canvas instanceof HTMLCanvasElement)) {

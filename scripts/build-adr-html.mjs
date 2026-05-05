@@ -12,9 +12,9 @@
 // Inputs:  docs/adr/*.md     (and docs/adr/README.md for the index)
 // Output:  dist/pages/docs/adr/*.html
 //
-// The output template is intentionally self-contained — no external CSS, no
-// JS — so that pages stay fast and survive without the rest of the site
-// being deployed.
+// The output template reuses the shared site navigation component so the ADR
+// pages match the rest of the site chrome. `build-pages.js` copies the
+// component assets into `dist/pages/components/` before publishing.
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -35,23 +35,27 @@ marked.use({
   pedantic: false,
 });
 
-function htmlShell({ title, body, backHref }) {
+function htmlShell({ title, body }) {
   return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <script defer src="../../frame-nav-sync.js"></script>
   <title>${escapeHtml(title)} — js2wasm</title>
-  <link rel="icon" href="/js2wasm/favicon.svg" />
+  <link rel="icon" href="../../js2logo.svg" type="image/svg+xml" />
   <style>
     :root {
       color-scheme: dark;
       --bg: #060a14;
+      --nav: rgba(6, 10, 20, 0.45);
       --fg: #ffffff;
       --fg-soft: rgba(255, 255, 255, 0.78);
       --fg-faint: rgba(255, 255, 255, 0.55);
+      --line-strong: rgba(255, 255, 255, 0.22);
       --line: rgba(255, 255, 255, 0.14);
       --surface: rgba(255, 255, 255, 0.04);
+      --surface-hover: rgba(255, 255, 255, 0.08);
       --link: #8ab4ff;
       --link-hover: #b8cdff;
       --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -68,31 +72,12 @@ function htmlShell({ title, body, backHref }) {
       line-height: 1.65;
     }
     body {
-      max-width: 760px;
+      max-width: 820px;
       margin: 0 auto;
-      padding: 56px 28px 96px;
+      padding: 104px 28px 96px;
     }
     a { color: var(--link); text-decoration: none; border-bottom: 1px solid transparent; transition: color .15s ease, border-color .15s ease; }
     a:hover { color: var(--link-hover); border-bottom-color: currentColor; }
-    .top-nav {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      margin-bottom: 36px;
-      padding-bottom: 16px;
-      border-bottom: 1px solid var(--line);
-      font-size: 13px;
-      letter-spacing: 0.04em;
-      color: var(--fg-faint);
-    }
-    .top-nav a { color: var(--fg-faint); }
-    .top-nav a:hover { color: var(--fg); }
-    .top-nav .brand {
-      font-family: var(--mono);
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
-    }
     h1, h2, h3, h4 {
       color: var(--fg);
       font-weight: 600;
@@ -157,16 +142,14 @@ function htmlShell({ title, body, backHref }) {
   </style>
 </head>
 <body>
-  <nav class="top-nav">
-    <a class="brand" href="/js2wasm/#approach">JS² · Approach</a>
-    <a href="${escapeHtml(backHref)}">← back to ADR index</a>
-  </nav>
+  <site-nav base="../../"></site-nav>
   <main>
     ${body}
   </main>
   <div class="footer">
     Source: <a href="https://github.com/loopdive/js2wasm/tree/main/docs/adr">docs/adr/</a> on GitHub.
   </div>
+  <script src="../../components/site-nav.js"></script>
 </body>
 </html>
 `;
@@ -210,9 +193,7 @@ export function titleFromMarkdown(source) {
 export function renderAdrPage(filename, source) {
   const title = titleFromMarkdown(source);
   const body = rewriteAdrLinks(marked.parse(source));
-  const isIndex = filename === "README.md";
-  const backHref = isIndex ? "/js2wasm/#approach" : "./";
-  return htmlShell({ title, body, backHref });
+  return htmlShell({ title, body });
 }
 
 export { htmlShell, escapeHtml };
