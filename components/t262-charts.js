@@ -892,6 +892,9 @@ class T262EditionTimeline extends HTMLElement {
         .segment.dimmed {
           background: rgba(0, 0, 0, 0.34);
         }
+        .segment.proposal-tail::before {
+          display: none;
+        }
         .segment + .segment::before {
           content: "";
           position: absolute;
@@ -975,6 +978,17 @@ class T262EditionTimeline extends HTMLElement {
           line-height: 1.6;
           color: var(--_text-muted);
           text-align: left;
+        }
+        @media (max-width: 640px) {
+          .track {
+            height: 58px;
+          }
+          .label {
+            display: none;
+          }
+          .copy {
+            margin-top: 0.35rem;
+          }
         }
       </style>
       <div class="section">
@@ -1177,13 +1191,15 @@ class T262EditionTimeline extends HTMLElement {
     }
     const activeStop = editionSliderStops.find((stop) => stop.value === this._currentScope) || null;
     const limitRank =
-      this._currentScope && this._currentScope !== "overall" && this._currentScope !== "overall+proposal"
-        ? (t262LegacyLimitRank(this._currentScope, rows, hasExplicitLegacyBreakdown) ??
-          T262_EDITION_SCOPE_RANK.get(t262NormalizeEditionLabel(this._currentScope)) ??
-          null)
-        : publishedStop
-          ? (T262_EDITION_SCOPE_RANK.get(publishedStop.label) ?? null)
-          : null;
+      this._currentScope === "overall+proposal"
+        ? null
+        : this._currentScope && this._currentScope !== "overall"
+          ? (t262LegacyLimitRank(this._currentScope, rows, hasExplicitLegacyBreakdown) ??
+            T262_EDITION_SCOPE_RANK.get(t262NormalizeEditionLabel(this._currentScope)) ??
+            null)
+          : publishedStop
+            ? (T262_EDITION_SCOPE_RANK.get(publishedStop.label) ?? null)
+            : null;
     const activeEdition =
       this._currentScope === "overall+proposal"
         ? (rows.at(-1)?.edition ?? publishedStop?.label ?? null)
@@ -1283,9 +1299,11 @@ class T262EditionTimeline extends HTMLElement {
       segmentEl.className = "segment";
       const isActive = row.edition === activeEdition;
       const isMarkerDimmed = dimAfterRank !== null && row.rank > dimAfterRank;
-      const isSegmentDimmed = dimAfterRank !== null && row.rank > dimAfterRank;
+      const isSegmentDimmed = dimAfterRank !== null && row.rank >= dimAfterRank;
+      const isProposalTail = proposalEditionLabels.has(row.edition) && index === segments.length - 1;
       if (isActive) segmentEl.classList.add("active");
       if (isSegmentDimmed) segmentEl.classList.add("dimmed");
+      if (isProposalTail) segmentEl.classList.add("proposal-tail");
       segmentEl.style.flex = String(span);
       timeline.appendChild(segmentEl);
 
@@ -1308,7 +1326,6 @@ class T262EditionTimeline extends HTMLElement {
           isMarkerDimmed,
         );
       } else {
-        const isProposalTail = proposalEditionLabels.has(row.edition) && index === segments.length - 1;
         appendMarker(
           scaleLabelFor(row.edition),
           isProposalTail ? segmentEndPercent : segmentStartPercent,
