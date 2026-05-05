@@ -156,12 +156,6 @@ Sprint 47 was the largest sprint to date: 631 commits, 50+ issues closed across 
 
 _Generated from issue files. Update issue `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
 
-### Review
-
-| Issue | Title | Priority | Status |
-|---|---|---|---|
-| #1278 | Update stale lodash-tier1 stress test — resolver fixed, clamp/add behavior changed | low | review |
-
 ### Done
 
 | Issue | Title | Priority | Status |
@@ -200,6 +194,7 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | #1249 | class private fields and methods (#name syntax) — PrivateIdentifier codegen | medium | done |
 | #1250 | logical assignment operators: \|\|=, &&=, ??= (ES2021) | medium | done |
 | #1251 | baseline-validate: TS checker non-determinism causes 19/50 false failures on main JSONL | medium | done |
+| #1253 | OrdinaryToPrimitive returns undefined instead of throwing TypeError (§7.1.1.1 step 6) | medium | done |
 | #1258 | compileForOfAssignDestructuringExternref must route writes through boxedCaptures.struct.set | high | done |
 | #1259 | async-gen yield-star sync-fallback leaks unboxed ref-cell into iter capture | high | done |
 | #1260 | Destructuring of null/undefined must throw TypeError per §13.15.5.5 | high | done |
@@ -220,5 +215,6 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | #1285 | Hono Tier 3 stress test — recursive TrieRouter with class-typed Node children | high | done |
 | #1286 | Object.keys(any-typed obj).join() throws illegal cast — externref→string-array coerce missing | medium | done |
 | #1288 | TypeScript 7 (@typescript/native-preview) support under --ts7 feature flag | medium | done |
+| #1289 | ESLint linter.js direct compile: array.set type mismatch in FileReport_addRuleMessage | medium | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->

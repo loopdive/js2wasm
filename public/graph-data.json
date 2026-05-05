@@ -15593,20 +15593,6 @@
       "title": "Infer when JavaScript number flows can be safely lowered to int32 or uint32",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
-      "sprint": "",
-      "depends_on": [
-        "1124"
-      ],
-      "files": [],
-      "goal": "core-semantics",
-      "cluster": "core-semantics"
-    },
-    {
-      "id": "1126",
-      "title": "Infer when JavaScript number flows can be safely lowered to int32 or uint32",
-      "priority": "high",
-      "status": "ready",
       "raw_status": "in-progress",
       "sprint": "49",
       "depends_on": [
@@ -16746,20 +16732,6 @@
       "cluster": "performance"
     },
     {
-      "id": "1199",
-      "title": "perf: linear-memory backing for typed numeric arrays (`Array<number>` with i32-only ops → `i32.load`/`i32.store`)",
-      "priority": "medium",
-      "status": "backlog",
-      "raw_status": "backlog",
-      "sprint": "49",
-      "depends_on": [
-        "1197"
-      ],
-      "files": [],
-      "goal": "performance",
-      "cluster": "performance"
-    },
-    {
       "id": "1200",
       "title": "perf: loop-invariant code motion in optimizer pass (hoist `arr.length` etc. out of `for` conditions)",
       "priority": "medium",
@@ -17051,8 +17023,8 @@
       "id": "1223",
       "title": "TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up)",
       "priority": "medium",
-      "status": "backlog",
-      "raw_status": "backlog",
+      "status": "ready",
+      "raw_status": "deferred",
       "sprint": "49",
       "depends_on": [
         "1177",
@@ -17356,7 +17328,7 @@
       "priority": "medium",
       "status": "done",
       "raw_status": "done",
-      "sprint": "",
+      "sprint": "47",
       "depends_on": [],
       "files": [],
       "goal": "npm-library-support",
@@ -17609,18 +17581,6 @@
       "id": "1267",
       "title": "optimizer: method calls in expression-statement position silently dropped when return value unused",
       "priority": "high",
-      "status": "backlog",
-      "raw_status": "backlog",
-      "sprint": "",
-      "depends_on": [],
-      "files": [],
-      "goal": "correctness",
-      "cluster": "correctness"
-    },
-    {
-      "id": "1267",
-      "title": "optimizer: method calls in expression-statement position silently dropped when return value unused",
-      "priority": "high",
       "status": "done",
       "raw_status": "done",
       "sprint": "47",
@@ -17628,18 +17588,6 @@
       "files": [],
       "goal": "correctness",
       "cluster": "correctness"
-    },
-    {
-      "id": "1268",
-      "title": "index-signature obj[key] ??= value returns NaN instead of assigning",
-      "priority": "medium",
-      "status": "backlog",
-      "raw_status": "backlog",
-      "sprint": "",
-      "depends_on": [],
-      "files": [],
-      "goal": "npm-library-support",
-      "cluster": "npm-library-support"
     },
     {
       "id": "1268",
@@ -17782,18 +17730,6 @@
       "cluster": "npm-library-support"
     },
     {
-      "id": "1278",
-      "title": "Update stale lodash-tier1 stress test — resolver fixed, clamp/add behavior changed",
-      "priority": "low",
-      "status": "ready",
-      "raw_status": "review",
-      "sprint": "",
-      "depends_on": [],
-      "files": [],
-      "goal": "npm-library-support",
-      "cluster": "npm-library-support"
-    },
-    {
       "id": "1279",
       "title": "CJS require() call support — static module graph via require() analysis",
       "priority": "high",
@@ -17914,7 +17850,7 @@
       "priority": "medium",
       "status": "done",
       "raw_status": "done",
-      "sprint": "",
+      "sprint": "47",
       "depends_on": [],
       "files": [],
       "goal": "platform",
@@ -17975,20 +17911,6 @@
       "cluster": "npm-library-support"
     },
     {
-      "id": "1292",
-      "title": "lodash Tier 2 stress test — memoize, flow, partial application",
-      "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "49",
-      "depends_on": [
-        "1291"
-      ],
-      "files": [],
-      "goal": "npm-library-support",
-      "cluster": "npm-library-support"
-    },
-    {
       "id": "1293",
       "title": "Hono Tier 4 — string[][] array-of-arrays type support + #segments field",
       "priority": "medium",
@@ -18025,18 +17947,6 @@
       "files": [],
       "goal": "conformance",
       "cluster": "conformance"
-    },
-    {
-      "id": "1295",
-      "title": "lodash transitive init: start-function throws WebAssembly.Exception during instantiate (clamp/add)",
-      "priority": "medium",
-      "status": "done",
-      "raw_status": "done",
-      "sprint": "48",
-      "depends_on": [],
-      "files": [],
-      "goal": "npm-library-support",
-      "cluster": "npm-library-support"
     },
     {
       "id": "1296",
@@ -19003,24 +18913,12 @@
       "target": "1295"
     },
     {
-      "source": "1124",
-      "target": "1126"
-    },
-    {
-      "source": "1197",
-      "target": "1199"
-    },
-    {
       "source": "1177",
       "target": "1223"
     },
     {
       "source": "1205",
       "target": "1223"
-    },
-    {
-      "source": "1291",
-      "target": "1292"
     },
     {
       "source": "1045",
@@ -19725,7 +19623,6 @@
         "1120",
         "1121",
         "1126",
-        "1126",
         "1127",
         "1128",
         "1129",
@@ -19753,7 +19650,6 @@
         "1143",
         "1145",
         "1215",
-        "1267",
         "1267"
       ],
       "track": "supporting track"
@@ -20096,7 +19992,6 @@
         "1249",
         "1250",
         "1268",
-        "1268",
         "1271",
         "1272",
         "1273",
@@ -20104,7 +19999,6 @@
         "1275",
         "1276",
         "1277",
-        "1278",
         "1278",
         "1279",
         "1281",
@@ -20116,9 +20010,7 @@
         "1289",
         "1291",
         "1292",
-        "1292",
         "1293",
-        "1295",
         "1297",
         "1298",
         "1299",
@@ -20185,7 +20077,6 @@
         "1196",
         "1197",
         "1198",
-        "1199",
         "1199",
         "1200",
         "1209",
@@ -23014,10 +22905,6 @@
     },
     {
       "goal": "core-semantics",
-      "issue": "1126"
-    },
-    {
-      "goal": "core-semantics",
       "issue": "1127"
     },
     {
@@ -23079,10 +22966,6 @@
     {
       "goal": "correctness",
       "issue": "1215"
-    },
-    {
-      "goal": "correctness",
-      "issue": "1267"
     },
     {
       "goal": "correctness",
@@ -24106,10 +23989,6 @@
     },
     {
       "goal": "npm-library-support",
-      "issue": "1268"
-    },
-    {
-      "goal": "npm-library-support",
       "issue": "1271"
     },
     {
@@ -24135,10 +24014,6 @@
     {
       "goal": "npm-library-support",
       "issue": "1277"
-    },
-    {
-      "goal": "npm-library-support",
-      "issue": "1278"
     },
     {
       "goal": "npm-library-support",
@@ -24186,15 +24061,7 @@
     },
     {
       "goal": "npm-library-support",
-      "issue": "1292"
-    },
-    {
-      "goal": "npm-library-support",
       "issue": "1293"
-    },
-    {
-      "goal": "npm-library-support",
-      "issue": "1295"
     },
     {
       "goal": "npm-library-support",
@@ -24371,10 +24238,6 @@
     {
       "goal": "performance",
       "issue": "1198"
-    },
-    {
-      "goal": "performance",
-      "issue": "1199"
     },
     {
       "goal": "performance",
@@ -27260,10 +27123,6 @@
     },
     {
       "goal": "compilable",
-      "issue": "1126"
-    },
-    {
-      "goal": "compilable",
       "issue": "1127"
     },
     {
@@ -27325,10 +27184,6 @@
     {
       "goal": "compilable",
       "issue": "1215"
-    },
-    {
-      "goal": "compilable",
-      "issue": "1267"
     },
     {
       "goal": "compilable",
@@ -28128,10 +27983,6 @@
     },
     {
       "goal": "core-semantics",
-      "issue": "1268"
-    },
-    {
-      "goal": "core-semantics",
       "issue": "1271"
     },
     {
@@ -28157,10 +28008,6 @@
     {
       "goal": "core-semantics",
       "issue": "1277"
-    },
-    {
-      "goal": "core-semantics",
-      "issue": "1278"
     },
     {
       "goal": "core-semantics",
@@ -28208,15 +28055,7 @@
     },
     {
       "goal": "core-semantics",
-      "issue": "1292"
-    },
-    {
-      "goal": "core-semantics",
       "issue": "1293"
-    },
-    {
-      "goal": "core-semantics",
-      "issue": "1295"
     },
     {
       "goal": "core-semantics",
@@ -28396,10 +28235,6 @@
     },
     {
       "goal": "platform",
-      "issue": "1268"
-    },
-    {
-      "goal": "platform",
       "issue": "1271"
     },
     {
@@ -28425,10 +28260,6 @@
     {
       "goal": "platform",
       "issue": "1277"
-    },
-    {
-      "goal": "platform",
-      "issue": "1278"
     },
     {
       "goal": "platform",
@@ -28476,15 +28307,7 @@
     },
     {
       "goal": "platform",
-      "issue": "1292"
-    },
-    {
-      "goal": "platform",
       "issue": "1293"
-    },
-    {
-      "goal": "platform",
-      "issue": "1295"
     },
     {
       "goal": "platform",
@@ -28649,10 +28472,6 @@
     {
       "goal": "core-semantics",
       "issue": "1198"
-    },
-    {
-      "goal": "core-semantics",
-      "issue": "1199"
     },
     {
       "goal": "core-semantics",

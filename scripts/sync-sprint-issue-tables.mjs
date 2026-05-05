@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "fs";
 import { basename, dirname, join, resolve } from "path";
 
@@ -9,8 +10,45 @@ const LEGACY_SPRINT_ROOT = join(ROOT, "plan/sprints");
 
 const START = "<!-- GENERATED_ISSUE_TABLES_START -->";
 const END = "<!-- GENERATED_ISSUE_TABLES_END -->";
+const STATUS_PRIORITY = {
+  done: 0,
+  "wont-fix": 1,
+  blocked: 2,
+  review: 3,
+  "in-progress": 4,
+  ready: 5,
+  deferred: 6,
+  backlog: 7,
+};
+
+function git(args) {
+  return execFileSync("git", args, {
+    cwd: ROOT,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  }).trim();
+}
+
+function getTrackedMarkdownFiles(root) {
+  try {
+    return new Set(
+      git(["ls-files", root])
+        .split("\n")
+        .map((file) => file.trim())
+        .filter((file) => file.endsWith(".md"))
+        .map((file) => join(ROOT, file)),
+    );
+  } catch {
+    return null;
+  }
+}
+
+function issueStatusPriority(status) {
+  return STATUS_PRIORITY[status] ?? 8;
+}
+
 function isIssueFileName(name) {
-  return /^\d+[a-z]?(?:[-_].+)?\.md$/i.test(name);
+  return /^\d+[a-z]?(?:-.+)?\.md$/i.test(name);
 }
 
 function parseFrontmatter(text) {
@@ -43,7 +81,7 @@ function extractSprintNumber(value) {
 
 function sprintFromPath(file) {
   const m = file.match(/\/sprints\/(\d+)\//);
-  return m ? parseInt(m[1], 10) : null;
+  return m ? m[1] : "";
 }
 
 function walkFiles(root) {
@@ -70,30 +108,53 @@ function normalizeStatus(dirName, fmStatus) {
   if (normalized === "review" || normalized === "in-review" || normalized === "in_review") return "review";
   if (normalized === "in-progress" || normalized === "in_progress") return "in-progress";
   if (normalized === "ready") return "ready";
+  if (normalized === "deferred") return "deferred";
   if (dirName === "done") return "done";
   if (dirName === "blocked") return "blocked";
   return "ready";
 }
 
+function issueLane(status) {
+  if (
+    status === "backlog" ||
+    status === "blocked" ||
+    status === "ready" ||
+    status === "in-progress" ||
+    status === "review" ||
+    status === "done" ||
+    status === "wont-fix"
+  ) {
+    return status;
+  }
+  return "ready";
+}
+
 function loadIssues() {
-  const issues = [];
+  const trackedFiles = getTrackedMarkdownFiles("plan/issues");
+  const byId = new Map();
   for (const file of walkFiles(ISSUE_ROOT)) {
     const name = file.split("/").pop();
     if (!isIssueFileName(name)) continue;
+    if (trackedFiles && !trackedFiles.has(file)) continue;
     const text = readFileSync(file, "utf8");
     const fm = parseFrontmatter(text);
-    const sprintNumber = sprintFromPath(file);
-    if (!Number.isFinite(sprintNumber)) continue;
-    issues.push({
+    const sprintNumber = extractSprintNumber(fm.sprint || sprintFromPath(file));
+    const issue = {
       id: String(fm.id || name.replace(/\.md$/, "")),
       title: extractTitle(text, fm),
       sprintNumber,
       status: normalizeStatus("", fm.status || ""),
       priority: fm.priority || "",
       path: file,
-    });
+    };
+    const existing = byId.get(issue.id);
+    if (!existing || issueStatusPriority(issue.status) < issueStatusPriority(existing.status)) {
+      byId.set(issue.id, issue);
+    }
   }
-  return issues.sort((a, b) => String(a.id).localeCompare(String(b.id), undefined, { numeric: true }));
+  return [...byId.values()]
+    .filter((issue) => Number.isFinite(issue.sprintNumber))
+    .sort((a, b) => String(a.id).localeCompare(String(b.id), undefined, { numeric: true }));
 }
 
 function renderTable(title, issues) {
@@ -125,7 +186,7 @@ function renderSprintSection(sprintNumber, issues) {
   ];
 
   for (const [key, label] of groups) {
-    const groupIssues = issues.filter((issue) => issue.status === key);
+    const groupIssues = issues.filter((issue) => issueLane(issue.status) === key);
     if (groupIssues.length === 0) continue;
     lines.push(renderTable(label, groupIssues));
   }

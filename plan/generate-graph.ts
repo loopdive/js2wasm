@@ -11,7 +11,16 @@ import * as fs from "fs";
 import * as path from "path";
 import { execFileSync } from "node:child_process";
 
-type RawIssueStatus = "ready" | "in-progress" | "review" | "blocked" | "backlog" | "done" | "wont-fix" | "planning";
+type RawIssueStatus =
+  | "ready"
+  | "in-progress"
+  | "review"
+  | "blocked"
+  | "backlog"
+  | "done"
+  | "wont-fix"
+  | "planning"
+  | "deferred";
 
 type GraphIssueStatus = "ready" | "blocked" | "done" | "backlog";
 
@@ -54,7 +63,21 @@ const ROOT = path.resolve(import.meta.dirname!, "..");
 const ISSUES_DIR = path.join(ROOT, "plan", "issues");
 const GOALS_DIR = path.join(ROOT, "plan", "goals");
 const OUTPUT = path.join(ROOT, "public", "graph-data.json");
-const NON_ISSUE_FILES = new Set([path.join(ISSUES_DIR, "SCHEMA.md"), path.join(ISSUES_DIR, "AUDIT-2026-04-14.md")]);
+
+const STATUS_PRIORITY: Record<string, number> = {
+  done: 0,
+  "wont-fix": 1,
+  blocked: 2,
+  review: 3,
+  "in-progress": 4,
+  ready: 5,
+  deferred: 6,
+  backlog: 7,
+};
+
+function issueStatusPriority(status: string): number {
+  return STATUS_PRIORITY[status] ?? 8;
+}
 
 function git(args: string[]): string {
   return execFileSync("git", args, {
@@ -98,8 +121,7 @@ function walk(dir: string, out: string[] = []): string[] {
 }
 
 function isIssueFile(file: string): boolean {
-  if (NON_ISSUE_FILES.has(file)) return false;
-  return path.basename(file) !== "sprint.md";
+  return /^\d+[a-z]?(?:-.+)?\.md$/i.test(path.basename(file));
 }
 
 function parseFrontmatter(content: string): Record<string, any> {
@@ -181,6 +203,8 @@ function normalizePriority(value: unknown): IssueNode["priority"] {
 
 function normalizeRawStatus(value: unknown): RawIssueStatus {
   const v = String(value || "").toLowerCase();
+  if (v === "in_progress") return "in-progress";
+  if (v === "in-review" || v === "in_review") return "review";
   if (
     v === "ready" ||
     v === "in-progress" ||
@@ -189,11 +213,12 @@ function normalizeRawStatus(value: unknown): RawIssueStatus {
     v === "backlog" ||
     v === "done" ||
     v === "wont-fix" ||
-    v === "planning"
+    v === "planning" ||
+    v === "deferred"
   ) {
     return v;
   }
-  return "backlog";
+  return v ? "ready" : "backlog";
 }
 
 function normalizeGraphStatus(raw: RawIssueStatus): GraphIssueStatus {
@@ -208,8 +233,14 @@ function parseIdList(raw: unknown): string[] {
   return raw.map((value) => String(value).trim()).filter(Boolean);
 }
 
+function sprintFromPath(file: string): string {
+  const parts = file.split(path.sep);
+  const sprintsIdx = parts.lastIndexOf("sprints");
+  return sprintsIdx >= 0 && sprintsIdx + 1 < parts.length - 1 ? parts[sprintsIdx + 1] : "";
+}
+
 function scanIssues(): IssueNode[] {
-  const nodes: IssueNode[] = [];
+  const byId = new Map<string, IssueNode>();
   const trackedFiles = getTrackedMarkdownFiles("plan/issues");
   for (const file of walk(ISSUES_DIR)
     .filter(isIssueFile)
@@ -220,17 +251,18 @@ function scanIssues(): IssueNode[] {
 
     const id = String(fm.id || path.basename(file, ".md")).trim();
     const rawStatus = normalizeRawStatus(fm.status);
+    const sprint = String(fm.sprint || sprintFromPath(file) || "");
     const node: IssueNode = {
       id,
       title: getTitle(content, fm),
       priority: normalizePriority(fm.priority),
       status: normalizeGraphStatus(rawStatus),
       raw_status: rawStatus,
-      sprint: String(fm.sprint || ""),
+      sprint,
       depends_on: parseIdList(fm.depends_on),
       files: normalizeFiles(fm.files),
       goal: String(fm.goal || "").trim() || undefined,
-      cluster: String(fm.goal || "").trim() || (String(fm.sprint || "").trim() ? `sprint-${fm.sprint}` : "Unclustered"),
+      cluster: String(fm.goal || "").trim() || (sprint.trim() ? `sprint-${sprint}` : "Unclustered"),
     };
 
     const ce = extractCompilerErrors(content);
@@ -238,9 +270,12 @@ function scanIssues(): IssueNode[] {
     if (fm.test262_skip) node.test262_skip = parseInt(String(fm.test262_skip), 10) || undefined;
     if (fm.test262_fail) node.test262_fail = parseInt(String(fm.test262_fail), 10) || undefined;
     if (fm.test262_ce) node.test262_ce = parseInt(String(fm.test262_ce), 10) || undefined;
-    nodes.push(node);
+    const existing = byId.get(id);
+    if (!existing || issueStatusPriority(node.raw_status) < issueStatusPriority(existing.raw_status)) {
+      byId.set(id, node);
+    }
   }
-  return nodes;
+  return [...byId.values()];
 }
 
 function scanGoals(nodes: IssueNode[]): GoalNode[] {

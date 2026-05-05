@@ -52,7 +52,6 @@ not.
 | **1248** | compiler: typeof x === 'string' guard breaks String.prototype.substring(start) — returns single char | 47 | done | medium |
 | **1249** | class private fields and methods (#name syntax) — PrivateIdentifier codegen | 47 | done | medium |
 | **1250** | logical assignment operators: \|\|=, &&=, ??= (ES2021) | 47 | done | medium |
-| **1268** | index-signature obj[key] ??= value returns NaN instead of assigning | Backlog | backlog | medium |
 | **1268** | index-signature obj[key] ??= value returns NaN instead of assigning | 47 | done | medium |
 | **1271** | for...in / Object.keys enumeration over compiled objects | 47 | done | high |
 | **1272** | Symbol as object key — Symbol.for(), well-known Symbols as property keys | 47 | done | medium |
@@ -62,7 +61,6 @@ not.
 | **1276** | HOF returning closure — function-valued module exports (createMathOperation pattern) | 47 | done | high |
 | **1277** | CJS module.exports → Wasm export mapping in compileProject | 47 | done | medium |
 | **1278** | Update stale lodash-tier1 stress test — resolver fixed, clamp/add behavior changed | 47 | done | low |
-| **1278** | Update stale lodash-tier1 stress test — resolver fixed, clamp/add behavior changed | 47 | review | low |
 | **1279** | CJS require() call support — static module graph via require() analysis | 47 | done | high |
 | **1281** | IR: optional chaining `?.` and `?.()` — IR path support | 47 | done | medium |
 | **1282** | ESLint Tier 1 stress test — minimal Linter.verify() compilation | 48 | done | medium |
@@ -70,12 +68,10 @@ not.
 | **1285** | Hono Tier 3 stress test — recursive TrieRouter with class-typed Node children | 47 | done | high |
 | **1286** | Object.keys(any-typed obj).join() throws illegal cast — externref→string-array coerce missing | 47 | done | medium |
 | **1287** | ESLint entry-point compileProject emits invalid Wasm (`Type index 10 is out of bounds`) | Backlog | done | medium |
-| **1289** | ESLint linter.js direct compile: array.set type mismatch in FileReport_addRuleMessage | Backlog | done | medium |
+| **1289** | ESLint linter.js direct compile: array.set type mismatch in FileReport_addRuleMessage | 47 | done | medium |
 | **1291** | lodash Tier 1b — upgrade add/clamp stress tests to execution-level assertions | 48 | done | medium |
 | **1292** | lodash Tier 2 stress test — memoize, flow, partial application | 48 | done | medium |
-| **1292** | lodash Tier 2 stress test — memoize, flow, partial application | 49 | ready | medium |
 | **1293** | Hono Tier 4 — string[][] array-of-arrays type support + #segments field | 48 | done | medium |
-| **1295** | lodash transitive init: start-function throws WebAssembly.Exception during instantiate (clamp/add) | 48 | done | medium |
 | **1297** | Hono Tier 5 — Application class: route registration + middleware dispatch + Context | 49 | done | medium |
 | **1298** | Calling a function-typed value stored in a field/array/Map drops the call and returns null | 49 | ready | high |
 | **1299** | Virtual dispatch through abstract-base-typed dict values returns first stored subclass's method | 49 | done | medium |
