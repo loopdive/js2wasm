@@ -307,6 +307,61 @@ describe("fast mode: native arrays", () => {
       // 20 + 30
       expect(await runFast(src)).toBe(50);
     });
+
+    it("slice() with no args copies entire array", async () => {
+      const src = `
+        export function test(): number {
+          const arr = [1, 2, 3];
+          const s = arr.slice();
+          return s[0] * 100 + s[1] * 10 + s[2];
+        }
+      `;
+      expect(await runFast(src)).toBe(123);
+    });
+
+    it("slice with negative start", async () => {
+      const src = `
+        export function test(): number {
+          const arr = [10, 20, 30, 40, 50];
+          const s = arr.slice(-2);
+          return s[0] * 10 + s[1];
+        }
+      `;
+      expect(await runFast(src)).toBe(450);
+    });
+
+    it("slice with negative start and end", async () => {
+      const src = `
+        export function test(): number {
+          const arr = [10, 20, 30, 40, 50];
+          const s = arr.slice(-3, -1);
+          return s[0] * 10 + s[1];
+        }
+      `;
+      expect(await runFast(src)).toBe(340);
+    });
+
+    it("slice does not mutate original", async () => {
+      const src = `
+        export function test(): number {
+          const arr = [1, 2, 3];
+          const s = arr.slice(0, 2);
+          return arr.length * 10 + s.length;
+        }
+      `;
+      expect(await runFast(src)).toBe(32);
+    });
+
+    it("slice clamps out-of-range indices", async () => {
+      const src = `
+        export function test(): number {
+          const arr = [1, 2, 3];
+          const s = arr.slice(-10, 100);
+          return s.length;
+        }
+      `;
+      expect(await runFast(src)).toBe(3);
+    });
   });
 
   describe("concat", () => {
@@ -346,6 +401,108 @@ describe("fast mode: native arrays", () => {
       `;
       // 3*100 + 2*10 + 1 = 321
       expect(await runFast(src)).toBe(321);
+    });
+
+    it("reverse returns same array ref", async () => {
+      const src = `
+        export function test(): number {
+          const arr = [5, 3, 1];
+          const rev = arr.reverse();
+          return rev[0] * 100 + rev[1] * 10 + rev[2];
+        }
+      `;
+      expect(await runFast(src)).toBe(135);
+    });
+
+    it("reverse single element array", async () => {
+      const src = `
+        export function test(): number {
+          const arr = [42];
+          arr.reverse();
+          return arr[0];
+        }
+      `;
+      expect(await runFast(src)).toBe(42);
+    });
+
+    it("reverse even-length array", async () => {
+      const src = `
+        export function test(): number {
+          const arr = [1, 2, 3, 4];
+          arr.reverse();
+          return arr[0] * 1000 + arr[1] * 100 + arr[2] * 10 + arr[3];
+        }
+      `;
+      expect(await runFast(src)).toBe(4321);
+    });
+
+    it("double reverse restores original", async () => {
+      const src = `
+        export function test(): number {
+          const arr = [1, 2, 3];
+          arr.reverse();
+          arr.reverse();
+          return arr[0] * 100 + arr[1] * 10 + arr[2];
+        }
+      `;
+      expect(await runFast(src)).toBe(123);
+    });
+  });
+
+  describe("splice", () => {
+    it("splice(1, 2) removes 2 elements at index 1", async () => {
+      const src = `
+        export function test(): number {
+          const arr = [10, 20, 30, 40, 50];
+          const removed = arr.splice(1, 2);
+          return arr.length * 1000 + removed.length * 100 + removed[0] + removed[1];
+        }
+      `;
+      expect(await runFast(src)).toBe(3250);
+    });
+
+    it("splice(0, 1) removes first element", async () => {
+      const src = `
+        export function test(): number {
+          const arr = [10, 20, 30];
+          arr.splice(0, 1);
+          return arr[0] * 100 + arr[1] * 10 + arr.length;
+        }
+      `;
+      expect(await runFast(src)).toBe(2302);
+    });
+
+    it("splice with negative start", async () => {
+      const src = `
+        export function test(): number {
+          const arr = [1, 2, 3, 4, 5];
+          const removed = arr.splice(-2, 1);
+          return arr.length * 100 + removed[0];
+        }
+      `;
+      expect(await runFast(src)).toBe(404);
+    });
+
+    it("splice returns deleted elements as new array", async () => {
+      const src = `
+        export function test(): number {
+          const arr = [1, 2, 3, 4, 5];
+          const del = arr.splice(2, 2);
+          return del[0] * 10 + del[1];
+        }
+      `;
+      expect(await runFast(src)).toBe(34);
+    });
+
+    it("splice with only start arg removes rest", async () => {
+      const src = `
+        export function test(): number {
+          const arr = [10, 20, 30, 40];
+          const del = arr.splice(1);
+          return arr.length * 100 + del.length;
+        }
+      `;
+      expect(await runFast(src)).toBe(103);
     });
   });
 

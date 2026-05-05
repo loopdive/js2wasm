@@ -14,6 +14,7 @@ import { isVoidType, unwrapPromiseType } from "../../checker/type-mapper.js";
 import type { Instr, ValType } from "../../ir/types.js";
 import { getLocalType } from "../context/locals.js";
 import type { CodegenContext, FunctionContext } from "../context/types.js";
+import { stringConstantExternrefInstrs } from "../native-strings.js";
 import { addStringConstantGlobal, ensureExnTag } from "../registry/imports.js";
 import { coerceType, valTypesMatch } from "../shared.js";
 
@@ -24,8 +25,7 @@ import { coerceType, valTypesMatch } from "../shared.js";
  */
 export function emitThrowString(ctx: CodegenContext, fctx: FunctionContext, message: string): void {
   addStringConstantGlobal(ctx, message);
-  const strIdx = ctx.stringGlobalMap.get(message)!;
-  fctx.body.push({ op: "global.get", index: strIdx } as Instr);
+  fctx.body.push(...stringConstantExternrefInstrs(ctx, message));
   const tagIdx = ensureExnTag(ctx);
   fctx.body.push({ op: "throw", tagIdx });
 }

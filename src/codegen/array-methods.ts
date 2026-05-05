@@ -23,6 +23,7 @@ import {
   registerEmitBoundsCheckedArrayGet,
   VOID_RESULT,
 } from "./shared.js";
+import { stringConstantExternrefInstrs } from "./native-strings.js";
 import { ensureTimsortHelper } from "./timsort.js";
 import { coerceType, coercionInstrs, defaultValueInstrs } from "./type-coercion.js";
 
@@ -31,17 +32,15 @@ type ArrayMethodAccess = ts.PropertyAccessExpression | ts.ElementAccessExpressio
 /** Emit throw with a string message (local version to avoid circular dep on expressions.ts) */
 function emitThrowString(ctx: CodegenContext, fctx: FunctionContext, message: string): void {
   addStringConstantGlobal(ctx, message);
-  const strIdx = ctx.stringGlobalMap.get(message)!;
-  fctx.body.push({ op: "global.get", index: strIdx } as Instr);
+  fctx.body.push(...stringConstantExternrefInstrs(ctx, message));
   const tagIdx = ensureExnTag(ctx);
   fctx.body.push({ op: "throw", tagIdx });
 }
 
 function throwStringInstrs(ctx: CodegenContext, message: string): Instr[] {
   addStringConstantGlobal(ctx, message);
-  const strIdx = ctx.stringGlobalMap.get(message)!;
   const tagIdx = ensureExnTag(ctx);
-  return [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx } as Instr];
+  return [...stringConstantExternrefInstrs(ctx, message), { op: "throw", tagIdx } as Instr];
 }
 
 /**
