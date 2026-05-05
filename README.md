@@ -63,21 +63,28 @@ The project is being positioned for a community-first release while the compiler
 
 ## How It Compares
 
-The core tradeoff in this space is straightforward:
+Most JavaScript-on-Wasm approaches fit into one of four broad categories:
 
-- **bundle an interpreter into Wasm**
-- or **compile the program directly to Wasm**
+1. bundled JavaScript interpreters,
+2. bundled JavaScript engines,
+3. incompatible JavaScript or TypeScript subsets, supersets, and new languages,
+4. direct AOT compilation of JavaScript semantics to WasmGC.
 
-`js2wasm` is in the second category.
+`js2wasm` is in the fourth category.
 
-| Project | Approach | WasmGC | Standalone story | Output profile | Conformance posture |
-| --- | --- | --- | --- | --- | --- |
-| **js2wasm** | **Direct AOT to WasmGC** | **Yes** | **Yes, but still in progress and not yet the primary conformance path** | **small compiled modules** | **growing compiler-native conformance** |
-| Javy | QuickJS bundled in Wasm | No | WASI-focused | ships engine/runtime | inherits interpreter behavior |
-| StarlingMonkey | SpiderMonkey bundled in Wasm | No | host/runtime dependent | ships engine/runtime | inherits interpreter behavior |
-| Porffor | AOT to Wasm / linear memory | No | yes | compiler output plus custom runtime model | experimental |
+Bundled-runtime approaches inherit compatibility from an interpreter or engine,
+but every deployed module pays for that runtime. Subset, superset, and
+new-language approaches can generate compact Wasm by changing the language
+contract.
 
-That difference is the main reason `js2wasm` exists. The goal is not “JavaScript in Wasm” in the abstract. The goal is **JavaScript semantics without shipping a JS engine inside the deployed artifact**.
+`js2wasm` is aimed at a different target: **JavaScript semantics without
+shipping a JavaScript engine or interpreter inside the deployed artifact**.
+Where the compiler can prove stable types and shapes, it lowers them directly to
+WasmGC structs, arrays, primitives, and functions. Where JavaScript remains
+dynamic, it inserts guards, uses dynamic representations, or delegates at host
+boundaries.
+
+For a more detailed category-level comparison, see the [FAQ](./docs/faq.md).
 
 ## Quick Start
 
