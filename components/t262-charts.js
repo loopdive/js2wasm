@@ -753,6 +753,7 @@ class T262EditionTimeline extends HTMLElement {
           color: var(--_text-muted);
         }
         .value {
+          display: none;
           font-family: var(--t262-edition-font-mono, inherit);
           font-size: 13px;
           font-weight: 600;
@@ -985,6 +986,9 @@ class T262EditionTimeline extends HTMLElement {
           }
           .label {
             display: none;
+          }
+          .value {
+            display: block;
           }
           .copy {
             margin-top: 0.35rem;
