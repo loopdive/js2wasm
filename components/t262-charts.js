@@ -673,8 +673,8 @@ function t262DisplayEditionLabel(edition) {
   if (edition === "ES1") return "ES1 1997";
   if (edition === "ES2") return "ES2 1998";
   if (edition === "ES3 / Core" || edition === "ES3") return "ES3 1999";
-  if (edition === "ES5") return "ES5 2009";
-  if (edition === "ES2015") return "ES 6 2015";
+  if (edition === "ES5") return "ES 5";
+  if (edition === "ES2015") return "ES 2015";
   return edition;
 }
 
@@ -888,11 +888,6 @@ class T262EditionTimeline extends HTMLElement {
           position: relative;
           min-width: 10px;
           background: transparent;
-        }
-        .segment.active {
-          box-shadow:
-            inset 0 0 0 1px rgba(255, 255, 255, 0.16),
-            0 0 0 1px rgba(255, 255, 255, 0.06);
         }
         .segment.dimmed {
           background: rgba(0, 0, 0, 0.34);
