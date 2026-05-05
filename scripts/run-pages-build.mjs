@@ -24,6 +24,7 @@ if (hasPlanningArtifacts) {
   run("node", ["scripts/build-planning-artifacts.mjs"]);
 }
 
+run(process.execPath, ["--experimental-strip-types", "scripts/generate-editions.ts"]);
 run("pnpm", ["run", "build:playground"]);
 run("pnpm", ["run", "build:compiler-bundle"]);
 run(process.execPath, ["--experimental-strip-types", "scripts/generate-size-benchmarks.ts"]);

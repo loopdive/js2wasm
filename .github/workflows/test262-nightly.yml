@@ -51,7 +51,7 @@ jobs:
             test262-cache-
 
       - name: Run test262
-        run: pnpm run test:262
+        run: pnpm run test:262 -- --include-proposals
 
       - name: Promote results to stable filename
         # build-pages.js reads benchmarks/results/test262-current.* — copy the
@@ -66,12 +66,20 @@ jobs:
           cp "$REAL_JSONL" test262-current.jsonl
           cp "$REAL_REPORT" test262-current.json
           ls -la test262-current.*
+          mkdir -p ../../public/benchmarks/results
+          cp "$REAL_REPORT" ../../public/benchmarks/results/test262-report.json
+
+      - name: Regenerate edition buckets
+        run: node --experimental-strip-types scripts/generate-editions.ts --results benchmarks/results/test262-current.jsonl
 
       - name: Commit refreshed results
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f benchmarks/results/test262-current.jsonl benchmarks/results/test262-current.json
+          git add -f benchmarks/results/test262-current.jsonl \
+            benchmarks/results/test262-current.json \
+            public/benchmarks/results/test262-report.json \
+            public/benchmarks/results/test262-editions.json
           if git diff --cached --quiet; then
             echo "No changes to commit."
             exit 0

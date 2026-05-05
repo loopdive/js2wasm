@@ -5,6 +5,7 @@
 # - Uses flock to prevent parallel runs (only one test262 at a time)
 # - Writes results to timestamped files, updates symlink only on completion
 # - Builds compiler bundle from the worktree (not /workspace)
+# - Includes proposal tests by default; pass --official-scope-only to exclude them
 
 set -euo pipefail
 
@@ -14,12 +15,14 @@ LOCKFILE="/tmp/js2wasm-test262.lock"
 LOCKDIR="/tmp/js2wasm-test262.lockdir"
 RESULTS_DIR="$MAIN_DIR/benchmarks/results"
 RUN_TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-INCLUDE_PROPOSALS=0
+INCLUDE_PROPOSALS=1
 
 forwarded_args=()
 for arg in "$@"; do
   if [ "$arg" = "--include-proposals" ]; then
     INCLUDE_PROPOSALS=1
+  elif [ "$arg" = "--official-scope-only" ]; then
+    INCLUDE_PROPOSALS=0
   else
     forwarded_args+=("$arg")
   fi
@@ -302,7 +305,7 @@ report = {
     'timestamp': '$(date -Iseconds)',
     'mode': {
         'include_proposals': ${INCLUDE_PROPOSALS},
-        'label': 'full test262' if ${INCLUDE_PROPOSALS} else 'official test262 (default scope)',
+        'label': 'official test262 + proposals' if ${INCLUDE_PROPOSALS} else 'official test262 (default scope)',
     },
     'summary': build_summary(official_statuses),
     'official_summary': build_summary(official_statuses),

@@ -72,6 +72,7 @@ jobs:
 
     env:
       COMPILER_POOL_SIZE: ${{ inputs.compiler_pool_size || '4' }}
+      TEST262_INCLUDE_PROPOSALS: "1"
       RUN_TIMESTAMP: ${{ github.run_id }}-chunk${{ matrix.chunk }}
 
     steps:
@@ -178,7 +179,8 @@ jobs:
         run: |
           node scripts/build-test262-report.mjs \
             --input merged-reports/test262-results-merged.jsonl \
-            --output merged-reports/test262-report-merged.json
+            --output merged-reports/test262-report-merged.json \
+            --include-proposals
 
       - name: Sanity check report
         run: |
@@ -207,6 +209,9 @@ jobs:
           cp merged-reports/test262-results-merged.jsonl benchmarks/results/test262-results.jsonl
           cp merged-reports/test262-report-merged.json public/benchmarks/results/test262-report.json
           cp merged-reports/test262-results-merged.jsonl public/benchmarks/results/test262-results.jsonl
+
+      - name: Regenerate edition buckets
+        run: node --experimental-strip-types scripts/generate-editions.ts --results benchmarks/results/test262-current.jsonl
 
       - name: Deploy to baselines repo
         env:
@@ -274,10 +279,11 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # Stage only the small JSON files (JSONL lives in baselines repo, not main)
+          # Stage only the small JSON files and generated edition buckets (JSONL lives in baselines repo, not main)
           git add -f benchmarks/results/test262-current.json \
             benchmarks/results/test262-report.json \
-            public/benchmarks/results/test262-report.json
+            public/benchmarks/results/test262-report.json \
+            public/benchmarks/results/test262-editions.json
           if git diff --cached --quiet; then
             echo "No baseline changes to commit."
             exit 0
@@ -290,12 +296,15 @@ jobs:
             git rebase --abort 2>/dev/null || true
             git fetch origin main
             git reset --hard origin/main
+            cp merged-reports/test262-results-merged.jsonl benchmarks/results/test262-current.jsonl
             cp merged-reports/test262-report-merged.json benchmarks/results/test262-current.json
             cp merged-reports/test262-report-merged.json benchmarks/results/test262-report.json
             cp merged-reports/test262-report-merged.json public/benchmarks/results/test262-report.json
+            node --experimental-strip-types scripts/generate-editions.ts --results benchmarks/results/test262-current.jsonl
             git add -f benchmarks/results/test262-current.json \
               benchmarks/results/test262-report.json \
-              public/benchmarks/results/test262-report.json
+              public/benchmarks/results/test262-report.json \
+              public/benchmarks/results/test262-editions.json
             git commit -m "chore(test262): FORCED baseline refresh by ${ACTOR} — ${PASS}/${TOTAL} pass [skip ci]" --allow-empty
           fi
           git push

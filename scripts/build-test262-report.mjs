@@ -126,7 +126,7 @@ async function main() {
     baseline_sha: args.baselineSha || "",
     mode: {
       include_proposals: args.includeProposals ? 1 : 0,
-      label: args.includeProposals ? "full test262" : "official test262 (default scope)",
+      label: args.includeProposals ? "official test262 + proposals" : "official test262 (default scope)",
     },
     summary: buildSummary(officialStatuses),
     official_summary: buildSummary(officialStatuses),
