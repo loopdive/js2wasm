@@ -2,9 +2,9 @@
 id: 1302
 sprint: 50
 title: "Wasm validation: closure references invalid global index when compiling lodash flow.js"
-status: ready
+status: in-progress
 created: 2026-05-03
-updated: 2026-05-03
+updated: 2026-05-07
 priority: medium
 feasibility: medium
 reasoning_effort: medium
@@ -79,3 +79,42 @@ new WebAssembly.Module(r.binary); // throws
 3. Test262 net delta ≥ 0
 4. `tests/stress/lodash-tier2.test.ts` Tier 2b case can flip from `it.skip`
    to `it`
+
+## Resolution (2026-05-07)
+
+**Root cause**: `fixupModuleGlobalIndices` over-shifted certain instructions
+when nested instr arrays (if-then, block.body, try.body, etc.) were
+reachable from multiple top-level body paths in a single fixup call.
+
+The walker tracks **top-level** Instr[] refs in a `shifted: Set<Instr[]>`
+to dedupe between e.g. `mod.functions[].body`, `currentFunc.body`,
+`currentFunc.savedBodies[]`, etc. But the *recursive* descent into nested
+arrays (if.then, block.body, try.catches[].body, ...) had no dedup. When
+an inner array was simultaneously reachable from two different top-level
+paths, its instructions got shifted twice per fixup call.
+
+The double-shift was confirmed empirically: the offending closure
+`__closure_837` had instructions with shift counts of 16, 18, and 28 —
+more than the ~14 expected string-import shifts that occurred between
+emit and registration. Tracing showed the second shift always came via
+`savedBodies[N]` (specifically `__module_init.savedBodies[13]` and
+`__closure_837.savedBodies[1]`) reaching the same instructions earlier
+walked via `currentFunc.body` or earlier `savedBodies[i]`.
+
+**Fix**: dedupe per fixup call using two `WeakSet`s — one for visited
+`Instr` objects (so each global.get/set is shifted at most once) and one
+for visited `Instr[]` arrays (so any shared sub-tree short-circuits the
+recursion). Multi-path reachability is now safe; the canonical case of a
+distinct top-level body still walks exactly once.
+
+**Files changed**: `src/codegen/registry/imports.ts` (+15 lines).
+
+**Verification**:
+- New `tests/issue-1302.test.ts` — both synthetic and lodash-flow.js cases
+  validate after fix.
+- `tests/stress/lodash-tier2.test.ts` Tier 2b flipped from `it.skip` to a
+  passing test.
+- Lodash Tier 1 + Tier 2a/2d remain green.
+- The 3 pre-existing "Unsupported new expression for class: LodashWrapper"
+  errors during flow.js compilation are unrelated (separate feature gap)
+  and don't block validation now that the over-shift is fixed.
