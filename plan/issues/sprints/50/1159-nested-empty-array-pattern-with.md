@@ -1,9 +1,12 @@
 ---
 id: 1159
+sprint: 50
 title: "Nested empty array pattern with initializer violates §13.3.3.6 iterator consumption semantics"
 status: ready
+needs_architect_spec: true
+bundle_with: 1158
 created: 2026-04-21
-updated: 2026-04-21
+updated: 2026-05-07
 priority: medium
 feasibility: hard
 reasoning_effort: high

@@ -1,9 +1,12 @@
 ---
 id: 1158
+sprint: 50
 title: "destructureParamArray fallback eagerly consumes iterators via Array.from — violates 13.3.3.6 for empty pattern []"
 status: ready
+needs_architect_spec: true
+bundle_with: 1159
 created: 2026-04-21
-updated: 2026-04-21
+updated: 2026-05-07
 priority: medium
 feasibility: hard
 reasoning_effort: high

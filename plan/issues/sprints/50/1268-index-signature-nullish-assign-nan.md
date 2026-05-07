@@ -1,10 +1,10 @@
 ---
 id: 1268
-sprint: 47
+sprint: 50
 title: "index-signature obj[key] ??= value returns NaN instead of assigning"
-status: done
+status: ready
 created: 2026-05-02
-updated: 2026-05-02
+updated: 2026-05-07
 priority: medium
 feasibility: medium
 reasoning_effort: medium
@@ -53,13 +53,3 @@ correct — the bug is in the index-signature element-set codegen path.
 1. `d[key] ??= value` on an index-signature dict assigns and reads back correctly
 2. `tests/issue-1268.test.ts` covers the pattern
 3. No regression in existing element-access or logical-assignment tests
-
-## Resolution (2026-05-02)
-
-Fixed by PR #168 (commit ff02a09cd) — three layers of fix in
-`src/codegen/declarations.ts`, `src/codegen/expressions/assignment.ts`
-(`compileElementLogicalAssignment`), and `emitLogicalAssignmentPattern`. See
-the test file `tests/issue-1268.test.ts` header comment for full details.
-
-Status retroactively flipped to `done` after re-validating: 8/8 tests pass on
-current main; the issue file was just never updated in the post-merge cleanup.

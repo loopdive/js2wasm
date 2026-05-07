@@ -1,15 +1,17 @@
 ---
 id: 1155
+sprint: 50
 title: "test262 worker classifies Wasm-level user exceptions as compile_error (~1,415 tests misreported)"
 status: ready
 created: 2026-04-21
-updated: 2026-04-21
+updated: 2026-05-07
 priority: medium
 feasibility: easy
 reasoning_effort: medium
 task_type: bugfix
 language_feature: test-infrastructure
 goal: test-infrastructure
+note: "2026-05-07: residual misclassified count is now ~39 in current baseline (down from 1,415 at filing); fix is still real and easy, but downstream conformance gain is smaller than originally scoped."
 ---
 # #1155 — `[object WebAssembly.Exception]` misclassified as compile_error
 

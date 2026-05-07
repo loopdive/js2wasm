@@ -1,9 +1,10 @@
 ---
 id: 1020
+sprint: 50
 title: "await-using TDZ tests: null_deref crash in assert_throwsAsync (4 false positives)"
 status: ready
 created: 2026-04-11
-updated: 2026-04-28
+updated: 2026-05-07
 priority: medium
 feasibility: medium
 reasoning_effort: high

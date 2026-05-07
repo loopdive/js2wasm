@@ -198,8 +198,6 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | #1258 | compileForOfAssignDestructuringExternref must route writes through boxedCaptures.struct.set | high | done |
 | #1259 | async-gen yield-star sync-fallback leaks unboxed ref-cell into iter capture | high | done |
 | #1260 | Destructuring of null/undefined must throw TypeError per §13.15.5.5 | high | done |
-| #1267 | optimizer: method calls in expression-statement position silently dropped when return value unused | high | done |
-| #1268 | index-signature obj[key] ??= value returns NaN instead of assigning | medium | done |
 | #1271 | for...in / Object.keys enumeration over compiled objects | high | done |
 | #1272 | Symbol as object key — Symbol.for(), well-known Symbols as property keys | medium | done |
 | #1273 | instanceof across compilation boundaries | medium | done |

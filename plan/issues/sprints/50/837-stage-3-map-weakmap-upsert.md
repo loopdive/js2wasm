@@ -1,9 +1,10 @@
 ---
 id: 837
+sprint: 50
 title: "Stage 3: Map/WeakMap upsert — getOrInsert, getOrInsertComputed"
 status: ready
 created: 2026-03-28
-updated: 2026-04-28
+updated: 2026-05-07
 priority: low
 feasibility: easy
 reasoning_effort: medium

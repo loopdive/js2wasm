@@ -1,9 +1,10 @@
 ---
 id: 1267
+sprint: 50
 title: "optimizer: method calls in expression-statement position silently dropped when return value unused"
-status: backlog
+status: ready
 created: 2026-05-02
-updated: 2026-05-02
+updated: 2026-05-07
 priority: high
 feasibility: medium
 reasoning_effort: medium
