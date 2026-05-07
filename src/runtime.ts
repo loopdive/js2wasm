@@ -3582,18 +3582,29 @@ assert._isSameValue = isSameValue;
         };
       if (name === "__iterator_return")
         return (iter: any) => {
-          let ret = iter?.return ?? _sidecarGet(iter, "return");
+          // ES spec 7.4.6 IteratorClose + 7.3.11 GetMethod:
+          //   GetMethod returns undefined for null/undefined `return`.
+          //   GetMethod throws TypeError if `return` exists but is not callable.
+          //   Errors from calling `return()` propagate; non-object results throw.
+          // For close-by-throw, the compiler wraps this call in a nested
+          // try/catch_all that suppresses any exception (per spec step 6:
+          // outer throw wins). For close-by-break/continue/return, the
+          // exception propagates to the user — also per spec (step 7). (#1347)
+          let ret = iter?.return;
+          if (ret === undefined) ret = _sidecarGet(iter, "return");
           if (ret === undefined) {
             const exports = callbackState?.getExports();
             ret = exports?.__sget_return?.(iter);
           }
+          if (ret === undefined || ret === null) return; // GetMethod step 3: no-op
           if (typeof ret === "function") {
             const result = ret.call(iter);
-            // ES spec 7.4.6 IteratorClose: return value must be an Object
             if (result !== null && result !== undefined && typeof result !== "object" && typeof result !== "function") {
               throw new TypeError("Iterator result is not an object");
             }
-          } else if (ret != null && _isWasmStruct(ret)) {
+            return;
+          }
+          if (_isWasmStruct(ret)) {
             // WasmGC closure: call via __call_fn_0
             const exports = callbackState?.getExports();
             const callFn0 = (exports as any)?.__call_fn_0;
@@ -3608,7 +3619,10 @@ assert._isSameValue = isSameValue;
                 throw new TypeError("Iterator result is not an object");
               }
             }
+            return;
           }
+          // ret is non-null, non-callable → GetMethod throws TypeError
+          throw new TypeError("Iterator return method is not callable");
         };
       // Convert a WasmGC vec struct to a real JS array so it's iterable by
       // native JS APIs (Map, Set, spread, for-of, etc.). (#854)
