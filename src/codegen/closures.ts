@@ -966,6 +966,49 @@ export function emitMethodParamDefaults(
   }
 }
 
+/**
+ * #1311 — Host method names whose callable arg ALWAYS needs a JS-callable
+ * `__make_callback` externref. These methods invoke the callback during the
+ * call itself (the JS-side host implementation calls back into the runtime),
+ * so the GC-struct closure shape can't satisfy them.
+ *
+ * Methods NOT in this set get the closure-struct path when their param is
+ * callable — the value is stored, not invoked, so the cast at the eventual
+ * dispatch site works. Examples: `Map.set`, `WeakMap.set`, `Set.add`,
+ * `Array.push`, `Array.unshift`, user-defined methods.
+ *
+ * Note: array HOFs (`forEach`, `map`, `filter`, `reduce`, etc.) have
+ * dedicated inline compilation in `src/codegen/array-methods.ts` and never
+ * reach `isHostCallbackArgument` for their callback arg. They're listed
+ * here defensively so that if the inline path is bypassed (e.g. on an
+ * untyped receiver), the host-callback path is still chosen.
+ */
+const HOST_CALLBACK_METHODS = new Set<string>([
+  // Array HOFs (defensive fallback — usually inlined upstream)
+  "forEach",
+  "map",
+  "filter",
+  "reduce",
+  "reduceRight",
+  "every",
+  "some",
+  "find",
+  "findIndex",
+  "findLast",
+  "findLastIndex",
+  "flatMap",
+  "sort",
+  // Promise prototype methods — JS microtask scheduler invokes the callback
+  "then",
+  "catch",
+  "finally",
+  // Object/JSON callbacks
+  "fromEntries",
+  // String.replace(pattern, replacer) — replacer is a callback
+  "replace",
+  "replaceAll",
+]);
+
 /** Check if an arrow/function expression is used as a callback argument to a call
  *  that targets a HOST import (not a user-defined function). User-defined functions
  *  should receive closures via the GC struct path, not the __make_callback host path. */
@@ -1035,12 +1078,70 @@ export function isHostCallbackArgument(node: ts.Node, ctx: CodegenContext): bool
             return false;
           }
         }
-        // Note: we deliberately don't fall back to a "param has call sig"
-        // heuristic for non-user-defined methods — host array HOFs
-        // (forEach, map, filter, etc.) have dedicated inline compilation
-        // and other host method callbacks (Promise.then, etc.) need a
-        // JS-callable externref via __make_callback. Only user-defined
-        // methods on user-defined classes get the closure path here.
+        // (#1311) For host classes (Map, Array, etc.), check whether the
+        // method's parameter at this arg index is callable. If yes — and
+        // the method is NOT one of the host-callback methods listed below —
+        // route through the closure path so the receiver can later
+        // `ref.cast` the externref back to `__fn_wrap_N_struct`.
+        //
+        // Storage methods like `Map.set`, `WeakMap.set`, `Set.add`,
+        // `Array.push`, `Array.unshift` just stash the value internally;
+        // the callable identity needs to survive a later `Map.get` /
+        // index-access read. With `__make_callback` (JS bridge), the
+        // returned externref isn't a Wasm struct and the cast fails.
+        //
+        // The host methods that genuinely need `__make_callback` are
+        // those that immediately invoke the callback in JS-land:
+        // - Array HOFs (forEach, map, filter, reduce, …) — these have
+        //   dedicated inline compilation in array-methods.ts and never
+        //   reach this code path
+        // - Promise prototype methods (then, catch, finally) — JS
+        //   microtask scheduler invokes the callback
+        // - Array.sort comparator — JS-side sort algorithm
+        //
+        // We use a denylist to be conservative: only methods explicitly
+        // known to need a JS-callable get __make_callback. Everything
+        // else with a callable param uses the closure path.
+        if (!HOST_CALLBACK_METHODS.has(methodName)) {
+          // Try resolved-signature first, then fall back to walking the
+          // method's signature parameters directly.
+          const arg = parent.arguments.findIndex((a) => a === node);
+          if (arg !== -1) {
+            const sig = ctx.checker.getResolvedSignature?.(parent);
+            const params = sig?.getParameters?.();
+            const param = params?.[arg];
+            const paramTypes: ts.Type[] = [];
+            if (param) {
+              const t1 = ctx.checker.getTypeOfSymbolAtLocation?.(param, parent);
+              if (t1) paramTypes.push(t1);
+            }
+            // Rest-element fallback (e.g. `Array.push(...items: T[])`):
+            // if the resolved param is array-like, peek its element type.
+            if (paramTypes.length === 0 || paramTypes[0]?.getCallSignatures?.()?.length === 0) {
+              try {
+                const elemType = ctx.checker.getTypeAtLocation?.(node);
+                if (elemType) paramTypes.push(elemType);
+              } catch {
+                // ignore
+              }
+            }
+            for (const pt of paramTypes) {
+              try {
+                // Direct call signatures
+                if (pt.getCallSignatures?.()?.length > 0) {
+                  return false;
+                }
+                // Array element call signatures (rest params unwrapped to T[])
+                const numIdxType = ctx.checker.getIndexTypeOfType?.(pt, ts.IndexKind.Number);
+                if (numIdxType?.getCallSignatures?.()?.length) {
+                  return false;
+                }
+              } catch {
+                // continue
+              }
+            }
+          }
+        }
       } catch {
         // Fall through to host-callback path on any checker error
       }
