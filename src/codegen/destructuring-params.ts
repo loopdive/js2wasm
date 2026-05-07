@@ -26,6 +26,31 @@ import {
 import { buildVecFromExternref, getVecInfo } from "./type-coercion.js";
 
 /**
+ * #1158 — Detect array binding patterns whose every element is itself an
+ * "empty-only" pattern (no `IteratorStep` would be required by §13.3.3.6).
+ * Used to short-circuit `__array_from_iter` materialization for patterns like
+ * `[]`, `[, ,]` (elision-only), or `[[], []]` (nested empties without
+ * defaults).
+ *
+ * Conservative — returns `false` for any element that needs to actually
+ * read iterator state: rest elements, defaults, identifier bindings, and
+ * non-array nested patterns. The caller still routes those through the
+ * existing materializing paths.
+ */
+function isPatternEmptyOnly(pattern: ts.ArrayBindingPattern): boolean {
+  if (pattern.elements.length === 0) return true;
+  for (const el of pattern.elements) {
+    if (ts.isOmittedExpression(el)) continue;
+    if (!ts.isBindingElement(el)) return false;
+    if (el.dotDotDotToken) return false; // rest must consume
+    if (el.initializer) return false; // default may need a real slot
+    if (ts.isArrayBindingPattern(el.name) && isPatternEmptyOnly(el.name)) continue;
+    return false;
+  }
+  return true;
+}
+
+/**
  * Bounds-checked array.get that returns JS `undefined` (via __get_undefined)
  * for out-of-bounds indices on externref arrays, instead of ref.null.extern.
  * This is critical for destructuring defaults: per ES spec, accessing an array
@@ -637,14 +662,24 @@ export function destructureParamArray(
       // Per JS spec: destructuring null/undefined must throw TypeError
       emitExternrefDestructureGuard(ctx, fctx, paramIdx);
 
-      // Per spec §14.3.3 (BindingInitialization for ArrayBindingPattern), an
+      // Per spec §13.3.3.6 (IteratorBindingInitialization), an
       // empty `[]` pattern body returns unused without iterating. Materializing
       // the source via __array_from_iter would call .next() on a generator and
       // execute its body — observably wrong (#1016 — empty pattern advances
       // generator). For empty patterns the null guard above is sufficient.
       // (IteratorClose's spec-prescribed `return()` call on a fresh generator
       // does not execute the body, so skipping it is benign for iterCount.)
-      if (pattern.elements.length === 0) return;
+      //
+      // #1158: broaden the short-circuit to any pattern whose elements are all
+      // themselves empty-only — `[, ,]`, `[[]]`, `[[], []]`. Each such element
+      // also requires no IteratorStep call, so we can skip materialization
+      // entirely. Locals declared by nested empty patterns (rare, since they
+      // bind nothing, but still possible via `var` hoisting) are pre-allocated
+      // by `ensureBindingLocals`.
+      if (isPatternEmptyOnly(pattern)) {
+        ensureBindingLocals(ctx, fctx, pattern);
+        return;
+      }
 
       const extVecIdx = getOrRegisterVecType(ctx, "externref", { kind: "externref" });
       const extArrTypeIdx = getArrTypeIdxFromVec(ctx, extVecIdx);
@@ -1130,6 +1165,40 @@ export function destructureParamArray(
       !element.dotDotDotToken &&
       (ts.isObjectBindingPattern(element.name) || ts.isArrayBindingPattern(element.name))
     ) {
+      // #1158/#1159 — when the nested pattern is itself empty-only, hold
+      // the slot value as externref instead of coercing to vec/tuple. The
+      // recursive call into the empty pattern then takes the
+      // isPatternEmptyOnly short-circuit at line ~647 (no
+      // __array_from_iter materialization).
+      //
+      // Important: this only applies when `element.name` is an array
+      // binding pattern AND empty-only AND `elemType` is not externref
+      // (when elemType is already externref the existing path is fine
+      // — the extracted value flows directly into the recursive call).
+      const isNestedEmptyArr =
+        ts.isArrayBindingPattern(element.name) && isPatternEmptyOnly(element.name) && elemType.kind !== "externref";
+      if (isNestedEmptyArr) {
+        const externType: ValType = { kind: "externref" };
+        const emptyTmp = allocLocal(fctx, `__dparam_emp_${fctx.locals.length}`, externType);
+        // Read element as externref (or __get_undefined() for OOB):
+        fctx.body.push({ op: "local.get", index: paramIdx });
+        fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
+        fctx.body.push({ op: "i32.const", value: i });
+        emitBoundsCheckedArrayGetUndef(ctx, fctx, arrTypeIdx, elemType);
+        if (elemType.kind !== "externref") {
+          coerceType(ctx, fctx, elemType, externType);
+        }
+        fctx.body.push({ op: "local.set", index: emptyTmp });
+        if (element.initializer) {
+          // Default fires only when the slot is undefined — coerce the
+          // initializer to externref WITHOUT going through vec/tuple
+          // materialization (which would call __array_from_iter).
+          emitNestedBindingDefault(ctx, fctx, emptyTmp, externType, element.initializer);
+        }
+        // Recurse with externref so the empty short-circuit fires.
+        destructureParamArray(ctx, fctx, emptyTmp, element.name as ts.ArrayBindingPattern, externType);
+        continue;
+      }
       const tmpLocal = allocLocal(fctx, `__dparam_${fctx.locals.length}`, elemType);
       fctx.body.push({ op: "local.get", index: paramIdx });
       fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 }); // get data
