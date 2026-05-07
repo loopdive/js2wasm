@@ -99,7 +99,8 @@ Order is recommended **dispatch order** (highest value first); see
 | Order | Issue | Title | Priority | Feasibility | Notes |
 |-------|-------|-------|----------|-------------|-------|
 | 7 | #1292 | lodash Tier 2 — un-skip Tier 2b/2c/2d after blockers | medium | low | Tail end; assigned to whichever dev lands the last blocker. |
-| 8 | #1223 | TDZ async/gen writer+reader fn-decl sharing | medium | hard | Parking lot. Pull only if capacity surplus. Decide: commit or backlog after S50. |
+| 8 | #1307 | CI: serialize Test262 Sharded globally to eliminate runner-pool contention | medium | low | PR #228 open. One-line concurrency group change. |
+| 9 | #1223 | TDZ async/gen writer+reader fn-decl sharing | medium | hard | Parking lot. Pull only if capacity surplus. Decide: commit or backlog after S50. |
 
 ## Architect specs needed
 
