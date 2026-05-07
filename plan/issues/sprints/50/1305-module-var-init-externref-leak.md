@@ -2,7 +2,7 @@
 id: 1305
 sprint: 50
 title: "Module-level var init leaks externref into bitwise op codegen (legacy path)"
-status: in-progress
+status: done
 created: 2026-05-03
 updated: 2026-05-07
 priority: medium

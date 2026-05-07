@@ -3134,9 +3134,17 @@
       "1303",
       "1305",
       "1306",
-      "1307"
+      "1307",
+      "1308",
+      "1309"
     ],
-    "completedIssueIds": [],
+    "completedIssueIds": [
+      "1126",
+      "1302",
+      "1303",
+      "1305",
+      "1306"
+    ],
     "explicitCarryOver": false,
     "isPlanning": false,
     "isClosed": false

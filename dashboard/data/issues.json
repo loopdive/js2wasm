@@ -69,19 +69,6 @@
       "sprint": ""
     },
     {
-      "id": "1223",
-      "title": "TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up)",
-      "priority": "medium",
-      "feasibility": "hard",
-      "depends_on": [
-        "1177",
-        "1205"
-      ],
-      "goal": "crash-free",
-      "status": "backlog",
-      "sprint": "backlog"
-    },
-    {
       "id": "1133",
       "title": "Fibonacci story points, velocity tracking, and token-budgeted sprint sizing",
       "priority": "high",
@@ -186,18 +173,20 @@
   ],
   "ready": [
     {
-      "id": "1305",
-      "title": "Module-level var init leaks externref into bitwise op codegen (legacy path)",
-      "priority": "medium",
+      "id": "1309",
+      "title": "Hono Tier 6 — Web API surface (Request/Response) + async handlers",
+      "priority": "low",
       "feasibility": "hard",
-      "depends_on": [],
+      "depends_on": [
+        "1298"
+      ],
       "goal": "npm-library-support",
       "status": "ready",
       "sprint": "50"
     },
     {
-      "id": "1303",
-      "title": "Wasm validation: f64.trunc emitted on externref operand when compiling lodash partial.js",
+      "id": "1308",
+      "title": "Wasm closure struct returned to JS host is not JS-callable",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
@@ -1545,26 +1534,6 @@
       "sprint": "50"
     },
     {
-      "id": "1306",
-      "title": "ElementAccessExpression call on closure-typed array drops call: mws[idx](c, next) emits ref.null",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "npm-library-support",
-      "status": "in-progress",
-      "sprint": "50"
-    },
-    {
-      "id": "1302",
-      "title": "Wasm validation: closure references invalid global index when compiling lodash flow.js",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "npm-library-support",
-      "status": "in-progress",
-      "sprint": "50"
-    },
-    {
       "id": "1206",
       "title": "fix(build-pages): copy benchmark JSONs + frame-nav-sync.js to top-level pages-dist paths (404s on landing page)",
       "priority": "medium",
@@ -1583,22 +1552,30 @@
       "goal": "platform",
       "status": "in-progress",
       "sprint": "42"
-    },
-    {
-      "id": "1126",
-      "title": "Infer when JavaScript number flows can be safely lowered to int32 or uint32",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [
-        "1124"
-      ],
-      "goal": "core-semantics",
-      "status": "in-progress",
-      "sprint": "50"
     }
   ],
   "review": [],
   "done": [
+    {
+      "id": "1306",
+      "title": "ElementAccessExpression call on closure-typed array drops call: mws[idx](c, next) emits ref.null",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "done",
+      "sprint": "50"
+    },
+    {
+      "id": "1305",
+      "title": "Module-level var init leaks externref into bitwise op codegen (legacy path)",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "done",
+      "sprint": "50"
+    },
     {
       "id": "1304",
       "title": "typeof on externref-wrapped JS function returns 'object' instead of 'function'",
@@ -1608,6 +1585,26 @@
       "goal": "npm-library-support",
       "status": "done",
       "sprint": "49"
+    },
+    {
+      "id": "1303",
+      "title": "Wasm validation: f64.trunc emitted on externref operand when compiling lodash partial.js",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "done",
+      "sprint": "50"
+    },
+    {
+      "id": "1302",
+      "title": "Wasm validation: closure references invalid global index when compiling lodash flow.js",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "done",
+      "sprint": "50"
     },
     {
       "id": "1301",
@@ -2310,6 +2307,19 @@
       "goal": "core-semantics",
       "status": "done",
       "sprint": "47"
+    },
+    {
+      "id": "1223",
+      "title": "TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up)",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [
+        "1177",
+        "1205"
+      ],
+      "goal": "crash-free",
+      "status": "wont-fix",
+      "sprint": "backlog"
     },
     {
       "id": "1222",
@@ -3346,6 +3356,18 @@
       "goal": "core-semantics",
       "status": "done",
       "sprint": "43"
+    },
+    {
+      "id": "1126",
+      "title": "Infer when JavaScript number flows can be safely lowered to int32 or uint32",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1124"
+      ],
+      "goal": "core-semantics",
+      "status": "done",
+      "sprint": "50"
     },
     {
       "id": "1125",

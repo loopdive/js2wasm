@@ -15592,8 +15592,8 @@
       "id": "1126",
       "title": "Infer when JavaScript number flows can be safely lowered to int32 or uint32",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "50",
       "depends_on": [
         "1124"
@@ -17023,8 +17023,8 @@
       "id": "1223",
       "title": "TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up)",
       "priority": "medium",
-      "status": "backlog",
-      "raw_status": "backlog",
+      "status": "done",
+      "raw_status": "wont-fix",
       "sprint": "backlog",
       "depends_on": [
         "1177",
@@ -18026,8 +18026,8 @@
       "id": "1302",
       "title": "Wasm validation: closure references invalid global index when compiling lodash flow.js",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "50",
       "depends_on": [],
       "files": [],
@@ -18038,8 +18038,8 @@
       "id": "1303",
       "title": "Wasm validation: f64.trunc emitted on externref operand when compiling lodash partial.js",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "50",
       "depends_on": [],
       "files": [],
@@ -18062,8 +18062,8 @@
       "id": "1305",
       "title": "Module-level var init leaks externref into bitwise op codegen (legacy path)",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "50",
       "depends_on": [],
       "files": [],
@@ -18074,8 +18074,8 @@
       "id": "1306",
       "title": "ElementAccessExpression call on closure-typed array drops call: mws[idx](c, next) emits ref.null",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "50",
       "depends_on": [],
       "files": [],
@@ -18092,6 +18092,32 @@
       "depends_on": [],
       "files": [],
       "cluster": "sprint-50"
+    },
+    {
+      "id": "1308",
+      "title": "Wasm closure struct returned to JS host is not JS-callable",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1309",
+      "title": "Hono Tier 6 — Web API surface (Request/Response) + async handlers",
+      "priority": "low",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [
+        "1298"
+      ],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
     }
   ],
   "links": [
@@ -18158,14 +18184,6 @@
     {
       "source": "1197",
       "target": "1199"
-    },
-    {
-      "source": "1177",
-      "target": "1223"
-    },
-    {
-      "source": "1205",
-      "target": "1223"
     },
     {
       "source": "1090",
@@ -18940,12 +18958,24 @@
       "target": "1126"
     },
     {
+      "source": "1298",
+      "target": "1309"
+    },
+    {
       "source": "317",
       "target": "320"
     },
     {
       "source": "321",
       "target": "320"
+    },
+    {
+      "source": "1177",
+      "target": "1223"
+    },
+    {
+      "source": "1205",
+      "target": "1223"
     },
     {
       "source": "1261",
@@ -20031,7 +20061,9 @@
         "1303",
         "1304",
         "1305",
-        "1306"
+        "1306",
+        "1308",
+        "1309"
       ],
       "track": "supporting track"
     },
@@ -24115,6 +24147,14 @@
       "issue": "1306"
     },
     {
+      "goal": "npm-library-support",
+      "issue": "1308"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1309"
+    },
+    {
       "goal": "observability",
       "issue": "880"
     },
@@ -28109,6 +28149,14 @@
       "issue": "1306"
     },
     {
+      "goal": "core-semantics",
+      "issue": "1308"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1309"
+    },
+    {
       "goal": "platform",
       "issue": "111"
     },
@@ -28359,6 +28407,14 @@
     {
       "goal": "platform",
       "issue": "1306"
+    },
+    {
+      "goal": "platform",
+      "issue": "1308"
+    },
+    {
+      "goal": "platform",
+      "issue": "1309"
     },
     {
       "goal": "core-semantics",
