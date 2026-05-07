@@ -2841,6 +2841,32 @@ assert._isSameValue = isSameValue;
           const wrappedArgs = (args ?? []).map((a) => (_isWasmStruct(a) ? _wrapForHost(a, exports) : a));
           const fn = wrappedObj[method];
           if (typeof fn !== "function") {
+            // (#837) Map/WeakMap upsert proposal polyfill — Node 25 / V8
+            // currently don't ship `getOrInsert` / `getOrInsertComputed`
+            // (TC39 Stage 3). Implement the spec algorithm here so the
+            // host imports work without runtime support. Falls through if
+            // the receiver isn't a Map/WeakMap.
+            if (
+              (method === "getOrInsert" || method === "getOrInsertComputed") &&
+              (wrappedObj instanceof Map || wrappedObj instanceof WeakMap)
+            ) {
+              const key = wrappedArgs[0];
+              if (wrappedObj.has(key)) {
+                return _unwrapForHost(wrappedObj.get(key));
+              }
+              let value: any;
+              if (method === "getOrInsertComputed") {
+                const callback = wrappedArgs[1];
+                if (typeof callback !== "function") {
+                  throw new TypeError("getOrInsertComputed: callback is not a function");
+                }
+                value = callback.call(undefined, key);
+              } else {
+                value = wrappedArgs[1];
+              }
+              wrappedObj.set(key, value);
+              return _unwrapForHost(value);
+            }
             // DataView method fallback (#1056): the compiler emits DataView as an
             // i32_byte vec struct, so DataView.prototype methods aren't directly
             // callable on the wasmGC receiver. Detect the method pattern and
