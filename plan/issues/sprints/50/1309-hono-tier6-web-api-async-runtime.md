@@ -2,7 +2,7 @@
 id: 1309
 sprint: 50
 title: "Hono Tier 6 — Web API surface (Request/Response) + async handlers"
-status: in-progress
+status: done
 created: 2026-05-07
 updated: 2026-05-07
 priority: low
