@@ -93,24 +93,25 @@ export function ensureExnTag(ctx: CodegenContext): number {
  * new import globals are inserted after module globals already exist.
  */
 function fixupModuleGlobalIndices(ctx: CodegenContext, threshold: number, delta: number): void {
-  // The `shifted` set tracks every Instr[] we've already adjusted in THIS call
-  // so that no body is shifted twice. Tracking happens inside `shiftGlobalIndices`
-  // so the guard covers BOTH top-level entries AND nested bodies reached via
-  // recursion (if/then/else, block.body, try.catches). The previous version
-  // only added top-level entries to the set, which let recursively-shifted
-  // bodies be re-shifted via duplicate `savedBodies` entries — a leak that
-  // accumulates whenever pushBody is paired with `fctx.body = saved` instead
-  // of `popBody` (#1303). The compileBitwiseBinaryOp site in lodash-es
-  // mergeData reproduced this: a global.get whose final shifted index
-  // landed past WRAP_ARY_FLAG and into the externref tail of the global
-  // table, so f64.trunc fired against an externref operand. (#1305)
-  const shifted = new Set<Instr[]>();
+  // Dedupe per-call: an instr (or nested array node) reachable from multiple
+  // top-level bodies must only be shifted once per fixup call. The `shifted`
+  // Set below dedupes top-level Instr[] arrays, but nested arrays (if.then,
+  // block.body, try.body, try.catches[].body, try.catchAll) can be reached
+  // from multiple top-level paths (e.g. an if-then array that's also stored
+  // in a saved body via a manual swap pattern). Without per-call dedup, each
+  // additional reachability path applies an extra +delta, over-shifting the
+  // index past the declared global range (#1302 — lodash flow.js).
+  const visitedInstrs = new WeakSet<object>();
+  const visitedArrays = new WeakSet<Instr[]>();
   function shiftGlobalIndices(instrs: Instr[]): void {
-    if (shifted.has(instrs)) return;
-    shifted.add(instrs);
+    if (visitedArrays.has(instrs)) return;
+    visitedArrays.add(instrs);
     for (const instr of instrs) {
       if ((instr.op === "global.get" || instr.op === "global.set") && instr.index >= threshold) {
-        instr.index += delta;
+        if (!visitedInstrs.has(instr as object)) {
+          visitedInstrs.add(instr as object);
+          instr.index += delta;
+        }
       }
       if ("body" in instr && Array.isArray((instr as any).body)) {
         shiftGlobalIndices((instr as any).body);
@@ -132,30 +133,49 @@ function fixupModuleGlobalIndices(ctx: CodegenContext, threshold: number, delta:
     }
   }
 
+  const shifted = new Set<Instr[]>();
   for (const func of ctx.mod.functions) {
-    shiftGlobalIndices(func.body);
+    if (!shifted.has(func.body)) {
+      shiftGlobalIndices(func.body);
+      shifted.add(func.body);
+    }
   }
 
   if (ctx.currentFunc) {
-    shiftGlobalIndices(ctx.currentFunc.body);
+    if (!shifted.has(ctx.currentFunc.body)) {
+      shiftGlobalIndices(ctx.currentFunc.body);
+      shifted.add(ctx.currentFunc.body);
+    }
     for (const sb of ctx.currentFunc.savedBodies) {
+      if (shifted.has(sb)) continue;
       shiftGlobalIndices(sb);
+      shifted.add(sb);
     }
   }
 
   for (const parentFctx of ctx.funcStack) {
-    shiftGlobalIndices(parentFctx.body);
+    if (!shifted.has(parentFctx.body)) {
+      shiftGlobalIndices(parentFctx.body);
+      shifted.add(parentFctx.body);
+    }
     for (const sb of parentFctx.savedBodies) {
-      shiftGlobalIndices(sb);
+      if (!shifted.has(sb)) {
+        shiftGlobalIndices(sb);
+        shifted.add(sb);
+      }
     }
   }
 
   for (const pb of ctx.parentBodiesStack) {
-    shiftGlobalIndices(pb);
+    if (!shifted.has(pb)) {
+      shiftGlobalIndices(pb);
+      shifted.add(pb);
+    }
   }
 
-  if (ctx.pendingInitBody) {
+  if (ctx.pendingInitBody && !shifted.has(ctx.pendingInitBody)) {
     shiftGlobalIndices(ctx.pendingInitBody);
+    shifted.add(ctx.pendingInitBody);
   }
 
   for (const g of ctx.mod.globals) {

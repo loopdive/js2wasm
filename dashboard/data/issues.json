@@ -69,6 +69,19 @@
       "sprint": ""
     },
     {
+      "id": "1223",
+      "title": "TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up)",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [
+        "1177",
+        "1205"
+      ],
+      "goal": "crash-free",
+      "status": "backlog",
+      "sprint": "backlog"
+    },
+    {
       "id": "1133",
       "title": "Fibonacci story points, velocity tracking, and token-budgeted sprint sizing",
       "priority": "high",
@@ -180,7 +193,7 @@
       "depends_on": [],
       "goal": "npm-library-support",
       "status": "ready",
-      "sprint": "49"
+      "sprint": "50"
     },
     {
       "id": "1305",
@@ -190,7 +203,7 @@
       "depends_on": [],
       "goal": "npm-library-support",
       "status": "ready",
-      "sprint": "49"
+      "sprint": "50"
     },
     {
       "id": "1303",
@@ -200,7 +213,7 @@
       "depends_on": [],
       "goal": "npm-library-support",
       "status": "ready",
-      "sprint": "49"
+      "sprint": "50"
     },
     {
       "id": "1302",
@@ -210,7 +223,7 @@
       "depends_on": [],
       "goal": "npm-library-support",
       "status": "ready",
-      "sprint": "49"
+      "sprint": "50"
     },
     {
       "id": "1298",
@@ -220,7 +233,7 @@
       "depends_on": [],
       "goal": "npm-library-support",
       "status": "ready",
-      "sprint": "49"
+      "sprint": "50"
     },
     {
       "id": "1255",
@@ -271,19 +284,6 @@
       "goal": "contributor-readiness",
       "status": "ready",
       "sprint": ""
-    },
-    {
-      "id": "1223",
-      "title": "TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up)",
-      "priority": "medium",
-      "feasibility": "hard",
-      "depends_on": [
-        "1177",
-        "1205"
-      ],
-      "goal": "crash-free",
-      "status": "deferred",
-      "sprint": "49"
     },
     {
       "id": "1199",
@@ -1555,24 +1555,14 @@
   ],
   "inprogress": [
     {
-      "id": "1304",
-      "title": "typeof on externref-wrapped JS function returns 'object' instead of 'function'",
+      "id": "1307",
+      "title": "ci: serialize Test262 Sharded across PRs to eliminate runner-pool contention",
       "priority": "medium",
-      "feasibility": "medium",
+      "feasibility": "",
       "depends_on": [],
-      "goal": "npm-library-support",
+      "goal": "",
       "status": "in-progress",
-      "sprint": "49"
-    },
-    {
-      "id": "1301",
-      "title": "Closure environment field-type mismatch: struct.new[0] expected f64, got anyref",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "npm-library-support",
-      "status": "in-progress",
-      "sprint": "49"
+      "sprint": "50"
     },
     {
       "id": "1206",
@@ -1604,11 +1594,31 @@
       ],
       "goal": "core-semantics",
       "status": "in-progress",
-      "sprint": "49"
+      "sprint": "50"
     }
   ],
   "review": [],
   "done": [
+    {
+      "id": "1304",
+      "title": "typeof on externref-wrapped JS function returns 'object' instead of 'function'",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "done",
+      "sprint": "49"
+    },
+    {
+      "id": "1301",
+      "title": "Closure environment field-type mismatch: struct.new[0] expected f64, got anyref",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "done",
+      "sprint": "49"
+    },
     {
       "id": "1300",
       "title": "Closure capturing outer parameter inside an inline lambda passed as a Next callback null-derefs at call time",

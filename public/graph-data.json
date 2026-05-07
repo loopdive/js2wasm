@@ -15594,7 +15594,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "in-progress",
-      "sprint": "49",
+      "sprint": "50",
       "depends_on": [
         "1124"
       ],
@@ -17023,9 +17023,9 @@
       "id": "1223",
       "title": "TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up)",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "deferred",
-      "sprint": "49",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "backlog",
       "depends_on": [
         "1177",
         "1205"
@@ -17980,7 +17980,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "49",
+      "sprint": "50",
       "depends_on": [],
       "files": [],
       "goal": "npm-library-support",
@@ -18014,8 +18014,8 @@
       "id": "1301",
       "title": "Closure environment field-type mismatch: struct.new[0] expected f64, got anyref",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "49",
       "depends_on": [],
       "files": [],
@@ -18028,7 +18028,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "49",
+      "sprint": "50",
       "depends_on": [],
       "files": [],
       "goal": "npm-library-support",
@@ -18040,7 +18040,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "49",
+      "sprint": "50",
       "depends_on": [],
       "files": [],
       "goal": "npm-library-support",
@@ -18050,8 +18050,8 @@
       "id": "1304",
       "title": "typeof on externref-wrapped JS function returns 'object' instead of 'function'",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "49",
       "depends_on": [],
       "files": [],
@@ -18064,7 +18064,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "49",
+      "sprint": "50",
       "depends_on": [],
       "files": [],
       "goal": "npm-library-support",
@@ -18076,11 +18076,22 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "49",
+      "sprint": "50",
       "depends_on": [],
       "files": [],
       "goal": "npm-library-support",
       "cluster": "npm-library-support"
+    },
+    {
+      "id": "1307",
+      "title": "ci: serialize Test262 Sharded across PRs to eliminate runner-pool contention",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "cluster": "sprint-50"
     }
   ],
   "links": [
@@ -18133,10 +18144,6 @@
       "target": "1116"
     },
     {
-      "source": "1124",
-      "target": "1126"
-    },
-    {
       "source": "1119",
       "target": "1154"
     },
@@ -18151,6 +18158,14 @@
     {
       "source": "1197",
       "target": "1199"
+    },
+    {
+      "source": "1177",
+      "target": "1223"
+    },
+    {
+      "source": "1205",
+      "target": "1223"
     },
     {
       "source": "1090",
@@ -18913,20 +18928,16 @@
       "target": "1295"
     },
     {
-      "source": "1177",
-      "target": "1223"
-    },
-    {
-      "source": "1205",
-      "target": "1223"
-    },
-    {
       "source": "1045",
       "target": "1296"
     },
     {
       "source": "321",
       "target": "322"
+    },
+    {
+      "source": "1124",
+      "target": "1126"
     },
     {
       "source": "317",
