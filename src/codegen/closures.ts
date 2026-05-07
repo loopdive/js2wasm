@@ -2755,7 +2755,22 @@ export function emitFuncRefAsClosure(
 
     // Emit: struct.new with fields: func, cap0, cap1, ..., __tdz_*..., ...
     fctx.body.push({ op: "ref.func", funcIdx: trampolineFuncIdx });
-    for (const cap of nestedCaptures) {
+    // (#1312) Self-reference inside the lifted body of `funcName` itself —
+    // e.g. `function next() { return call(next); }`. The captures are
+    // already in scope as the leading params [0..numCaptures-1] of the
+    // lifted fn (mutable captures arrive as boxed ref cells, immutable as
+    // raw values). We re-push them by param index instead of trying to
+    // dereference `cap.outerLocalIdx`, which points into a different
+    // (outer) scope and yields garbage / null when reused inside the
+    // current lifted body.
+    const isSelfRef = fctx.name === funcName;
+    for (let i = 0; i < nestedCaptures.length; i++) {
+      const cap = nestedCaptures[i]!;
+      if (isSelfRef) {
+        // Captures arrive at param index `i` in the lifted fn (#1312).
+        fctx.body.push({ op: "local.get", index: i });
+        continue;
+      }
       if (cap.mutable && cap.valType) {
         const refCellTypeIdx = getOrRegisterRefCellType(ctx, cap.valType);
         if (fctx.boxedCaptures?.has(cap.name)) {
@@ -2786,7 +2801,15 @@ export function emitFuncRefAsClosure(
     // or cross-fctx transitive) push `i32.const 1` (treat as initialized) —
     // matches pre-#1205 behavior where the lifted body had no flag check.
     if (numTdzFlags > 0) {
-      for (const cap of tdzFlaggedNested) {
+      for (let ti = 0; ti < tdzFlaggedNested.length; ti++) {
+        const cap = tdzFlaggedNested[ti]!;
+        if (isSelfRef) {
+          // (#1312) Self-reference inside the lifted body — the TDZ-flag
+          // boxed refs arrive as params at index `numCaptures + ti` (after
+          // all value captures). Re-push from there.
+          fctx.body.push({ op: "local.get", index: numCaptures + ti });
+          continue;
+        }
         const existingBox = fctx.boxedTdzFlags?.get(cap.name);
         if (existingBox) {
           fctx.body.push({ op: "local.get", index: existingBox.localIdx });
