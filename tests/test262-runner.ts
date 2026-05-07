@@ -2482,6 +2482,33 @@ export function extractWasmExceptionMessage(err: any, instance: any): string {
   return String(err);
 }
 
+/**
+ * (#1316 / #1317) Extract every wasm frame from a `RuntimeError.stack`,
+ * not just the leaf. Each frame gets the function name + byte offset.
+ * The leaf frame is the trap site; subsequent frames are callers up the
+ * stack until we reach the JS<->Wasm boundary. For deeply-nested
+ * `null_deref` / `illegal_cast` failures this surfaces the full call
+ * chain so the failure can be diagnosed without re-running with a
+ * debugger.
+ *
+ * Returns frames in trap-first order (leaf first), e.g.
+ *   [{ name: "inner", offset: 0x1de },
+ *    { name: "test",  offset: 0x1e7 }]
+ */
+export function extractWasmCallStack(err: any): Array<{ name: string; offset: number }> {
+  const stack: string = err?.stack ?? String(err);
+  const frames: Array<{ name: string; offset: number }> = [];
+  // V8 format: `at <name> (wasm://wasm/<hash>:wasm-function[N]:0xOFFSET)`
+  const re = /at\s+(\S+)\s+\(wasm:\/\/[^:]*:wasm-function\[\d+\]:0x([0-9a-fA-F]+)\)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(stack)) !== null) {
+    const name = m[1]!;
+    const offset = parseInt(m[2]!, 16);
+    if (Number.isFinite(offset)) frames.push({ name, offset });
+  }
+  return frames;
+}
+
 export function enrichErrorMessage(
   errMsg: string,
   err: any,
@@ -2490,24 +2517,58 @@ export function enrichErrorMessage(
 ): string {
   const parts: string[] = [errMsg];
 
-  const funcName = extractWasmFuncName(err);
-  if (funcName) {
-    parts.push(`in ${funcName}()`);
+  // (#1316 / #1317) Extract the full wasm call chain — for `illegal cast`
+  // and `dereferencing a null pointer` traps, the leaf frame alone is
+  // often a tiny lifted helper (e.g. __closure_N) whose source line
+  // doesn't pinpoint the user-visible failure. The next frame up is
+  // usually the caller that produced the bad value. When source-map data
+  // is available, annotate each frame with its source line so the chain
+  // reads as a familiar JS-style stack trace.
+  const frames = extractWasmCallStack(err);
+  if (frames.length === 0) {
+    // Fall back to legacy single-name extraction when the stack is empty
+    // or doesn't match the V8 format (e.g. older Node, future format
+    // change). Preserves the existing message shape for tests that pin it.
+    const funcName = extractWasmFuncName(err);
+    if (funcName) parts.push(`in ${funcName}()`);
+    return parts.join(" ");
   }
 
-  // Try to extract byte offset from error stack for source map lookup
-  if (sourceMapJson) {
-    const stack = err?.stack ?? "";
-    // V8 format: wasm://wasm/hash:wasm-function[N]:0xOFFSET
-    const offsetMatch = stack.match(/:0x([0-9a-fA-F]+)/);
-    if (offsetMatch) {
-      const byteOffset = parseInt(offsetMatch[1], 16);
-      const mapped = lookupSourceMapOffset(sourceMapJson, byteOffset);
-      if (mapped && mapped.line > 0) {
-        const adjustedLine = mapped.line - bodyLineOffset;
-        const srcLine = adjustedLine > 0 ? adjustedLine : mapped.line;
-        parts.push(`at source L${srcLine}`);
+  // Annotate the leaf frame (trap site) — same pattern as the legacy
+  // single-frame format: `... in <name>() at source L<line>`.
+  const leaf = frames[0]!;
+  const leafSrc = sourceMapJson ? lookupSourceMapOffset(sourceMapJson, leaf.offset) : undefined;
+  let leafLabel = `in ${leaf.name}()`;
+  if (leafSrc && leafSrc.line > 0) {
+    const adjustedLine = leafSrc.line - bodyLineOffset;
+    const srcLine = adjustedLine > 0 ? adjustedLine : leafSrc.line;
+    leafLabel += ` at source L${srcLine}`;
+  }
+  parts.push(leafLabel);
+
+  // Append additional frames as a call chain. Skip the JS-boundary frame
+  // (added implicitly when frames > 1 means a real chain). Cap the chain
+  // at 4 frames so the error string stays readable in CI logs and the
+  // 300-char `error.substring(0, 300)` truncation in
+  // `scripts/test262-worker-esm.mjs` doesn't lose the leaf info.
+  if (frames.length > 1) {
+    const chainParts: string[] = [];
+    const maxFrames = Math.min(frames.length, 4);
+    for (let i = 1; i < maxFrames; i++) {
+      const f = frames[i]!;
+      let label = f.name;
+      if (sourceMapJson) {
+        const src = lookupSourceMapOffset(sourceMapJson, f.offset);
+        if (src && src.line > 0) {
+          const adj = src.line - bodyLineOffset;
+          const ln = adj > 0 ? adj : src.line;
+          label = `${f.name}@L${ln}`;
+        }
       }
+      chainParts.push(label);
+    }
+    if (chainParts.length > 0) {
+      parts.push(`(via ${chainParts.join(" ← ")})`);
     }
   }
 

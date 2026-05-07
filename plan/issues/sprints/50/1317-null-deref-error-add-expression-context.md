@@ -2,7 +2,7 @@
 id: 1317
 sprint: 50
 title: "null dereference error: add expression / variable context (573 opaque runtime failures)"
-status: ready
+status: done
 created: 2026-05-07
 updated: 2026-05-07
 priority: medium
