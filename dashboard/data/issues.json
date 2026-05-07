@@ -186,16 +186,6 @@
   ],
   "ready": [
     {
-      "id": "1306",
-      "title": "ElementAccessExpression call on closure-typed array drops call: mws[idx](c, next) emits ref.null",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "npm-library-support",
-      "status": "ready",
-      "sprint": "50"
-    },
-    {
       "id": "1305",
       "title": "Module-level var init leaks externref into bitwise op codegen (legacy path)",
       "priority": "medium",
@@ -208,16 +198,6 @@
     {
       "id": "1303",
       "title": "Wasm validation: f64.trunc emitted on externref operand when compiling lodash partial.js",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "npm-library-support",
-      "status": "ready",
-      "sprint": "50"
-    },
-    {
-      "id": "1302",
-      "title": "Wasm validation: closure references invalid global index when compiling lodash flow.js",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
@@ -1561,6 +1541,26 @@
       "feasibility": "",
       "depends_on": [],
       "goal": "",
+      "status": "in-progress",
+      "sprint": "50"
+    },
+    {
+      "id": "1306",
+      "title": "ElementAccessExpression call on closure-typed array drops call: mws[idx](c, next) emits ref.null",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "in-progress",
+      "sprint": "50"
+    },
+    {
+      "id": "1302",
+      "title": "Wasm validation: closure references invalid global index when compiling lodash flow.js",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
       "status": "in-progress",
       "sprint": "50"
     },
