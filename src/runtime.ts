@@ -2954,7 +2954,17 @@ assert._isSameValue = isSameValue;
           // Proxy get trap exposes closure-field methods as callable JS fns,
           // so native ToPrimitive on a wasmGC arg with closure valueOf works.
           const exports = callbackState?.getExports();
-          const wrappedReceiver = _isWasmStruct(receiver) ? _wrapForHost(receiver, exports) : receiver;
+          let wrappedReceiver = _isWasmStruct(receiver) ? _wrapForHost(receiver, exports) : receiver;
+          // #1342 — Boolean primitives travel through i32→externref via
+          // __box_number, so `Boolean.prototype.toString.call(true)` arrives
+          // here with `receiver = 1` (a number). Spec §20.3.3.2's
+          // ToBooleanthisValue accepts both Boolean primitives and wrappers,
+          // so we coerce numeric `0`/`1` back to a boolean primitive when the
+          // dispatch target is Boolean.prototype. This unblocks the 23
+          // assertion_fail tests under built-ins/Boolean/prototype/.
+          if (typeName === "Boolean" && (typeof wrappedReceiver === "number" || typeof wrappedReceiver === "bigint")) {
+            wrappedReceiver = Boolean(wrappedReceiver);
+          }
           const wrappedArgs = (args ?? []).map((a) => (_isWasmStruct(a) ? _wrapForHost(a, exports) : a));
           // #1234 — sparse-aware fast path for Array.prototype.{unshift,reverse,forEach}
           // on non-Array receivers with a HUGE `length`. V8's native algorithms walk
@@ -3021,8 +3031,12 @@ assert._isSameValue = isSameValue;
       if (name === "__proxy_revocable") return (target: any, handler: any): any => Proxy.revocable(target, handler);
       // Symbol.for(key) — global symbol registry (#965)
       if (name === "__symbol_for") return (key: any): any => Symbol.for(String(key));
-      // Symbol.keyFor(sym) — reverse lookup in global registry (#965)
-      if (name === "__symbol_keyFor") return (sym: any): any => Symbol.keyFor(sym) ?? null;
+      // Symbol.keyFor(sym) — reverse lookup in global registry (#965, #1342)
+      // Spec §20.4.2.6: returns the key string for registered symbols, or
+      // `undefined` for any other symbol. Returning `null` (the previous
+      // behaviour) breaks `Symbol.keyFor(s) === undefined` checks in
+      // test262 conformance tests.
+      if (name === "__symbol_keyFor") return (sym: any): any => Symbol.keyFor(sym);
       // ArrayBuffer.isView(arg) — checks if arg is a TypedArray or DataView (#965)
       if (name === "__arraybuffer_isView") return (arg: any): number => (ArrayBuffer.isView(arg) ? 1 : 0);
       // Array.from(iterable, mapFn?) — creates array from iterable (#965)
