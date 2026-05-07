@@ -731,6 +731,20 @@ function compileExpressionInner(ctx: CodegenContext, fctx: FunctionContext, expr
       fctx.body.push(...fctx.persistentCallbackWritebacks.map((instr) => ({ ...instr })));
       // Do NOT clear — re-emit after every subsequent call
     }
+    // Skip async-call detection for `import.defer(...)` / `import.source(...)`:
+    // calling `getResolvedSignature` on these triggers a TypeScript Debug.assert
+    // ("Trying to get the type of `import.defer` in `import.defer(...)`") because
+    // the TS checker explicitly forbids type queries on these meta-properties as
+    // call callees. The compileCallExpression dispatcher (calls.ts) already
+    // reports a clean unsupported-feature error for these patterns; here we just
+    // bypass the async wrap. (#1315)
+    if (
+      ts.isMetaProperty(expr.expression) &&
+      expr.expression.keywordToken === ts.SyntaxKind.ImportKeyword &&
+      (expr.expression.name.text === "defer" || expr.expression.name.text === "source")
+    ) {
+      return callResult;
+    }
     if (isAsyncCallExpression(ctx, expr)) {
       const wrappedType = wrapAsyncReturn(ctx, fctx, callResult);
       // Wrap the call+Promise.resolve in try/catch so synchronous throws from
