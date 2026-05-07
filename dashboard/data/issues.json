@@ -1543,18 +1543,6 @@
       "goal": "platform",
       "status": "in-progress",
       "sprint": "42"
-    },
-    {
-      "id": "1126",
-      "title": "Infer when JavaScript number flows can be safely lowered to int32 or uint32",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [
-        "1124"
-      ],
-      "goal": "core-semantics",
-      "status": "in-progress",
-      "sprint": "50"
     }
   ],
   "review": [],
@@ -3346,6 +3334,18 @@
       "goal": "core-semantics",
       "status": "done",
       "sprint": "43"
+    },
+    {
+      "id": "1126",
+      "title": "Infer when JavaScript number flows can be safely lowered to int32 or uint32",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1124"
+      ],
+      "goal": "core-semantics",
+      "status": "done",
+      "sprint": "50"
     },
     {
       "id": "1125",
