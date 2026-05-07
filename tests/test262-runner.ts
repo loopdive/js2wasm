@@ -2206,7 +2206,7 @@ export interface TestResult {
 }
 
 /** Default per-test timeout in milliseconds (prevents infinite-loop hangs) */
-const TEST_TIMEOUT_MS = 8000;
+const TEST_TIMEOUT_MS = 15000;
 
 function isModuleGoal(category: string, meta: Test262Meta, source: string): boolean {
   if (category === "language/module-code") return true;

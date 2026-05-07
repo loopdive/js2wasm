@@ -2,7 +2,7 @@
 id: 1322
 sprint: 50
 title: "Math.random() has no standalone fallback — requires JS host import in WASI/standalone mode"
-status: ready
+status: in-progress
 created: 2026-05-07
 updated: 2026-05-07
 priority: low

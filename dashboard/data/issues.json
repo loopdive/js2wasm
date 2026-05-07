@@ -173,66 +173,6 @@
   ],
   "ready": [
     {
-      "id": "1333",
-      "title": "RegExp host-mode: Pre-ES6 (S15.10) tests + annexB legacy accessors",
-      "priority": "low",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "50"
-    },
-    {
-      "id": "1332",
-      "title": "RegExp host-mode: prototype method edge cases (exec, test, flag accessors, RegExpStringIterator)",
-      "priority": "low",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "50"
-    },
-    {
-      "id": "1331",
-      "title": "RegExp host-mode: Symbol.split protocol spec compliance (123 fails)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "50"
-    },
-    {
-      "id": "1330",
-      "title": "RegExp host-mode: Symbol.search protocol spec compliance (37 fails)",
-      "priority": "low",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "50"
-    },
-    {
-      "id": "1329",
-      "title": "RegExp host-mode: Symbol.replace / replaceAll protocol spec compliance (110 fails)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "50"
-    },
-    {
-      "id": "1328",
-      "title": "RegExp host-mode: Symbol.match / matchAll protocol spec compliance (101 fails)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "50"
-    },
-    {
       "id": "1327",
       "title": "Landing page: per-feature test pass counts + feature report page + playground deep-link",
       "priority": "high",
@@ -333,13 +273,23 @@
       "sprint": "50"
     },
     {
+      "id": "1315",
+      "title": "import.defer / import.source missing early error detection — 157 negative tests false-pass",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
       "id": "1314",
       "title": "Wasm codegen: __closure_N stack underflow — call emits wrong argument count",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "spec-completeness",
-      "status": "suspended",
+      "status": "ready",
       "sprint": "50"
     },
     {
@@ -879,6 +829,16 @@
       "goal": "contributor-readiness",
       "status": "ready",
       "sprint": "45"
+    },
+    {
+      "id": "1002",
+      "title": "RegExp js-host mode: finish Symbol protocol and remaining host-wrapper semantics",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "standalone-mode",
+      "status": "ready",
+      "sprint": ""
     },
     {
       "id": "1000",
@@ -1597,16 +1557,6 @@
     }
   ],
   "inprogress": [
-    {
-      "id": "1315",
-      "title": "import.defer / import.source missing early error detection — 157 negative tests false-pass",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "in-progress",
-      "sprint": "50"
-    },
     {
       "id": "1206",
       "title": "fix(build-pages): copy benchmark JSONs + frame-nav-sync.js to top-level pages-dist paths (404s on landing page)",
@@ -4464,16 +4414,6 @@
       "goal": "ci-hardening",
       "status": "done",
       "sprint": "42"
-    },
-    {
-      "id": "1002",
-      "title": "RegExp js-host mode: finish Symbol protocol and remaining host-wrapper semantics",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "standalone-mode",
-      "status": "done",
-      "sprint": "50"
     },
     {
       "id": "1001",
