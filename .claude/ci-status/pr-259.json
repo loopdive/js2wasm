@@ -1,0 +1,19 @@
+{
+  "pr": 259,
+  "conclusion": "success",
+  "head_branch": "issue-1311-map-handler",
+  "head_sha": "eac249a87e1208b01ea326a3e0937730f1e029c4",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25525915522",
+  "timestamp": "2026-05-07T23:50:32Z",
+  "pass": 26785,
+  "fail": 14117,
+  "compile_error": 846,
+  "snapshot_delta": 8,
+  "net_per_test": 42,
+  "regressions": 37,
+  "regressions_real": 5,
+  "regressions_wasm_change": 5,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 32,
+  "improvements": 47
+}
