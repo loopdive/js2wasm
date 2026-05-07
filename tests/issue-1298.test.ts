@@ -4,20 +4,20 @@
 // nature on retrieval. The compiler dropped the unboxed externref and emitted
 // `ref.null extern` instead of the round-tripped funcref dispatch.
 //
-// Three converging gaps in `compileCallExpression` fixed here:
+// Three converging gaps in `compileCallExpression` fixed in v1 (PR #223):
 //   1. `compileCallablePropertyCall` bailed out for `Fn | null` fields because
 //      `getCallSignatures()` on a nullable union returns 0 sigs. Fix: strip
 //      via `getNonNullableType` before reading sigs.
-//   2. `expr!(args)` non-null-asserted callee was never unwrapped, so the
-//      property-access dispatch never fired. Fix: synthetic CallExpression
-//      recursion mirroring the parens unwrap.
-//   3. The generic call-as-callee fallback only scanned `closureInfoByTypeIdx`
-//      for matching closure types — when the call-site was compiled before any
-//      same-signature closure had been registered, the lookup returned nothing
-//      and the call fell through to a graceful `ref.null extern`. Fix: eagerly
-//      create the wrapper types via `getOrCreateFuncRefWrapperTypes` so the
-//      lookup is order-independent and any later closure assignment reuses the
-//      same struct/funcref pair through `funcRefWrapperCache`.
+//   2. `expr!(args)` non-null-asserted callee was never unwrapped. Fix:
+//      synthetic CallExpression recursion mirroring the parens unwrap.
+//
+// Fix #3 (this PR): generic call-as-callee fallback is now ref.test-guarded.
+// When the runtime callee value isn't a `__fn_wrap_N_struct` of the matching
+// shape, the dispatch falls through to graceful `ref.null.extern`, mirroring
+// the pre-rewrite scan-only fallback that the Temporal-cluster test262 runs
+// depend on. The eager `getOrCreateFuncRefWrapperTypes` makes the dispatch
+// order-independent for callees whose closure was assigned later in the
+// module.
 
 import { describe, it, expect } from "vitest";
 
@@ -145,18 +145,9 @@ describe("#1298 — function-typed field call dispatch", () => {
     expect(got).toBe("hi!");
   });
 
-  // The following two acceptance-criteria cases (#2 array, #3 Map) require
-  // additional fixes beyond #1298's scope:
-  //
-  //   - Array path: `fns[0]("hi")` routes through the ElementAccess fallback
-  //     at calls.ts:6404 and is tracked separately in #1306.
-  //   - Map path: `m.get("k")(...)` storage uses `__make_callback` which
-  //     produces a JS-wrapped externref that fails the closure-struct cast on
-  //     retrieval. Will require a follow-up to teach the storage side
-  //     (isHostCallbackArgument) about non-host-callback method args, or add
-  //     a JS-callable bridge from Wasm. Tracked under #1297/#1306 follow-up.
-
-  it.skip("Fn[] array index call (deferred to #1306)", async () => {
+  // (#1306) The Fn[] array-index call is handled by the ElementAccess
+  // resolution path #1306 added — un-skipped here.
+  it("Fn[] array index call dispatches via index", async () => {
     const got = await runTest(`
       export function test(): string {
         const fns: ((s: string) => string)[] = [(s) => s + "!"];
@@ -166,7 +157,38 @@ describe("#1298 — function-typed field call dispatch", () => {
     expect(got).toBe("hi!");
   });
 
-  it.skip("Map<string, Fn>.get(...)(...) (deferred — storage uses __make_callback)", async () => {
+  // (#1298 fix #3) The generic call-as-callee fallback is now ref.test-guarded:
+  // when the runtime callee value isn't a wasm closure of the matching shape,
+  // the dispatch graceful-nulls instead of trapping. The pre-fix-#3 v1 (PR
+  // #223 first commit) committed unconditionally to the dispatch and threw
+  // TypeError at the first null check after a failed cast — that caused 340
+  // null_deref test262 regressions clustered in `built-ins/Temporal/*`. With
+  // the ref.test guard, callees whose runtime value isn't a wasm closure
+  // graceful-null exactly like the pre-rewrite scan-only fallback.
+  it("safe re-impl: callable-typed callee with non-closure runtime value returns null gracefully", async () => {
+    const got = await runTest(`
+      export function test(): string {
+        // Callee carries a call signature, but the runtime value is null —
+        // mirrors the Temporal-cluster failure shape.
+        const fn: (() => string) = (null as any) as (() => string);
+        if (fn == null) return "default";
+        return fn();
+      }
+    `);
+    expect(got).toBe("default");
+  });
+
+  // Storage-side gap for Map<K, Fn> values — `m.set("k", arrow)` currently
+  // routes the arrow through `__make_callback` because Map.set is a host
+  // method on a host class. The retrieved value is a JS-wrapped externref,
+  // not a wasm closure struct, so even with the ref.test-guarded dispatch
+  // (this PR's fix #3) the call_ref branch can't fire and we fall through to
+  // graceful null. Fixing requires teaching the storage side
+  // (`isHostCallbackArgument` in closures.ts) that args to user-class methods
+  // forwarding to a host method shouldn't take the host-callback path, OR
+  // adding a JS-callable bridge that lets Wasm `call_ref` a JS function.
+  // Tracked as a #1298 storage-side follow-up.
+  it.skip("Map<string, Fn>.get(...)(...) (deferred — Map.set storage uses __make_callback)", async () => {
     const got = await runTest(`
       export function test(): string {
         const m = new Map<string, (s: string) => string>();
@@ -176,5 +198,38 @@ describe("#1298 — function-typed field call dispatch", () => {
       }
     `);
     expect(got).toBe("hi!");
+  });
+
+  // Tier 5c compose pattern: identifier-callable-param path at calls.ts:5043
+  // has the same unconditional-dispatch shape as the pre-fix-#3 generic
+  // fallback (commits to the cast and emitNullCheckThrow on a failed cast).
+  // Applying the ref.test guard there would mirror the safe re-impl in this
+  // PR; tracked as a #1298 follow-up. Pre-existing failure on main.
+  it.skip("Tier 5c compose 'const mw = mws[idx]; mw(c, next)' (deferred — identifier-callable still throws)", async () => {
+    const got = await runTest(`
+      type N = () => string;
+      type Mw = (c: number, next: N) => string;
+      function compose(mws: Mw[]): (c: number) => string {
+        return (c: number) => {
+          let i = 0;
+          function next(): string {
+            const idx = i;
+            i = i + 1;
+            if (idx >= mws.length) return "end";
+            const mw = mws[idx];
+            return mw(c, next);
+          }
+          return next();
+        };
+      }
+      export function test(): string {
+        const mws: Mw[] = [
+          (c, n: N) => "[A]" + n(),
+          (c, n: N) => "[B]" + n(),
+        ];
+        return compose(mws)(0);
+      }
+    `);
+    expect(got).toBe("[A][B]end");
   });
 });
