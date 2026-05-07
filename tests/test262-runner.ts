@@ -2871,6 +2871,15 @@ export async function runTest262File(
     //   (__assert_count starts at 1, incremented before check, so first assert → 2)
     // ret == -1: uncaught exception (not from an assert)
     // ret == 0: legacy (should not happen with new shims)
+    //
+    // #1318 — surface enough of the assert source line to diagnose the
+    // failure. Previously we truncated to 160 chars which cut off most
+    // assertion messages. Most assert lines fit comfortably in 600 chars
+    // (the longest legitimate assert.sameValue with a descriptive message
+    // and a multi-arg comparison stays well under that). The downstream
+    // worker still caps the full error string at 2000 chars so this won't
+    // bloat the JSONL beyond what fits a single test result.
+    const ASSERT_LINE_MAX = 600;
     let assertCtx = "";
     if (typeof ret === "number" && ret >= 2) {
       const assertIdx = ret - 1; // 1-based index into assert calls
@@ -2885,15 +2894,40 @@ export async function runTest262File(
           const lineStart = source.lastIndexOf("\n", m.index) + 1;
           const lineEnd = source.indexOf("\n", m.index);
           const line = source.slice(lineStart, lineEnd === -1 ? undefined : lineEnd).trim();
-          assertCtx = ` | assert #${assertIdx}: ${line.slice(0, 160)}`;
+          // 1-based line number for the user (matches editor display).
+          const lineNumber = (source.slice(0, m.index).match(/\n/g)?.length ?? 0) + 1;
+          const truncated = line.length > ASSERT_LINE_MAX ? `${line.slice(0, ASSERT_LINE_MAX - 3)}...` : line;
+          assertCtx = ` | assert #${assertIdx} at L${lineNumber}: ${truncated}`;
           break;
         }
       }
       if (!assertCtx) {
-        assertCtx = ` | assert #${assertIdx} of ${nth} total`;
+        // #1318 — Nth assert not found via regex (e.g. test uses Test262Error
+        // throws or a custom helper that doesn't match `\bassert\b...`).
+        // Look for a bare `throw new Test262Error(...)` to surface its
+        // message — that's a common test262 failure idiom that the regex
+        // above misses.
+        const throwRegex = /throw\s+new\s+Test262Error\s*\(([^)]*)\)/g;
+        let throwMatch: RegExpExecArray | null;
+        let nthThrow = 0;
+        while ((throwMatch = throwRegex.exec(source)) !== null) {
+          nthThrow++;
+          if (nthThrow === assertIdx) {
+            const lineStart = source.lastIndexOf("\n", throwMatch.index) + 1;
+            const lineEnd = source.indexOf("\n", throwMatch.index);
+            const line = source.slice(lineStart, lineEnd === -1 ? undefined : lineEnd).trim();
+            const lineNumber = (source.slice(0, throwMatch.index).match(/\n/g)?.length ?? 0) + 1;
+            const truncated = line.length > ASSERT_LINE_MAX ? `${line.slice(0, ASSERT_LINE_MAX - 3)}...` : line;
+            assertCtx = ` | Test262Error #${assertIdx} at L${lineNumber}: ${truncated}`;
+            break;
+          }
+        }
+        if (!assertCtx) {
+          assertCtx = ` | assert #${assertIdx} of ${nth} total`;
+        }
       }
     } else if (ret === -1) {
-      assertCtx = " | uncaught exception";
+      assertCtx = " | uncaught exception (no assert tracked)";
     }
     return {
       file: relPath,
