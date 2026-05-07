@@ -93,7 +93,21 @@ export function ensureExnTag(ctx: CodegenContext): number {
  * new import globals are inserted after module globals already exist.
  */
 function fixupModuleGlobalIndices(ctx: CodegenContext, threshold: number, delta: number): void {
+  // The `shifted` set tracks every Instr[] we've already adjusted in THIS call
+  // so that no body is shifted twice. Tracking happens inside `shiftGlobalIndices`
+  // so the guard covers BOTH top-level entries AND nested bodies reached via
+  // recursion (if/then/else, block.body, try.catches). The previous version
+  // only added top-level entries to the set, which let recursively-shifted
+  // bodies be re-shifted via duplicate `savedBodies` entries — a leak that
+  // accumulates whenever pushBody is paired with `fctx.body = saved` instead
+  // of `popBody` (#1303). The compileBitwiseBinaryOp site in lodash-es
+  // mergeData reproduced this: a global.get whose final shifted index
+  // landed past WRAP_ARY_FLAG and into the externref tail of the global
+  // table, so f64.trunc fired against an externref operand. (#1305)
+  const shifted = new Set<Instr[]>();
   function shiftGlobalIndices(instrs: Instr[]): void {
+    if (shifted.has(instrs)) return;
+    shifted.add(instrs);
     for (const instr of instrs) {
       if ((instr.op === "global.get" || instr.op === "global.set") && instr.index >= threshold) {
         instr.index += delta;
@@ -118,49 +132,30 @@ function fixupModuleGlobalIndices(ctx: CodegenContext, threshold: number, delta:
     }
   }
 
-  const shifted = new Set<Instr[]>();
   for (const func of ctx.mod.functions) {
-    if (!shifted.has(func.body)) {
-      shiftGlobalIndices(func.body);
-      shifted.add(func.body);
-    }
+    shiftGlobalIndices(func.body);
   }
 
   if (ctx.currentFunc) {
-    if (!shifted.has(ctx.currentFunc.body)) {
-      shiftGlobalIndices(ctx.currentFunc.body);
-      shifted.add(ctx.currentFunc.body);
-    }
+    shiftGlobalIndices(ctx.currentFunc.body);
     for (const sb of ctx.currentFunc.savedBodies) {
-      if (shifted.has(sb)) continue;
       shiftGlobalIndices(sb);
-      shifted.add(sb);
     }
   }
 
   for (const parentFctx of ctx.funcStack) {
-    if (!shifted.has(parentFctx.body)) {
-      shiftGlobalIndices(parentFctx.body);
-      shifted.add(parentFctx.body);
-    }
+    shiftGlobalIndices(parentFctx.body);
     for (const sb of parentFctx.savedBodies) {
-      if (!shifted.has(sb)) {
-        shiftGlobalIndices(sb);
-        shifted.add(sb);
-      }
+      shiftGlobalIndices(sb);
     }
   }
 
   for (const pb of ctx.parentBodiesStack) {
-    if (!shifted.has(pb)) {
-      shiftGlobalIndices(pb);
-      shifted.add(pb);
-    }
+    shiftGlobalIndices(pb);
   }
 
-  if (ctx.pendingInitBody && !shifted.has(ctx.pendingInitBody)) {
+  if (ctx.pendingInitBody) {
     shiftGlobalIndices(ctx.pendingInitBody);
-    shifted.add(ctx.pendingInitBody);
   }
 
   for (const g of ctx.mod.globals) {
