@@ -2846,24 +2846,41 @@ assert._isSameValue = isSameValue;
             // (TC39 Stage 3). Implement the spec algorithm here so the
             // host imports work without runtime support. Falls through if
             // the receiver isn't a Map/WeakMap.
+            //
+            // Spec ordering matters: callback validation (`getOrInsertComputed`)
+            // must run BEFORE any key handling, otherwise WeakMap with a
+            // primitive key throws the wrong error first. test262
+            // `not-a-function-callbackfn-throws.js` and
+            // `throw-if-key-cannot-be-held-weakly.js` both pin this order.
             if (
               (method === "getOrInsert" || method === "getOrInsertComputed") &&
               (wrappedObj instanceof Map || wrappedObj instanceof WeakMap)
             ) {
-              const key = wrappedArgs[0];
-              if (wrappedObj.has(key)) {
-                return _unwrapForHost(wrappedObj.get(key));
-              }
-              let value: any;
               if (method === "getOrInsertComputed") {
                 const callback = wrappedArgs[1];
                 if (typeof callback !== "function") {
-                  throw new TypeError("getOrInsertComputed: callback is not a function");
+                  throw new TypeError("Map.prototype.getOrInsertComputed: callbackfn is not callable");
                 }
-                value = callback.call(undefined, key);
-              } else {
-                value = wrappedArgs[1];
               }
+              const key = wrappedArgs[0];
+              // For WeakMap, the spec requires throwing TypeError when the
+              // key is not an Object/Symbol (CanBeHeldWeakly). Native
+              // `WeakMap.prototype.has` already throws for primitives in
+              // Node's earlier behavior, but newer node only throws on
+              // `set` — be explicit.
+              if (
+                wrappedObj instanceof WeakMap &&
+                (key === null || key === undefined || (typeof key !== "object" && typeof key !== "function"))
+              ) {
+                throw new TypeError("Invalid value used as weak map key");
+              }
+              if (wrappedObj.has(key)) {
+                return _unwrapForHost(wrappedObj.get(key));
+              }
+              const value =
+                method === "getOrInsertComputed"
+                  ? (wrappedArgs[1] as (k: unknown) => unknown).call(undefined, key)
+                  : wrappedArgs[1];
               wrappedObj.set(key, value);
               return _unwrapForHost(value);
             }
