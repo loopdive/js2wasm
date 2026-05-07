@@ -2,7 +2,7 @@
 id: 1308
 sprint: 50
 title: "Wasm closure struct returned to JS host is not JS-callable"
-status: in-progress
+status: done
 created: 2026-05-07
 updated: 2026-05-07
 priority: medium

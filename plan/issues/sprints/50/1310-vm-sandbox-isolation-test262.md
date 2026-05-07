@@ -2,7 +2,7 @@
 id: 1310
 sprint: 50
 title: "vm.createContext sandbox isolation for test262 global contamination"
-status: in-progress
+status: done
 created: 2026-05-07
 updated: 2026-05-07
 priority: medium

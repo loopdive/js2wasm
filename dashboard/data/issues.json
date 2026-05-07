@@ -185,26 +185,6 @@
       "sprint": "50"
     },
     {
-      "id": "1308",
-      "title": "Wasm closure struct returned to JS host is not JS-callable",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "npm-library-support",
-      "status": "ready",
-      "sprint": "50"
-    },
-    {
-      "id": "1298",
-      "title": "Calling a function-typed value stored in a field/array/Map drops the call and returns null",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "npm-library-support",
-      "status": "ready",
-      "sprint": "50"
-    },
-    {
       "id": "1255",
       "title": "Reference platform scenario: run a Node-oriented example on Wasmtime via Edge.js",
       "priority": "high",
@@ -1524,12 +1504,12 @@
   ],
   "inprogress": [
     {
-      "id": "1307",
-      "title": "ci: serialize Test262 Sharded across PRs to eliminate runner-pool contention",
-      "priority": "medium",
-      "feasibility": "",
+      "id": "1298",
+      "title": "Calling a function-typed value stored in a field/array/Map drops the call and returns null",
+      "priority": "high",
+      "feasibility": "hard",
       "depends_on": [],
-      "goal": "",
+      "goal": "npm-library-support",
       "status": "in-progress",
       "sprint": "50"
     },
@@ -1556,6 +1536,36 @@
   ],
   "review": [],
   "done": [
+    {
+      "id": "1310",
+      "title": "vm.createContext sandbox isolation for test262 global contamination",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "test262-conformance",
+      "status": "done",
+      "sprint": "50"
+    },
+    {
+      "id": "1308",
+      "title": "Wasm closure struct returned to JS host is not JS-callable",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "done",
+      "sprint": "50"
+    },
+    {
+      "id": "1307",
+      "title": "ci: serialize Test262 Sharded across PRs to eliminate runner-pool contention",
+      "priority": "medium",
+      "feasibility": "",
+      "depends_on": [],
+      "goal": "",
+      "status": "done",
+      "sprint": "50"
+    },
     {
       "id": "1306",
       "title": "ElementAccessExpression call on closure-typed array drops call: mws[idx](c, next) emits ref.null",

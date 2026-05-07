@@ -1,7 +1,7 @@
 ---
 id: 1307
 title: "ci: serialize Test262 Sharded across PRs to eliminate runner-pool contention"
-status: in-progress
+status: done
 priority: medium
 sprint: 50
 created: 2026-05-07
