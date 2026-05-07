@@ -2,7 +2,7 @@
 id: 1223
 sprint: backlog
 title: "TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up)"
-status: backlog
+status: wont-fix
 created: 2026-05-01
 updated: 2026-05-01
 priority: medium
@@ -95,3 +95,19 @@ the force-boxed ref-cell has the wrong slot index and reads stale.
 - #1177 Stage 1 (capture-index correction) must land first — it corrects the
   slot index that the force-boxed ref-cell reads from
 - #1205 must be merged first (provides the FNDECL-A2..A5 plumbing)
+
+## Wont-fix rationale (2026-05-07)
+
+Closed as wont-fix after fourth consecutive deferral (S47 → S48 → S49 → S50 decision point).
+
+**Reasons:**
+
+1. **Heavy dependency chain**: requires #1177 Stage 1 (capture-index correction) + #1205 (FNDECL-A2..A5 plumbing) to land first. Both are substantial, unscheduled pieces of work.
+
+2. **No test262 leverage**: cited in every deferral. The failing pattern (`for await ([x] of ...)` destructure-assign writer visible to reader fn-decl) covers a narrow async generator usage. No measurable conformance gain.
+
+3. **Complexity/value ratio**: three-part fix (extend `collectWrittenIdentifiers`, boxed-capture-aware destructure emit, Stage 1 gate) with high coordination cost and low standalone value.
+
+4. **Sprint 50 was the explicit decision point**: sprint 50 goals stated "Pull only if capacity surplus. Decide: commit or backlog after S50." Capacity was used on higher-value issues. Decision: wont-fix.
+
+Senior-dev investigation (2026-05-07) confirmed the issue still reproduces on main and the fix path is unchanged from prior analysis — no shortcuts emerged.
