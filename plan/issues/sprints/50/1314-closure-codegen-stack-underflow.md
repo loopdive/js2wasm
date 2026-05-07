@@ -2,7 +2,7 @@
 id: 1314
 sprint: 50
 title: "Wasm codegen: __closure_N stack underflow — call emits wrong argument count"
-status: ready
+status: suspended
 created: 2026-05-07
 updated: 2026-05-07
 priority: high
@@ -101,3 +101,80 @@ Estimated scope: ~80–150 LoC in `destructureParamArray` plus careful tests for
 - `.tmp/repro-1314.mts` — initial failure repro
 - `.tmp/inspect-min.mts` — dumps the malformed `__closure_0` WAT
 - `.tmp/bisect.mts` / `.tmp/bisect2.mts` / `.tmp/bisect3.mts` — successive bisects narrowing to the trifecta
+
+## Additional findings (dev-1302, 2026-05-07)
+
+The senior-dev's "trifecta" is too narrow. New bisect probe (`.tmp/probe-1314-min.mts`)
+shows the bug triggers with **just two** conditions — `const f` and no nested elision
+both fail too:
+
+```
+FAIL: const f = ([x = g()]) => x;          // simple — fails
+FAIL: const f = ([x = g()]) => x;          // (g returns array) — fails
+FAIL: function* g(){...} f = ([[,] = g()]) => 0;  // trifecta variant — fails
+PASS: const f = (a = g()) => a;            // no destructure — works
+PASS: const f = ([[,] = arr]) => 0;        // var-default not fn-call — works
+```
+
+So the actual trigger is **array destructure pattern + element with fn-call
+default** — that's it. `var f` vs `const f` and nested-elision-vs-not don't
+affect the bug.
+
+The malformed call is `call 2` where function index 2 is `__extern_length_import`
+(takes 1 externref arg). At emit time, `funcMap.get("g")` was likely 2 (g was the
+first user function before any imports were added). After more imports were added,
+`g` shifted to a later index but the emitted `call 2` was not updated.
+
+### Suspect: late-import shift miss
+
+There's a manual `fctx.body` swap pattern in `destructureParamArray`
+(`src/codegen/destructuring-params.ts:730-739`):
+
+```ts
+const savedBody = fctx.body;
+const fastPathInstrs: Instr[] = [];
+fctx.body = fastPathInstrs;
+... emit fastPathInstrs (recursive destructureParamArray) ...
+fctx.body = savedBody;
+```
+
+`savedBody` is held only as a JS local — it's NOT pushed to `fctx.savedBodies`.
+If `shiftLateImportIndices` fires DURING the recursive emit (because
+`compileExpression(g())` adds late imports), the walker walks `fctx.body`
+(= `fastPathInstrs`) and `fctx.savedBodies` (does NOT include `savedBody`).
+Any `call $g` instruction in `savedBody` (or in deeper nested branches that
+were emitted into `savedBody` BEFORE this swap) won't get its funcIdx shifted.
+
+This may not be the only culprit — there may be similar manual-swap patterns
+elsewhere — but it's a structural concern worth auditing across the codebase
+(grep for `fctx\.body =` not paired with `pushBody`/`popBody`).
+
+### Suspended Work (2026-05-07 by dev-1302)
+
+#### Worktree
+`/workspace/.claude/worktrees/issue-1314-closure-stack-underflow` (branch
+`issue-1314-closure-stack-underflow`). Includes `.tmp/probe-1314-min.mts`
+and `.tmp/probe-1314-wat-min.mts`. Two minor instrumentation edits in
+`src/codegen/statements/destructuring.ts` — gated on `DEBUG_1314` env, no
+behavioral change. Should be reverted before any real fix.
+
+#### Why suspended
+Task assigned to dev-1302 but the senior-dev's diagnosis already flags it
+as HIGH risk + 80-150 LoC + recommends architect-spec. The bug is reachable
+through more code paths than initially diagnosed. Bisecting deeper requires
+careful instrumentation of `shiftLateImportIndices` and the manual
+`fctx.body =` swap sites, plus a defensive audit of all such swaps.
+
+#### Resume recommendations
+1. Verify the simpler repro: `const f = ([x = g()]) => x;` (probe-1314-min.mts).
+2. Instrument `shiftLateImportIndices` to log every shift target + identify
+   which body-array(s) hold the offending call instruction at each shift
+   step. Find the exact missed walk.
+3. Either:
+   (a) Add `fctx.savedBodies.push(savedBody)` / `pop()` around the manual
+       swap in `destructureParamArray:730-739` so the walker sees it.
+   (b) Convert manual swaps to `pushBody`/`popBody` helpers project-wide.
+   (c) Or fix the underlying codegen bug (#1158/#1159 area) by emitting the
+       default-init expression in the right path, per senior-dev's "Fix
+       sketch" above.
+4. Validate against ALL 5 probe cases + the original test262 cluster.
