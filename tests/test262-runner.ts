@@ -67,6 +67,10 @@ const SENTINEL_KEYS: ReadonlyArray<readonly string[]> = [
   ["Function", "prototype", "call"],
   ["String", "prototype", "slice"],
   ["Promise", "prototype", "then"],
+  ["Set", "prototype", "add"],
+  ["Map", "prototype", "set"],
+  ["WeakMap", "prototype", "set"],
+  ["WeakSet", "prototype", "add"],
 ];
 
 function _buildFreshSandbox(): Record<string, any> {
