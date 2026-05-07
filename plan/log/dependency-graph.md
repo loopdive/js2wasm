@@ -4,6 +4,22 @@ Issues organized by dependency order -- work items at the top are ready now,
 items below unlock when their dependencies complete. No sprint batching needed:
 pick any "ready" item and start.
 
+## Sprint 50 Extension (added 2026-05-07)
+
+Pulled into S50 alongside the original closure/dispatch cohort. Direct-dispatch items have no architect dependency; spec items wait on architect.
+
+| #   | Title | Priority | Feasibility | Status | Type |
+|-----|-------|----------|-------------|--------|------|
+| 1267 | Optimizer drops side-effectful method calls in stmt position | high | medium | Sprint 50 | Direct dispatch |
+| 859 | Map.forEach callback captures are immutable snapshots | high | medium | Sprint 50 | Direct dispatch |
+| 1268 | obj[key] ??= value returns NaN on index-signature types | medium | medium | Sprint 50 | Direct dispatch |
+| 1020 | await-using TDZ tests null_deref crash in assert_throwsAsync | medium | medium | Sprint 50 | Direct dispatch |
+| 1155 | test262 worker classifies WebAssembly.Exception as compile_error | medium | easy | Sprint 50 | Direct dispatch (quick win) |
+| 837 | Map/WeakMap upsert getOrInsert/getOrInsertComputed | low | easy | Sprint 50 | Direct dispatch (stretch) |
+| 1239 | Object literals with get/set accessors → JS host object | medium | hard | Sprint 50 | **Needs architect spec** |
+| 1158 | destructureParamArray fallback eagerly consumes iterators | medium | hard | Sprint 50 | **Needs architect spec (bundle with #1159)** |
+| 1159 | Nested empty array pattern with initializer iterator semantics | medium | hard | Sprint 50 | **Needs architect spec (bundle with #1158)** |
+
 ## Legend
 
 - **Ready** -- no blockers, can start immediately
@@ -232,7 +248,7 @@ All independent -- low priority, can be picked up opportunistically.
 | 661 | Temporal API via polyfill | 1,128 tests | **Ready** |
 | 674 | SharedArrayBuffer / Atomics | 493 tests | **Ready** |
 | 834 | ES2025 Set methods (union, intersection, etc.) | 216 skip | **Ready** |
-| 837 | Map/WeakMap upsert (getOrInsert/getOrInsertComputed) | ~110 skip | **Ready** |
+| 837 | Map/WeakMap upsert (getOrInsert/getOrInsertComputed) | ~110 skip | **Sprint 50** |
 | 838 | BigInt64Array / BigUint64Array typed arrays | 19 skip | **Ready** |
 | 830 | DisposableStack extern class missing | **38 CE** | **Ready** |
 | 1036 | DisposableStack/AsyncDisposableStack property-chain → Wasm null trap | **94 FAIL** | **Ready** |
