@@ -70,7 +70,7 @@ formatting (superseded by #1321) and proper unicode escape handling.
 
 Per-tech-lead-direction (option b), this PR landed only the
 primitive-typed slice; full object/array stringify and the entire
-parse path are tracked under #1336 (architect-spec follow-up).
+parse path are tracked under #1353 (architect-spec follow-up).
 
 Implemented in `src/codegen/expressions/calls.ts` via a new
 `tryEmitJsonStringifyPrimitive(ctx, fctx, arg)` helper that runs
@@ -104,13 +104,13 @@ the equality.
 Sanity-checked against `tests/issue-{837,1239,1267,1268,1298,1313,
 1316}.test.ts` — 56 pass / 3 skip (unchanged from main).
 
-### Out of scope — see #1336
+### Out of scope — see #1353
 
 - Object / array shape walking (depends on WasmGC field-enumeration design)
 - `JSON.parse` (depends on dynamic property-bag struct design)
 - `string` runtime escape (compile-time-known string literals fall
   through to the host today; primitives slice handles boolean and
   number, not string)
-- BigInt TypeError throw (deferred to #1336)
+- BigInt TypeError throw (deferred to #1353)
 - Replacer function support, `space` pretty-print, `toJSON` protocol —
   all deferred per architect spec request.

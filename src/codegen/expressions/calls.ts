@@ -173,7 +173,7 @@ function resolveClosureInfoFromLocal(
  *                    `NaN`/`±Infinity` serialize to the string `"null"`
  *                    per §25.5.2 step 11
  *
- * Deferred to #1336 (full architect spec):
+ * Deferred to #1353 (full architect spec):
  *   - `string`  — needs runtime JSON-escape helper
  *   - `bigint`  — needs runtime check + TypeError throw
  *   - object / array — needs WasmGC shape walking
@@ -280,7 +280,7 @@ function tryEmitJsonStringifyPrimitive(ctx: CodegenContext, fctx: FunctionContex
   }
 
   // string / bigint / unhandled — fall through to the host import. Full
-  // pure-Wasm support tracked under #1336.
+  // pure-Wasm support tracked under #1353.
   return false;
 }
 
@@ -3221,7 +3221,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         // result as pure Wasm so standalone-mode (no JS host) builds work.
         // Object/array/string/bigint cases fall through to the existing
         // JSON_stringify host import — full pure-Wasm shape walking is
-        // tracked under #1336 (architect-spec follow-up).
+        // tracked under #1353 (architect-spec follow-up).
         if (method === "stringify") {
           if (tryEmitJsonStringifyPrimitive(ctx, fctx, expr.arguments[0]!)) {
             // Compile remaining args (replacer, space) for their side

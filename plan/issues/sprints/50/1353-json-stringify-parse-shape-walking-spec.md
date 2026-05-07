@@ -1,5 +1,5 @@
 ---
-id: 1336
+id: 1353
 sprint: 50
 title: "JSON.stringify (objects/arrays) + JSON.parse: architect spec for Wasm shape-walking and recursive-descent parser"
 status: ready
@@ -15,7 +15,7 @@ language_feature: json
 goal: standalone-mode
 related: [1324, 1321]
 ---
-# #1336 — JSON shape-walking + parser: architect spec needed
+# #1353 — JSON shape-walking + parser: architect spec needed
 
 ## Why this exists
 
