@@ -10,18 +10,18 @@
   },
   {
     "edition": "ES5",
-    "pass": 8253,
-    "fail": 4360,
-    "ce": 166,
+    "pass": 8250,
+    "fail": 4367,
+    "ce": 162,
     "skip": 305,
     "total": 13084,
     "pct": 63
   },
   {
     "edition": "ES2015",
-    "pass": 9476,
-    "fail": 5449,
-    "ce": 400,
+    "pass": 9478,
+    "fail": 5440,
+    "ce": 407,
     "skip": 90,
     "total": 15415,
     "pct": 61
@@ -37,8 +37,8 @@
   },
   {
     "edition": "ES2017",
-    "pass": 333,
-    "fail": 65,
+    "pass": 336,
+    "fail": 62,
     "ce": 23,
     "skip": 246,
     "total": 667,
@@ -46,9 +46,9 @@
   },
   {
     "edition": "ES2018",
-    "pass": 2822,
+    "pass": 2826,
     "fail": 1356,
-    "ce": 72,
+    "ce": 68,
     "skip": 1,
     "total": 4251,
     "pct": 66
@@ -64,27 +64,27 @@
   },
   {
     "edition": "ES2020",
-    "pass": 1090,
+    "pass": 1089,
     "fail": 372,
-    "ce": 29,
+    "ce": 30,
     "skip": 413,
     "total": 1904,
     "pct": 57
   },
   {
     "edition": "ES2021",
-    "pass": 311,
+    "pass": 312,
     "fail": 117,
-    "ce": 7,
+    "ce": 6,
     "skip": 28,
     "total": 463,
     "pct": 67
   },
   {
     "edition": "ES2022",
-    "pass": 2703,
-    "fail": 1274,
-    "ce": 200,
+    "pass": 2704,
+    "fail": 1275,
+    "ce": 198,
     "skip": 57,
     "total": 4234,
     "pct": 64
@@ -92,8 +92,8 @@
   {
     "edition": "ES2023",
     "pass": 173,
-    "fail": 116,
-    "ce": 6,
+    "fail": 115,
+    "ce": 7,
     "skip": 39,
     "total": 334,
     "pct": 52
@@ -101,8 +101,8 @@
   {
     "edition": "ES2024",
     "pass": 423,
-    "fail": 119,
-    "ce": 4,
+    "fail": 120,
+    "ce": 3,
     "skip": 99,
     "total": 645,
     "pct": 66
@@ -119,16 +119,16 @@
   {
     "edition": "ES2026",
     "pass": 127,
-    "fail": 221,
-    "ce": 1,
+    "fail": 219,
+    "ce": 3,
     "skip": 0,
     "total": 349,
     "pct": 36
   },
   {
     "edition": "Proposals",
-    "pass": 1357,
-    "fail": 3301,
+    "pass": 1355,
+    "fail": 3303,
     "ce": 175,
     "skip": 178,
     "total": 5011,
