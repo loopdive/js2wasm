@@ -101,6 +101,26 @@ export function resolveStructNameForExpr(
   fctx: FunctionContext,
   expression: ts.Expression,
 ): string | undefined {
+  // (#1239) Variables initialised by an object literal containing get/set
+  // accessor declarations are stored as externref plain JS objects. The
+  // wasmGC struct path would silently drop the accessor body — bail out
+  // so all reads/writes go through the externref host path that honours
+  // the real accessor descriptor. Unwrap `ParenthesizedExpression` /
+  // `AsExpression` / `NonNullExpression` wrappers so `(o as any).x` and
+  // `(o)!.x` still trigger the override.
+  let bareIdent: ts.Expression = expression;
+  while (
+    ts.isParenthesizedExpression(bareIdent) ||
+    ts.isAsExpression(bareIdent) ||
+    ts.isNonNullExpression(bareIdent) ||
+    ts.isSatisfiesExpression(bareIdent) ||
+    ts.isTypeAssertionExpression(bareIdent)
+  ) {
+    bareIdent = (bareIdent as ts.ParenthesizedExpression | ts.AsExpression | ts.NonNullExpression).expression;
+  }
+  if (ts.isIdentifier(bareIdent) && ctx.externrefAccessorVars.has(bareIdent.text)) {
+    return undefined;
+  }
   const objType = ctx.checker.getTypeAtLocation(expression);
   let typeName = resolveStructName(ctx, objType);
   if (!typeName && ts.isIdentifier(expression)) {
@@ -110,6 +130,42 @@ export function resolveStructNameForExpr(
     typeName = resolveThisStructName(ctx, fctx);
   }
   return typeName;
+}
+
+/**
+ * (#1239) Same role as `resolveStructName(ctx, type)`, but consults
+ * `ctx.externrefAccessorVars` first so an Identifier holding an
+ * accessor-bearing object literal force-bails to the externref path.
+ *
+ * Use this at every site that previously called `resolveStructName(ctx,
+ * <type-of-some-expression>)` when the underlying expression is
+ * available, so the externref-tag override propagates uniformly.
+ *
+ * Sites without an expression (synthesized type arguments etc.) keep
+ * calling `resolveStructName` directly — they can't involve an
+ * accessor-tagged variable by construction.
+ */
+export function resolveEffectiveStructName(
+  ctx: CodegenContext,
+  expression: ts.Expression | undefined,
+  fallbackType: ts.Type,
+): string | undefined {
+  if (expression) {
+    let bare: ts.Expression = expression;
+    while (
+      ts.isParenthesizedExpression(bare) ||
+      ts.isAsExpression(bare) ||
+      ts.isNonNullExpression(bare) ||
+      ts.isSatisfiesExpression(bare) ||
+      ts.isTypeAssertionExpression(bare)
+    ) {
+      bare = (bare as ts.ParenthesizedExpression | ts.AsExpression | ts.NonNullExpression).expression;
+    }
+    if (ts.isIdentifier(bare) && ctx.externrefAccessorVars.has(bare.text)) {
+      return undefined;
+    }
+  }
+  return resolveStructName(ctx, fallbackType);
 }
 
 /**

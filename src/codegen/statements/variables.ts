@@ -354,18 +354,34 @@ export function compileVariableStatement(ctx: CodegenContext, fctx: FunctionCont
     const isI32SpecializedArray =
       fctx.i32SpecializedArrays?.has(name) === true && (varType.flags & ts.TypeFlags.Object) !== 0;
 
-    const wasmType: ValType = isI32CoercedLocal
-      ? { kind: "i32" }
-      : isI32SpecializedArray
-        ? { kind: "ref_null" as const, typeIdx: getOrRegisterVecType(ctx, "i32", { kind: "i32" }) }
-        : widenedTypeIdx !== undefined
-          ? { kind: "ref_null" as const, typeIdx: widenedTypeIdx }
-          : (inferredVecType ??
-            (decl.initializer && isStringMethodReturningHostArray(ctx, decl.initializer)
-              ? { kind: "externref" as const }
-              : decl.initializer && isPromiseHostCall(ctx, decl.initializer)
+    // (#1239) If the initializer is an object literal carrying get/set
+    // accessor declarations, the variable holds a JS host object
+    // (externref) — never the inferred wasmGC struct type. Tag the var
+    // up-front so the local's wasm type and ctx.externrefAccessorVars
+    // stay in sync; later reads/writes via resolveStructNameForExpr will
+    // see the override.
+    const initIsAccessorLiteral =
+      decl.initializer !== undefined &&
+      ts.isObjectLiteralExpression(decl.initializer) &&
+      decl.initializer.properties.some((p) => ts.isGetAccessorDeclaration(p) || ts.isSetAccessorDeclaration(p));
+    if (initIsAccessorLiteral) {
+      ctx.externrefAccessorVars.add(name);
+    }
+
+    const wasmType: ValType = initIsAccessorLiteral
+      ? { kind: "externref" as const }
+      : isI32CoercedLocal
+        ? { kind: "i32" }
+        : isI32SpecializedArray
+          ? { kind: "ref_null" as const, typeIdx: getOrRegisterVecType(ctx, "i32", { kind: "i32" }) }
+          : widenedTypeIdx !== undefined
+            ? { kind: "ref_null" as const, typeIdx: widenedTypeIdx }
+            : (inferredVecType ??
+              (decl.initializer && isStringMethodReturningHostArray(ctx, decl.initializer)
                 ? { kind: "externref" as const }
-                : resolveWasmType(ctx, varType)));
+                : decl.initializer && isPromiseHostCall(ctx, decl.initializer)
+                  ? { kind: "externref" as const }
+                  : resolveWasmType(ctx, varType)));
 
     // If this var/let/const was already pre-hoisted at function entry, reuse that slot.
     // For let/const: the pre-pass (hoistLetConstWithTdz) always pre-allocates a slot
