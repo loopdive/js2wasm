@@ -196,6 +196,18 @@ const BINARY_FOLD_TABLE: Readonly<Record<IrBinop, BinaryFolder>> = {
   // i32 logical (bool && / bool ||, operands are 0|1).
   "i32.and": (l, r) => i32Bool(l, r, (a, b) => a !== 0 && b !== 0),
   "i32.or": (l, r) => i32Bool(l, r, (a, b) => a !== 0 || b !== 0),
+  // #1126 Stage 3 — i32 magnitude compares. Signed ops compare values as
+  // signed 32-bit integers; unsigned ops as unsigned. We coerce constants
+  // to i32 first then compare in the appropriate domain. JS `>>>0` gives
+  // the unsigned 32-bit interpretation of an i32 bit pattern.
+  "i32.lt_s": (l, r) => i32CmpSigned(l, r, (a, b) => a < b),
+  "i32.le_s": (l, r) => i32CmpSigned(l, r, (a, b) => a <= b),
+  "i32.gt_s": (l, r) => i32CmpSigned(l, r, (a, b) => a > b),
+  "i32.ge_s": (l, r) => i32CmpSigned(l, r, (a, b) => a >= b),
+  "i32.lt_u": (l, r) => i32CmpUnsigned(l, r, (a, b) => a < b),
+  "i32.le_u": (l, r) => i32CmpUnsigned(l, r, (a, b) => a <= b),
+  "i32.gt_u": (l, r) => i32CmpUnsigned(l, r, (a, b) => a > b),
+  "i32.ge_u": (l, r) => i32CmpUnsigned(l, r, (a, b) => a >= b),
   // Slice 11 (#1169n) — JS bitwise ops over f64 operands. ToInt32 each
   // operand (JS coerces) and apply the i32 op; result is the int32 value
   // re-coerced to f64. Uses native JS operators which already implement
@@ -272,6 +284,32 @@ function toI32(c: IrConst): number | null {
   if (c.kind === "i32") return c.value;
   if (c.kind === "bool") return c.value ? 1 : 0;
   return null;
+}
+
+/**
+ * #1126 Stage 3 — fold a signed i32 magnitude compare over two i32 / bool
+ * constants. JS `<`, `<=`, etc. on signed `number`s match Wasm `i32.lt_s`
+ * etc. directly because the values fit in [-2^31, 2^31).
+ */
+function i32CmpSigned(l: IrConst, r: IrConst, fn: (a: number, b: number) => boolean): IrConst | null {
+  const la = toI32(l);
+  const ra = toI32(r);
+  if (la === null || ra === null) return null;
+  // Sign-extend by `| 0` to ensure values are interpreted as signed Int32
+  // even if a const slipped through with the bit-pattern of a Uint32.
+  return { kind: "bool", value: fn(la | 0, ra | 0) };
+}
+
+/**
+ * #1126 Stage 3 — fold an unsigned i32 magnitude compare. `>>> 0` reads the
+ * bit pattern as a Uint32 (range [0, 2^32)); the comparison then works on
+ * the unsigned interpretation.
+ */
+function i32CmpUnsigned(l: IrConst, r: IrConst, fn: (a: number, b: number) => boolean): IrConst | null {
+  const la = toI32(l);
+  const ra = toI32(r);
+  if (la === null || ra === null) return null;
+  return { kind: "bool", value: fn(la >>> 0, ra >>> 0) };
 }
 
 /**

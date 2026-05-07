@@ -415,3 +415,118 @@ on hot kernels.
 (no behavior change without #3); PR 3 is the largest and the only one
 that can produce a perf regression if the rules are wrong; PRs 4–6
 are polish.
+
+## Stage 3 implementation notes (senior-developer, 2026-05-07)
+
+### What landed in Stage 3 (this PR)
+
+1. **Lower.ts opportunistic i32 fast path** (the perf-dominant change).
+   At the `case "binary"` arm in `src/ir/lower.ts`, JS-bitwise ops
+   (`js.bitand`, `js.bitor`, `js.bitxor`, `js.shl`, `js.shr_s`,
+   `js.shr_u`) now peek at operand IrTypes BEFORE emitting:
+   - **Both operands i32** → emit native `i32.{and,or,xor,shl,shr_s,
+     shr_u}` directly, skip the JS-ToInt32 scratch dance entirely. The
+     result is converted back to f64 with `f64.convert_i32_*` to honour
+     the `js.bit*` IR result-type contract.
+   - **One operand i32, other f64** → skip ToInt32 only on the i32 side.
+     This path is reachable in principle (`coerceToF64ForBitwise` and
+     the rhs-is-i32 scratch-slot variant cover it correctly) but isn't
+     hit by today's `from-ast.ts` because the matching-operand-type
+     check at line 3206 rejects mixed types. Leaving the lowerer code
+     in place lets a future Stage 4 boundary-conversion pass produce
+     mixed-type bitwise IR without further lowerer changes.
+   - **Both operands f64** → existing scratch-dance path, unchanged.
+
+2. **Native i32 magnitude compares**. New `IrBinop` variants `i32.lt_s`,
+   `i32.le_s`, `i32.gt_s`, `i32.ge_s`, `i32.lt_u`, `i32.le_u`,
+   `i32.gt_u`, `i32.ge_u`. The AST→IR lowerer's `lowerBinary` now picks
+   them when both operands of `<`, `<=`, `>`, `>=` are i32-typed. The
+   signed/unsigned variant comes from operand `IrType.val.signed`
+   (default `signed: true`); pure unsigned only fires when both
+   operands are explicitly `signed: false` (`u32` lattice domain).
+
+3. **From-ast.ts: relax `requireF64` for bitwise/shift**. The bitwise
+   and shift operators now also accept matched-i32 operands (the same
+   types the magnitude compares accept). The result type stays `f64`
+   regardless — see the rationale below.
+
+4. **Constant-folding update**. The new `i32.{lt,le,gt,ge}_{s,u}`
+   variants got constant-folders in `src/ir/passes/constant-fold.ts`
+   that match Wasm signed/unsigned compare semantics (`| 0` for signed
+   sign-extension, `>>> 0` for unsigned bit-pattern reinterpretation).
+
+### What I deliberately did NOT do, and why
+
+The architect's spec proposes narrowing the bitwise op result type to
+i32 when both operands are i32, so chains like
+`(a & 0xff) | (b & 0xff)` would stay in i32 throughout. I tried that
+first and discovered a contract bug:
+
+```
+function f(a, b, c, d) { return (a < b) | (c < d); }
+```
+
+TS infers the return type as `number` (the bitwise op coerces booleans
+to numbers). So the function's Wasm return slot is `f64`. If the
+bitwise op narrows to i32, the SSA value flowing into the return is
+i32 — and the lowerer emits a bare `return` without auto-coercing,
+producing an invalid Wasm module: "type error in return[0] (expected
+f64, got i32)".
+
+Fixing this properly requires implicit coerce-at-use-site for every
+context that has a target IrType: returns, function-call args,
+variable initialisers, field stores, etc. That's a Stage-4 boundary
+pass per the architect's spec, not Stage 3.
+
+For Stage 3 I therefore kept the result-type narrowing OUT, and the
+fast-path benefit shows up at the per-op level: every single bitwise
+op with i32 operands skips its own ToInt32 dance. Chains don't
+*compose* — each `&`/`|`/etc. converts back to f64 then forward to i32
+for the next op — but `wasm-opt` already collapses such redundant
+round-trips, and the cost-dominant cases (`bool|bool`, compare-result
+reductions) are covered.
+
+### What's gated by the Stage 2 i32-domain flag
+
+Nothing in this PR is gated by `JS2WASM_IR_I32_DOMAIN`. The lowerer
+fast path fires whenever operand IrTypes are i32 — that includes the
+existing producers (boolean values, comparison results). My from-ast
+relaxation of `requireF64` for bitwise/shift accepts i32 operands
+unconditionally too. Flipping the Stage 2 flag (a separate PR — see
+`propagate.ts:i32DomainEnabled()`) lets the lattice atoms `i32`/`u32`
+appear in the `TypeMap`, which feeds new functions through the
+selector. That separate flip and any Stage 4 boundary work can build
+on this PR's foundation.
+
+### Test coverage
+
+`tests/issue-1126-stage3.test.ts`:
+- 8 dual-run equivalence tests (legacy vs IR) for compare-result
+  bitwise reductions (`|`, `&`, `^`, `<<`) and chained bitwise.
+- 2 magnitude-compare equivalence tests using bool-coerced operands.
+- 2 #1236 sentinel tests asserting `2^30 + 2^30 = 2^31` and
+  `2^16 * 2^16 = 2^32` — arithmetic on i32-domain values must NOT
+  emit `i32.add`/`i32.mul` (which would wrap).
+- 5 code-shape tests asserting `i32.or` / `i32.and` / `i32.shl` /
+  `i32.lt_s` appear in the WAT body, and the `f64.trunc ... 
+  i32.trunc_sat_f64_u` ToInt32 sequence does NOT appear when the
+  fast path fires.
+
+All 15 tests pass. Existing IR test suite (`ir-numeric-bool-equivalence`,
+`ir-frontend-widening`, `ir-let-const-equivalence`,
+`ir-if-else-equivalence`, `ir-ternary-equivalence`, `ir-propagate-i32`,
+`ir-propagate-i32-rules`, `linear-bitwise`, `issue-1236`) all pass —
+no regressions.
+
+### Files touched
+
+- `src/ir/lower.ts` — fast-path peek at operand types; rhs-i32 scratch
+  slot variant; `tryTypeOf` and `jsBitwiseToI32` helpers.
+- `src/ir/nodes.ts` — eight new `IrBinop` variants for native i32
+  magnitude compares.
+- `src/ir/from-ast.ts` — relax `requireF64` for bitwise/shift to
+  accept i32 operands; pick native `i32.{lt,le,gt,ge}_{s,u}` for i32
+  compares based on operand signedness.
+- `src/ir/passes/constant-fold.ts` — folders for the new compare
+  variants.
+- `tests/issue-1126-stage3.test.ts` — new test file.
