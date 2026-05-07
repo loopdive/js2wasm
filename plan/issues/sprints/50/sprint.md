@@ -175,20 +175,47 @@ Criteria: (1) unblocked, (2) ≥medium conformance value or unblocks downstream,
 
 _Generated from issue files. Update issue `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
 
+### Ready
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1311 | Map<string, AsyncHandler> dispatch null_deref in App.dispatch path | medium | ready |
+| #1312 | Async recursive function (next() compose pattern) — Unhandled rejection | medium | ready |
+| #1313 | await is a passthrough — does not unwrap Promise from async-call expressions | high | ready |
+| #1314 | Wasm codegen: __closure_N stack underflow — call emits wrong argument count | high | ready |
+| #1318 | test harness: 'returned N' bare exit code — capture last assertion detail (~8,900 vague failures) | high | ready |
+| #1319 | Cannot convert object to primitive — Symbol.toPrimitive / valueOf / toString chain incomplete (234 failures) | high | ready |
+| #1320 | Runtime bridge: Array.from(externref) / Iterator.from(externref) doesn't preserve own [Symbol.iterator] on plain JS objects (4 test262 fails) | medium | ready |
+| #1321 | Number.prototype formatting methods (toString/toFixed/toPrecision/toExponential) rely on JS host unnecessarily | medium | ready |
+| #1322 | Math.random() has no standalone fallback — requires JS host import in WASI/standalone mode | low | ready |
+| #1323 | Iterator protocol bridging: implement $IteratorResult struct in pure Wasm, eliminate host bridge | medium | ready |
+| #1324 | JSON.stringify and JSON.parse: implement in pure Wasm, eliminate JS host dependency | medium | ready |
+| #1325 | instanceof against built-in types: compile-time type-tag registry eliminates JS host for common cases | medium | ready |
+| #1326 | Async standalone: implement microtask queue + CPS scheduler in Wasm for Promise/async without JS host | low | ready |
+| #1327 | Landing page: per-feature test pass counts + feature report page + playground deep-link | high | ready |
+| #1328 | RegExp host-mode: Symbol.match / matchAll protocol spec compliance (101 fails) | medium | ready |
+| #1329 | RegExp host-mode: Symbol.replace / replaceAll protocol spec compliance (110 fails) | medium | ready |
+| #1330 | RegExp host-mode: Symbol.search protocol spec compliance (37 fails) | low | ready |
+| #1331 | RegExp host-mode: Symbol.split protocol spec compliance (123 fails) | medium | ready |
+| #1332 | RegExp host-mode: prototype method edge cases (exec, test, flag accessors, RegExpStringIterator) | low | ready |
+| #1333 | RegExp host-mode: Pre-ES6 (S15.10) tests + annexB legacy accessors | low | ready |
+
 ### In Progress
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
-| #837 | Stage 3: Map/WeakMap upsert — getOrInsert, getOrInsertComputed | low | in-progress |
-| #1309 | Hono Tier 6 — Web API surface (Request/Response) + async handlers | low | in-progress |
+| #1315 | import.defer / import.source missing early error detection — 157 negative tests false-pass | high | in-progress |
 
 ### Done
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #837 | Stage 3: Map/WeakMap upsert — getOrInsert, getOrInsertComputed | low | done |
 | #859 | Map.forEach callback captures are immutable snapshots -- causes infinite loop on mutation during iteration | high | done |
+| #1002 | RegExp js-host mode: finish Symbol protocol and remaining host-wrapper semantics | medium | done |
 | #1020 | await-using TDZ tests: null_deref crash in assert_throwsAsync (4 false positives) | medium | done |
 | #1126 | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | high | done |
+| #1154 | test262 worker: Array.prototype poisoning leaks into TypeScript compiler — Array.from fails at compile time (~378 test262 regressions) | high | done |
 | #1155 | test262 worker classifies Wasm-level user exceptions as compile_error (~1,415 tests misreported) | medium | done |
 | #1158 | destructureParamArray fallback eagerly consumes iterators via Array.from — violates 13.3.3.6 for empty pattern [] | medium | done |
 | #1159 | Nested empty array pattern with initializer violates §13.3.3.6 iterator consumption semantics | medium | done |
@@ -202,6 +229,9 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | #1306 | ElementAccessExpression call on closure-typed array drops call: mws[idx](c, next) emits ref.null | medium | done |
 | #1307 | ci: serialize Test262 Sharded across PRs to eliminate runner-pool contention | medium | done |
 | #1308 | Wasm closure struct returned to JS host is not JS-callable | medium | done |
+| #1309 | Hono Tier 6 — Web API surface (Request/Response) + async handlers | low | done |
 | #1310 | vm.createContext sandbox isolation for test262 global contamination | medium | done |
+| #1316 | illegal cast error: add expected type and actual value context (142 opaque runtime failures) | medium | done |
+| #1317 | null dereference error: add expression / variable context (573 opaque runtime failures) | medium | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->

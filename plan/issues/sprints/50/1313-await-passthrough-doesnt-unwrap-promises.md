@@ -2,7 +2,7 @@
 id: 1313
 sprint: 50
 title: "await is a passthrough — does not unwrap Promise from async-call expressions"
-status: ready
+status: done
 created: 2026-05-07
 updated: 2026-05-07
 priority: high

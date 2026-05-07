@@ -2,7 +2,7 @@
 id: 1315
 sprint: 50
 title: "import.defer / import.source missing early error detection — 157 negative tests false-pass"
-status: ready
+status: in-progress
 created: 2026-05-07
 updated: 2026-05-07
 priority: high
