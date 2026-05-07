@@ -11802,8 +11802,8 @@
       "id": "837",
       "title": "Stage 3: Map/WeakMap upsert — getOrInsert, getOrInsertComputed",
       "priority": "low",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "50",
       "depends_on": [],
       "files": [],
@@ -15936,9 +15936,9 @@
       "id": "1154",
       "title": "test262 worker: Array.prototype poisoning leaks into TypeScript compiler — Array.from fails at compile time (~378 test262 regressions)",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "50",
       "depends_on": [
         "1119"
       ],
@@ -18109,8 +18109,8 @@
       "id": "1309",
       "title": "Hono Tier 6 — Web API surface (Request/Response) + async handlers",
       "priority": "low",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "50",
       "depends_on": [
         "1298"
@@ -18130,6 +18130,211 @@
       "files": [],
       "goal": "test262-conformance",
       "cluster": "test262-conformance"
+    },
+    {
+      "id": "1311",
+      "title": "Map<string, AsyncHandler> dispatch null_deref in App.dispatch path",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1312",
+      "title": "Async recursive function (next() compose pattern) — Unhandled rejection",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1313",
+      "title": "await is a passthrough — does not unwrap Promise from async-call expressions",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1314",
+      "title": "Wasm codegen: __closure_N stack underflow — call emits wrong argument count",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness",
+      "compiler_errors": 87
+    },
+    {
+      "id": "1315",
+      "title": "import.defer / import.source missing early error detection — 157 negative tests false-pass",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1316",
+      "title": "illegal cast error: add expected type and actual value context (142 opaque runtime failures)",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1317",
+      "title": "null dereference error: add expression / variable context (573 opaque runtime failures)",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1318",
+      "title": "test harness: 'returned N' bare exit code — capture last assertion detail (~8,900 vague failures)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1319",
+      "title": "Cannot convert object to primitive — Symbol.toPrimitive / valueOf / toString chain incomplete (234 failures)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1320",
+      "title": "Runtime bridge: Array.from(externref) / Iterator.from(externref) doesn't preserve own [Symbol.iterator] on plain JS objects (4 test262 fails)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-conformance",
+      "cluster": "spec-conformance"
+    },
+    {
+      "id": "1321",
+      "title": "Number.prototype formatting methods (toString/toFixed/toPrecision/toExponential) rely on JS host unnecessarily",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "standalone-mode",
+      "cluster": "standalone-mode"
+    },
+    {
+      "id": "1322",
+      "title": "Math.random() has no standalone fallback — requires JS host import in WASI/standalone mode",
+      "priority": "low",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "standalone-mode",
+      "cluster": "standalone-mode"
+    },
+    {
+      "id": "1323",
+      "title": "Iterator protocol bridging: implement $IteratorResult struct in pure Wasm, eliminate host bridge",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "standalone-mode",
+      "cluster": "standalone-mode"
+    },
+    {
+      "id": "1324",
+      "title": "JSON.stringify and JSON.parse: implement in pure Wasm, eliminate JS host dependency",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "standalone-mode",
+      "cluster": "standalone-mode"
+    },
+    {
+      "id": "1325",
+      "title": "instanceof against built-in types: compile-time type-tag registry eliminates JS host for common cases",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "standalone-mode",
+      "cluster": "standalone-mode"
+    },
+    {
+      "id": "1326",
+      "title": "Async standalone: implement microtask queue + CPS scheduler in Wasm for Promise/async without JS host",
+      "priority": "low",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "standalone-mode",
+      "cluster": "standalone-mode"
+    },
+    {
+      "id": "1327",
+      "title": "Landing page: per-feature test pass counts + feature report page + playground deep-link",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
     }
   ],
   "links": [
@@ -20075,7 +20280,11 @@
         "1305",
         "1306",
         "1308",
-        "1309"
+        "1309",
+        "1311",
+        "1312",
+        "1313",
+        "1327"
       ],
       "track": "supporting track"
     },
@@ -20377,7 +20586,13 @@
         "1229",
         "1240",
         "1242",
-        "1283"
+        "1283",
+        "1314",
+        "1315",
+        "1316",
+        "1317",
+        "1318",
+        "1319"
       ]
     },
     {
@@ -20433,7 +20648,13 @@
         "1104",
         "1105",
         "1169p",
-        "1232"
+        "1232",
+        "1321",
+        "1322",
+        "1323",
+        "1324",
+        "1325",
+        "1326"
       ],
       "track": "parallel — does not block conformance goals."
     },
@@ -24167,6 +24388,22 @@
       "issue": "1309"
     },
     {
+      "goal": "npm-library-support",
+      "issue": "1311"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1312"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1313"
+    },
+    {
+      "goal": "npm-library-support",
+      "issue": "1327"
+    },
+    {
       "goal": "observability",
       "issue": "880"
     },
@@ -25135,6 +25372,30 @@
       "issue": "1283"
     },
     {
+      "goal": "spec-completeness",
+      "issue": "1314"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1315"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1316"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1317"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1318"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1319"
+    },
+    {
       "goal": "standalone-mode",
       "issue": "34"
     },
@@ -25309,6 +25570,30 @@
     {
       "goal": "standalone-mode",
       "issue": "1232"
+    },
+    {
+      "goal": "standalone-mode",
+      "issue": "1321"
+    },
+    {
+      "goal": "standalone-mode",
+      "issue": "1322"
+    },
+    {
+      "goal": "standalone-mode",
+      "issue": "1323"
+    },
+    {
+      "goal": "standalone-mode",
+      "issue": "1324"
+    },
+    {
+      "goal": "standalone-mode",
+      "issue": "1325"
+    },
+    {
+      "goal": "standalone-mode",
+      "issue": "1326"
     },
     {
       "goal": "symbol-protocol",
@@ -28169,6 +28454,22 @@
       "issue": "1309"
     },
     {
+      "goal": "core-semantics",
+      "issue": "1311"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1312"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1313"
+    },
+    {
+      "goal": "core-semantics",
+      "issue": "1327"
+    },
+    {
       "goal": "platform",
       "issue": "111"
     },
@@ -28427,6 +28728,22 @@
     {
       "goal": "platform",
       "issue": "1309"
+    },
+    {
+      "goal": "platform",
+      "issue": "1311"
+    },
+    {
+      "goal": "platform",
+      "issue": "1312"
+    },
+    {
+      "goal": "platform",
+      "issue": "1313"
+    },
+    {
+      "goal": "platform",
+      "issue": "1327"
     },
     {
       "goal": "core-semantics",
@@ -29385,6 +29702,30 @@
       "issue": "1283"
     },
     {
+      "goal": "async-model",
+      "issue": "1314"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1315"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1316"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1317"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1318"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1319"
+    },
+    {
       "goal": "symbol-protocol",
       "issue": "10"
     },
@@ -29765,6 +30106,30 @@
       "issue": "1283"
     },
     {
+      "goal": "symbol-protocol",
+      "issue": "1314"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1315"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1316"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1317"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1318"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1319"
+    },
+    {
       "goal": "builtin-methods",
       "issue": "10"
     },
@@ -30145,6 +30510,30 @@
       "issue": "1283"
     },
     {
+      "goal": "builtin-methods",
+      "issue": "1314"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1315"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1316"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1317"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1318"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1319"
+    },
+    {
       "goal": "property-model",
       "issue": "10"
     },
@@ -30523,6 +30912,30 @@
     {
       "goal": "property-model",
       "issue": "1283"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1314"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1315"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1316"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1317"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1318"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1319"
     },
     {
       "goal": "iterator-protocol",
@@ -30701,6 +31114,30 @@
       "issue": "1232"
     },
     {
+      "goal": "iterator-protocol",
+      "issue": "1321"
+    },
+    {
+      "goal": "iterator-protocol",
+      "issue": "1322"
+    },
+    {
+      "goal": "iterator-protocol",
+      "issue": "1323"
+    },
+    {
+      "goal": "iterator-protocol",
+      "issue": "1324"
+    },
+    {
+      "goal": "iterator-protocol",
+      "issue": "1325"
+    },
+    {
+      "goal": "iterator-protocol",
+      "issue": "1326"
+    },
+    {
       "goal": "generator-model",
       "issue": "34"
     },
@@ -30875,6 +31312,30 @@
     {
       "goal": "generator-model",
       "issue": "1232"
+    },
+    {
+      "goal": "generator-model",
+      "issue": "1321"
+    },
+    {
+      "goal": "generator-model",
+      "issue": "1322"
+    },
+    {
+      "goal": "generator-model",
+      "issue": "1323"
+    },
+    {
+      "goal": "generator-model",
+      "issue": "1324"
+    },
+    {
+      "goal": "generator-model",
+      "issue": "1325"
+    },
+    {
+      "goal": "generator-model",
+      "issue": "1326"
     },
     {
       "goal": "iterator-protocol",
