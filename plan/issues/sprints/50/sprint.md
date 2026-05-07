@@ -138,17 +138,12 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 |---|---|---|---|
 | #1309 | Hono Tier 6 — Web API surface (Request/Response) + async handlers | low | ready |
 
-### In Progress
-
-| Issue | Title | Priority | Status |
-|---|---|---|---|
-| #1298 | Calling a function-typed value stored in a field/array/Map drops the call and returns null | high | in-progress |
-
 ### Done
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1126 | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | high | done |
+| #1298 | Calling a function-typed value stored in a field/array/Map drops the call and returns null | high | done |
 | #1302 | Wasm validation: closure references invalid global index when compiling lodash flow.js | medium | done |
 | #1303 | Wasm validation: f64.trunc emitted on externref operand when compiling lodash partial.js | medium | done |
 | #1305 | Module-level var init leaks externref into bitwise op codegen (legacy path) | medium | done |

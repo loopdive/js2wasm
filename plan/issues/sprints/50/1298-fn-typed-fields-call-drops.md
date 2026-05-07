@@ -2,7 +2,7 @@
 id: 1298
 sprint: 50
 title: "Calling a function-typed value stored in a field/array/Map drops the call and returns null"
-status: in-progress
+status: done
 created: 2026-05-03
 updated: 2026-05-03
 priority: high
