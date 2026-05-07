@@ -730,8 +730,24 @@ function extractWasmExceptionMessage(err, instance) {
     let info = err.message ?? String(err);
     const stack = err.stack ?? "";
     if (/illegal cast|null|unreachable|out of bounds/.test(info)) {
-      const funcMatch = stack.match(/at (\w+) \(wasm:/);
-      if (funcMatch) info = `${info} [in ${funcMatch[1]}()]`;
+      // (#1316 / #1317) Extract every wasm frame in trap-first order so
+      // the error chain reaches more than the leaf function — for
+      // `illegal cast` and `dereferencing a null pointer` traps the
+      // leaf is often a tiny lifted helper whose name alone is
+      // uninformative without its caller.
+      const frameRe = /at\s+(\S+)\s+\(wasm:\/\//g;
+      const frames = [];
+      let m;
+      while ((m = frameRe.exec(stack)) !== null) frames.push(m[1]);
+      if (frames.length > 0) {
+        info = `${info} [in ${frames[0]}()`;
+        if (frames.length > 1) {
+          // Cap at 3 caller frames so the line stays readable inside the
+          // 300-char `error.substring(0, 300)` truncation downstream.
+          info += ` ← ${frames.slice(1, 4).join(" ← ")}`;
+        }
+        info += "]";
+      }
     }
     return info;
   }
