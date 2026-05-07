@@ -1098,6 +1098,23 @@
         color: var(--err, #f87171);
       }
 
+      /* #1327 — "View test results →" link inside expanded feat-row body. */
+      .feat-report-link {
+        margin: 12px 0 4px;
+        font-size: 12px;
+      }
+      .feat-report-link a {
+        color: var(--accent, #60a5fa);
+        text-decoration: none;
+        font-family: var(--mono);
+        opacity: 0.85;
+        transition: opacity 0.14s ease;
+      }
+      .feat-report-link a:hover {
+        opacity: 1;
+        text-decoration: underline;
+      }
+
       .feat-row:last-child {
         border-bottom: none;
       }
@@ -4598,6 +4615,9 @@ console.log(instance.exports.run()); // &rarr; 55</pre
       })();
 
       // #1201 — hydrate feature rows with live test262 pass counts.
+      // #1327 — also append "View test results →" link to the expanded
+      // feature body, deep-linking into the feature-report page.
+      //
       // Each `.feat-row[data-t262-paths]` declares one or more depth-2
       // test262 path prefixes (e.g. `built-ins/Array,built-ins/Map`).
       // We sum pass/total across the listed paths and append a small
@@ -4638,10 +4658,10 @@ console.log(instance.exports.run()); // &rarr; 55</pre
             // paths was found — otherwise leave the static badge alone
             // so a stale mapping is visible rather than misleading.
             const span = document.createElement("span");
-            span.className = "feat-row-counts";
-            span.textContent = `${pass}/${total}`;
+            span.className = "feat-row-counts feature-test-count";
+            span.textContent = `${pass} / ${total}`;
             const ratio = pass / total;
-            if (ratio >= 0.8) span.dataset.tone = "pass";
+            if (ratio >= 0.9) span.dataset.tone = "pass";
             else if (ratio >= 0.5) span.dataset.tone = "partial";
             else span.dataset.tone = "fail";
             // Append inside `.feat-name` to stay within its grid cell —
@@ -4650,6 +4670,22 @@ console.log(instance.exports.run()); // &rarr; 55</pre
             // and break alignment.
             const nameEl = row.querySelector(".feat-name");
             if (nameEl) nameEl.appendChild(span);
+
+            // #1327 — Inject a "View test results →" link into the
+            // expanded body. Use the first path as the `?feature=`
+            // value (the report page resolves it against
+            // testCategories in feature-examples.json).
+            const details = row.querySelector("details");
+            if (details && paths.length > 0 && !details.querySelector(".feat-report-link")) {
+              const linkWrap = document.createElement("div");
+              linkWrap.className = "feat-report-link";
+              const a = document.createElement("a");
+              a.href = `./benchmarks/feature-report.html?feature=${encodeURIComponent(paths[0])}`;
+              a.textContent = `View test results (${pass}/${total}) →`;
+              a.rel = "noopener";
+              linkWrap.appendChild(a);
+              details.appendChild(linkWrap);
+            }
           }
         } catch {
           // Static badges remain — graceful fallback.

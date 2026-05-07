@@ -637,6 +637,17 @@ function _hostToPrimitive(
       }
     }
   }
+  // (#1319) WasmGC structs without any user-defined valueOf / toString /
+  // Symbol.toPrimitive don't inherit Object.prototype.toString the way a
+  // plain JS `{}` does, so they reach this fallback even though V8 would
+  // produce "[object Object]" for an ordinary object in the same shape.
+  // Mirror V8's default toString here instead of throwing — matches the
+  // _toPrimitiveSync fallback at line ~477 and the spec behaviour you'd
+  // observe by hand: `String({})` is "[object Object]", not a TypeError.
+  // The TypeError throw is preserved below for non-wasm-struct objects
+  // whose own valueOf/toString returned non-primitives (genuine spec
+  // violation per ECMA-262 §7.1.1.1 step 6).
+  if (_isWasmStruct(raw)) return "[object Object]";
   throw new TypeError("Cannot convert object to primitive value");
 }
 

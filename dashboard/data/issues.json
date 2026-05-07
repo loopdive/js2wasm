@@ -173,6 +173,206 @@
   ],
   "ready": [
     {
+      "id": "1333",
+      "title": "RegExp host-mode: Pre-ES6 (S15.10) tests + annexB legacy accessors",
+      "priority": "low",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1332",
+      "title": "RegExp host-mode: prototype method edge cases (exec, test, flag accessors, RegExpStringIterator)",
+      "priority": "low",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1331",
+      "title": "RegExp host-mode: Symbol.split protocol spec compliance (123 fails)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1330",
+      "title": "RegExp host-mode: Symbol.search protocol spec compliance (37 fails)",
+      "priority": "low",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1329",
+      "title": "RegExp host-mode: Symbol.replace / replaceAll protocol spec compliance (110 fails)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1328",
+      "title": "RegExp host-mode: Symbol.match / matchAll protocol spec compliance (101 fails)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1327",
+      "title": "Landing page: per-feature test pass counts + feature report page + playground deep-link",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1326",
+      "title": "Async standalone: implement microtask queue + CPS scheduler in Wasm for Promise/async without JS host",
+      "priority": "low",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "standalone-mode",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1325",
+      "title": "instanceof against built-in types: compile-time type-tag registry eliminates JS host for common cases",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "standalone-mode",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1324",
+      "title": "JSON.stringify and JSON.parse: implement in pure Wasm, eliminate JS host dependency",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "standalone-mode",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1323",
+      "title": "Iterator protocol bridging: implement $IteratorResult struct in pure Wasm, eliminate host bridge",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "standalone-mode",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1322",
+      "title": "Math.random() has no standalone fallback — requires JS host import in WASI/standalone mode",
+      "priority": "low",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "standalone-mode",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1321",
+      "title": "Number.prototype formatting methods (toString/toFixed/toPrecision/toExponential) rely on JS host unnecessarily",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "standalone-mode",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1320",
+      "title": "Runtime bridge: Array.from(externref) / Iterator.from(externref) doesn't preserve own [Symbol.iterator] on plain JS objects (4 test262 fails)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-conformance",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1319",
+      "title": "Cannot convert object to primitive — Symbol.toPrimitive / valueOf / toString chain incomplete (234 failures)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1318",
+      "title": "test harness: 'returned N' bare exit code — capture last assertion detail (~8,900 vague failures)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1314",
+      "title": "Wasm codegen: __closure_N stack underflow — call emits wrong argument count",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "suspended",
+      "sprint": "50"
+    },
+    {
+      "id": "1313",
+      "title": "await is a passthrough — does not unwrap Promise from async-call expressions",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1312",
+      "title": "Async recursive function (next() compose pattern) — Unhandled rejection",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1311",
+      "title": "Map<string, AsyncHandler> dispatch null_deref in App.dispatch path",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
       "id": "1255",
       "title": "Reference platform scenario: run a Node-oriented example on Wasmtime via Edge.js",
       "priority": "high",
@@ -270,18 +470,6 @@
         "1164"
       ],
       "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": ""
-    },
-    {
-      "id": "1154",
-      "title": "test262 worker: Array.prototype poisoning leaks into TypeScript compiler — Array.from fails at compile time (~378 test262 regressions)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [
-        "1119"
-      ],
-      "goal": "async-model",
       "status": "ready",
       "sprint": ""
     },
@@ -691,16 +879,6 @@
       "goal": "contributor-readiness",
       "status": "ready",
       "sprint": "45"
-    },
-    {
-      "id": "1002",
-      "title": "RegExp js-host mode: finish Symbol protocol and remaining host-wrapper semantics",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "standalone-mode",
-      "status": "ready",
-      "sprint": ""
     },
     {
       "id": "1000",
@@ -1420,14 +1598,12 @@
   ],
   "inprogress": [
     {
-      "id": "1309",
-      "title": "Hono Tier 6 — Web API surface (Request/Response) + async handlers",
-      "priority": "low",
-      "feasibility": "hard",
-      "depends_on": [
-        "1298"
-      ],
-      "goal": "npm-library-support",
+      "id": "1315",
+      "title": "import.defer / import.source missing early error detection — 157 negative tests false-pass",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
       "status": "in-progress",
       "sprint": "50"
     },
@@ -1450,20 +1626,30 @@
       "goal": "platform",
       "status": "in-progress",
       "sprint": "42"
-    },
-    {
-      "id": "837",
-      "title": "Stage 3: Map/WeakMap upsert — getOrInsert, getOrInsertComputed",
-      "priority": "low",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "platform",
-      "status": "in-progress",
-      "sprint": "50"
     }
   ],
   "review": [],
   "done": [
+    {
+      "id": "1317",
+      "title": "null dereference error: add expression / variable context (573 opaque runtime failures)",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "50"
+    },
+    {
+      "id": "1316",
+      "title": "illegal cast error: add expected type and actual value context (142 opaque runtime failures)",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "50"
+    },
     {
       "id": "1310",
       "title": "vm.createContext sandbox isolation for test262 global contamination",
@@ -1471,6 +1657,18 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "test262-conformance",
+      "status": "done",
+      "sprint": "50"
+    },
+    {
+      "id": "1309",
+      "title": "Hono Tier 6 — Web API surface (Request/Response) + async handlers",
+      "priority": "low",
+      "feasibility": "hard",
+      "depends_on": [
+        "1298"
+      ],
+      "goal": "npm-library-support",
       "status": "done",
       "sprint": "50"
     },
@@ -3144,6 +3342,18 @@
       "sprint": "50"
     },
     {
+      "id": "1154",
+      "title": "test262 worker: Array.prototype poisoning leaks into TypeScript compiler — Array.from fails at compile time (~378 test262 regressions)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [
+        "1119"
+      ],
+      "goal": "async-model",
+      "status": "done",
+      "sprint": "50"
+    },
+    {
       "id": "1153",
       "title": "Compiler-internal crashes block ~3,585 test262 tests: commentDirectiveRegEx.exec, constructSigs.reduce, cache.set",
       "priority": "critical",
@@ -4254,6 +4464,16 @@
       "goal": "ci-hardening",
       "status": "done",
       "sprint": "42"
+    },
+    {
+      "id": "1002",
+      "title": "RegExp js-host mode: finish Symbol protocol and remaining host-wrapper semantics",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "standalone-mode",
+      "status": "done",
+      "sprint": "50"
     },
     {
       "id": "1001",
@@ -5646,6 +5866,16 @@
       "goal": "compilable",
       "status": "done",
       "sprint": "31"
+    },
+    {
+      "id": "837",
+      "title": "Stage 3: Map/WeakMap upsert — getOrInsert, getOrInsertComputed",
+      "priority": "low",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "platform",
+      "status": "done",
+      "sprint": "50"
     },
     {
       "id": "836",

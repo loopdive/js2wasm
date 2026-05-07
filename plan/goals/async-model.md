@@ -98,7 +98,7 @@ promise infrastructure.
 | **1150** | Fix runtime_error:26 + type_error:7 + oob:5 — async destructuring regressions | 44 | done | high |
 | **1151** | Async function synchronous throws bypass Promise.reject wrapping | Backlog | ready | high |
 | **1153** | Compiler-internal crashes block ~3,585 test262 tests: commentDirectiveRegEx.exec, constructSigs.reduce, cache.set | 44 | done | critical |
-| **1154** | test262 worker: Array.prototype poisoning leaks into TypeScript compiler — Array.from fails at compile time (~378 test262 regressions) | Backlog | ready | high |
+| **1154** | test262 worker: Array.prototype poisoning leaks into TypeScript compiler — Array.from fails at compile time (~378 test262 regressions) | 50 | done | high |
 | **1169** | IR Phase 4 — migrate full compiler to IR path, retire legacy AST→Wasm codegen | 46 | ready | high |
 | **1169f** | IR Phase 4 Slice 7 — generators and async/await through the IR path | 45 | done | high |
 | **1169h** | IR Phase 4 Slice 9 — try/catch/finally and throw through the IR path | 45 | done | high |
