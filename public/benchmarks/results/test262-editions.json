@@ -10,20 +10,20 @@
   },
   {
     "edition": "ES5",
-    "pass": 8254,
-    "fail": 4361,
-    "ce": 164,
+    "pass": 8244,
+    "fail": 4369,
+    "ce": 166,
     "skip": 305,
     "total": 13084,
     "pct": 63
   },
   {
     "edition": "ES2015",
-    "pass": 9439,
-    "fail": 5423,
-    "ce": 408,
+    "pass": 9476,
+    "fail": 5444,
+    "ce": 405,
     "skip": 90,
-    "total": 15360,
+    "total": 15415,
     "pct": 61
   },
   {
@@ -46,9 +46,9 @@
   },
   {
     "edition": "ES2018",
-    "pass": 2819,
-    "fail": 1355,
-    "ce": 76,
+    "pass": 2822,
+    "fail": 1356,
+    "ce": 72,
     "skip": 1,
     "total": 4251,
     "pct": 66
@@ -64,9 +64,9 @@
   },
   {
     "edition": "ES2020",
-    "pass": 1087,
-    "fail": 373,
-    "ce": 31,
+    "pass": 1090,
+    "fail": 372,
+    "ce": 29,
     "skip": 413,
     "total": 1904,
     "pct": 57
@@ -82,8 +82,8 @@
   },
   {
     "edition": "ES2022",
-    "pass": 2701,
-    "fail": 1276,
+    "pass": 2702,
+    "fail": 1275,
     "ce": 200,
     "skip": 57,
     "total": 4234,
@@ -91,26 +91,26 @@
   },
   {
     "edition": "ES2023",
-    "pass": 176,
-    "fail": 113,
-    "ce": 6,
+    "pass": 173,
+    "fail": 115,
+    "ce": 7,
     "skip": 39,
     "total": 334,
-    "pct": 53
+    "pct": 52
   },
   {
     "edition": "ES2024",
-    "pass": 423,
+    "pass": 425,
     "fail": 120,
-    "ce": 3,
+    "ce": 1,
     "skip": 99,
     "total": 645,
     "pct": 66
   },
   {
     "edition": "ES2025",
-    "pass": 667,
-    "fail": 534,
+    "pass": 668,
+    "fail": 533,
     "ce": 20,
     "skip": 60,
     "total": 1281,
@@ -118,20 +118,20 @@
   },
   {
     "edition": "ES2026",
-    "pass": 117,
-    "fail": 213,
+    "pass": 127,
+    "fail": 220,
     "ce": 2,
     "skip": 0,
-    "total": 332,
-    "pct": 35
+    "total": 349,
+    "pct": 36
   },
   {
     "edition": "Proposals",
-    "pass": 1374,
-    "fail": 3426,
-    "ce": 105,
+    "pass": 1346,
+    "fail": 3377,
+    "ce": 110,
     "skip": 178,
-    "total": 5083,
+    "total": 5011,
     "pct": 27
   }
 ]
