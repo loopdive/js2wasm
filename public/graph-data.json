@@ -18092,6 +18092,18 @@
       "depends_on": [],
       "files": [],
       "cluster": "sprint-50"
+    },
+    {
+      "id": "1308",
+      "title": "Wasm closure struct returned to JS host is not JS-callable",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
     }
   ],
   "links": [
@@ -20031,7 +20043,8 @@
         "1303",
         "1304",
         "1305",
-        "1306"
+        "1306",
+        "1308"
       ],
       "track": "supporting track"
     },
@@ -24115,6 +24128,10 @@
       "issue": "1306"
     },
     {
+      "goal": "npm-library-support",
+      "issue": "1308"
+    },
+    {
       "goal": "observability",
       "issue": "880"
     },
@@ -28109,6 +28126,10 @@
       "issue": "1306"
     },
     {
+      "goal": "core-semantics",
+      "issue": "1308"
+    },
+    {
       "goal": "platform",
       "issue": "111"
     },
@@ -28359,6 +28380,10 @@
     {
       "goal": "platform",
       "issue": "1306"
+    },
+    {
+      "goal": "platform",
+      "issue": "1308"
     },
     {
       "goal": "core-semantics",
