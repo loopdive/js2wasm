@@ -484,6 +484,18 @@ export interface CodegenContext {
   widenedTypeProperties: Map<string, { name: string; type: ValType }[]>;
   /** Map from widened variable name to its registered struct name */
   widenedVarStructMap: Map<string, string>;
+  /**
+   * (#1239) Variable names whose initializer is an object literal carrying
+   * `get`/`set` accessors. Such variables are stored as plain JS host
+   * objects (via `__new_plain_object` + `__defineProperty_accessor`) and
+   * must NEVER be treated as a wasmGC struct ref — every read/write goes
+   * through the externref host path so V8's accessor descriptor fires.
+   *
+   * Populated in `compileObjectLiteralWithAccessors` (literals.ts) and
+   * consulted by `resolveStructNameForExpr` and `resolveEffectiveStructName`
+   * to short-circuit the struct-resolution chain back to `undefined`.
+   */
+  externrefAccessorVars: Set<string>;
   /** Math methods that need inline Wasm implementations */
   pendingMathMethods: Set<string>;
   /** True if Math.clz32 or Math.imul is used — requires ToUint32 Wasm helper */

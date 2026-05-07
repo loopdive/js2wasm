@@ -103,6 +103,7 @@ export function createCodegenContext(
     templateVecTypeIdx: -1,
     widenedTypeProperties: new Map(),
     widenedVarStructMap: new Map(),
+    externrefAccessorVars: new Set(),
     pendingMathMethods: new Set(),
     needsToUint32: false,
     classDeclarationMap: new Map(),

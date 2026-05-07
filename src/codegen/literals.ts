@@ -16,7 +16,13 @@
 import { ts, forEachChild } from "../ts-api.js";
 import { isVoidType, unwrapPromiseType } from "../checker/type-mapper.js";
 import type { FieldDef, Instr, StructTypeDef, ValType, WasmFunction } from "../ir/types.js";
-import { emitMethodParamDefaults, emitObjectMethodAsClosure, promoteAccessorCapturesToGlobals } from "./closures.js";
+import {
+  compileArrowAsCallback,
+  emitMethodParamDefaults,
+  emitObjectMethodAsClosure,
+  promoteAccessorCapturesToGlobals,
+} from "./closures.js";
+import { addStringConstantGlobal } from "./registry/imports.js";
 import { popBody, pushBody } from "./context/bodies.js";
 import { reportError } from "./context/errors.js";
 import { allocLocal } from "./context/locals.js";
@@ -185,11 +191,241 @@ function compileObjectLiteralAsExternref(
   return { kind: "externref" };
 }
 
+/**
+ * (#1239) Compile an object literal whose property list contains at least
+ * one `GetAccessorDeclaration` / `SetAccessorDeclaration`.
+ *
+ * Routes through the JS host's plain-object machinery
+ * (`__new_plain_object` + `__extern_set` + `__defineProperty_accessor`)
+ * instead of the wasmGC struct path, so V8 sees real accessor descriptors
+ * and `Get(o, key)` / `Set(o, key, v)` traps invoke the user-defined
+ * getter/setter bodies. Tags the receiving variable in
+ * `ctx.externrefAccessorVars` so subsequent `resolveStructNameForExpr`
+ * lookups bail out to the externref path everywhere.
+ *
+ * The wasmGC struct fallback (the pre-fix behavior) emitted a typed field
+ * for each accessor key and silently dropped the body — a `Get(o, "x")`
+ * via the externref bridge then read the field's default value (`0` /
+ * `null` / `undefined`) instead of running the getter.
+ */
+function compileObjectLiteralWithAccessors(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.ObjectLiteralExpression,
+): ValType | null {
+  // 1. Tag the receiving variable BEFORE recursing into initializers — so
+  //    nested literals (e.g. spread sources) don't see a stale tag.
+  let parent: ts.Node | undefined = expr.parent;
+  while (parent && (ts.isParenthesizedExpression(parent) || ts.isAsExpression(parent))) {
+    parent = parent.parent;
+  }
+  if (parent && ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name)) {
+    ctx.externrefAccessorVars.add(parent.name.text);
+  }
+
+  // 2. Create the plain JS host object.
+  const newObjIdx = ensureLateImport(ctx, "__new_plain_object", [], [{ kind: "externref" }]);
+  flushLateImportShifts(ctx, fctx);
+  if (newObjIdx === undefined) return null;
+  fctx.body.push({ op: "call", funcIdx: newObjIdx });
+  const objLocal = allocLocal(fctx, `__objlit_acc_${fctx.locals.length}`, { kind: "externref" });
+  fctx.body.push({ op: "local.set", index: objLocal });
+
+  // Pre-pass: pair `get x()` and `set x(v)` declarations on the same name
+  // into a single `__defineProperty_accessor` call so the runtime descriptor
+  // carries both slots.
+  type AccessorPair = {
+    getter?: ts.GetAccessorDeclaration;
+    setter?: ts.SetAccessorDeclaration;
+    firstIdx: number; // emit position (source order of the FIRST occurrence)
+    name: string;
+  };
+  const accessorPairs = new Map<string, AccessorPair>();
+  for (let i = 0; i < expr.properties.length; i++) {
+    const p = expr.properties[i]!;
+    if (!ts.isGetAccessorDeclaration(p) && !ts.isSetAccessorDeclaration(p)) continue;
+    if (!ts.isIdentifier(p.name) && !ts.isStringLiteral(p.name)) continue; // computed: out of scope
+    const propName = (p.name as ts.Identifier | ts.StringLiteral).text;
+    let pair = accessorPairs.get(propName);
+    if (!pair) {
+      pair = { firstIdx: i, name: propName };
+      accessorPairs.set(propName, pair);
+    }
+    if (ts.isGetAccessorDeclaration(p)) pair.getter = p;
+    else pair.setter = p;
+  }
+
+  // Helper to emit __extern_set(obj, key, value) — both the value and the
+  // string key sit on the wasm stack first.
+  const setIdx = ensureLateImport(
+    ctx,
+    "__extern_set",
+    [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }],
+    [],
+  );
+  const accIdx = ensureLateImport(
+    ctx,
+    "__defineProperty_accessor",
+    [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }, { kind: "externref" }, { kind: "f64" }],
+    [{ kind: "externref" }],
+  );
+  flushLateImportShifts(ctx, fctx);
+  if (setIdx === undefined || accIdx === undefined) return null;
+
+  // 3. Walk properties in source order. Value/method properties → __extern_set.
+  //    Accessor declarations → emit __defineProperty_accessor at the FIRST
+  //    occurrence of each name (using the merged getter/setter pair).
+  const emittedAccessors = new Set<string>();
+  for (let i = 0; i < expr.properties.length; i++) {
+    const prop = expr.properties[i]!;
+    if (ts.isSpreadAssignment(prop)) {
+      // Compile spread source and call __object_assign(target, [source])
+      const srcType = compileExpression(ctx, fctx, prop.expression);
+      if (srcType) {
+        if (srcType.kind !== "externref") {
+          coerceType(ctx, fctx, srcType, { kind: "externref" });
+        }
+        const arrNewIdx = ensureLateImport(ctx, "__js_array_new", [], [{ kind: "externref" }]);
+        const arrPushIdx = ensureLateImport(ctx, "__js_array_push", [{ kind: "externref" }, { kind: "externref" }], []);
+        const assignIdx = ensureLateImport(
+          ctx,
+          "__object_assign",
+          [{ kind: "externref" }, { kind: "externref" }],
+          [{ kind: "externref" }],
+        );
+        flushLateImportShifts(ctx, fctx);
+        if (arrNewIdx !== undefined && arrPushIdx !== undefined && assignIdx !== undefined) {
+          const srcLocal = allocLocal(fctx, `__spread_src_${fctx.locals.length}`, { kind: "externref" });
+          fctx.body.push({ op: "local.set", index: srcLocal });
+          fctx.body.push({ op: "call", funcIdx: arrNewIdx });
+          const arrLocal = allocLocal(fctx, `__spread_arr_${fctx.locals.length}`, { kind: "externref" });
+          fctx.body.push({ op: "local.set", index: arrLocal });
+          fctx.body.push({ op: "local.get", index: arrLocal });
+          fctx.body.push({ op: "local.get", index: srcLocal });
+          fctx.body.push({ op: "call", funcIdx: arrPushIdx });
+          fctx.body.push({ op: "local.get", index: objLocal });
+          fctx.body.push({ op: "local.get", index: arrLocal });
+          fctx.body.push({ op: "call", funcIdx: assignIdx });
+          fctx.body.push({ op: "local.set", index: objLocal });
+        }
+      }
+    } else if (ts.isPropertyAssignment(prop) || ts.isShorthandPropertyAssignment(prop)) {
+      // __extern_set(obj, key, value)
+      let propName: string | undefined;
+      if (ts.isIdentifier(prop.name)) propName = prop.name.text;
+      else if (ts.isStringLiteral(prop.name)) propName = prop.name.text;
+      else if (ts.isNumericLiteral(prop.name)) propName = prop.name.text;
+      // Computed property names not handled here — fall through silently.
+      if (propName === undefined) continue;
+      addStringConstantGlobal(ctx, propName);
+      const keyGlobal = ctx.stringGlobalMap.get(propName);
+      if (keyGlobal === undefined) continue;
+      fctx.body.push({ op: "local.get", index: objLocal });
+      fctx.body.push({ op: "global.get", index: keyGlobal });
+      // Compile value and coerce to externref.
+      let valType: ValType | null;
+      if (ts.isShorthandPropertyAssignment(prop)) {
+        valType = compileExpression(ctx, fctx, prop.name);
+      } else {
+        valType = compileExpression(ctx, fctx, prop.initializer);
+      }
+      if (!valType) {
+        // Push undefined as a fallback so the stack stays balanced.
+        fctx.body.push({ op: "ref.null.extern" });
+      } else if (valType.kind !== "externref") {
+        coerceType(ctx, fctx, valType, { kind: "externref" });
+      }
+      fctx.body.push({ op: "call", funcIdx: setIdx });
+    } else if (ts.isMethodDeclaration(prop)) {
+      // Compile method as a callback closure, then __extern_set
+      let methodName: string | undefined;
+      if (ts.isIdentifier(prop.name)) methodName = prop.name.text;
+      else if (ts.isStringLiteral(prop.name)) methodName = prop.name.text;
+      if (methodName === undefined) continue;
+      addStringConstantGlobal(ctx, methodName);
+      const keyGlobal = ctx.stringGlobalMap.get(methodName);
+      if (keyGlobal === undefined) continue;
+      fctx.body.push({ op: "local.get", index: objLocal });
+      fctx.body.push({ op: "global.get", index: keyGlobal });
+      const ok = compileArrowAsCallback(ctx, fctx, prop as unknown as ts.FunctionExpression, { needsThis: true });
+      if (!ok) {
+        fctx.body.push({ op: "ref.null.extern" });
+      }
+      fctx.body.push({ op: "call", funcIdx: setIdx });
+    } else if (ts.isGetAccessorDeclaration(prop) || ts.isSetAccessorDeclaration(prop)) {
+      // Emit one __defineProperty_accessor call per pair, at the position
+      // of the FIRST get/set declaration on this name. Subsequent siblings
+      // for the same name are skipped (their info was merged into the pair
+      // during the pre-pass).
+      if (!ts.isIdentifier(prop.name) && !ts.isStringLiteral(prop.name)) continue;
+      const propName = (prop.name as ts.Identifier | ts.StringLiteral).text;
+      const pair = accessorPairs.get(propName);
+      if (!pair) continue;
+      if (emittedAccessors.has(propName)) continue;
+      if (pair.firstIdx !== i) continue; // wait for the actual first slot
+      emittedAccessors.add(propName);
+
+      addStringConstantGlobal(ctx, propName);
+      const keyGlobal = ctx.stringGlobalMap.get(propName);
+      if (keyGlobal === undefined) continue;
+
+      // Stack: [obj, key, getterCb | null, setterCb | null, flags]
+      fctx.body.push({ op: "local.get", index: objLocal });
+      fctx.body.push({ op: "global.get", index: keyGlobal });
+
+      // Getter callback (or ref.null.extern when only setter is defined)
+      if (pair.getter) {
+        const ok = compileArrowAsCallback(ctx, fctx, pair.getter as unknown as ts.FunctionExpression, {
+          needsThis: true,
+        });
+        if (!ok) fctx.body.push({ op: "ref.null.extern" });
+      } else {
+        fctx.body.push({ op: "ref.null.extern" });
+      }
+
+      // Setter callback
+      if (pair.setter) {
+        const ok = compileArrowAsCallback(ctx, fctx, pair.setter as unknown as ts.FunctionExpression, {
+          needsThis: true,
+        });
+        if (!ok) fctx.body.push({ op: "ref.null.extern" });
+      } else {
+        fctx.body.push({ op: "ref.null.extern" });
+      }
+
+      // Flags: enumerable=true, configurable=true (writable is N/A for
+      // accessor descriptors; matches `computeRuntimeFlags(undefined,
+      // true, true, false)` from object-ops.ts).
+      // Bits: enumerable_specified (1<<4) | enumerable_value (1<<1)
+      //     | configurable_specified (1<<5) | configurable_value (1<<2)
+      const flags = (1 << 4) | (1 << 1) | (1 << 5) | (1 << 2);
+      fctx.body.push({ op: "f64.const", value: flags });
+
+      fctx.body.push({ op: "call", funcIdx: accIdx });
+      fctx.body.push({ op: "drop" }); // returns the same externref
+    }
+  }
+
+  fctx.body.push({ op: "local.get", index: objLocal });
+  return { kind: "externref" };
+}
+
 export function compileObjectLiteral(
   ctx: CodegenContext,
   fctx: FunctionContext,
   expr: ts.ObjectLiteralExpression,
 ): ValType | null {
+  // (#1239) If the literal carries any get/set accessor declarations,
+  // route to the JS-host plain-object path so the runtime sees real
+  // accessor descriptors. Must run BEFORE any contextual-type / struct
+  // resolution so the wasmGC struct path can't intercept.
+  if (
+    expr.properties.length > 0 &&
+    expr.properties.some((p) => ts.isGetAccessorDeclaration(p) || ts.isSetAccessorDeclaration(p))
+  ) {
+    return compileObjectLiteralWithAccessors(ctx, fctx, expr);
+  }
+
   // If this empty object literal is the initializer of a variable with widened
   // properties (from pre-pass), register the struct with those extra fields and
   // compile as a struct.new with default values for the widened fields.
