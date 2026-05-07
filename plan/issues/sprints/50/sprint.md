@@ -193,6 +193,12 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | #1325 | instanceof against built-in types: compile-time type-tag registry eliminates JS host for common cases | medium | ready |
 | #1326 | Async standalone: implement microtask queue + CPS scheduler in Wasm for Promise/async without JS host | low | ready |
 | #1327 | Landing page: per-feature test pass counts + feature report page + playground deep-link | high | ready |
+| #1328 | RegExp host-mode: Symbol.match / matchAll protocol spec compliance (101 fails) | medium | ready |
+| #1329 | RegExp host-mode: Symbol.replace / replaceAll protocol spec compliance (110 fails) | medium | ready |
+| #1330 | RegExp host-mode: Symbol.search protocol spec compliance (37 fails) | low | ready |
+| #1331 | RegExp host-mode: Symbol.split protocol spec compliance (123 fails) | medium | ready |
+| #1332 | RegExp host-mode: prototype method edge cases (exec, test, flag accessors, RegExpStringIterator) | low | ready |
+| #1333 | RegExp host-mode: Pre-ES6 (S15.10) tests + annexB legacy accessors | low | ready |
 
 ### In Progress
 
@@ -206,6 +212,7 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 |---|---|---|---|
 | #837 | Stage 3: Map/WeakMap upsert — getOrInsert, getOrInsertComputed | low | done |
 | #859 | Map.forEach callback captures are immutable snapshots -- causes infinite loop on mutation during iteration | high | done |
+| #1002 | RegExp js-host mode: finish Symbol protocol and remaining host-wrapper semantics | medium | done |
 | #1020 | await-using TDZ tests: null_deref crash in assert_throwsAsync (4 false positives) | medium | done |
 | #1126 | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | high | done |
 | #1154 | test262 worker: Array.prototype poisoning leaks into TypeScript compiler — Array.from fails at compile time (~378 test262 regressions) | high | done |

@@ -56,7 +56,7 @@ and any environment without a JS runtime. This follows the pattern of
 | **935** | Add String.fromCodePoint() static method | 36 | done | low |
 | **958** | String concat: batch N-operand chains into multi-arg concat (531 chains, 5% of modules) | 38 | done | medium |
 | **979** | Add site-nav to report page and align styling with landing page | 40 | done | medium |
-| **1002** | RegExp js-host mode: finish Symbol protocol and remaining host-wrapper semantics | Backlog | ready | medium |
+| **1002** | RegExp js-host mode: finish Symbol protocol and remaining host-wrapper semantics | 50 | done | medium |
 | **1030** | Array.prototype method dispatch long tail — 372 'object is not a function' | 40 | done | critical |
 | **1062** | compileProject emits invalid Wasm for lodash-es/clamp.js (toNumber type mismatch) | 41 | done | high |
 | **1070** | codegen: unsupported new expression for Intl.ListFormat (and other Intl builtins) | 41 | done | medium |

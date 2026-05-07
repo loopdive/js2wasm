@@ -14045,9 +14045,9 @@
       "id": "1002",
       "title": "RegExp js-host mode: finish Symbol protocol and remaining host-wrapper semantics",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "50",
       "depends_on": [],
       "files": [],
       "goal": "standalone-mode",
@@ -18335,6 +18335,78 @@
       "files": [],
       "goal": "npm-library-support",
       "cluster": "npm-library-support"
+    },
+    {
+      "id": "1328",
+      "title": "RegExp host-mode: Symbol.match / matchAll protocol spec compliance (101 fails)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1329",
+      "title": "RegExp host-mode: Symbol.replace / replaceAll protocol spec compliance (110 fails)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1330",
+      "title": "RegExp host-mode: Symbol.search protocol spec compliance (37 fails)",
+      "priority": "low",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1331",
+      "title": "RegExp host-mode: Symbol.split protocol spec compliance (123 fails)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1332",
+      "title": "RegExp host-mode: prototype method edge cases (exec, test, flag accessors, RegExpStringIterator)",
+      "priority": "low",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1333",
+      "title": "RegExp host-mode: Pre-ES6 (S15.10) tests + annexB legacy accessors",
+      "priority": "low",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
     }
   ],
   "links": [
@@ -20592,7 +20664,13 @@
         "1316",
         "1317",
         "1318",
-        "1319"
+        "1319",
+        "1328",
+        "1329",
+        "1330",
+        "1331",
+        "1332",
+        "1333"
       ]
     },
     {
@@ -25396,6 +25474,30 @@
       "issue": "1319"
     },
     {
+      "goal": "spec-completeness",
+      "issue": "1328"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1329"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1330"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1331"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1332"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1333"
+    },
+    {
       "goal": "standalone-mode",
       "issue": "34"
     },
@@ -29726,6 +29828,30 @@
       "issue": "1319"
     },
     {
+      "goal": "async-model",
+      "issue": "1328"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1329"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1330"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1331"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1332"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1333"
+    },
+    {
       "goal": "symbol-protocol",
       "issue": "10"
     },
@@ -30130,6 +30256,30 @@
       "issue": "1319"
     },
     {
+      "goal": "symbol-protocol",
+      "issue": "1328"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1329"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1330"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1331"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1332"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1333"
+    },
+    {
       "goal": "builtin-methods",
       "issue": "10"
     },
@@ -30534,6 +30684,30 @@
       "issue": "1319"
     },
     {
+      "goal": "builtin-methods",
+      "issue": "1328"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1329"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1330"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1331"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1332"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1333"
+    },
+    {
       "goal": "property-model",
       "issue": "10"
     },
@@ -30936,6 +31110,30 @@
     {
       "goal": "property-model",
       "issue": "1319"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1328"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1329"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1330"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1331"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1332"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1333"
     },
     {
       "goal": "iterator-protocol",
