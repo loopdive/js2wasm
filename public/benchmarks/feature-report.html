@@ -1,0 +1,418 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Feature Test Report — js2wasm</title>
+    <style>
+      :root {
+        --bg: #0f0f10;
+        --bg-soft: #181818;
+        --surface: #1f1f1f;
+        --line: rgba(255, 255, 255, 0.08);
+        --fg: #e5e5e5;
+        --fg-soft: #a8a8a8;
+        --fg-faint: #6b6b6b;
+        --accent: #60a5fa;
+        --ok: #4ade80;
+        --warn: #facc15;
+        --err: #f87171;
+        --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, "Cascadia Mono", "Roboto Mono", Consolas, monospace;
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font-family: var(--sans);
+        font-size: 14px;
+        line-height: 1.55;
+      }
+      a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+      .container {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 32px 24px 80px;
+      }
+      .breadcrumb {
+        font-size: 12px;
+        color: var(--fg-faint);
+        margin-bottom: 16px;
+      }
+      .breadcrumb a {
+        color: var(--fg-soft);
+      }
+      h1 {
+        font-size: 24px;
+        margin: 0 0 8px;
+        font-weight: 600;
+      }
+      .summary-row {
+        display: flex;
+        gap: 24px;
+        flex-wrap: wrap;
+        align-items: baseline;
+        margin: 4px 0 12px;
+      }
+      .feat-count {
+        font-family: var(--mono);
+        font-size: 14px;
+        color: var(--fg-soft);
+      }
+      .feat-count[data-tone="pass"] {
+        color: var(--ok);
+      }
+      .feat-count[data-tone="partial"] {
+        color: var(--warn);
+      }
+      .feat-count[data-tone="fail"] {
+        color: var(--err);
+      }
+      .feat-pct {
+        font-family: var(--mono);
+        font-size: 13px;
+        color: var(--fg-faint);
+      }
+      .description {
+        color: var(--fg-soft);
+        margin: 0 0 24px;
+        max-width: 720px;
+      }
+      .filters {
+        display: flex;
+        gap: 8px;
+        margin: 16px 0 16px;
+        flex-wrap: wrap;
+      }
+      .filters button {
+        background: transparent;
+        border: 1px solid var(--line);
+        color: var(--fg-soft);
+        font-family: var(--mono);
+        font-size: 12px;
+        padding: 6px 12px;
+        cursor: pointer;
+        border-radius: 0;
+        transition:
+          background 0.14s ease,
+          color 0.14s ease,
+          border 0.14s ease;
+      }
+      .filters button:hover {
+        background: var(--surface);
+        color: var(--fg);
+      }
+      .filters button[aria-pressed="true"] {
+        background: var(--surface);
+        color: var(--fg);
+        border-color: rgba(255, 255, 255, 0.3);
+      }
+      .test-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+        font-family: var(--mono);
+      }
+      .test-table thead th {
+        text-align: left;
+        font-weight: 500;
+        color: var(--fg-faint);
+        border-bottom: 1px solid var(--line);
+        padding: 8px 10px;
+        font-family: var(--sans);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .test-table tbody td {
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+      .test-table tbody tr:hover {
+        background: var(--surface);
+      }
+      .col-status {
+        width: 28px;
+      }
+      .col-file {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 280px;
+      }
+      .col-file a {
+        color: var(--fg-soft);
+      }
+      .col-file a:hover {
+        color: var(--fg);
+      }
+      .col-error {
+        color: var(--fg-soft);
+        word-break: break-word;
+        max-width: 480px;
+      }
+      .col-action {
+        white-space: nowrap;
+      }
+      .col-action a {
+        color: var(--accent);
+        font-size: 12px;
+      }
+      .status-pass {
+        color: var(--ok);
+      }
+      .status-fail {
+        color: var(--err);
+      }
+      .status-ce {
+        color: var(--warn);
+      }
+      .status-skip {
+        color: var(--fg-faint);
+      }
+      .empty {
+        color: var(--fg-faint);
+        padding: 48px 24px;
+        text-align: center;
+        font-style: italic;
+      }
+      .truncated-note {
+        margin: 16px 0 0;
+        font-size: 12px;
+        color: var(--fg-faint);
+        font-style: italic;
+      }
+      .error-msg {
+        color: var(--fg-faint);
+      }
+      .error-msg-text {
+        color: var(--fg-soft);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="breadcrumb">
+        <a href="../">← js2wasm</a>
+        / Feature test report
+      </div>
+      <h1 id="feat-name">Loading…</h1>
+      <div class="summary-row">
+        <span id="feat-counts" class="feat-count">—</span>
+        <span id="feat-pct" class="feat-pct"></span>
+      </div>
+      <p id="feat-description" class="description"></p>
+      <div class="filters" id="filters" hidden>
+        <button data-filter="all" aria-pressed="true">All</button>
+        <button data-filter="fail" aria-pressed="false">Failures only</button>
+        <button data-filter="pass" aria-pressed="false">Passes only</button>
+      </div>
+      <div id="test-table-wrap"></div>
+      <p id="truncated-note" class="truncated-note" hidden></p>
+    </div>
+    <script>
+      // #1327 — Feature test report. Reads ?feature= from the URL, fetches
+      // /feature-examples.json (already augmented by dashboard/build-data.js
+      // with testCategories / passCount / totalCount / tests[]), finds the
+      // matching feature, and renders a sortable/filterable test list.
+      (async function () {
+        const params = new URLSearchParams(location.search);
+        const featureKey = params.get("feature");
+        const nameEl = document.getElementById("feat-name");
+        const countsEl = document.getElementById("feat-counts");
+        const pctEl = document.getElementById("feat-pct");
+        const descEl = document.getElementById("feat-description");
+        const tableWrap = document.getElementById("test-table-wrap");
+        const filtersEl = document.getElementById("filters");
+        const truncEl = document.getElementById("truncated-note");
+
+        if (!featureKey) {
+          nameEl.textContent = "No feature specified";
+          tableWrap.innerHTML =
+            '<p class="empty">Pass <code>?feature=&lt;path&gt;</code> in the URL — e.g. <code>?feature=built-ins/Array</code>.</p>';
+          return;
+        }
+
+        // Try a few resolutions for the feature-examples.json — site root
+        // (production) and a couple of dev-server fallbacks.
+        const tryPaths = ["../feature-examples.json", "/feature-examples.json", "./feature-examples.json"];
+        let data = null;
+        for (const p of tryPaths) {
+          try {
+            const r = await fetch(p);
+            if (r.ok) {
+              data = await r.json();
+              break;
+            }
+          } catch {
+            /* try next */
+          }
+        }
+
+        if (!data || !Array.isArray(data.features)) {
+          nameEl.textContent = featureKey;
+          tableWrap.innerHTML = '<p class="empty">Could not load feature data. The site may need a fresh build.</p>';
+          return;
+        }
+
+        // Resolve `?feature=` against testCategories. The landing page
+        // currently emits the FIRST data-t262-paths entry as the URL
+        // value; that prefix should be present in the matched feature's
+        // testCategories array. Fall back to feature.name match for
+        // robustness.
+        const feature =
+          data.features.find((f) =>
+            Array.isArray(f.testCategories) ? f.testCategories.includes(featureKey) : false,
+          ) ||
+          data.features.find((f) => f.name === featureKey) ||
+          null;
+
+        if (!feature) {
+          nameEl.textContent = featureKey;
+          tableWrap.innerHTML = `<p class="empty">No feature found for <code>${escapeHtml(featureKey)}</code>.</p>`;
+          return;
+        }
+
+        document.title = `${feature.name} — Feature Test Report`;
+        nameEl.textContent = feature.name;
+        const pass = Number(feature.passCount ?? 0);
+        const total = Number(feature.totalCount ?? 0);
+        countsEl.textContent = `${pass} pass / ${total} total`;
+        if (total > 0) {
+          const ratio = pass / total;
+          if (ratio >= 0.9) countsEl.dataset.tone = "pass";
+          else if (ratio >= 0.5) countsEl.dataset.tone = "partial";
+          else countsEl.dataset.tone = "fail";
+          pctEl.textContent = `(${Math.round(ratio * 100)}%)`;
+        }
+        if (feature.description) descEl.textContent = feature.description;
+
+        const tests = Array.isArray(feature.tests) ? feature.tests : [];
+        if (tests.length === 0) {
+          tableWrap.innerHTML = '<p class="empty">No test262 tests are mapped to this feature yet.</p>';
+          return;
+        }
+
+        if (feature.testsTruncated) {
+          truncEl.textContent = `Showing first ${tests.length} of ${total} tests (sorted: failures first).`;
+          truncEl.hidden = false;
+        }
+
+        filtersEl.hidden = false;
+        let activeFilter = "all";
+
+        function statusIcon(status) {
+          if (status === "pass") return { icon: "✅", cls: "status-pass" };
+          if (status === "fail") return { icon: "❌", cls: "status-fail" };
+          if (status === "compile_error" || status === "compile_timeout") return { icon: "⚠️", cls: "status-ce" };
+          return { icon: "⏭", cls: "status-skip" };
+        }
+
+        function shortFile(file) {
+          // Drop the `test/` prefix for brevity, but keep enough context.
+          const trimmed = file.startsWith("test/") ? file.slice(5) : file;
+          const segs = trimmed.split("/");
+          if (segs.length <= 3) return trimmed;
+          // Last 3 segments: last 2 + filename
+          return ".../" + segs.slice(-3).join("/");
+        }
+
+        function escapeHtml(s) {
+          return String(s ?? "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+        }
+
+        function truncateError(err) {
+          const s = String(err ?? "").trim();
+          if (!s) return "";
+          if (s.length <= 120) return s;
+          return s.slice(0, 117) + "…";
+        }
+
+        function playgroundLink(test) {
+          const path = test.file.startsWith("test/") ? test.file.slice(5) : test.file;
+          const params = new URLSearchParams({ t262: path });
+          if (test.error) params.set("error", String(test.error));
+          // Resolve from the report page, which lives under /benchmarks/.
+          return `../playground/?${params.toString()}`;
+        }
+
+        function render() {
+          const filtered = tests.filter((t) => {
+            if (activeFilter === "all") return true;
+            if (activeFilter === "fail")
+              return t.status === "fail" || t.status === "compile_error" || t.status === "compile_timeout";
+            if (activeFilter === "pass") return t.status === "pass";
+            return true;
+          });
+
+          if (filtered.length === 0) {
+            tableWrap.innerHTML = '<p class="empty">No tests match this filter.</p>';
+            return;
+          }
+
+          let html = '<table class="test-table"><thead><tr>';
+          html += '<th class="col-status"></th>';
+          html += '<th class="col-file">File</th>';
+          html += '<th class="col-error">Error</th>';
+          html += '<th class="col-action">Playground</th>';
+          html += "</tr></thead><tbody>";
+
+          for (const test of filtered) {
+            const { icon, cls } = statusIcon(test.status);
+            const short = shortFile(test.file);
+            const errorText = truncateError(test.error);
+            const errorHtml = errorText
+              ? `<span class="error-msg-text">${escapeHtml(errorText)}</span>`
+              : '<span class="error-msg">—</span>';
+            html += "<tr>";
+            html += `<td class="col-status ${cls}" title="${escapeHtml(test.status)}">${icon}</td>`;
+            html += `<td class="col-file" title="${escapeHtml(test.file)}">${escapeHtml(short)}</td>`;
+            html += `<td class="col-error">${errorHtml}</td>`;
+            html += `<td class="col-action"><a href="${escapeHtml(playgroundLink(test))}" rel="noopener">▶ playground</a></td>`;
+            html += "</tr>";
+          }
+
+          html += "</tbody></table>";
+          tableWrap.innerHTML = html;
+        }
+
+        filtersEl.addEventListener("click", (event) => {
+          const btn = event.target instanceof HTMLElement ? event.target.closest("button[data-filter]") : null;
+          if (!btn) return;
+          activeFilter = btn.getAttribute("data-filter") || "all";
+          for (const b of filtersEl.querySelectorAll("button[data-filter]")) {
+            b.setAttribute("aria-pressed", b === btn ? "true" : "false");
+          }
+          render();
+        });
+
+        render();
+      })();
+
+      // Top-level escapeHtml used inline by the early-error branch.
+      function escapeHtml(s) {
+        return String(s ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+    </script>
+  </body>
+</html>
