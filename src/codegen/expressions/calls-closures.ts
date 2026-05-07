@@ -428,7 +428,13 @@ export function compileCallablePropertyCall(
 
   // The field must be a callable type — check via TS type checker
   const propTsType = ctx.checker.getTypeAtLocation(propAccess);
-  const callSigs = propTsType.getCallSignatures?.();
+  let callSigs = propTsType.getCallSignatures?.();
+  if (!callSigs || callSigs.length === 0) {
+    // Field typed as `Fn | null` / `Fn | undefined` — strip nullable
+    // members and retry. Storage is externref either way (#1298).
+    const nonNull = ctx.checker.getNonNullableType(propTsType);
+    callSigs = nonNull.getCallSignatures?.();
+  }
   if (!callSigs || callSigs.length === 0) return undefined;
 
   const sig = callSigs[0]!;
