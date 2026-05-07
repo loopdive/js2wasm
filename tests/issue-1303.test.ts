@@ -6,19 +6,34 @@
 // arrive as externref via `global.get`, then feed `&`/`|` whose
 // emitJsToInt32 sequence starts with `f64.trunc` and rejects them.
 //
-// The fix in `src/ir/lower.ts` adds a defensive `coerceToF64ForBitwise`
-// helper invoked only for `js.bitand|bitor|bitxor|shl|shr_s|shr_u` IR
-// instructions. If `typeOf(operand).val.kind` isn't `"f64"`, it emits
-// `call __unbox_number` to coerce externref → f64 before the trunc.
+// Initial IR-side fix in `src/ir/lower.ts` added a defensive
+// `coerceToF64ForBitwise` helper for the `js.bit*` IR instructions.
 //
-// The legacy codegen path (binary-ops.ts) is NOT covered by this fix —
-// see #1305 for the legacy / root-cause follow-up. That's why
-// `lodash-es/partial.js` still fails validation after this fix.
+// The legacy codegen path (binary-ops.ts) hit the same symptom for a
+// DIFFERENT reason — see #1305. The buggy `compileBitwiseBinaryOp` site
+// was emitting against an f64 global at compile time, but the global's
+// absolute index was over-shifted at finalization by
+// `fixupModuleGlobalIndices`: nested bodies reached via recursion (the
+// `then`/`else` branches of an `if`) were not added to the per-call
+// `shifted` set, so duplicate `savedBodies` entries left behind by
+// `compileLogicalAnd` / `compileLogicalOr` (which restore via
+// `fctx.body = saved` instead of `popBody`) re-shifted the same body
+// once per leak. The over-shift drove the `global.get` past the last
+// numeric global into the externref tail of the table, so f64.trunc
+// validated against an externref operand at link time. The fix moves
+// the `shifted.has` guard inside `shiftGlobalIndices`, so every Instr[]
+// is shifted at most once per fixup call — see
+// `src/codegen/registry/imports.ts`.
+
+import { existsSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-import { compile } from "../src/index.js";
+import { compile, compileProject } from "../src/index.js";
 import { buildImports } from "../src/runtime.js";
+
+const lodashEsInstalled = existsSync("node_modules/lodash-es/partial.js");
+const runIfInstalled = lodashEsInstalled ? it : it.skip;
 
 async function compileAndRun(source: string): Promise<unknown> {
   const r = compile(source, { fileName: "test.ts" });
@@ -135,5 +150,89 @@ describe("#1303 — IR bitwise ops coerce non-f64 operands to f64 defensively", 
       }
     `);
     expect(result).toBe(255);
+  });
+});
+
+describe("#1305 — legacy global-shift over-count regression", () => {
+  /**
+   * Direct reproducer: lodash partial.js. Pulls in `_mergeData.js`
+   * whose `mergeData` is the canonical failure site. Validates the
+   * compiled binary; pre-fix this threw with `f64.trunc[0] expected
+   * type f64, found global.get of type externref @+36700`.
+   */
+  runIfInstalled("compileProject('node_modules/lodash-es/partial.js') validates", () => {
+    const r = compileProject("node_modules/lodash-es/partial.js", { allowJs: true });
+    expect(r.success).toBe(true);
+    expect(() => new WebAssembly.Module(r.binary)).not.toThrow();
+  });
+
+  /**
+   * Sibling lodash entry point pulling the same `_mergeData.js` via
+   * `_createWrap.js`. Same root cause; validates after the fix.
+   */
+  runIfInstalled("compileProject('node_modules/lodash-es/_createWrap.js') validates", () => {
+    const r = compileProject("node_modules/lodash-es/_createWrap.js", { allowJs: true });
+    expect(r.success).toBe(true);
+    expect(() => new WebAssembly.Module(r.binary)).not.toThrow();
+  });
+
+  /**
+   * Self-contained shape that exercises the same shift-leak path:
+   * many late-added string-constant imports (here the rich error
+   * messages emitted for indexed access on a possibly-null value)
+   * combined with an `||` chain whose RHS contains `srcBitmask ==
+   * (FLAG_A | FLAG_B)`. Each clause's RHS pushes a fresh body via
+   * `pushBody`, and the legacy `compileLogicalAnd / compileLogicalOr`
+   * restores via `fctx.body = saved` without `popBody`, leaving
+   * duplicate `savedBodies` entries behind. Those entries used to
+   * re-shift the inner `global.get` over and over each time
+   * `addStringConstantGlobal` fired during the rest of compilation.
+   */
+  it("logical-chain RHS with bitwise-of-globals does not over-shift global indices", () => {
+    const src = `
+      // Many string literals to pump up late string-constant imports:
+      var msg1 = "one";
+      var msg2 = "two";
+      var msg3 = "three";
+      var msg4 = "four";
+      var msg5 = "five";
+
+      var WRAP_BIND = 1, WRAP_BIND_KEY = 2, WRAP_ARY = 128, WRAP_REARG = 256;
+
+      export function mergeDataLike(data: any, source: any): number {
+        var bitmask = data[1];
+        var srcBitmask = source[1];
+        var newBitmask = bitmask | srcBitmask;
+        var isCommon = newBitmask < (WRAP_BIND | WRAP_BIND_KEY | WRAP_ARY);
+        var isCombo =
+          ((srcBitmask == WRAP_ARY) && (bitmask == WRAP_REARG)) ||
+          ((srcBitmask == (WRAP_ARY | WRAP_REARG)) && (data[7].length <= source[8]) && (bitmask == WRAP_BIND));
+        if (!(isCommon || isCombo)) return 0;
+        return newBitmask;
+      }
+    `;
+    const r = compile(src, { fileName: "test.ts" });
+    expect(r.success).toBe(true);
+    expect(() => new WebAssembly.Module(r.binary)).not.toThrow();
+  });
+
+  /**
+   * #1303 acceptance criterion #2: sibling truncation ops
+   * (`Math.floor`, `Math.ceil`) on values that are bitwise products of
+   * any-typed locals. Exercises the legacy `compileBitwiseBinaryOp`
+   * path's externref unbox without depending on lodash being present.
+   */
+  it("Math.floor / Math.ceil on bitwise-of-any-typed values", () => {
+    const src = `
+      export function f(x: any, y: any): number {
+        return Math.floor((x | 0) + (y | 0));
+      }
+      export function g(x: any, y: any): number {
+        return Math.ceil((x | 0) - (y | 0));
+      }
+    `;
+    const r = compile(src, { fileName: "test.ts" });
+    expect(r.success).toBe(true);
+    expect(() => new WebAssembly.Module(r.binary)).not.toThrow();
   });
 });
