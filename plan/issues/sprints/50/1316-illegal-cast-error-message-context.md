@@ -2,7 +2,7 @@
 id: 1316
 sprint: 50
 title: "illegal cast error: add expected type and actual value context (142 opaque runtime failures)"
-status: ready
+status: done
 created: 2026-05-07
 updated: 2026-05-07
 priority: medium

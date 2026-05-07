@@ -1,9 +1,9 @@
 ---
 id: 1154
 title: "test262 worker: Array.prototype poisoning leaks into TypeScript compiler — Array.from fails at compile time (~378 test262 regressions)"
-status: ready
+status: done
 created: 2026-04-21
-updated: 2026-04-21
+updated: 2026-05-07
 priority: high
 feasibility: medium
 reasoning_effort: high
@@ -66,3 +66,54 @@ Recommend layer 1 (full descriptor snapshot) as the immediate fix; layer 3 as th
 - Running the full test262 suite produces 0 occurrences of `%Array%.from requires that the property of the first argument` in the error log.
 - `scripts/test262-worker.mjs` has explicit snapshot+restore coverage for `Array.prototype`, `Object.prototype`, and `Symbol.iterator` descriptors.
 - No regressions in compile time (restore overhead should be < 2ms per test).
+
+## Resolution (2026-05-07)
+
+**Fixed by accumulated work** in #1153, #1155, #1157, #1160, #1220, #1221,
+and #1295. The worker's `restoreBuiltins()` in
+`scripts/test262-worker.mjs` now covers all the categories proposed in the
+fix-approach section:
+
+1. **Snapshot at module load**:
+   - `_origArrayIterator` + `_origArrayIteratorDesc` (with non-configurable
+     descriptor recovery via `Object.defineProperty`)
+   - `_origArrayProtoNumericKeys`, `_origArrayProtoSymbols`
+   - `_origObjectProtoKeys`, `_origObjectProtoSymbols`
+   - `_PROTO_EXTRA_CLEANUP` — Number, Boolean, %TypedArray%, all concrete
+     TypedArrays, %IteratorPrototype%, Map, Set, Date, Promise, Error
+   - `_METHOD_SNAPSHOTS` — ~30 prototypes' specific methods captured by value
+   - `_STATIC_SNAPSHOTS` — Array, Object, String, Number, Math, JSON,
+     Reflect, Promise statics
+   - `_ACCESSOR_SNAPSHOTS` — RegExp.prototype getters
+2. **Configurable check + FATAL exit** for non-configurable poison on
+   `Array.prototype[Symbol.iterator]`, numeric Array.prototype keys, and
+   Object.prototype keys/symbols.
+3. **Callability probe** on `Array.prototype[Symbol.iterator]` after restore
+   to catch wasm-throwing function poisoning (#1221).
+
+**Regression count**: down from the originally-reported ~378 to 4 in the
+current `benchmarks/results/test262-current.jsonl`. The 4 remaining are a
+**separate root cause** — they fail standalone (verified in isolation, not
+worker-state-dependent), with the V8 `%Array%.from requires...` error
+thrown from the runtime's `Array.from`/`Iterator.from` host-import bridge
+when the input is a plain JS object whose own `[Symbol.iterator]` should
+be detected but isn't. These are runtime-bridge bugs, not worker-leak
+bugs.
+
+**Remaining 4 tests** (separate runtime-bridge bug — needs a follow-up issue):
+
+- `test/built-ins/Array/from/iter-cstm-ctor.js`
+- `test/built-ins/Array/from/iter-set-length.js`
+- `test/built-ins/Iterator/from/iterable-primitives.js`
+- `test/built-ins/Iterator/prototype/flatMap/iterable-primitives-are-not-flattened.js`
+
+Each fails at `WebAssembly.instantiate` time inside the start function's
+runtime call to `Array.from(items)` / `Iterator.from(items)`. The error
+message text is identical to the original #1154 leak symptom, but the
+trigger is different — the test sets `items[Symbol.iterator] = function(){...}`
+on a plain object and the wasm/JS host bridge doesn't preserve that own
+property when invoking the native `Array.from`. Separate follow-up
+recommended.
+
+**No code changes in this PR** — closure is documentation-only since the
+underlying snapshot/restore logic is already in place from prior work.
