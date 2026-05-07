@@ -121,3 +121,281 @@ the eventual spec-correct direction.
 - #1135 — iterable-fallback destructuring (original iterator protocol
   plumbing)
 - ECMA-262 13.3.3.6
+
+## Implementation Plan (BUNDLED — covers #1158 and #1159)
+
+The two issues share the same root path: spec §13.3.3.6 requires that
+`ArrayBindingPattern : [ ]` perform `GetIterator` + `IteratorClose`
+with **no `IteratorStep` calls**, and that nested-pattern initializers
+only be evaluated when the slot is `undefined`. The compiler over-
+consumes by routing through `__array_from_iter` (= host `Array.from`)
+which always pulls every element. This plan addresses both.
+
+### Root cause
+
+`__array_from_iter` is called from **three** sites in codegen:
+
+| File:Line | Context | Spec issue |
+|-----------|---------|------------|
+| `src/codegen/destructuring-params.ts:762` | externref → vec_externref fallback in `destructureParamArray` | #1158 — outer empty pattern is short-circuited at line 647, but **non-empty** patterns still over-consume (every test in the bucket walks here for non-empty outer patterns) |
+| `src/codegen/type-coercion.ts:206` | `buildVecFromExternref` — used by `coerceType(externref → ref_null vec_X)` | #1159 — when the nested elemType is a vec, `emitNestedBindingDefault` (`statements/destructuring.ts:219-222`) compiles the initializer with vec hint, then `coerceType` materializes the iter |
+| `src/codegen/type-coercion.ts:356` | `buildTupleFromIterableFallback` — used by `coerceType(externref → tuple struct)` | #1159 sibling — same pattern when target is a tuple |
+
+The existing line-647 empty-pattern short-circuit only covers the
+case where `paramType.kind === "externref"` AND `pattern.elements.length
+=== 0`. It does NOT cover:
+- A nested empty pattern reached via the recursive call at line 1151
+  *if* `elemType` is `ref/ref_null vec` (then the recursion takes the
+  vec path at line 981, which is empty-safe — fine), OR
+- A nested empty pattern with a default initializer (`[[] = iter]`)
+  where the default coercion fires `__array_from_iter` BEFORE the
+  recursion reaches line 647 (#1159's exact failure mode).
+
+### Strategy
+
+**Option A (preferred — surgical, low risk).** Two changes, both
+spec-correct for empty patterns; defer general lazy-iter to a follow-
+up. Roughly 80 lines changed, all in destructuring code paths.
+
+1. In `emitNestedBindingDefault`, when the surrounding pattern is an
+   **empty** `ArrayBindingPattern`, skip the coercion to vec/tuple
+   and store the initializer's result as externref instead. The
+   recursion into the empty pattern then takes the safe externref+
+   empty-return path at `destructureParamArray:647`.
+
+2. In `destructureParamArray`, before any externref→vec materialization,
+   walk the pattern shape: if **every** binding is an empty pattern
+   (or omitted), skip `__array_from_iter` entirely. The spec calls
+   `GetIterator`+`IteratorClose` only — no element pulls.
+
+**Option B (general lazy-iter).** Replace `__array_from_iter` with a
+streaming protocol (`__iter_get`, `__iter_step`, `__iter_close`) and
+emit the loop with a known element budget = pattern element count.
+Larger surface; defer.
+
+### Changes
+
+**File: `src/codegen/destructuring-params.ts`** — function
+`destructureParamArray` (lines 624-966)
+
+#### Change 1.1 — pattern-shape pre-pass for empty-only patterns
+
+Just BEFORE the existing line 647 early return, broaden the check to
+recognize "all elements are empty/omitted" patterns. Move the empty-
+return check OUT of the `pattern.elements.length === 0` guard:
+
+```ts
+// Before line 647 (inside the externref branch, after the guard):
+if (isPatternEmptyOnly(pattern)) {
+  // §13.3.3.6: GetIterator+IteratorClose only, no element pulls.
+  // Recurse into nested empty patterns to declare any locals they
+  // need (rare, but possible: `[[]]` declares no locals — still safe).
+  ensureBindingLocals(ctx, fctx, pattern);
+  return;
+}
+```
+
+Add a helper:
+```ts
+function isPatternEmptyOnly(pattern: ts.ArrayBindingPattern): boolean {
+  if (pattern.elements.length === 0) return true;
+  for (const el of pattern.elements) {
+    if (ts.isOmittedExpression(el)) continue;
+    if (!ts.isBindingElement(el)) return false;
+    if (el.dotDotDotToken) return false;          // rest must consume
+    if (el.initializer) return false;             // default may need ref
+    if (ts.isArrayBindingPattern(el.name) &&
+        isPatternEmptyOnly(el.name)) continue;
+    return false;
+  }
+  return true;
+}
+```
+
+This is conservative — we keep the existing path for any pattern
+that has even one non-empty binding. Restoring spec correctness for
+the unconditionally-empty case alone is enough for #1158's bucket
+*minus* the nested-with-initializer subcase that #1159 covers.
+
+#### Change 1.2 — recursive call path for nested empty patterns with initializer
+
+In the nested-binding branch at lines 1128-1153, when the inner
+pattern is empty AND has an initializer, the initializer must run
+ONLY if `tmpLocal === undefined` (per §13.3.3.6 step 3a). The
+existing code at line 1140-1147 does this correctly via
+`emitNestedBindingDefault`. The bug is in **how** the initializer's
+result is coerced before the recursion: when `elemType` is
+`ref_null vec_X` or a tuple struct, `emitNestedBindingDefault` uses
+`coerceType(externref → vec)` which calls `__array_from_iter` (in
+`buildVecFromExternref`/`buildTupleFromIterableFallback`).
+
+Fix: detect "nested empty pattern" specifically and bypass the
+coercion to a vec/tuple type — the empty pattern doesn't need a
+real array. Pass the initializer's externref directly to the
+recursive `destructureParamArray` with `elemType = externref`:
+
+```ts
+// Replacing the block at lines 1133-1152, when element.name is an
+// ArrayBindingPattern with isPatternEmptyOnly === true:
+if (ts.isArrayBindingPattern(element.name) &&
+    isPatternEmptyOnly(element.name)) {
+  // §13.3.3.6: only need to invoke GetIterator+IteratorClose on the
+  // value. Materialization to a vec/tuple would over-consume. Hold
+  // the value as externref, run the empty-pattern short-circuit.
+  const externType: ValType = { kind: "externref" };
+  const tmpLocal = allocLocal(fctx, `__dparam_emp_${fctx.locals.length}`,
+    externType);
+  // Read element (or undefined sentinel) as externref:
+  fctx.body.push({ op: "local.get", index: paramIdx });
+  fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
+  fctx.body.push({ op: "i32.const", value: i });
+  emitBoundsCheckedArrayGetUndef(ctx, fctx, arrTypeIdx, elemType);
+  // Box if elemType wasn't already externref (so emitNestedBindingDefault
+  // can compare against undefined):
+  if (elemType.kind !== "externref") coerceType(ctx, fctx, elemType, externType);
+  fctx.body.push({ op: "local.set", index: tmpLocal });
+
+  if (element.initializer) {
+    // Default fires when tmpLocal is undefined; result stored as
+    // externref WITHOUT coercion to vec/tuple (avoids __array_from_iter).
+    emitNestedBindingDefault(ctx, fctx, tmpLocal, externType, element.initializer);
+  }
+  // Recurse with externref so the empty short-circuit at line 647 fires.
+  destructureParamArray(ctx, fctx, tmpLocal, element.name, externType);
+  continue;
+}
+```
+
+This also fixes the symmetric paths at lines 562-566 (struct field
+nested) and 1027-1031 (tuple field nested).
+
+**File: `src/codegen/statements/destructuring.ts`** — function
+`emitNestedBindingDefault` (lines 207-281). No code change required
+once the caller passes `externType` for empty-pattern recursions, but
+add a guard comment that the fix is callsite-driven, not in this
+helper.
+
+**File: `src/codegen/destructuring-params.ts`** — symmetric
+non-recursive fix in the existing externref path at lines 636-965
+
+After the externref-to-vec conversion (line 951's recursive call),
+nothing more needs to change for #1158's main bucket. The line 647
+broadening (Change 1.1) covers all non-nested empty cases.
+
+### Wasm IR — empty-pattern short-circuit (post-fix)
+
+```wasm
+;; function f([[] = makeIter()])  with caller f([])
+;; outer paramType = externref
+local.get $param0
+ref.is_null  ; guard
+if … throw TypeError … end
+call $__extern_is_undefined …          ; further guard
+
+;; isPatternEmptyOnly([<empty>]) is FALSE — outer has 1 element with init
+;; …old codepath up to nested element extraction…
+
+;; Read tmpLocal from materialized array (size 0 → undefined sentinel):
+local.get $vec_data ; i32.const 0 ; emitBoundsCheckedArrayGetUndef
+local.set $tmp        ; tmp : externref = undefined
+
+;; emitNestedBindingDefault on tmp (externref):
+local.get $tmp
+call $__extern_is_undefined            ; → 1
+if
+  ;; compile initializer  function(){ initCount += 1; return iter; }()
+  …
+  local.set $tmp                       ; tmp = iter
+end
+
+;; destructureParamArray(tmp, [], externref):
+;; line 638 guard passes (iter is not null/undef)
+;; isPatternEmptyOnly([]) == true → ensureBindingLocals(); return.
+;; NO __array_from_iter call. iterCount stays 0.
+```
+
+### Edge cases (must test)
+
+1. **#1158 baseline**: `function f([] ) {}; f([1,2,3]);` — no
+   `__array_from_iter` call (verify via `grep -c __array_from_iter
+   <output>.wat` is 0).
+2. **#1158 throwing iterator over empty pattern**: `function f([] )
+   {}; f({ [Symbol.iterator]() { throw new Error(); } });` — must
+   NOT throw (no `.next()` called). Spec: GetIterator runs, returns
+   the iterator object, then IteratorClose calls `iter.return()`
+   (or skips if absent). No throw should propagate from `.next()`
+   because `.next()` is never called.
+3. **#1159 baseline**: `class C { static m([[] = function(){
+   initCount++; return iter; }()]) {} }; C.m([]);` — initCount=1,
+   iterCount=0.
+4. **#1159 outer-provided element**: `class C { static m([[] =
+   function(){ initCount++; return iter; }()]) {} }; C.m([[1]]);` —
+   initCount=0 (outer slot defined), iterCount=0 (inner empty
+   pattern no-op).
+5. **Nested non-empty pattern with initializer**: `function f([[a]
+   = [42]]) { return a; }; f([])` → returns 42. NOT covered by
+   Option A — must continue to coerce externref → vec because the
+   inner pattern has bindings. Verify no regression.
+6. **Rest in pattern**: `function f([...rest]) {...}` — must consume
+   all elements (existing behavior); pattern is not empty-only.
+7. **Mixed**: `function f([a, [], b]) {...}` — `[]` in middle slot
+   does not save us (outer pattern not empty-only); inner empty
+   pattern is reached with proxy `tmpLocal` of type externref → safe.
+8. **Iter that returns `return()` with throw**: §7.4.6 IteratorClose
+   propagates `iter.return()` errors. Our `Array.from` does call
+   `.return()` on early break, but for the empty-pattern case we
+   don't even need to call `.return()` — short-circuit at line 647
+   skips it entirely. Compliant for the specific assertion bucket
+   (`iterCount === 0`); broader IteratorClose semantics may want a
+   follow-up issue.
+
+### Test files to verify
+
+- `test262/test/language/statements/class/dstr/meth-static-ary-ptrn-elem-ary-empty-init.js`
+  (#1159's primary target)
+- `test262/test/language/expressions/class/dstr/meth-static-ary-ptrn-elem-ary-empty-init.js`
+  (sibling)
+- All ~48 files in `test262/test/language/{statements,expressions}/class/dstr/*-ary-ptrn-elem-ary-empty-init.js`
+- New `tests/issue-1158.test.ts`:
+  ```ts
+  let iterCount = 0;
+  function* gen() { iterCount++; yield 1; }
+  function f([] ) {}
+  f(gen()); // iterCount must be 0
+  ```
+- New `tests/issue-1159.test.ts`:
+  ```ts
+  let initCount = 0, iterCount = 0;
+  const iter = (function*() { iterCount++; })();
+  class C { static m([[] = (function() { initCount++; return iter; })()]) {} }
+  C.m([]);
+  // initCount === 1, iterCount === 0
+  ```
+
+### Out of scope (follow-up issues)
+
+- Lazy iterator protocol (`__iter_step` / `__iter_close` host imports)
+  to make non-empty patterns also spec-correct (over-consumption
+  beyond N elements). File a follow-up after this lands.
+- IteratorClose throw propagation when `iter.return()` itself throws.
+- Object-binding analog: `function f({}) {}` — already correct
+  because object destructuring doesn't iterate.
+
+### Risks
+
+- The `isPatternEmptyOnly` recursion is small but new. Confirm via
+  unit test that `[[, [, []]]]` (nested elision-only) is detected
+  as empty-only.
+- `emitBoundsCheckedArrayGetUndef` already returns `externref`-shaped
+  undefined for out-of-range indices — confirmed at line 1137 it's
+  used the same way. The `coerceType(elemType → externref)` step
+  added in Change 1.2 is a no-op when `elemType.kind === "externref"`,
+  and is well-tested for primitive elem types.
+- `compileExpression(initializer, externType)` may produce a different
+  result type than when given a vec hint (e.g. an arrow that returns
+  a typed array literal). For the failing test262 bucket the
+  initializer is always a side-effecting call returning an externref/
+  iterator — externref hint is correct.
+- Sibling fix in the symmetric paths at lines 562-566 and 1027-1031
+  must mirror the change exactly; otherwise nested empty patterns
+  inside object-pattern fields or tuple destructures regress.
