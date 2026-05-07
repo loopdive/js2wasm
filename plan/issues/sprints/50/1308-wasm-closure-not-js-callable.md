@@ -2,7 +2,7 @@
 id: 1308
 sprint: 50
 title: "Wasm closure struct returned to JS host is not JS-callable"
-status: ready
+status: in-progress
 created: 2026-05-07
 updated: 2026-05-07
 priority: medium
@@ -114,3 +114,109 @@ Almost any JS library that returns a closure (lodash's `_.partial`,
 JS host can hand callbacks INTO Wasm (#1304 fixed the `typeof`
 classification) but cannot consume callbacks Wasm hands back. That's a
 hard limit on the npm-library-support goal.
+
+## Implementation (2026-05-07, branch `issue-1308-js-callable-closure`)
+
+The fix has two parts.
+
+### Part 1 — codegen: emit `__call_fn_0` / `__call_fn_1` for multi-source projects
+
+`generateMultiModule` (`src/codegen/index.ts`) was missing the entire
+post-compile export-emit block that single-source `generateModule` ran.
+Concretely, for a multi-source project (any `compileProject` call —
+including all lodash modules), the binary never got `__call_fn_0`,
+`__call_fn_1`, `__vec_get`, `__vec_len`, struct field getters, etc.,
+so even the existing runtime helpers that wanted to dispatch via
+`__call_fn_N` had nothing to call.
+
+Verified by inspecting the WAT for `compileProject('lodash-es/negate.js')`:
+pre-fix the binary had 2 user exports (`negate`, `default`) + the
+exception tag and that was it; post-fix it has the full export surface
+(`negate`, `default`, `__call_fn_0`, `__vec_len`, `__vec_get`, `__exn_tag`).
+
+Added these calls to `generateMultiModule`, mirroring the existing
+order in `generateModule`:
+- `emitStructFieldGetters`
+- `emitVecAccessExports`
+- `emitDataViewByteExports`
+- `emitTestRuntimeStringHelpers`
+- `emitIteratorMethodExport`
+- **`emitClosureCallExport`** (`__call_fn_0`)
+- **`emitClosureCallExport1`** (`__call_fn_1`)
+- `emitToPrimitiveMethodExports`
+
+### Part 2 — runtime: `wrapExports(instance.exports)` helper
+
+Added a new public helper in `src/runtime.ts`:
+
+```ts
+export function wrapExports(rawExports: WebAssembly.Exports): Record<string, any>;
+```
+
+Returns a new exports object whose user-visible callable exports
+(non-`__`-prefixed `function` exports) auto-wrap any returned
+Wasm closure struct in a JS function. The wrapper dispatches via
+`__call_fn_0` for 0-arg calls and `__call_fn_1` for 1-arg calls.
+Non-callable exports and internal `__`-helpers pass through untouched.
+
+`_isWasmStruct` (already in runtime.ts) gates the wrap — only objects
+that look like opaque WasmGC structs get replaced.
+
+### Test results
+
+`tests/issue-1308.test.ts` — 7/7 PASS:
+- `typeof exported closure return is 'function'`
+- 0-arg dispatch via `__call_fn_0`
+- captured-value closure (`makeAdder(5)()` = 6)
+- 1-arg dispatch via `__call_fn_1` (`(n) => n+1`)
+- non-callable exports pass through
+- internal `__`-prefixed exports stay accessible
+- lodash `negate(jsFn)` typeof + 0-arg call
+
+`tests/stress/lodash-tier2.test.ts` — 5/5 PASS, 0 skipped. Tier 2d-call
+flipped from documenting the gap (`expect(typeof).toBe("object")`) to
+validating the fix (`expect(typeof).toBe("function")` + `expect(negated()).toBe(1)`).
+
+`tests/issue-1304.test.ts`, `tests/issue-1306.test.ts` — no regression.
+
+### Acceptance status
+
+1. ❌ `exports.negate(jsFn)(2)` yields `false`/`true` from the predicate
+   — **partial**. The variadic `function(...args)` body is lifted as a
+   0-arg func that reads `arguments` via `__extras_argv`. JS hosts have
+   no path to populate that global before invoking the wrapped closure,
+   so `wrapped(2)` falls through `__call_fn_0` with empty args and
+   returns the `case 0` branch (`!predicate.call(this)`). Tracked as
+   the "remaining work" follow-up below.
+2. ✅ `typeof exports.negate(jsFn) === "function"`.
+3. ✅ Lodash Tier 2d-call test — un-skipped, asserts both `typeof` and
+   the 0-arg invocation.
+4. ✅ `tests/stress/hono-tier*.test.ts` — no regression in adjacent
+   closure tests (#1304, #1306, lodash Tier 2 a/b/c/d).
+
+### Remaining work
+
+Variadic arg propagation from JS host into Wasm `arguments`:
+
+- Export setters for `__extras_argv` (a `(mut (ref null $vec_externref))`
+  module global) and `__argc` (a `(mut i32)` module global) so the JS
+  wrapper can populate them before calling `__call_fn_0`.
+- Or emit higher-arity `__call_fn_N(closure, arg0, ..., argN-1)` exports
+  that internally set both globals and call `__call_fn_0`.
+
+This second piece is a separate, narrower change — split it off when
+needed (e.g. when a real test demands `negated(2)` flip the predicate
+result).
+
+## Files changed
+
+- `src/codegen/index.ts` — added `emitStructFieldGetters` /
+  `emitVecAccessExports` / `emitDataViewByteExports` /
+  `emitTestRuntimeStringHelpers` / `emitIteratorMethodExport` /
+  `emitClosureCallExport` / `emitClosureCallExport1` /
+  `emitToPrimitiveMethodExports` calls to `generateMultiModule`,
+  mirroring `generateModule`'s post-compile pipeline.
+- `src/runtime.ts` — new `wrapExports` exported helper.
+- `tests/issue-1308.test.ts` — 7 new tests.
+- `tests/stress/lodash-tier2.test.ts` — Tier 2d-call now uses
+  `wrapExports` and asserts the post-fix behavior.
