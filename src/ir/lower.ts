@@ -539,18 +539,45 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
   //     duplicate the truncated value for modulo reduction.
   // Both are allocated lazily; one pair per function, reused across
   // every bitwise op in the body.
-  let jsBitwiseRhsIdx: number | null = null;
+  //
+  // #1126 Stage 3 — when one operand of a bitwise op is already
+  // i32-typed in the IR, we need a SECOND rhs slot of i32 type for
+  // those calls. This keeps the f64-rhs slot reusable for legacy paths
+  // and avoids type-mismatched local stores. Both slots are allocated
+  // lazily on first use of their type.
+  let jsBitwiseRhsIdxF64: number | null = null;
+  let jsBitwiseRhsIdxI32: number | null = null;
   let jsBitwiseTmpIdx: number | null = null;
-  const ensureJsBitwiseScratch = (): { rhs: number; tmp: number } => {
-    if (jsBitwiseRhsIdx === null) {
-      jsBitwiseRhsIdx = func.params.length + locals.length;
-      locals.push({ name: "$js_bitwise_rhs", type: { kind: "f64" } });
-    }
+  const ensureJsBitwiseScratch = (rhsIsI32: boolean): { rhs: number; tmp: number } => {
     if (jsBitwiseTmpIdx === null) {
       jsBitwiseTmpIdx = func.params.length + locals.length;
       locals.push({ name: "$js_bitwise_tmp", type: { kind: "f64" } });
     }
-    return { rhs: jsBitwiseRhsIdx, tmp: jsBitwiseTmpIdx };
+    if (rhsIsI32) {
+      if (jsBitwiseRhsIdxI32 === null) {
+        jsBitwiseRhsIdxI32 = func.params.length + locals.length;
+        locals.push({ name: "$js_bitwise_rhs_i32", type: { kind: "i32" } });
+      }
+      return { rhs: jsBitwiseRhsIdxI32, tmp: jsBitwiseTmpIdx };
+    }
+    if (jsBitwiseRhsIdxF64 === null) {
+      jsBitwiseRhsIdxF64 = func.params.length + locals.length;
+      locals.push({ name: "$js_bitwise_rhs", type: { kind: "f64" } });
+    }
+    return { rhs: jsBitwiseRhsIdxF64, tmp: jsBitwiseTmpIdx };
+  };
+
+  // #1126 Stage 3 — best-effort `typeOf` that returns null instead of
+  // throwing. Used by the fast-path operand inspection in `case "binary"`
+  // to peek at IrTypes without breaking emit if some defensive contract
+  // (no resultType, etc.) isn't met. The slow path still emits correct
+  // code in that case.
+  const tryTypeOf = (v: IrValueId): IrType | null => {
+    try {
+      return typeOf(v);
+    } catch {
+      return null;
+    }
   };
 
   // --- emission -----------------------------------------------------------
@@ -648,50 +675,90 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
           instr.op === "js.shl" ||
           instr.op === "js.shr_s" ||
           instr.op === "js.shr_u";
+
+        // #1126 Stage 3 — peek at operand IrTypes BEFORE emitting them so
+        // we can pick the cheapest lowering shape. The four cases:
+        //   • both i32           → native i32.* op, skip the scratch dance
+        //   • lhs i32 / rhs f64  → ToInt32 only on rhs
+        //   • lhs f64 / rhs i32  → ToInt32 only on lhs
+        //   • both f64           → existing scratch dance (legacy path)
+        // Result type of `js.bit*` is f64 by IR contract; we tail with
+        // `f64.convert_i32_*` to honour it. When the IR result type was
+        // narrowed to i32 by Stage 3 from-ast (chained bitwise ops), we
+        // also skip the convert-back so the chain stays in i32.
+        //
+        // Any value already typed as i32 in IR has gone through one of:
+        //   - a JS bitwise op (which produces a ToInt32-equivalent result),
+        //   - a comparison / bool source (0 or 1, trivially in [-2^31,2^31)),
+        //   - or a const i32. All inhabit the JS-ToInt32 image already, so
+        //   skipping the redundant ToInt32 is semantically a no-op.
+        const lhsIrTy = isJsBitwise ? tryTypeOf(instr.lhs) : null;
+        const rhsIrTy = isJsBitwise ? tryTypeOf(instr.rhs) : null;
+        const lhsIsI32 = lhsIrTy ? asVal(lhsIrTy)?.kind === "i32" : false;
+        const rhsIsI32 = rhsIrTy ? asVal(rhsIrTy)?.kind === "i32" : false;
+        const resultIsI32 = isJsBitwise && instr.resultType ? asVal(instr.resultType)?.kind === "i32" : false;
+
+        if (isJsBitwise && lhsIsI32 && rhsIsI32) {
+          // FAST PATH — both operands already in JS-ToInt32-equivalent i32
+          // domain. No ToInt32 needed; emit native i32.* directly.
+          emitValue(instr.lhs, out);
+          emitValue(instr.rhs, out);
+          out.push({ op: jsBitwiseToI32(instr.op) } as unknown as Instr);
+          if (!resultIsI32) {
+            // Convert i32 → f64 to honour the legacy js.bit* result-type
+            // contract. `>>>` is unsigned, others signed.
+            if (instr.op === "js.shr_u") {
+              out.push({ op: "f64.convert_i32_u" } as unknown as Instr);
+            } else {
+              out.push({ op: "f64.convert_i32_s" });
+            }
+          }
+          return;
+        }
+
         emitValue(instr.lhs, out);
         // #1303 — defensive coercion only for JS bitwise ops, where the
         // lowering's first instruction (`f64.trunc` inside `emitJsToInt32`)
         // requires f64 on stack. Other binary ops (`f64.add`, `i32.eq`)
         // are not affected and must NOT be coerced (would break i32
         // boolean ops). See `coerceToF64ForBitwise` doc + #1305.
-        if (isJsBitwise) coerceToF64ForBitwise(instr.lhs, out);
+        // #1126 Stage 3 — skip the coercion when the operand is already
+        // i32-typed (we'll skip its emitJsToInt32 step below too).
+        if (isJsBitwise && !lhsIsI32) coerceToF64ForBitwise(instr.lhs, out);
         emitValue(instr.rhs, out);
-        if (isJsBitwise) coerceToF64ForBitwise(instr.rhs, out);
+        if (isJsBitwise && !rhsIsI32) coerceToF64ForBitwise(instr.rhs, out);
         // Slice 11 (#1169n) — JS bitwise composite ops. Each pops two
         // f64 from the stack, applies JS ToInt32 to each, runs the i32
         // op, and converts back to f64. We use a per-function scratch
         // f64 local to stash the right operand while we ToInt32 the
         // left (Wasm has no general "swap" op).
+        //
+        // #1126 Stage 3 — when one operand is already i32-typed, the
+        // scratch-rhs slot is widened to an i32 local; ToInt32 is also
+        // skipped on that operand. This keeps mixed i32/f64 lowering
+        // correct (the f64 side still gets its ToInt32; the i32 side
+        // passes through directly).
         if (isJsBitwise) {
-          const { rhs: rhsSlot, tmp: tmpSlot } = ensureJsBitwiseScratch();
-          // Stack: [lhs_f64, rhs_f64]
+          const { rhs: rhsSlot, tmp: tmpSlot } = ensureJsBitwiseScratch(rhsIsI32);
+          // Stack: [lhs, rhs]
           out.push({ op: "local.set", index: rhsSlot });
-          // Stack: [lhs_f64]; rhsSlot holds rhs.
-          emitJsToInt32(out, tmpSlot);
+          // Stack: [lhs]; rhsSlot holds rhs.
+          if (!lhsIsI32) emitJsToInt32(out, tmpSlot);
           // Stack: [lhs_i32]
           out.push({ op: "local.get", index: rhsSlot });
-          // Stack: [lhs_i32, rhs_f64]
-          emitJsToInt32(out, tmpSlot);
+          // Stack: [lhs_i32, rhs]
+          if (!rhsIsI32) emitJsToInt32(out, tmpSlot);
           // Stack: [lhs_i32, rhs_i32]
-          const i32op =
-            instr.op === "js.bitand"
-              ? "i32.and"
-              : instr.op === "js.bitor"
-                ? "i32.or"
-                : instr.op === "js.bitxor"
-                  ? "i32.xor"
-                  : instr.op === "js.shl"
-                    ? "i32.shl"
-                    : instr.op === "js.shr_s"
-                      ? "i32.shr_s"
-                      : "i32.shr_u";
-          out.push({ op: i32op } as unknown as Instr);
+          out.push({ op: jsBitwiseToI32(instr.op) } as unknown as Instr);
           // `>>>` returns a Uint32; everything else is Int32. Convert
-          // back to f64 with the matching signedness.
-          if (instr.op === "js.shr_u") {
-            out.push({ op: "f64.convert_i32_u" } as unknown as Instr);
-          } else {
-            out.push({ op: "f64.convert_i32_s" });
+          // back to f64 with the matching signedness — UNLESS the IR
+          // result type was already narrowed to i32 by Stage 3.
+          if (!resultIsI32) {
+            if (instr.op === "js.shr_u") {
+              out.push({ op: "f64.convert_i32_u" } as unknown as Instr);
+            } else {
+              out.push({ op: "f64.convert_i32_s" });
+            }
           }
           return;
         }
@@ -2043,6 +2110,32 @@ function describeIrTypeShallow(t: IrType): string {
  * x-NaN=NaN, trunc_sat_f64_u(NaN)=0. So NaN→0 falls out naturally
  * without a branch.
  */
+/**
+ * #1126 Stage 3 — map a JS-bitwise IrBinop tag to its native Wasm i32 op.
+ * Pure helper; used by both the fast path (both i32) and the legacy
+ * scratch-dance path (both f64) inside `case "binary"`. Centralising
+ * the mapping keeps the two paths in lock-step on `>>>` vs `>>` (signed
+ * vs unsigned) signedness.
+ */
+function jsBitwiseToI32(
+  op: "js.bitand" | "js.bitor" | "js.bitxor" | "js.shl" | "js.shr_s" | "js.shr_u",
+): "i32.and" | "i32.or" | "i32.xor" | "i32.shl" | "i32.shr_s" | "i32.shr_u" {
+  switch (op) {
+    case "js.bitand":
+      return "i32.and";
+    case "js.bitor":
+      return "i32.or";
+    case "js.bitxor":
+      return "i32.xor";
+    case "js.shl":
+      return "i32.shl";
+    case "js.shr_s":
+      return "i32.shr_s";
+    case "js.shr_u":
+      return "i32.shr_u";
+  }
+}
+
 function emitJsToInt32(out: Instr[], tmpLocalIdx: number): void {
   // Stack: [f64]
   out.push({ op: "f64.trunc" } as unknown as Instr);
