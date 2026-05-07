@@ -237,9 +237,57 @@ those first will reduce the bind / toString work surface.
   function holds a string copy). For typical programs this is bounded by
   source size; for generated code it's a non-issue.
 
+### Implementation attempt notes (2026-05-08, dev-1303 — REVERTED)
+
+A first-cut Slice A was implemented locally and reverted. Findings the
+next implementer should pre-empt:
+
+1. `_wrapForHost(struct)` returns a `Proxy`, whose `typeof` is `"object"`,
+   not `"function"`. V8's `Function.prototype.bind` rejects non-function
+   targets ("Bind must be called on a function"). Use a real JS function
+   that closes over the wasm struct instead, mirroring
+   `wrapExports.makeCallableClosureWrapper` — see runtime.ts:4398.
+2. The `__call_fn_0` / `__call_fn_1` exports are emitted only when the
+   module has at least one zero- / one-arg closure registered. Wrappers
+   for higher-arity targets must dispatch differently or accept
+   incomplete-args fallback (`__call_fn_0` ignores extras, matching the
+   `wrapExports` precedent). For bind itself this is acceptable since
+   bind doesn't invoke the target — V8 only reads `length` / `name` to
+   compute the bound function's metadata.
+3. **The blocking issue**: when the bind result is a JS bound function
+   (externref) but the LHS local is typed as the target's closure struct
+   ref (which TS infers as the bound function's TS type), the assignment
+   site emits a `coerceType(externref → ref struct)` chain (`any.convert_extern;
+   ref.test; if/else { ref.cast | ref.null }; extern.convert_any`). The
+   cast fails because the JS function isn't a wasm struct, so the LHS
+   local gets `ref.null.extern`. Result: `bound` is null. Verified with
+   a 5-test probe — the metadata restamping (`length`/`name`) on the
+   wrapper before bind works, but `const bound = target.bind(undefined)`
+   stores null because of this LHS-coerce regression.
+4. Slice A's host route therefore needs a complementary codegen change:
+   when a CallExpression's result is "host bind" (or any host helper
+   returning a JS-functional externref), the LHS local must be declared
+   externref, NOT the closure struct ref TS would otherwise infer. Two
+   ways to do this:
+   (a) Tag the bind dispatch's return so the parent assignment skips the
+       coerce-to-closure-struct step (extend the existing
+       `compileVariableDeclaration` / coerce path with a "host bind"
+       sentinel).
+   (b) Build a synthetic wasm closure struct around the bound JS
+       function — store the bound externref in a field, build a
+       trampoline that does `__extern_method_call(self.bound, "call",
+       args)` for invocation. Restamp length/name via Object.defineProperty
+       on the trampoline before bind (or inline). Wider blast radius but
+       preserves the closure-struct type identity the LHS coerce expects.
+5. Source-text retention (Slice B) wasn't attempted; orthogonal to the
+   bind LHS-coerce issue.
+
 ### Status
 
-Investigation complete; implementation deferred. The notes above translate
-the original plan into concrete code-level steps with line refs. A dev
-picking this up next can start with **Slice A** (smaller blast radius,
-unlocks the bind cluster on its own).
+Investigation complete; implementation deferred pending a fix for point
+(3) above. A dev picking this up should start by deciding (a) vs (b),
+then implement Slice A on top of it. The metadata-restamp logic
+(`Object.defineProperty(wrapper, "length"|"name", ...)` after building
+the JS wrapper, before `Function.prototype.bind.call`) is straight
+JavaScript and doesn't need debugging — the open question is the
+codegen / coerce side.
