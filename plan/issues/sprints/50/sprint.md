@@ -137,15 +137,21 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1298 | Calling a function-typed value stored in a field/array/Map drops the call and returns null | high | ready |
-| #1302 | Wasm validation: closure references invalid global index when compiling lodash flow.js | medium | ready |
-| #1303 | Wasm validation: f64.trunc emitted on externref operand when compiling lodash partial.js | medium | ready |
-| #1305 | Module-level var init leaks externref into bitwise op codegen (legacy path) | medium | ready |
-| #1306 | ElementAccessExpression call on closure-typed array drops call: mws[idx](c, next) emits ref.null | medium | ready |
 
 ### In Progress
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1126 | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | high | in-progress |
+| #1307 | ci: serialize Test262 Sharded across PRs to eliminate runner-pool contention | medium | in-progress |
+
+### Done
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1302 | Wasm validation: closure references invalid global index when compiling lodash flow.js | medium | done |
+| #1303 | Wasm validation: f64.trunc emitted on externref operand when compiling lodash partial.js | medium | done |
+| #1305 | Module-level var init leaks externref into bitwise op codegen (legacy path) | medium | done |
+| #1306 | ElementAccessExpression call on closure-typed array drops call: mws[idx](c, next) emits ref.null | medium | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->

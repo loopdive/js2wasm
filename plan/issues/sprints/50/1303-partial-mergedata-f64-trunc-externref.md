@@ -2,9 +2,9 @@
 id: 1303
 sprint: 50
 title: "Wasm validation: f64.trunc emitted on externref operand when compiling lodash partial.js"
-status: ready
+status: done
 created: 2026-05-03
-updated: 2026-05-03
+updated: 2026-05-07
 priority: medium
 feasibility: medium
 reasoning_effort: medium
@@ -13,7 +13,7 @@ area: codegen
 language_feature: type-coercion, externref
 goal: npm-library-support
 depends_on: []
-related: [1292, 1180]
+related: [1292, 1180, 1305]
 ---
 # #1303 — Wasm validation: `f64.trunc` operand is `externref`, not `f64`
 
@@ -81,3 +81,30 @@ new WebAssembly.Module(r.binary); // throws
 3. No regression in #1180 (env-unbox-number rules) or Tier 1/2 stress
 4. `tests/stress/lodash-tier2.test.ts` Tier 2c case can flip from
    `it.skip` to `it`
+
+## Resolution (2026-05-07)
+
+Root cause was NOT a missing externref→f64 unbox in the legacy bitwise
+codegen — the `compileBitwiseBinaryOp` site emitted f64.trunc against
+operands that were f64 globals at compile time. The bug was an
+over-shift in `fixupModuleGlobalIndices` (`src/codegen/registry/imports.ts`):
+the per-call `shifted: Set<Instr[]>` only tracked top-level entries,
+not nested bodies reached via recursion through `if/then/else`,
+`block.body`, `try/catches`. When `compileLogicalAnd` /
+`compileLogicalOr` restored `fctx.body = saved` directly instead of
+calling `popBody`, every late string-constant import added afterwards
+re-shifted the same nested body once via `currentFunc.body` recursion
+AND once for each leaked `savedBodies` entry. The over-shift drove the
+`global.get` past the f64 globals into the externref tail of the global
+table — so the compile-time-f64 operand became an externref operand at
+link time, tripping `f64.trunc`.
+
+Fix: move the `shifted.has` guard INSIDE the recursive
+`shiftGlobalIndices`, mirroring the pattern already used for function
+indices in `addUnionImports`. Now every Instr[] is shifted at most once
+per fixup call regardless of how many distinct entry-point references
+point to it.
+
+Test coverage: `tests/issue-1303.test.ts` (10 tests) +
+`tests/stress/lodash-tier2.test.ts` Tier 2c flipped from `it.skip` to
+`runIfInstalled`.

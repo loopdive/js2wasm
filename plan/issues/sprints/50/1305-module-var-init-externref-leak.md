@@ -2,9 +2,9 @@
 id: 1305
 sprint: 50
 title: "Module-level var init leaks externref into bitwise op codegen (legacy path)"
-status: ready
+status: done
 created: 2026-05-03
-updated: 2026-05-03
+updated: 2026-05-07
 priority: medium
 feasibility: hard
 reasoning_effort: high
@@ -120,3 +120,27 @@ Two layers, in order of preference:
 partial application. The legacy codegen path needs the same defensive
 coercion as the IR path or — better — the root-cause global typing
 fix that obviates both defenses.
+
+## Resolution (2026-05-07)
+
+The hypotheses in this issue were both wrong for the specific
+`mergeData` failure: the WAT confirmed that all `WRAP_*_FLAG` module
+globals ARE emitted as `(mut f64)`, and the legacy bitwise dispatch's
+externref guard was firing correctly when invoked. The actual root
+cause is shared with #1303 — see the resolution there. Both issues
+collapse into the same defect: `fixupModuleGlobalIndices`
+over-shifted the same nested body once per leaked `savedBodies`
+duplicate (the leak comes from `compileLogicalAnd` /
+`compileLogicalOr` doing `fctx.body = saved` instead of `popBody`).
+At the buggy site `(srcBitmask == (WRAP_ARY_FLAG | WRAP_REARG_FLAG))`,
+inside an `||` / `&&` short-circuit chain, the over-shift drove the
+`global.get` from the WRAP-globals' f64 cluster into the externref
+tail of the global table — surfacing as "f64.trunc on externref"
+even though both compile-time analysis and the f64 typing were
+correct.
+
+Fix: per-call `shifted` set guard moved into the recursive
+`shiftGlobalIndices` so duplicate top-level entries pointing at the
+same body cannot re-shift it. See `src/codegen/registry/imports.ts`.
+The legacy bitwise externref unbox path was left unchanged — it
+already handled the operand types correctly.
