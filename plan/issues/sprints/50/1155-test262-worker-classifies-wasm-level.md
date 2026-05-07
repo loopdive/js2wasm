@@ -2,7 +2,7 @@
 id: 1155
 sprint: 50
 title: "test262 worker classifies Wasm-level user exceptions as compile_error (~1,415 tests misreported)"
-status: in-progress
+status: done
 created: 2026-04-21
 updated: 2026-05-07
 priority: medium
