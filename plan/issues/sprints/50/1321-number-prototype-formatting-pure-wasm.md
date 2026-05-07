@@ -2,9 +2,9 @@
 id: 1321
 sprint: 50
 title: "Number.prototype formatting methods (toString/toFixed/toPrecision/toExponential) rely on JS host unnecessarily"
-status: ready
+status: partial
 created: 2026-05-07
-updated: 2026-05-07
+updated: 2026-05-08
 priority: medium
 feasibility: medium
 reasoning_effort: medium
@@ -78,3 +78,28 @@ implementation in Wasm suffices. The test262 suite covers all edge cases.
 - `src/ir/select.ts` — route method calls to Wasm path
 - `src/runtime.ts` — remove or gate host imports
 - `tests/issue-1321.test.ts` — equivalence tests
+
+## Resolution: partial — host-mode radix bug fixed; pure-Wasm standalone deferred to #1335
+
+While scoping the pure-Wasm impl, discovered a **separate, more impactful bug**: in JS-host mode, `(value).toString(radix)` was silently ignoring the radix and always producing decimal output (e.g. `(255).toString(16)` returned `"255"`). The codegen validated the radix range and threw `RangeError` correctly for out-of-range, but never passed the validated radix to the 1-arg `number_toString` host import.
+
+**Fixed in this issue:**
+
+1. New 2-arg host import `number_toString_radix(value, radix) → externref` that uses `value.toString(radix)`. Codegen now routes `value.toString(radix)` to it when a radix arg is present. The 1-arg `number_toString` is unchanged for the no-radix case.
+2. Secondary bug: `(value).toPrecision()` (no args) crashed at Wasm validation with `not enough arguments on the stack for call (need 2, got 1)`. Codegen now pushes `f64.const NaN` as the precision sentinel — the host runtime recognises NaN and returns `String(v)`. Mirrors the existing `toExponential()` no-arg pattern.
+
+**Out of scope (now in #1335):**
+
+- Pure-Wasm impl for integer toString(radix) and special cases (Phase 1)
+- Ryu / shortest-round-trip float→string for non-integer toString in pure Wasm (Phase 2)
+- Standalone (`--target wasi`) mode for `toFixed` / `toPrecision` / `toExponential`
+
+The issue's original AC #1–#4 are met when running in JS-host mode (the dominant test mode). AC #5 (no test262 regressions) is met. The standalone-mode delivery is the deferred half.
+
+## Tests
+
+`tests/issue-1321.test.ts` — 20 cases covering:
+- `toString(radix)` for radices 2, 8, 10, 16, 36, with positive, negative, NaN, ±Infinity, ±0 inputs
+- RangeError throws for radix < 2 and > 36
+- `toPrecision()` no-arg crash fix
+- regression coverage for `toFixed` / `toPrecision(n)` / `toExponential(n)`

@@ -254,6 +254,11 @@ export function unifiedVisitNode(ctx: CodegenContext, state: UnifiedCollectorSta
     }
     if (isNumberType(receiverType) && methodName === "toString") {
       state.primitiveNeeded.add("number_toString");
+      // #1321: toString(radix) needs a 2-arg host import so the radix is
+      // actually used. The 1-arg `number_toString` only handles default base 10.
+      if (node.arguments.length > 0) {
+        state.primitiveNeeded.add("number_toString_radix");
+      }
     }
     if (isNumberType(receiverType) && methodName === "toFixed") {
       state.primitiveNeeded.add("number_toFixed");
@@ -802,6 +807,13 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
   if (state.primitiveNeeded.has("number_toString")) {
     const t = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "number_toString", { kind: "func", typeIdx: t });
+  }
+  // #1321: 2-arg `number_toString_radix(value, radix)` for `toString(radix)` calls.
+  // Without this, the codegen validates the radix range but then calls 1-arg
+  // `number_toString(value)`, silently producing decimal output for any radix.
+  if (state.primitiveNeeded.has("number_toString_radix")) {
+    const t = addFuncType(ctx, [{ kind: "f64" }, { kind: "f64" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "number_toString_radix", { kind: "func", typeIdx: t });
   }
   if (state.primitiveNeeded.has("number_toFixed")) {
     const t = addFuncType(ctx, [{ kind: "f64" }, { kind: "f64" }], [{ kind: "externref" }]);
