@@ -182,12 +182,9 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | #837 | Stage 3: Map/WeakMap upsert — getOrInsert, getOrInsertComputed | low | ready |
 | #859 | Map.forEach callback captures are immutable snapshots -- causes infinite loop on mutation during iteration | high | ready |
 | #1020 | await-using TDZ tests: null_deref crash in assert_throwsAsync (4 false positives) | medium | ready |
-| #1155 | test262 worker classifies Wasm-level user exceptions as compile_error (~1,415 tests misreported) | medium | ready |
 | #1158 | destructureParamArray fallback eagerly consumes iterators via Array.from — violates 13.3.3.6 for empty pattern [] | medium | ready |
 | #1159 | Nested empty array pattern with initializer violates §13.3.3.6 iterator consumption semantics | medium | ready |
 | #1239 | object literals with GetAccessor/SetAccessor — route to __defineProperty_accessor + force-externref var tagging | medium | ready |
-| #1267 | optimizer: method calls in expression-statement position silently dropped when return value unused | high | ready |
-| #1268 | index-signature obj[key] ??= value returns NaN instead of assigning | medium | ready |
 | #1309 | Hono Tier 6 — Web API surface (Request/Response) + async handlers | low | ready |
 
 ### Done
@@ -195,6 +192,9 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1126 | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | high | done |
+| #1155 | test262 worker classifies Wasm-level user exceptions as compile_error (~1,415 tests misreported) | medium | done |
+| #1267 | optimizer: method calls in expression-statement position silently dropped when return value unused | high | done |
+| #1268 | index-signature obj[key] ??= value returns NaN instead of assigning | medium | done |
 | #1298 | Calling a function-typed value stored in a field/array/Map drops the call and returns null | high | done |
 | #1302 | Wasm validation: closure references invalid global index when compiling lodash flow.js | medium | done |
 | #1303 | Wasm validation: f64.trunc emitted on externref operand when compiling lodash partial.js | medium | done |
