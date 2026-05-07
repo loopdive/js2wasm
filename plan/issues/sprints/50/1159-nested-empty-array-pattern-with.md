@@ -2,7 +2,7 @@
 id: 1159
 sprint: 50
 title: "Nested empty array pattern with initializer violates §13.3.3.6 iterator consumption semantics"
-status: ready
+status: done
 needs_architect_spec: true
 bundle_with: 1158
 created: 2026-04-21

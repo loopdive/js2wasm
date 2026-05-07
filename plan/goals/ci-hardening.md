@@ -81,7 +81,7 @@ and hide real ones.
 | **1222** | ci: wasm-hash noise filter — exclude byte-identical regressions from PR gate | 47 | done | high |
 | **1234** | Array.prototype.{unshift,reverse,forEach,…} on non-Array receivers iterate [0, length) instead of defined props | 47 | done | medium |
 | **1235** | ci: prevent baseline drift false-positive regressions after admin-merges | 47 | done | high |
-| **1239** | object literals with GetAccessor/SetAccessor — route to __defineProperty_accessor + force-externref var tagging | 50 | ready | medium |
+| **1239** | object literals with GetAccessor/SetAccessor — route to __defineProperty_accessor + force-externref var tagging | 50 | done | medium |
 | **1246** | ci: differential test262 — compare branch tip vs main HEAD with src-tree-hash caching | 47 | done | high |
 | **1251** | baseline-validate: TS checker non-determinism causes 19/50 false failures on main JSONL | 47 | done | medium |
 

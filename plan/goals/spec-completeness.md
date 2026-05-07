@@ -85,7 +85,7 @@ pass rate goes from "good" to "excellent."
 | **965** | Prototype chain null access on static methods (71 tests) and broken Array methods (28 tests) | 38 | done | high |
 | **988** | FinalizationRegistry constructor unsupported in official-scope tests (23 CE) | 40 | done | low |
 | **1006** | Support eval via JS host import | 42 | done | medium |
-| **1020** | await-using TDZ tests: null_deref crash in assert_throwsAsync (4 false positives) | 50 | ready | medium |
+| **1020** | await-using TDZ tests: null_deref crash in assert_throwsAsync (4 false positives) | 50 | done | medium |
 | **1028** | TypedArray.prototype.toLocaleString null/undefined in element toLocaleString path | 40 | done | medium |
 | **1037** | Symbol.dispose / Symbol.asyncDispose not accessible (30 FAIL) | 42 | done | medium |
 | **1047** | Instance fields leak onto prototype via _wrapForHost struct-field enumeration | 42 | done | high |

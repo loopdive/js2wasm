@@ -173,18 +173,6 @@
   ],
   "ready": [
     {
-      "id": "1309",
-      "title": "Hono Tier 6 — Web API surface (Request/Response) + async handlers",
-      "priority": "low",
-      "feasibility": "hard",
-      "depends_on": [
-        "1298"
-      ],
-      "goal": "npm-library-support",
-      "status": "ready",
-      "sprint": "50"
-    },
-    {
       "id": "1255",
       "title": "Reference platform scenario: run a Node-oriented example on Wasmtime via Edge.js",
       "priority": "high",
@@ -213,16 +201,6 @@
       "goal": "spec-completeness",
       "status": "ready",
       "sprint": ""
-    },
-    {
-      "id": "1239",
-      "title": "object literals with GetAccessor/SetAccessor — route to __defineProperty_accessor + force-externref var tagging",
-      "priority": "medium",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "ci-hardening",
-      "status": "ready",
-      "sprint": "50"
     },
     {
       "id": "1230",
@@ -294,26 +272,6 @@
       "goal": "spec-completeness",
       "status": "ready",
       "sprint": ""
-    },
-    {
-      "id": "1159",
-      "title": "Nested empty array pattern with initializer violates §13.3.3.6 iterator consumption semantics",
-      "priority": "medium",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": "ready",
-      "sprint": "50"
-    },
-    {
-      "id": "1158",
-      "title": "destructureParamArray fallback eagerly consumes iterators via Array.from — violates 13.3.3.6 for empty pattern []",
-      "priority": "medium",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "core-semantics",
-      "status": "ready",
-      "sprint": "50"
     },
     {
       "id": "1154",
@@ -668,18 +626,6 @@
       "goal": "npm-library-support",
       "status": "ready",
       "sprint": ""
-    },
-    {
-      "id": "1020",
-      "title": "await-using TDZ tests: null_deref crash in assert_throwsAsync (4 false positives)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [
-        "990"
-      ],
-      "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "50"
     },
     {
       "id": "1011",
@@ -1052,16 +998,6 @@
       "sprint": ""
     },
     {
-      "id": "859",
-      "title": "Map.forEach callback captures are immutable snapshots -- causes infinite loop on mutation during iteration",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "async-model",
-      "status": "ready",
-      "sprint": "50"
-    },
-    {
       "id": "846",
       "title": "assert.throws not thrown: built-in methods accept invalid arguments silently (2,799 tests)",
       "priority": "critical",
@@ -1080,16 +1016,6 @@
       "goal": "spec-completeness",
       "status": "ready",
       "sprint": ""
-    },
-    {
-      "id": "837",
-      "title": "Stage 3: Map/WeakMap upsert — getOrInsert, getOrInsertComputed",
-      "priority": "low",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "platform",
-      "status": "ready",
-      "sprint": "50"
     },
     {
       "id": "833",
@@ -1494,6 +1420,18 @@
   ],
   "inprogress": [
     {
+      "id": "1309",
+      "title": "Hono Tier 6 — Web API surface (Request/Response) + async handlers",
+      "priority": "low",
+      "feasibility": "hard",
+      "depends_on": [
+        "1298"
+      ],
+      "goal": "npm-library-support",
+      "status": "in-progress",
+      "sprint": "50"
+    },
+    {
       "id": "1206",
       "title": "fix(build-pages): copy benchmark JSONs + frame-nav-sync.js to top-level pages-dist paths (404s on landing page)",
       "priority": "medium",
@@ -1512,6 +1450,16 @@
       "goal": "platform",
       "status": "in-progress",
       "sprint": "42"
+    },
+    {
+      "id": "837",
+      "title": "Stage 3: Map/WeakMap upsert — getOrInsert, getOrInsertComputed",
+      "priority": "low",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "platform",
+      "status": "in-progress",
+      "sprint": "50"
     }
   ],
   "review": [],
@@ -2154,6 +2102,16 @@
       "goal": "",
       "status": "done",
       "sprint": "49"
+    },
+    {
+      "id": "1239",
+      "title": "object literals with GetAccessor/SetAccessor — route to __defineProperty_accessor + force-externref var tagging",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "ci-hardening",
+      "status": "done",
+      "sprint": "50"
     },
     {
       "id": "1238",
@@ -3132,6 +3090,26 @@
       "goal": "spec-completeness",
       "status": "done",
       "sprint": "44"
+    },
+    {
+      "id": "1159",
+      "title": "Nested empty array pattern with initializer violates §13.3.3.6 iterator consumption semantics",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": "done",
+      "sprint": "50"
+    },
+    {
+      "id": "1158",
+      "title": "destructureParamArray fallback eagerly consumes iterators via Array.from — violates 13.3.3.6 for empty pattern []",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "core-semantics",
+      "status": "done",
+      "sprint": "50"
     },
     {
       "id": "1157",
@@ -4170,6 +4148,18 @@
       "goal": "error-model",
       "status": "done",
       "sprint": "40"
+    },
+    {
+      "id": "1020",
+      "title": "await-using TDZ tests: null_deref crash in assert_throwsAsync (4 false positives)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [
+        "990"
+      ],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "50"
     },
     {
       "id": "1018",
@@ -5454,6 +5444,16 @@
       "goal": "crash-free",
       "status": "done",
       "sprint": "45"
+    },
+    {
+      "id": "859",
+      "title": "Map.forEach callback captures are immutable snapshots -- causes infinite loop on mutation during iteration",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "async-model",
+      "status": "done",
+      "sprint": "50"
     },
     {
       "id": "858",
