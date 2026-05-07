@@ -2,7 +2,7 @@
 id: 1267
 sprint: 50
 title: "optimizer: method calls in expression-statement position silently dropped when return value unused"
-status: ready
+status: done
 created: 2026-05-02
 updated: 2026-05-07
 priority: high
