@@ -3090,27 +3090,20 @@
   {
     "name": "sprint 49",
     "sprintNumber": 49,
-    "status": "active",
+    "status": "done",
     "date": "",
     "baseline": "",
     "result": "",
     "issueCount": 0,
     "issueIds": [
-      "1126",
-      "1223",
       "1241",
       "1290",
       "1296",
       "1297",
-      "1298",
       "1299",
       "1300",
       "1301",
-      "1302",
-      "1303",
-      "1304",
-      "1305",
-      "1306"
+      "1304"
     ],
     "completedIssueIds": [
       "1241",
@@ -3118,8 +3111,31 @@
       "1296",
       "1297",
       "1299",
-      "1300"
+      "1300",
+      "1301",
+      "1304"
     ],
+    "explicitCarryOver": false,
+    "isPlanning": false,
+    "isClosed": true
+  },
+  {
+    "name": "sprint 50",
+    "sprintNumber": 50,
+    "status": "active",
+    "date": "",
+    "baseline": "",
+    "result": "",
+    "issueCount": 0,
+    "issueIds": [
+      "1126",
+      "1298",
+      "1302",
+      "1303",
+      "1305",
+      "1306"
+    ],
+    "completedIssueIds": [],
     "explicitCarryOver": false,
     "isPlanning": false,
     "isClosed": false
