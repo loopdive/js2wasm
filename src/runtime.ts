@@ -1646,8 +1646,16 @@ function resolveImport(
         };
       }
       if (name === "number_toString") return (v: number) => String(v);
+      // #1321: 2-arg variant for `(value).toString(radix)`. The 1-arg
+      // `number_toString` only handled base 10; the codegen previously dropped
+      // the radix on the floor, silently producing decimal output for any radix.
+      if (name === "number_toString_radix") return (v: number, r: number) => v.toString(r);
       if (name === "number_toFixed") return (v: number, d: number) => v.toFixed(d);
-      if (name === "number_toPrecision") return (v: number, p: number) => v.toPrecision(p);
+      // #1321: NaN-as-no-arg sentinel (matches `number_toExponential` pattern).
+      // Compiled `(123.456).toPrecision()` (no args) pushes f64.const NaN on the
+      // stack rather than crashing Wasm validation by calling the 2-arg import
+      // with only one operand.
+      if (name === "number_toPrecision") return (v: number, p: number) => (isNaN(p) ? String(v) : v.toPrecision(p));
       if (name === "number_toExponential")
         return (v: number, d: number) => (isNaN(d) ? v.toExponential() : v.toExponential(d));
       if (name === "JSON_stringify")

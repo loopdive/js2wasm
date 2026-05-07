@@ -4047,23 +4047,26 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
     // Primitive method calls: number.toString(), number.toFixed()
     if (isNumberType(receiverType) && propAccess.name.text === "toString") {
       // RangeError: if radix argument is provided, must be integer 2-36
+      // Also captures the validated, floored radix in `radixLocalIdx` so it can
+      // be passed to the 2-arg `number_toString_radix` host import below (#1321).
+      let radixLocalIdx: number | undefined;
       if (expr.arguments.length > 0) {
         compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "f64" });
         // Floor the radix (ToInteger semantics: NaN→0, 2.5→2, etc.)
         fctx.body.push({ op: "f64.floor" } as unknown as Instr);
-        const radixLocal = allocLocal(fctx, `__radix_${fctx.locals.length}`, { kind: "f64" });
-        fctx.body.push({ op: "local.tee", index: radixLocal });
+        radixLocalIdx = allocLocal(fctx, `__radix_${fctx.locals.length}`, { kind: "f64" });
+        fctx.body.push({ op: "local.tee", index: radixLocalIdx });
         // Check radix < 2 (also catches NaN since NaN < 2 after floor(NaN)=NaN is still false)
         fctx.body.push({ op: "f64.const", value: 2 });
         fctx.body.push({ op: "f64.lt" });
         // Check radix > 36
-        fctx.body.push({ op: "local.get", index: radixLocal });
+        fctx.body.push({ op: "local.get", index: radixLocalIdx });
         fctx.body.push({ op: "f64.const", value: 36 });
         fctx.body.push({ op: "f64.gt" });
         fctx.body.push({ op: "i32.or" });
         // Check radix is NaN (NaN != NaN)
-        fctx.body.push({ op: "local.get", index: radixLocal });
-        fctx.body.push({ op: "local.get", index: radixLocal });
+        fctx.body.push({ op: "local.get", index: radixLocalIdx });
+        fctx.body.push({ op: "local.get", index: radixLocalIdx });
         fctx.body.push({ op: "f64.ne" });
         fctx.body.push({ op: "i32.or" });
         {
@@ -4078,13 +4081,24 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             else: [],
           });
         }
-        // radix was consumed by the validation comparisons above (via local.tee),
-        // no extra drop needed
+        // radix was consumed by the validation comparisons above (via local.tee);
+        // the original (floored) value is preserved in radixLocalIdx for the call.
       }
       const exprType = compileExpression(ctx, fctx, propAccess.expression);
       // number_toString expects f64 but source may be i32 (e.g. string.length)
       if (exprType && exprType.kind === "i32") {
         fctx.body.push({ op: "f64.convert_i32_s" });
+      }
+      // #1321: when a radix was provided, route to the 2-arg host import that
+      // actually uses it. The legacy 1-arg `number_toString` only handled base 10
+      // and silently dropped the radix — `(255).toString(16)` returned "255".
+      if (radixLocalIdx !== undefined) {
+        const radixFuncIdx = ctx.funcMap.get("number_toString_radix");
+        if (radixFuncIdx !== undefined) {
+          fctx.body.push({ op: "local.get", index: radixLocalIdx });
+          fctx.body.push({ op: "call", funcIdx: radixFuncIdx });
+          return { kind: "externref" };
+        }
       }
       const funcIdx = ctx.funcMap.get("number_toString");
       if (funcIdx !== undefined) {
@@ -4169,12 +4183,11 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         }
         fctx.body.push({ op: "local.get", index: precLocal });
       } else {
-        // No argument → same as number.toString()
-        const funcIdx = ctx.funcMap.get("number_toString");
-        if (funcIdx !== undefined) {
-          fctx.body.push({ op: "call", funcIdx });
-          return { kind: "externref" };
-        }
+        // No argument → push NaN sentinel; the `number_toPrecision` host runtime
+        // recognises NaN as "no precision provided" and returns String(v).
+        // (Fixes a Wasm-validation crash when a program calls `n.toPrecision()`
+        // with no args without separately triggering `number_toString` registration.)
+        fctx.body.push({ op: "f64.const", value: NaN });
       }
       const funcIdx = ctx.funcMap.get("number_toPrecision");
       if (funcIdx !== undefined) {
