@@ -11,8 +11,117 @@
 import { existsSync, readdirSync, readFileSync } from "fs";
 import { join, relative } from "path";
 import { createHash } from "crypto";
+import { createContext, runInContext } from "node:vm";
 import { compile } from "../src/index.js";
 import { buildImports } from "../src/runtime.js";
+
+// #1310: per-shard global isolation for test262.
+//
+// Tests that mutate JS built-ins via `__extern_set` host imports
+// (e.g. assigning to `Array.prototype.push`) currently contaminate
+// subsequent tests in the same shard, because `resolveImport` resolves
+// `declared_global` intents at `buildImports` time against the live
+// `globalThis`. Once a prior test has clobbered `Array`, the next call
+// to `buildImports` sees the polluted constructor.
+//
+// Fix: thread a `globalSandbox` through `buildImports`. The sandbox is
+// a plain Record whose `.Array`, `.Object`, etc. fields are references
+// to the *vm context's* fresh built-ins (a sibling realm). After every
+// test we check sentinel paths on the sandbox; if any have been mutated
+// (e.g. `sandbox.Array.prototype.push = brokenFn`) we discard the
+// sandbox and build a new one with another `vm.createContext`, so the
+// next test starts from clean built-ins.
+//
+// `vm.createContext({})` returns the host object but does NOT expose the
+// vm realm's built-ins as properties on it — `ctx.Array` is `undefined`.
+// We therefore use `vm.runInContext("...")` to extract the realm's
+// built-ins explicitly and copy the references onto the sandbox object.
+const SANDBOX_GLOBAL_NAMES: ReadonlyArray<string> = [
+  "Array",
+  "Object",
+  "Function",
+  "String",
+  "Number",
+  "Boolean",
+  "Symbol",
+  "Promise",
+  "Map",
+  "Set",
+  "WeakMap",
+  "WeakSet",
+  "Date",
+  "RegExp",
+  "Error",
+  "TypeError",
+  "RangeError",
+  "SyntaxError",
+  "ReferenceError",
+  "Math",
+  "JSON",
+  "Reflect",
+];
+
+const SENTINEL_KEYS: ReadonlyArray<readonly string[]> = [
+  ["Array", "prototype", "push"],
+  ["Object", "prototype", "hasOwnProperty"],
+  ["Function", "prototype", "call"],
+  ["String", "prototype", "slice"],
+  ["Promise", "prototype", "then"],
+];
+
+function _buildFreshSandbox(): Record<string, any> {
+  // Create a context, then pull each global name out of it via
+  // runInContext so the sandbox object exposes them by property name.
+  const sandbox = Object.create(null) as Record<string, any>;
+  const ctx = createContext(sandbox);
+  for (const name of SANDBOX_GLOBAL_NAMES) {
+    // runInContext("Array", ctx) returns the realm's Array constructor.
+    // Assigning to sandbox[name] also makes it visible to subsequent
+    // runInContext calls (the sandbox doubles as the global object).
+    try {
+      sandbox[name] = runInContext(name, ctx);
+    } catch {
+      // Some globals may not be present in this vm realm — leave undefined.
+    }
+  }
+  // Provide globalThis as the sandbox itself so `ctx.globalThis === ctx`.
+  sandbox.globalThis = sandbox;
+  return sandbox;
+}
+
+function _readSentinels(sandbox: Record<string, any>): unknown[] {
+  return SENTINEL_KEYS.map((path) => {
+    let cur: any = sandbox;
+    for (const k of path) cur = cur?.[k];
+    return cur;
+  });
+}
+
+let _sandbox: Record<string, any> = _buildFreshSandbox();
+let _sentinels: unknown[] = _readSentinels(_sandbox);
+
+/**
+ * Return a sandbox object suitable for `buildImports({ globalSandbox })`.
+ * Refreshes the sandbox whenever a sentinel built-in has been mutated by
+ * the previously-run test.
+ */
+export function getTestSandbox(): Record<string, any> {
+  let dirty = false;
+  for (let i = 0; i < SENTINEL_KEYS.length; i++) {
+    const path = SENTINEL_KEYS[i]!;
+    let cur: any = _sandbox;
+    for (const k of path) cur = cur?.[k];
+    if (cur !== _sentinels[i]) {
+      dirty = true;
+      break;
+    }
+  }
+  if (dirty) {
+    _sandbox = _buildFreshSandbox();
+    _sentinels = _readSentinels(_sandbox);
+  }
+  return _sandbox;
+}
 
 /**
  * Compute a short (12-char) sha256 hex digest of a compiled Wasm binary.
@@ -2167,7 +2276,8 @@ export async function handleNegativeTest(
       // Compilation succeeded — but this test expected a parse/early error.
       // Try instantiating: if wasm validation rejects it, that also counts.
       try {
-        const imports = buildImports(result.imports, undefined, result.stringPool);
+        const sandbox = getTestSandbox();
+        const imports = buildImports(result.imports, undefined, result.stringPool, { globalSandbox: sandbox });
         await WebAssembly.instantiate(result.binary, imports);
       } catch {
         // Instantiation failed — counts as expected error
@@ -2592,7 +2702,8 @@ export async function runTest262File(
   let instantiateMs = 0;
   let executeMs = 0;
   try {
-    const importResult = buildImports(result.imports, undefined, result.stringPool);
+    const sandbox = getTestSandbox();
+    const importResult = buildImports(result.imports, undefined, result.stringPool, { globalSandbox: sandbox });
     const imports = importResult as any;
     const instantiateStart = performance.now();
     const { instance } = await WebAssembly.instantiate(result.binary, imports);
