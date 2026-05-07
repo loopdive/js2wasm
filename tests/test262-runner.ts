@@ -2441,6 +2441,46 @@ function decodeVLQSegment(segment: string): number[] {
 /**
  * Enrich an error message with Wasm function name and source-mapped line info.
  */
+/**
+ * Extract a human-readable message from a Wasm runtime error.
+ * Mirrors the same-named helper in scripts/test262-worker.mjs (#1155).
+ *
+ * Handles `WebAssembly.Exception` (extracts payload via `__exn_tag` /
+ * `__tag` export when an instance is available), generic `Error`
+ * (returns `.message`), and falls back to `String(err)` for everything
+ * else. If `instance` is null (e.g. the throw happened during
+ * `WebAssembly.instantiate` from a start function), tag-based payload
+ * lookup is skipped and we return a generic "wasm exception" string.
+ *
+ * Without this, `String(err)` for a `WebAssembly.Exception` produces
+ * `"[object WebAssembly.Exception]"` — uninformative junk that polluted
+ * ~39 entries in the committed test262 baseline (residual count from
+ * #1294 / #1295 fixes that handled the worker.mjs paths but not the
+ * vitest-runner path used by `scripts/test262-worker-esm.mjs`).
+ */
+export function extractWasmExceptionMessage(err: any, instance: any): string {
+  if (typeof WebAssembly !== "undefined" && err instanceof (WebAssembly as any).Exception) {
+    let payload: any = null;
+    if (instance) {
+      try {
+        const tag = instance.exports?.__exn_tag ?? instance.exports?.__tag;
+        if (tag) payload = err.getArg(tag, 0);
+      } catch {
+        // Tag lookup failed — fall through to generic message.
+      }
+    }
+    if (payload instanceof Error) {
+      return payload.message ?? String(payload);
+    }
+    if (payload != null) return String(payload);
+    return instance ? "TypeError (null/undefined access)" : "wasm exception during module init";
+  }
+  if (err instanceof Error) {
+    return err.message ?? String(err);
+  }
+  return String(err);
+}
+
 export function enrichErrorMessage(
   errMsg: string,
   err: any,
@@ -2706,12 +2746,15 @@ export async function runTest262File(
   // Instantiate and run with timeout
   let instantiateMs = 0;
   let executeMs = 0;
+  // (#1155) Hoisted out of the try so the catch can pass it to
+  // `extractWasmExceptionMessage` for tag-based payload extraction.
+  let instance: any = null;
   try {
     const sandbox = getTestSandbox();
     const importResult = buildImports(result.imports, undefined, result.stringPool, { globalSandbox: sandbox });
     const imports = importResult as any;
     const instantiateStart = performance.now();
-    const { instance } = await WebAssembly.instantiate(result.binary, imports);
+    ({ instance } = await WebAssembly.instantiate(result.binary, imports));
     instantiateMs = performance.now() - instantiateStart;
     // Provide exports back to the runtime so __sget_* getters are discoverable
     if (typeof importResult.setExports === "function") {
@@ -2813,8 +2856,17 @@ export async function runTest262File(
       return { file: relPath, category, status: "pass", timing, wasm_sha };
     }
 
-    // WebAssembly.CompileError during instantiation is a compile error, not a test failure
-    if (err instanceof WebAssembly.CompileError || err?.constructor?.name === "CompileError") {
+    // WebAssembly.CompileError / LinkError during instantiation is a true
+    // compile/link failure, not a test failure. Distinguish from
+    // `WebAssembly.Exception`, which is a runtime throw from the start
+    // function or test execution and routes to `status: "fail"` below
+    // (#1155).
+    if (
+      err instanceof WebAssembly.CompileError ||
+      err?.constructor?.name === "CompileError" ||
+      err instanceof (WebAssembly as any).LinkError ||
+      err?.constructor?.name === "LinkError"
+    ) {
       return {
         file: relPath,
         category,
@@ -2824,13 +2876,18 @@ export async function runTest262File(
         wasm_sha,
       };
     }
+    // (#1155) Use extractWasmExceptionMessage so a `WebAssembly.Exception`
+    // gets its payload extracted via the instance's `__exn_tag` (when
+    // available) instead of stringifying to `"[object WebAssembly.Exception]"`.
+    // Generic Errors fall through to err.message; everything else to String(err).
+    const baseMsg = extractWasmExceptionMessage(err, instance);
     // Traps from unreachable() count as assertion failures
-    if (err?.message?.includes("unreachable") || err?.message?.includes("wasm")) {
+    if (baseMsg.includes("unreachable") || baseMsg.includes("wasm")) {
       return {
         file: relPath,
         category,
         status: "fail",
-        error: enrichErrorMessage(err.message, err, result.sourceMap, bodyLineOffset),
+        error: enrichErrorMessage(baseMsg, err, result.sourceMap, bodyLineOffset),
         timing,
         wasm_sha,
       };
@@ -2839,7 +2896,7 @@ export async function runTest262File(
       file: relPath,
       category,
       status: "fail",
-      error: enrichErrorMessage(String(err), err, result.sourceMap, bodyLineOffset),
+      error: enrichErrorMessage(baseMsg, err, result.sourceMap, bodyLineOffset),
       timing,
       wasm_sha,
     };

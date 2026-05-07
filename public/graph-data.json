@@ -11804,7 +11804,7 @@
       "priority": "low",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "",
+      "sprint": "50",
       "depends_on": [],
       "files": [],
       "goal": "platform",
@@ -12100,7 +12100,7 @@
       "priority": "high",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "",
+      "sprint": "50",
       "depends_on": [],
       "files": [],
       "goal": "async-model",
@@ -14249,7 +14249,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "",
+      "sprint": "50",
       "depends_on": [
         "990"
       ],
@@ -15950,9 +15950,9 @@
       "id": "1155",
       "title": "test262 worker classifies Wasm-level user exceptions as compile_error (~1,415 tests misreported)",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
-      "sprint": "",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "50",
       "depends_on": [],
       "files": [],
       "goal": "test-infrastructure",
@@ -15990,7 +15990,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "",
+      "sprint": "50",
       "depends_on": [],
       "files": [],
       "goal": "core-semantics",
@@ -16002,7 +16002,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "",
+      "sprint": "50",
       "depends_on": [],
       "files": [],
       "goal": "core-semantics",
@@ -17233,7 +17233,7 @@
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
-      "sprint": "",
+      "sprint": "50",
       "depends_on": [],
       "files": [],
       "goal": "ci-hardening",
@@ -17583,7 +17583,7 @@
       "priority": "high",
       "status": "done",
       "raw_status": "done",
-      "sprint": "47",
+      "sprint": "50",
       "depends_on": [],
       "files": [],
       "goal": "correctness",
@@ -17595,7 +17595,7 @@
       "priority": "medium",
       "status": "done",
       "raw_status": "done",
-      "sprint": "47",
+      "sprint": "50",
       "depends_on": [],
       "files": [],
       "goal": "npm-library-support",
@@ -17978,8 +17978,8 @@
       "id": "1298",
       "title": "Calling a function-typed value stored in a field/array/Map drops the call and returns null",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "50",
       "depends_on": [],
       "files": [],
@@ -18086,8 +18086,8 @@
       "id": "1307",
       "title": "ci: serialize Test262 Sharded across PRs to eliminate runner-pool contention",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "50",
       "depends_on": [],
       "files": [],
@@ -18097,8 +18097,8 @@
       "id": "1308",
       "title": "Wasm closure struct returned to JS host is not JS-callable",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "50",
       "depends_on": [],
       "files": [],
@@ -18118,6 +18118,18 @@
       "files": [],
       "goal": "npm-library-support",
       "cluster": "npm-library-support"
+    },
+    {
+      "id": "1310",
+      "title": "vm.createContext sandbox isolation for test262 global contamination",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "test262-conformance",
+      "cluster": "test262-conformance"
     }
   ],
   "links": [
@@ -18128,10 +18140,6 @@
     {
       "source": "884",
       "target": "1007"
-    },
-    {
-      "source": "990",
-      "target": "1020"
     },
     {
       "source": "1044",
@@ -18952,6 +18960,10 @@
     {
       "source": "321",
       "target": "322"
+    },
+    {
+      "source": "990",
+      "target": "1020"
     },
     {
       "source": "1124",
