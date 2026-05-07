@@ -137,6 +137,7 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1298 | Calling a function-typed value stored in a field/array/Map drops the call and returns null | high | ready |
+| #1308 | Wasm closure struct returned to JS host is not JS-callable | medium | ready |
 
 ### In Progress
 

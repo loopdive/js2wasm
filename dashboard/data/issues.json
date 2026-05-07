@@ -186,6 +186,16 @@
   ],
   "ready": [
     {
+      "id": "1308",
+      "title": "Wasm closure struct returned to JS host is not JS-callable",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
       "id": "1298",
       "title": "Calling a function-typed value stored in a field/array/Map drops the call and returns null",
       "priority": "high",
