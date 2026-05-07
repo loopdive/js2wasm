@@ -1623,19 +1623,31 @@ function resolveImport(
         return (...args: any[]) => {
           // Coerce each arg; wasmGC structs route through _toPrimitive (#983).
           // User-thrown errors from valueOf/toString propagate.
+          // #1342 — Symbol primitives must throw TypeError on implicit string
+          // coercion per spec §13.5 (template literals, `+` operator). Explicit
+          // `String(sym)` and `sym.toString()` still work — those don't go
+          // through this helper.
           let out = "";
           for (const a of args) {
             if (a == null) {
               out += String(a);
             } else if (typeof a === "string") {
               out += a;
+            } else if (typeof a === "symbol") {
+              throw new TypeError("Cannot convert a Symbol value to a string");
             } else if (typeof a === "object" && _isWasmStruct(a)) {
               const prim = _toPrimitive(a, "default", callbackState);
               if (prim !== undefined) {
+                if (typeof prim === "symbol") {
+                  throw new TypeError("Cannot convert a Symbol value to a string");
+                }
                 out += String(prim);
               } else {
                 // Fall through to host ToPrimitive — throws TypeError if no conversion (#1128)
                 const prim2 = _hostToPrimitive(a, "default", callbackState);
+                if (typeof prim2 === "symbol") {
+                  throw new TypeError("Cannot convert a Symbol value to a string");
+                }
                 out += String(prim2);
               }
             } else {

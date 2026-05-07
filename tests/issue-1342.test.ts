@@ -89,4 +89,19 @@ describe("#1342 — Boolean wrapper coercion + Symbol.keyFor", () => {
     // Wasm boolean returns surface as i32 (1) to JS host
     expect((exports.test as () => number)()).toBe(1);
   });
+
+  it("implicit '+ symbol' string coercion throws TypeError (multi-arg concat)", async () => {
+    const { exports } = await run(`
+      export function test(): string {
+        const s: any = Symbol.for("x");
+        try {
+          // Force the runtime __concat_* batched path (3+ operands).
+          return ("a" + s + "b") as string;
+        } catch (e: any) {
+          return e instanceof TypeError ? "TypeError" : "Wrong";
+        }
+      }
+    `);
+    expect((exports.test as () => string)()).toBe("TypeError");
+  });
 });
