@@ -6736,17 +6736,41 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
     return compileConditionalCallee(ctx, fctx, expr, expr.expression);
   }
 
-  // Generic fallback: compile the callee expression to get a value on the stack,
-  // then try to use it as a closure call. This handles patterns like
-  // accessing function values from complex expressions.
+  // (#1298 fix #3) Generic fallback: ref.test-guarded closure dispatch.
+  //
+  // For callees whose TS type carries a call signature, eagerly resolve the
+  // wrapper struct/funcref pair via getOrCreateFuncRefWrapperTypes so the
+  // dispatch is order-independent. Then gate the actual cast + call_ref on a
+  // RUNTIME `ref.test (ref $__fn_wrap_N)`:
+  //   - then branch (ref.test == 1): the value really is a wasm closure of
+  //     this signature shape — cast + dispatch.
+  //   - else branch (ref.test == 0): host function ref, foreign externref,
+  //     null, or wasm closure of a different shape — fall back to the
+  //     graceful `ref.null.extern` semantics that the pre-rewrite scan-only
+  //     fallback used at this site.
+  //
+  // This avoids the v1 (PR #223) regression cluster (340 null_derefs in
+  // Temporal/* etc.): the v1 path committed unconditionally to the wasm
+  // closure dispatch and the first `emitNullCheckThrow` after a failed cast
+  // turned the graceful-null exit into a TypeError.
+  //
+  // Args are evaluated into locals BEFORE the ref.test so the else branch
+  // doesn't have to re-evaluate them (preserves side-effect ordering).
+  //
+  // See plan/issues/sprints/50/1298-fn-typed-fields-call-drops.md
+  // (`## Fix #3 — Safe reimplementation`) for the full design.
   {
     const calleeTsType = ctx.checker.getTypeAtLocation(expr.expression);
-    const callSigs = calleeTsType.getCallSignatures?.();
+    let callSigs = calleeTsType.getCallSignatures?.();
+    if (!callSigs || callSigs.length === 0) {
+      // (#1298) Strip nullable members for `Fn | null | undefined` callees.
+      const nonNull = ctx.checker.getNonNullableType(calleeTsType);
+      callSigs = nonNull.getCallSignatures?.();
+    }
 
     if (callSigs && callSigs.length > 0) {
       const sig = callSigs[0]!;
 
-      // Look for a matching closure type
       const sigParamCount = sig.parameters.length;
       const sigRetType = ctx.checker.getReturnTypeOfSignature(sig);
       const sigRetWasm = isVoidType(sigRetType) ? null : resolveWasmType(ctx, sigRetType);
@@ -6756,9 +6780,23 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         sigParamWasmTypes.push(resolveWasmType(ctx, paramType));
       }
 
+      // (#1298 PR #231 fix) Look up an existing wrapper struct/funcref pair
+      // for this signature WITHOUT registering a new one. The earlier draft
+      // of fix #3 called `getOrCreateFuncRefWrapperTypes` here to get
+      // order-independent dispatch, but registering a fresh wrapper struct
+      // at this fallback site polluted `closureInfoByTypeIdx` with a struct
+      // that wasn't actually used by any compiled closure. Downstream
+      // funcref-candidate scans (e.g. the identifier-callable-param path's
+      // multi-funcref dispatch at calls.ts:5106) then picked the unused
+      // wrapper as a candidate, mismatching the closure that was actually
+      // stored — `language/statements/function/S13_A18.js` reproduced this
+      // as a null-deref inside a lifted closure body. Conservative fix:
+      // only enter the dispatch path when a closure of this signature has
+      // already been registered (the original scan-only behavior), and
+      // gate THAT dispatch with ref.test. If no match, fall through to the
+      // graceful tail at the end of compileCallExpression.
       let matchedClosureInfo: ClosureInfo | undefined;
       let matchedStructTypeIdx: number | undefined;
-
       for (const [typeIdx, info] of ctx.closureInfoByTypeIdx) {
         if (info.paramTypes.length !== sigParamCount) continue;
         if (sigRetWasm === null && info.returnType !== null) continue;
@@ -6777,71 +6815,136 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           break;
         }
       }
+      const wrapperTypes =
+        matchedClosureInfo && matchedStructTypeIdx !== undefined
+          ? {
+              closureInfo: matchedClosureInfo,
+              structTypeIdx: matchedStructTypeIdx,
+              liftedFuncTypeIdx: matchedClosureInfo.funcTypeIdx,
+            }
+          : null;
 
-      if (matchedClosureInfo && matchedStructTypeIdx !== undefined) {
-        // Compile the callee expression to get the closure on the stack
+      if (wrapperTypes) {
+        const closureInfo = wrapperTypes.closureInfo;
+        const structTypeIdx = wrapperTypes.structTypeIdx;
+        const funcTypeIdx = closureInfo.funcTypeIdx;
+
+        // 1. Compile the callee once. It must be a ref-shaped value (we can't
+        //    `ref.test` an i32 / f64). For non-ref callees, drop value + args
+        //    and emit graceful null directly.
         const innerResultType = compileExpression(ctx, fctx, expr.expression);
 
-        // Save closure ref to a local
-        let closureLocal: number;
-        if (innerResultType?.kind === "externref") {
-          const closureRefType: ValType = {
-            kind: "ref_null",
-            typeIdx: matchedStructTypeIdx,
-          };
-          closureLocal = allocLocal(fctx, `__cond_call_${fctx.locals.length}`, closureRefType);
+        const isRefShaped =
+          innerResultType !== null &&
+          (innerResultType.kind === "externref" ||
+            innerResultType.kind === "ref" ||
+            innerResultType.kind === "ref_null");
+
+        if (!isRefShaped) {
+          if (innerResultType !== null) {
+            fctx.body.push({ op: "drop" });
+          }
+          for (const arg of expr.arguments) {
+            const argType = compileExpression(ctx, fctx, arg);
+            if (argType !== null) fctx.body.push({ op: "drop" });
+          }
+          fctx.body.push({ op: "ref.null.extern" });
+          return { kind: "externref" };
+        }
+
+        // 2. Save callee value to a local. Stash type matches the compiled
+        //    callee shape so re-loading roundtrips losslessly.
+        const calleeStashType: ValType = innerResultType.kind === "externref" ? { kind: "externref" } : innerResultType;
+        const calleeLocal = allocLocal(fctx, `__cb_callee_${fctx.locals.length}`, calleeStashType);
+        fctx.body.push({ op: "local.set", index: calleeLocal });
+
+        // 3. Compile call args into locals so both branches can re-push them
+        //    without re-evaluating side effects.
+        const argLocals: Array<{ local: number; type: ValType }> = [];
+        const ccParamCnt = closureInfo.paramTypes.length;
+        for (let i = 0; i < Math.min(expr.arguments.length, ccParamCnt); i++) {
+          compileExpression(ctx, fctx, expr.arguments[i]!, closureInfo.paramTypes[i]);
+          const argLocal = allocLocal(fctx, `__cb_carg_${fctx.locals.length}`, closureInfo.paramTypes[i]!);
+          fctx.body.push({ op: "local.set", index: argLocal });
+          argLocals.push({ local: argLocal, type: closureInfo.paramTypes[i]! });
+        }
+        // Excess args: compile for side effects, drop.
+        for (let i = ccParamCnt; i < expr.arguments.length; i++) {
+          const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
+          if (extraType !== null) fctx.body.push({ op: "drop" });
+        }
+        // Pad missing args. For non-nullable ref params widen to nullable so
+        // `pushDefaultValue` emits a plain `ref.null` (no `ref.as_non_null`
+        // trap). The lifted func sig accepts nullable refs, so the call_ref
+        // type matches.
+        for (let i = expr.arguments.length; i < ccParamCnt; i++) {
+          const paramType = closureInfo.paramTypes[i]!;
+          const padType: ValType =
+            paramType.kind === "ref" ? { kind: "ref_null", typeIdx: paramType.typeIdx } : paramType;
+          pushDefaultValue(fctx, padType, ctx);
+          const argLocal = allocLocal(fctx, `__cb_cpad_${fctx.locals.length}`, padType);
+          fctx.body.push({ op: "local.set", index: argLocal });
+          argLocals.push({ local: argLocal, type: padType });
+        }
+
+        // 4. Emit the ref.test guard. Stack before the if: [i32].
+        fctx.body.push({ op: "local.get", index: calleeLocal });
+        if (innerResultType.kind === "externref") {
           fctx.body.push({ op: "any.convert_extern" });
-          emitGuardedRefCast(fctx, matchedStructTypeIdx);
-          fctx.body.push({ op: "local.set", index: closureLocal });
-        } else {
-          const closureRefType: ValType = innerResultType ?? {
-            kind: "ref",
-            typeIdx: matchedStructTypeIdx,
-          };
-          closureLocal = allocLocal(fctx, `__cond_call_${fctx.locals.length}`, closureRefType);
-          fctx.body.push({ op: "local.set", index: closureLocal });
         }
+        fctx.body.push({ op: "ref.test", typeIdx: structTypeIdx } as unknown as Instr);
 
-        // Push closure ref as first arg (self param) — null-check → TypeError (#728)
-        fctx.body.push({ op: "local.get", index: closureLocal });
-        emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedStructTypeIdx });
+        // 5. then branch — ref.test passed, do the dispatch.
+        const savedBody = fctx.body;
+        const thenInstrs: Instr[] = [];
+        fctx.body = thenInstrs;
 
-        // Push call arguments (only up to declared param count)
-        {
-          const ccParamCnt = matchedClosureInfo.paramTypes.length;
-          for (let i = 0; i < Math.min(expr.arguments.length, ccParamCnt); i++) {
-            compileExpression(ctx, fctx, expr.arguments[i]!, matchedClosureInfo.paramTypes[i]);
-          }
-          for (let i = ccParamCnt; i < expr.arguments.length; i++) {
-            const extraType = compileExpression(ctx, fctx, expr.arguments[i]!);
-            if (extraType !== null) {
-              fctx.body.push({ op: "drop" });
-            }
-          }
+        // Re-load callee + plain ref.cast (test already proved it succeeds).
+        fctx.body.push({ op: "local.get", index: calleeLocal });
+        if (innerResultType.kind === "externref") {
+          fctx.body.push({ op: "any.convert_extern" });
         }
-
-        // Pad missing arguments
-        for (let i = expr.arguments.length; i < matchedClosureInfo.paramTypes.length; i++) {
-          pushDefaultValue(fctx, matchedClosureInfo.paramTypes[i]!, ctx);
-        }
-
-        // Push the funcref from closure struct and call_ref — null-check → TypeError (#728)
-        fctx.body.push({ op: "local.get", index: closureLocal });
-        emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedStructTypeIdx });
-        fctx.body.push({
-          op: "struct.get",
-          typeIdx: matchedStructTypeIdx,
-          fieldIdx: 0,
+        fctx.body.push({ op: "ref.cast", typeIdx: structTypeIdx } as unknown as Instr);
+        const closureLocal = allocLocal(fctx, `__cb_closure_${fctx.locals.length}`, {
+          kind: "ref",
+          typeIdx: structTypeIdx,
         });
-        // Guard funcref cast to avoid illegal cast (#778)
-        emitGuardedFuncRefCast(fctx, matchedClosureInfo.funcTypeIdx);
-        emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: matchedClosureInfo.funcTypeIdx });
+        fctx.body.push({ op: "local.set", index: closureLocal });
+
+        // Push self (closure ref) + saved args.
+        fctx.body.push({ op: "local.get", index: closureLocal });
+        for (const al of argLocals) {
+          fctx.body.push({ op: "local.get", index: al.local });
+        }
+
+        // Push funcref from closure struct, guarded cast + null-check, call_ref.
+        fctx.body.push({ op: "local.get", index: closureLocal });
+        fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: 0 });
+        emitGuardedFuncRefCast(fctx, funcTypeIdx);
+        emitNullCheckThrow(ctx, fctx, { kind: "ref_null", typeIdx: funcTypeIdx });
+        fctx.body.push({ op: "call_ref", typeIdx: funcTypeIdx });
+
+        // Coerce return value to externref so the if-block has a single
+        // result type. For void closures, push ref.null.extern.
+        if (closureInfo.returnType === null) {
+          fctx.body.push({ op: "ref.null.extern" });
+        } else if (closureInfo.returnType.kind !== "externref") {
+          coerceType(ctx, fctx, closureInfo.returnType, { kind: "externref" });
+        }
+
+        // 6. else branch — graceful null.
+        const elseInstrs: Instr[] = [{ op: "ref.null.extern" } as Instr];
+
+        // 7. Restore body, emit the if/else.
+        fctx.body = savedBody;
         fctx.body.push({
-          op: "call_ref",
-          typeIdx: matchedClosureInfo.funcTypeIdx,
+          op: "if",
+          blockType: { kind: "val", type: { kind: "externref" } },
+          then: thenInstrs,
+          else: elseInstrs,
         });
 
-        return matchedClosureInfo.returnType ?? VOID_RESULT;
+        return { kind: "externref" };
       }
     }
   }
