@@ -2,7 +2,7 @@
 id: 837
 sprint: 50
 title: "Stage 3: Map/WeakMap upsert — getOrInsert, getOrInsertComputed"
-status: in-progress
+status: done
 created: 2026-03-28
 updated: 2026-05-07
 priority: low

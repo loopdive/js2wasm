@@ -161,7 +161,8 @@ const PROPOSAL_FEATURES = new Map([
   ["Temporal", "proposal feature: Temporal"],
   ["import-defer", "proposal feature: import defer"],
   ["source-phase-imports", "proposal feature: source phase imports"],
-  ["upsert", "proposal feature: Map/WeakMap upsert"],
+  // (#837) `upsert` removed — Map/WeakMap.getOrInsert / .getOrInsertComputed
+  // are now host-imported as extern methods (see src/codegen/index.ts).
 ]);
 
 function getTest262RelativePath(filePath?: string): string | undefined {

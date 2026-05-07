@@ -5793,6 +5793,11 @@ export function registerBuiltinExternClasses(ctx: CodegenContext): void {
     methods.set("entries", externMethod(0));
     methods.set("keys", externMethod(0));
     methods.set("values", externMethod(0));
+    // (#837) TC39 Stage 3 "upsert" proposal: Map.prototype.getOrInsert /
+    // .getOrInsertComputed. Both take (key, value|callback) and return the
+    // existing or newly-inserted value as externref.
+    methods.set("getOrInsert", externMethod(2));
+    methods.set("getOrInsertComputed", externMethod(2));
 
     ctx.externClasses.set("Map", {
       importPrefix: "Map",
@@ -5811,6 +5816,10 @@ export function registerBuiltinExternClasses(ctx: CodegenContext): void {
     methods.set("set", externMethod(2));
     methods.set("has", externMethod(1));
     methods.set("delete", externMethod(1));
+    // (#837) TC39 Stage 3 "upsert" proposal: WeakMap.prototype.getOrInsert /
+    // .getOrInsertComputed. Mirrors Map's signatures.
+    methods.set("getOrInsert", externMethod(2));
+    methods.set("getOrInsertComputed", externMethod(2));
 
     ctx.externClasses.set("WeakMap", {
       importPrefix: "WeakMap",
