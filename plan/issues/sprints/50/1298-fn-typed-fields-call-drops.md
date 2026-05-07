@@ -125,11 +125,14 @@ changes in this PR:
   same nullable-type fallback so `m.get("k")(...)` reads call sigs correctly
   when Map.get returns `Fn | undefined`.
 - **`src/codegen/expressions/calls.ts`** (generic call-as-callee fallback
-  ~line 6710): replaced the closureInfoByTypeIdx scan-only logic with the
-  eager-create + alternative-return-type-variant pattern from line 5061.
-  Mirrors the identifier-callable path so order-independence holds for all
-  expression-shaped callees, plus multi-funcref-candidate dispatch via
-  ref.test chain (covariant return types).
+  ~line 6710): the architect-specced eager-create + alt-funcref dispatch
+  rewrite of this fallback was tried but caused 340 null_deref regressions
+  (mostly Temporal tests) on test262 because it removed the original
+  graceful `compile-and-drop → ref.null.extern` exit for cases where no
+  closure-struct match existed. The revert leaves this scan-only fallback
+  unchanged. The headline `this.fn!(s)` repro reaches dispatch via the
+  PropertyAccess + NonNull-unwrap path above, not via this fallback, so
+  reverting fix #3 does not regress acceptance criterion #1.
 
 ### Tests
 
