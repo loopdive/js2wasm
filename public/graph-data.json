@@ -18081,6 +18081,17 @@
       "files": [],
       "goal": "npm-library-support",
       "cluster": "npm-library-support"
+    },
+    {
+      "id": "1307",
+      "title": "ci: serialize Test262 Sharded across PRs to eliminate runner-pool contention",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "cluster": "sprint-50"
     }
   ],
   "links": [

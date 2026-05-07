@@ -147,5 +147,6 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1126 | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | high | in-progress |
+| #1307 | ci: serialize Test262 Sharded across PRs to eliminate runner-pool contention | medium | in-progress |
 
 <!-- GENERATED_ISSUE_TABLES_END -->
