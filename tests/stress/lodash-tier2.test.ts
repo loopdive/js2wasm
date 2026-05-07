@@ -66,20 +66,15 @@ describe("#1292 lodash Tier 2 stress test — memoize, flow, partial, negate", (
   );
 
   /**
-   * Tier 2b — `flow.js`: composes an array of functions via reduce. The
-   * compiled module fails Wasm VALIDATION (not instantiation) with:
-   *   "Compiling function #945:\"__closure_837\" failed:
-   *    Invalid global index: 266 @+117088"
-   * The compiler emits a closure that references a global index past the
-   * declared range. Probably a global-index allocation issue when many
-   * closures (lodash has hundreds in the transitive graph) compete for the
-   * same global table. Tracked as **#1302**.
+   * Tier 2b — `flow.js`: composes an array of functions via reduce. Was
+   * failing Wasm VALIDATION with "Invalid global index: 266 @+117088" because
+   * `fixupModuleGlobalIndices` over-shifted nested instr arrays that were
+   * reachable from multiple top-level body paths (#1302). Fixed by deduping
+   * shifts per fixup call via a WeakSet of visited instructions.
    */
-  it.skip("Tier 2b flow — closure references invalid global index, fails Wasm validation (#1302)", async () => {
+  runIfInstalled("Tier 2b flow — compiles + validates (#1302 fix)", async () => {
     const result = compileProject("node_modules/lodash-es/flow.js", { allowJs: true });
     expect(result.success).toBe(true);
-    // Currently throws synchronously from `new WebAssembly.Module(...)`:
-    //   "Invalid global index: 266 @+117088"
     expect(() => new WebAssembly.Module(result.binary)).not.toThrow();
   });
 
