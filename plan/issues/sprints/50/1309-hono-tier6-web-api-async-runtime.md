@@ -159,6 +159,44 @@ behaviour for standalone/WASI mode.
 
 Land first; depends on #1298 + #1306 only (both done).
 
+> **Update 2026-05-07** — Slice A investigation found the architect's
+> proposed `isAsyncCallExpression` Promise retType fix is a **no-op
+> for `await` consumers** and actively harmful for the Tier 6 stress
+> test patterns. `await x` is a passthrough at
+> `expressions.ts:786` (just `compileExpressionInner(expr.expression)`),
+> so adding a `Promise.resolve` wrap at the call site only leaves a
+> Promise object on the stack that the consumer (string concat,
+> further await) cannot use.
+>
+> Verified with probe: `await mws[0]("end")` returns `"[A]end"`
+> correctly **without** the fix and `"[A][object Promise]"` **with**
+> the fix.
+>
+> The probe Tier 6 test file (`tests/stress/hono-tier6.test.ts`) was
+> landed with the 3 passing patterns (404 early-return, empty mw
+> array, single-mw short-circuit) and 2 skipped patterns referencing
+> follow-up issues:
+>
+> - **#1311** — `Map<string, AsyncHandler>` dispatch null_deref in
+>   the App.dispatch path. Separate from isAsyncCallExpression;
+>   appears to be a function-typed Map.get dispatch issue.
+> - **#1312** — async recursive `next()` compose pattern fails with
+>   "Unhandled rejection". Closure-capture / async-recursion
+>   interaction.
+> - **#1313** — root architectural gap: `await` is a passthrough.
+>   The compiler currently relies on closures.ts:1165 unwrapping
+>   `Promise<T>` to `T` at declaration so the wasm call returns raw
+>   T, but identifier-callee paths (`wrapAsyncReturn` on
+>   `ctx.asyncFunctions`) DO wrap, leaving `await` consumers with a
+>   broken Promise object on the stack. Sized as architect work
+>   first.
+>
+> Slice A as originally specified is therefore a **probe-only PR**.
+> The "isAsyncCallExpression Promise retType" fix is NOT applied;
+> the architectural gap is escalated to #1313 for a deeper redesign.
+
+
+
 **Root cause overview**
 
 Async arrow functions today compile by:
