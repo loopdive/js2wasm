@@ -1281,21 +1281,33 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
         return;
       }
       case "iter.next": {
+        // #1323 — __iterator_next now returns (ref null $IteratorResult)
+        // instead of externref. The host bridge constructs the struct via
+        // the wasm-exported __make_iterator_result helper.
         const funcIdx = resolver.resolveFunc({ kind: "func", name: "__iterator_next" });
         emitValue(instr.iter, out);
         out.push({ op: "call", funcIdx });
         return;
       }
       case "iter.done": {
-        const funcIdx = resolver.resolveFunc({ kind: "func", name: "__iterator_done" });
+        // #1323 — pure Wasm: struct.get on $IteratorResult.done (i32).
+        // The result-obj is an externref wrapping a $IteratorResult struct
+        // (built by the JS bridge via the wasm-exported `__make_iterator_result`
+        // helper). Recover the struct ref via any.convert_extern + ref.cast.
+        const typeIdx = resolver.resolveType({ kind: "type", name: "__IteratorResult" });
         emitValue(instr.resultObj, out);
-        out.push({ op: "call", funcIdx });
+        out.push({ op: "any.convert_extern" } as Instr);
+        out.push({ op: "ref.cast", typeIdx } as Instr);
+        out.push({ op: "struct.get", typeIdx, fieldIdx: 0 } as Instr);
         return;
       }
       case "iter.value": {
-        const funcIdx = resolver.resolveFunc({ kind: "func", name: "__iterator_value" });
+        // #1323 — pure Wasm: struct.get on $IteratorResult.value (externref).
+        const typeIdx = resolver.resolveType({ kind: "type", name: "__IteratorResult" });
         emitValue(instr.resultObj, out);
-        out.push({ op: "call", funcIdx });
+        out.push({ op: "any.convert_extern" } as Instr);
+        out.push({ op: "ref.cast", typeIdx } as Instr);
+        out.push({ op: "struct.get", typeIdx, fieldIdx: 1 } as Instr);
         return;
       }
       case "iter.return": {
@@ -1310,9 +1322,11 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
         // `IrInstrForOfIter` in `nodes.ts`.
         const iteratorIdx = resolver.resolveFunc({ kind: "func", name: "__iterator" });
         const iteratorNextIdx = resolver.resolveFunc({ kind: "func", name: "__iterator_next" });
-        const iteratorDoneIdx = resolver.resolveFunc({ kind: "func", name: "__iterator_done" });
-        const iteratorValueIdx = resolver.resolveFunc({ kind: "func", name: "__iterator_value" });
         const iteratorReturnIdx = resolver.resolveFunc({ kind: "func", name: "__iterator_return" });
+        // #1323 — __iterator_next returns (ref null $IteratorResult) instead
+        // of externref. iter.done / iter.value are pure-Wasm struct.get on the
+        // canonical $IteratorResult struct.
+        const iterResultTypeIdx = resolver.resolveType({ kind: "type", name: "__IteratorResult" });
 
         // iter = __iterator(iterable)
         emitValue(instr.iterable, out);
@@ -1321,16 +1335,21 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
 
         // Build loop body Wasm ops.
         const loopBody: Instr[] = [];
-        // result = iter.next(iter)
+        // result = iter.next(iter) — returns externref wrapping $IteratorResult
         loopBody.push({ op: "local.get", index: slotWasmIdx(instr.iterSlot) });
         loopBody.push({ op: "call", funcIdx: iteratorNextIdx });
         loopBody.push({ op: "local.tee", index: slotWasmIdx(instr.resultSlot) });
-        // if (iter.done(result)) br 1 (exit)
-        loopBody.push({ op: "call", funcIdx: iteratorDoneIdx });
+        // Recover the $IteratorResult struct ref via any.convert_extern + ref.cast.
+        loopBody.push({ op: "any.convert_extern" } as Instr);
+        loopBody.push({ op: "ref.cast", typeIdx: iterResultTypeIdx } as Instr);
+        // if (result.done) br 1 (exit) — pure Wasm struct.get
+        loopBody.push({ op: "struct.get", typeIdx: iterResultTypeIdx, fieldIdx: 0 } as Instr);
         loopBody.push({ op: "br_if", depth: 1 });
-        // element = iter.value(result)
+        // element = result.value — pure Wasm struct.get
         loopBody.push({ op: "local.get", index: slotWasmIdx(instr.resultSlot) });
-        loopBody.push({ op: "call", funcIdx: iteratorValueIdx });
+        loopBody.push({ op: "any.convert_extern" } as Instr);
+        loopBody.push({ op: "ref.cast", typeIdx: iterResultTypeIdx } as Instr);
+        loopBody.push({ op: "struct.get", typeIdx: iterResultTypeIdx, fieldIdx: 1 } as Instr);
         loopBody.push({ op: "local.set", index: slotWasmIdx(instr.elementSlot) });
 
         // Body instrs (same materialisation pattern as forof.vec).

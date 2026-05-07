@@ -5060,30 +5060,51 @@ function collectIteratorImports(ctx: CodegenContext, sourceFile: ts.SourceFile):
   }
 }
 
-/** Register the iterator protocol host imports if not already registered */
+/** Register the iterator protocol host imports if not already registered.
+ *
+ * #1323 — `__iterator_next` returns a `(ref null $IteratorResult)` WasmGC
+ * struct directly so per-step `done`/`value` extraction is pure-Wasm
+ * `struct.get`. The host bridge constructs the struct by calling the wasm
+ * export `__make_iterator_result(i32, externref)` after invoking
+ * `iter.next()`. Net: 3 host calls per iteration step → 1.
+ */
 export function addIteratorImports(ctx: CodegenContext): void {
   // Guard: only register once
   if (ctx.funcMap.has("__iterator")) return;
+
+  // Register the canonical $IteratorResult struct type and remember its idx
+  // on ctx so lower.ts and other call sites can resolve it.
+  let iterResultTypeIdx = ctx.iteratorResultTypeIdx;
+  if (iterResultTypeIdx === undefined) {
+    iterResultTypeIdx = ctx.mod.types.length;
+    ctx.mod.types.push({
+      kind: "struct",
+      name: "__IteratorResult",
+      fields: [
+        { name: "done", type: { kind: "i32" }, mutable: false },
+        { name: "value", type: { kind: "externref" }, mutable: false },
+      ],
+    } as StructTypeDef);
+    ctx.iteratorResultTypeIdx = iterResultTypeIdx;
+    ctx.structMap.set("__IteratorResult", iterResultTypeIdx);
+    // Register field metadata so __sget_done / __sget_value are exported
+    // for any out-of-band runtime introspection paths (defence-in-depth).
+    ctx.structFields.set("__IteratorResult", [
+      { name: "done", type: { kind: "i32" }, mutable: false },
+      { name: "value", type: { kind: "externref" }, mutable: false },
+    ]);
+  }
 
   // __iterator: (externref) → externref — calls obj[Symbol.iterator]()
   const extToExt = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
   addImport(ctx, "env", "__iterator", { kind: "func", typeIdx: extToExt });
 
-  // __iterator_next: (externref) → externref — calls iter.next()
+  // __iterator_next: (externref) → externref — calls iter.next() and
+  // returns the result wrapped as externref. The result actually wraps a
+  // $IteratorResult struct (constructed by the JS bridge via the wasm
+  // export `__make_iterator_result`); call sites recover the struct via
+  // any.convert_extern + ref.cast and then read .done/.value via struct.get.
   addImport(ctx, "env", "__iterator_next", {
-    kind: "func",
-    typeIdx: extToExt,
-  });
-
-  // __iterator_done: (externref) → i32 — returns result.done ? 1 : 0
-  const extToI32 = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "i32" }]);
-  addImport(ctx, "env", "__iterator_done", {
-    kind: "func",
-    typeIdx: extToI32,
-  });
-
-  // __iterator_value: (externref) → externref — returns result.value
-  addImport(ctx, "env", "__iterator_value", {
     kind: "func",
     typeIdx: extToExt,
   });
@@ -5093,6 +5114,33 @@ export function addIteratorImports(ctx: CodegenContext): void {
   addImport(ctx, "env", "__iterator_return", {
     kind: "func",
     typeIdx: extToVoid,
+  });
+
+  // Wasm helper: construct $IteratorResult from (i32 done, externref value).
+  // Exported so the JS host bridge can call it from `__iterator_next`.
+  const iterResultRef: ValType = { kind: "ref_null", typeIdx: iterResultTypeIdx };
+  const makeTypeIdx = addFuncType(
+    ctx,
+    [{ kind: "i32" }, { kind: "externref" }],
+    [iterResultRef],
+    "$__make_iterator_result_type",
+  );
+  const makeFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+  ctx.mod.functions.push({
+    name: "__make_iterator_result",
+    typeIdx: makeTypeIdx,
+    locals: [],
+    body: [
+      { op: "local.get", index: 0 } as Instr,
+      { op: "local.get", index: 1 } as Instr,
+      { op: "struct.new", typeIdx: iterResultTypeIdx } as Instr,
+    ],
+    exported: true,
+  } as WasmFunction);
+  ctx.funcMap.set("__make_iterator_result", makeFuncIdx);
+  ctx.mod.exports.push({
+    name: "__make_iterator_result",
+    desc: { kind: "func", index: makeFuncIdx },
   });
 }
 

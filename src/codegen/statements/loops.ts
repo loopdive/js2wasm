@@ -2789,10 +2789,12 @@ function compileForOfIterator(ctx: CodegenContext, fctx: FunctionContext, stmt: 
   fctx.body.push({ op: "call", funcIdx: iteratorIdx });
 
   const nextIdx = ctx.funcMap.get("__iterator_next");
-  const doneIdx = ctx.funcMap.get("__iterator_done");
-  const valueIdx = ctx.funcMap.get("__iterator_value");
   const returnIdx = ctx.funcMap.get("__iterator_return");
-  if (nextIdx === undefined || doneIdx === undefined || valueIdx === undefined) {
+  // #1323 — done/value are now pure-Wasm struct.get on the canonical
+  // $IteratorResult struct (built by the JS bridge). The struct typeIdx
+  // is registered in addIteratorImports.
+  const iterResultTypeIdx = ctx.iteratorResultTypeIdx;
+  if (nextIdx === undefined || iterResultTypeIdx === undefined) {
     reportError(ctx, stmt, "for-of on non-array type requires iterator imports");
     return;
   }
@@ -2900,14 +2902,17 @@ function compileForOfIterator(ctx: CodegenContext, fctx: FunctionContext, stmt: 
   fctx.body.push({ op: "i32.gt_s" });
   fctx.body.push({ op: "br_if", depth: 1 }); // break if >1M iterations
 
-  // Call __iterator_next(iter) → result
+  // Call __iterator_next(iter) → result (externref wrapping $IteratorResult)
   fctx.body.push({ op: "local.get", index: iterLocal });
   fctx.body.push({ op: "call", funcIdx: nextIdx });
   fctx.body.push({ op: "local.set", index: resultLocal });
 
-  // Check done: __iterator_done(result) → i32, break if truthy
+  // #1323 — Check done via pure-Wasm struct.get. Recover the struct ref
+  // from the externref via any.convert_extern + ref.cast.
   fctx.body.push({ op: "local.get", index: resultLocal });
-  fctx.body.push({ op: "call", funcIdx: doneIdx });
+  fctx.body.push({ op: "any.convert_extern" } as Instr);
+  fctx.body.push({ op: "ref.cast", typeIdx: iterResultTypeIdx } as Instr);
+  fctx.body.push({ op: "struct.get", typeIdx: iterResultTypeIdx, fieldIdx: 0 } as Instr);
   // If done, set the done flag to 1 before breaking
   fctx.body.push({
     op: "if",
@@ -2920,9 +2925,11 @@ function compileForOfIterator(ctx: CodegenContext, fctx: FunctionContext, stmt: 
     else: [],
   } as unknown as Instr);
 
-  // Get value: elem = __iterator_value(result)
+  // #1323 — Get value via pure-Wasm struct.get.
   fctx.body.push({ op: "local.get", index: resultLocal });
-  fctx.body.push({ op: "call", funcIdx: valueIdx });
+  fctx.body.push({ op: "any.convert_extern" } as Instr);
+  fctx.body.push({ op: "ref.cast", typeIdx: iterResultTypeIdx } as Instr);
+  fctx.body.push({ op: "struct.get", typeIdx: iterResultTypeIdx, fieldIdx: 1 } as Instr);
   fctx.body.push({ op: "local.set", index: elemLocal });
 
   // If destructuring pattern, destructure from the element

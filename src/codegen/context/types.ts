@@ -508,6 +508,8 @@ export interface CodegenContext {
   wrapperNumberTypeIdx: number;
   wrapperStringTypeIdx: number;
   wrapperBooleanTypeIdx: number;
+  /** Type index of the canonical $IteratorResult struct (#1323) */
+  iteratorResultTypeIdx?: number;
   /** Cache for function reference wrappers: signature key → ClosureInfo */
   funcRefWrapperCache: Map<string, ClosureInfo>;
   /** Pending module-init body (not yet in mod.functions) that needs global index fixup */

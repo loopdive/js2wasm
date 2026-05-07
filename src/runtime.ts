@@ -3528,46 +3528,52 @@ assert._isSameValue = isSameValue;
             const exports = callbackState?.getExports();
             next = exports?.__sget_next?.(iter);
           }
-          if (typeof next === "function") return next.call(iter);
-          // If next is a WasmGC closure, call via __call_fn_0
-          if (next != null && _isWasmStruct(next)) {
+          let raw: any;
+          if (typeof next === "function") {
+            raw = next.call(iter);
+          } else if (next != null && _isWasmStruct(next)) {
+            // If next is a WasmGC closure, call via __call_fn_0
             const exports = callbackState?.getExports();
             const callFn0 = (exports as any)?.__call_fn_0;
             if (typeof callFn0 === "function") {
-              const result = callFn0(next);
-              if (result != null) return result;
+              raw = callFn0(next);
             }
           }
-          // Try __call_next dispatch for WasmGC struct iterators
-          {
+          if (raw === undefined) {
+            // Try __call_next dispatch for WasmGC struct iterators
             const exports = callbackState?.getExports();
             const callNext = (exports as any)?.["__call_next"];
             if (typeof callNext === "function") {
-              const result = callNext(iter);
-              if (result != null) return result;
+              raw = callNext(iter);
             }
           }
-          throw new TypeError("iterator.next is not a function");
-        };
-      if (name === "__iterator_done")
-        return (result: any) => {
-          let done = result.done ?? _sidecarGet(result, "done");
-          // Try struct getter for "done" field
+          if (raw == null) {
+            throw new TypeError("iterator.next is not a function");
+          }
+          // #1323 — extract done/value and construct a $IteratorResult struct
+          // via the wasm-exported __make_iterator_result helper. This lets
+          // the wasm side use pure-Wasm struct.get for done/value rather than
+          // calling host imports per iteration step.
+          let done: any = raw.done ?? _sidecarGet(raw, "done");
           if (done === undefined) {
             const exports = callbackState?.getExports();
-            done = exports?.__sget_done?.(result);
+            done = exports?.__sget_done?.(raw);
           }
-          return done ? 1 : 0;
-        };
-      if (name === "__iterator_value")
-        return (result: any) => {
-          let val = result.value;
-          if (val !== undefined) return val;
-          val = _sidecarGet(result, "value");
-          if (val !== undefined) return val;
-          // Try struct getter for "value" field
+          let value: any = raw.value;
+          if (value === undefined) value = _sidecarGet(raw, "value");
+          if (value === undefined) {
+            const exports = callbackState?.getExports();
+            value = exports?.__sget_value?.(raw);
+          }
           const exports = callbackState?.getExports();
-          return exports?.__sget_value?.(result);
+          const make = (exports as any)?.__make_iterator_result;
+          if (typeof make === "function") {
+            return make(done ? 1 : 0, value);
+          }
+          // Defensive fallback: if the helper isn't exported (older binaries
+          // or test mocks), return the raw result so the legacy host-import
+          // path in lower.ts (preserved as a fallback) still works.
+          return raw;
         };
       if (name === "__iterator_return")
         return (iter: any) => {
