@@ -23,4 +23,4 @@ Coverage ~67% across class expression+statement. Largest fail buckets: assertion
 ## Issues filed / referenced
 
 - [#1239](../plan/issues/sprints/50/1239-*.md)
-- [#1348](../plan/issues/sprints/50/1348-*.md)
+- [#1349](../plan/issues/sprints/50/1349-*.md)

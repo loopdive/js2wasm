@@ -22,5 +22,5 @@ Coverage 5925/9337 = 63.5%. Worst sub-buckets: try (50%), for-of (48%), with (0%
 
 ## Issues filed / referenced
 
-- [#1347](../plan/issues/sprints/50/1347-*.md)
 - [#1348](../plan/issues/sprints/50/1348-*.md)
+- [#1349](../plan/issues/sprints/50/1349-*.md)

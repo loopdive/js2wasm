@@ -23,4 +23,4 @@ for-of fails on iterables that throw inside next() — IteratorClose isn't calle
 
 ## Issues filed / referenced
 
-- [#1347](../plan/issues/sprints/50/1347-*.md)
+- [#1348](../plan/issues/sprints/50/1348-*.md)

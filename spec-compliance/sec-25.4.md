@@ -19,3 +19,7 @@ Files / runtime imports involved:
 ## Gap
 
 92/382 (24.1%) with 242 skip. Practical limit: requires shared-memory Wasm threads.
+
+## Issues filed / referenced
+
+- [#1354](../plan/issues/sprints/50/1354-*.md)

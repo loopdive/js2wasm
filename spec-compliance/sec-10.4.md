@@ -23,4 +23,4 @@ Array.prototype methods coverage 45.7% — many tests fail on assertion_fail (cu
 
 ## Issues filed / referenced
 
-- [#1338](../plan/issues/sprints/50/1338-*.md)
+- [#1339](../plan/issues/sprints/50/1339-*.md)

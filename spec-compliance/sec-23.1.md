@@ -24,4 +24,4 @@ Files / runtime imports involved:
 ## Issues filed / referenced
 
 - [#1320](../plan/issues/sprints/50/1320-*.md)
-- [#1338](../plan/issues/sprints/50/1338-*.md)
+- [#1339](../plan/issues/sprints/50/1339-*.md)

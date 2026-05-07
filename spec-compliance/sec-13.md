@@ -23,4 +23,4 @@ Coverage 6772/11036 = 61.4%. Worst sub-buckets: assignment (54.4%), yield (25.4%
 
 ## Issues filed / referenced
 
-- [#1346](../plan/issues/sprints/50/1346-*.md)
+- [#1347](../plan/issues/sprints/50/1347-*.md)

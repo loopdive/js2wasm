@@ -22,4 +22,4 @@ GeneratorFunction 6/23 (26%), GeneratorPrototype 9/61 (14.8%). High type_error c
 
 ## Issues filed / referenced
 
-- [#1344](../plan/issues/sprints/50/1344-*.md)
+- [#1345](../plan/issues/sprints/50/1345-*.md)

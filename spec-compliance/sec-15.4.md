@@ -22,5 +22,5 @@ GeneratorPrototype 14.8% — many type_error and unreachable failures suggest th
 
 ## Issues filed / referenced
 
-- [#1344](../plan/issues/sprints/50/1344-*.md)
-- [#1346](../plan/issues/sprints/50/1346-*.md)
+- [#1345](../plan/issues/sprints/50/1345-*.md)
+- [#1347](../plan/issues/sprints/50/1347-*.md)

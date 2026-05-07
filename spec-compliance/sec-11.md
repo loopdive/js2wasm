@@ -19,3 +19,7 @@ Files / runtime imports involved:
 ## Gap
 
 line-terminators 33/41 — 8 wasm_compile failures (likely paragraph-separator U+2029 in identifiers).
+
+## Issues filed / referenced
+
+- [#1355](../plan/issues/sprints/50/1355-*.md)

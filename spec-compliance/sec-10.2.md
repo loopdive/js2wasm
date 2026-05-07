@@ -24,4 +24,4 @@ Function objects from Wasm are not always JS-callable (issue #1308). .name, .toS
 ## Issues filed / referenced
 
 - [#1308](../plan/issues/sprints/50/1308-*.md)
-- [#1337](../plan/issues/sprints/50/1337-*.md)
+- [#1338](../plan/issues/sprints/50/1338-*.md)

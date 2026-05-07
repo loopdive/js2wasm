@@ -23,4 +23,4 @@ JSON.parse 71%, JSON.stringify 26%. JSON.stringify replacer-callback / toJSON me
 ## Issues filed / referenced
 
 - [#1324](../plan/issues/sprints/50/1324-*.md)
-- [#1341](../plan/issues/sprints/50/1341-*.md)
+- [#1342](../plan/issues/sprints/50/1342-*.md)

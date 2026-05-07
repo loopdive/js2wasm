@@ -23,4 +23,4 @@ AggregateError 16.0%, SuppressedError 27.3% — `errors` array iteration semanti
 
 ## Issues filed / referenced
 
-- [#1339](../plan/issues/sprints/50/1339-*.md)
+- [#1340](../plan/issues/sprints/50/1340-*.md)

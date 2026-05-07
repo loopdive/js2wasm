@@ -25,4 +25,4 @@ Pure-Wasm iterator protocol is not yet implemented for standalone mode (issue #1
 
 - [#1320](../plan/issues/sprints/50/1320-*.md)
 - [#1323](../plan/issues/sprints/50/1323-*.md)
-- [#1340](../plan/issues/sprints/50/1340-*.md)
+- [#1341](../plan/issues/sprints/50/1341-*.md)

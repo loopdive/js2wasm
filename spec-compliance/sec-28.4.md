@@ -13,3 +13,7 @@ AbstractModuleSource (Stage 3 import-source proposal): 0/8 (0%). Tests gated on 
 ## Current implementation
 
 _No dedicated implementation files; see linked sub-sections._
+
+## Issues filed / referenced
+
+- [#1357](../plan/issues/sprints/50/1357-*.md)

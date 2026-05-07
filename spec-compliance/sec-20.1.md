@@ -23,7 +23,7 @@ Coverage 54.5%. Object.defineProperty is the largest single failure bucket (664 
 
 ## Issues filed / referenced
 
-- [#1334](../plan/issues/sprints/50/1334-*.md)
 - [#1335](../plan/issues/sprints/50/1335-*.md)
 - [#1336](../plan/issues/sprints/50/1336-*.md)
+- [#1337](../plan/issues/sprints/50/1337-*.md)
 - [#1239](../plan/issues/sprints/50/1239-*.md)

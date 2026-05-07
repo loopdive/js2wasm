@@ -3,8 +3,8 @@
   "generated": "2026-05-08",
   "conforming": 5,
   "partial": 54,
-  "not_implemented": 20,
-  "not_applicable": 3,
+  "not_implemented": 22,
+  "not_applicable": 1,
   "totalPass": 28116,
   "totalTests": 48171,
   "totalFail": 18539,
@@ -116,7 +116,7 @@
       "skip": 2,
       "anchor": "sec-operations-on-objects",
       "file": "spec-compliance/sec-7.3.md",
-      "issues": [1334, 1335, 1336]
+      "issues": [1335, 1336, 1337]
     },
     {
       "id": "sec-7.4",
@@ -128,7 +128,7 @@
       "skip": 0,
       "anchor": "sec-operations-on-iterator-objects",
       "file": "spec-compliance/sec-7.4.md",
-      "issues": [1320, 1323, 1340]
+      "issues": [1320, 1323, 1341]
     },
     {
       "id": "sec-8",
@@ -188,7 +188,7 @@
       "skip": 2,
       "anchor": "sec-ordinary-object-internal-methods-and-internal-slots",
       "file": "spec-compliance/sec-10.1.md",
-      "issues": [1334]
+      "issues": [1335]
     },
     {
       "id": "sec-10.2",
@@ -200,7 +200,7 @@
       "skip": 1,
       "anchor": "sec-ecmascript-function-objects",
       "file": "spec-compliance/sec-10.2.md",
-      "issues": [1308, 1337]
+      "issues": [1308, 1338]
     },
     {
       "id": "sec-10.3",
@@ -224,7 +224,7 @@
       "skip": 20,
       "anchor": "sec-built-in-exotic-object-internal-methods-and-slots",
       "file": "spec-compliance/sec-10.4.md",
-      "issues": [1338]
+      "issues": [1339]
     },
     {
       "id": "sec-10.5",
@@ -236,7 +236,7 @@
       "skip": 9,
       "anchor": "sec-proxy-object-internal-methods-and-internal-slots",
       "file": "spec-compliance/sec-10.5.md",
-      "issues": []
+      "issues": [1355]
     },
     {
       "id": "sec-11",
@@ -248,7 +248,7 @@
       "skip": 1,
       "anchor": "sec-ecmascript-language-source-code",
       "file": "spec-compliance/sec-11.md",
-      "issues": []
+      "issues": [1355]
     },
     {
       "id": "sec-12",
@@ -272,7 +272,7 @@
       "skip": 550,
       "anchor": "sec-ecmascript-language-expressions",
       "file": "spec-compliance/sec-13.md",
-      "issues": [1346]
+      "issues": [1347]
     },
     {
       "id": "sec-13.5",
@@ -332,7 +332,7 @@
       "skip": 207,
       "anchor": "sec-ecmascript-language-statements-and-declarations",
       "file": "spec-compliance/sec-14.md",
-      "issues": [1347, 1348]
+      "issues": [1348, 1349]
     },
     {
       "id": "sec-14.7.5",
@@ -344,7 +344,7 @@
       "skip": 0,
       "anchor": "sec-for-in-and-for-of-statements",
       "file": "spec-compliance/sec-14.7.5.md",
-      "issues": [1347]
+      "issues": [1348]
     },
     {
       "id": "sec-14.13",
@@ -440,7 +440,7 @@
       "skip": 4,
       "anchor": "sec-generator-function-definitions",
       "file": "spec-compliance/sec-15.4.md",
-      "issues": [1344, 1346]
+      "issues": [1345, 1347]
     },
     {
       "id": "sec-15.5",
@@ -476,7 +476,7 @@
       "skip": 7,
       "anchor": "sec-class-definitions",
       "file": "spec-compliance/sec-15.7.md",
-      "issues": [1239, 1348]
+      "issues": [1239, 1349]
     },
     {
       "id": "sec-16",
@@ -560,7 +560,7 @@
       "skip": 2,
       "anchor": "sec-object-objects",
       "file": "spec-compliance/sec-20.1.md",
-      "issues": [1334, 1335, 1336, 1239]
+      "issues": [1335, 1336, 1337, 1239]
     },
     {
       "id": "sec-20.2",
@@ -572,7 +572,7 @@
       "skip": 1,
       "anchor": "sec-function-objects",
       "file": "spec-compliance/sec-20.2.md",
-      "issues": [1337, 1308]
+      "issues": [1338, 1308]
     },
     {
       "id": "sec-20.3",
@@ -584,7 +584,7 @@
       "skip": 0,
       "anchor": "sec-boolean-objects",
       "file": "spec-compliance/sec-20.3.md",
-      "issues": [1342]
+      "issues": [1343]
     },
     {
       "id": "sec-20.4",
@@ -596,7 +596,7 @@
       "skip": 0,
       "anchor": "sec-symbol-objects",
       "file": "spec-compliance/sec-20.4.md",
-      "issues": [1319, 1342]
+      "issues": [1319, 1343]
     },
     {
       "id": "sec-20.5",
@@ -608,7 +608,7 @@
       "skip": 0,
       "anchor": "sec-error-objects",
       "file": "spec-compliance/sec-20.5.md",
-      "issues": [1339]
+      "issues": [1340]
     },
     {
       "id": "sec-21.1",
@@ -632,7 +632,7 @@
       "skip": 0,
       "anchor": "sec-bigint-objects",
       "file": "spec-compliance/sec-21.2.md",
-      "issues": [1349]
+      "issues": [1350]
     },
     {
       "id": "sec-21.3",
@@ -656,7 +656,7 @@
       "skip": 0,
       "anchor": "sec-date-objects",
       "file": "spec-compliance/sec-21.4.md",
-      "issues": [1343]
+      "issues": [1344]
     },
     {
       "id": "sec-22.1",
@@ -692,7 +692,7 @@
       "skip": 19,
       "anchor": "sec-array-objects",
       "file": "spec-compliance/sec-23.1.md",
-      "issues": [1320, 1338]
+      "issues": [1320, 1339]
     },
     {
       "id": "sec-23.2",
@@ -704,7 +704,7 @@
       "skip": 109,
       "anchor": "sec-typedarray-objects",
       "file": "spec-compliance/sec-23.2.md",
-      "issues": [1350]
+      "issues": [1351]
     },
     {
       "id": "sec-24.1",
@@ -728,7 +728,7 @@
       "skip": 0,
       "anchor": "sec-set-objects",
       "file": "spec-compliance/sec-24.2.md",
-      "issues": [1351]
+      "issues": [1352]
     },
     {
       "id": "sec-24.3",
@@ -764,19 +764,19 @@
       "skip": 9,
       "anchor": "sec-arraybuffer-objects",
       "file": "spec-compliance/sec-25.1.md",
-      "issues": [1350]
+      "issues": [1351]
     },
     {
       "id": "sec-25.2",
       "title": "SharedArrayBuffer Objects",
-      "status": "na",
+      "status": "not_implemented",
       "pass": 0,
       "total": 104,
       "fail": 0,
       "skip": 104,
       "anchor": "sec-sharedarraybuffer-objects",
       "file": "spec-compliance/sec-25.2.md",
-      "issues": []
+      "issues": [1354]
     },
     {
       "id": "sec-25.3",
@@ -788,7 +788,7 @@
       "skip": 39,
       "anchor": "sec-dataview-objects",
       "file": "spec-compliance/sec-25.3.md",
-      "issues": [1350, 1349]
+      "issues": [1351, 1350]
     },
     {
       "id": "sec-25.4",
@@ -800,7 +800,7 @@
       "skip": 242,
       "anchor": "sec-atomics",
       "file": "spec-compliance/sec-25.4.md",
-      "issues": []
+      "issues": [1354]
     },
     {
       "id": "sec-25.5",
@@ -812,7 +812,7 @@
       "skip": 0,
       "anchor": "sec-json-object",
       "file": "spec-compliance/sec-25.5.md",
-      "issues": [1324, 1341]
+      "issues": [1324, 1342]
     },
     {
       "id": "sec-26.1",
@@ -824,7 +824,7 @@
       "skip": 0,
       "anchor": "sec-weak-ref-objects",
       "file": "spec-compliance/sec-26.1.md",
-      "issues": []
+      "issues": [1354]
     },
     {
       "id": "sec-26.2",
@@ -884,7 +884,7 @@
       "skip": 0,
       "anchor": "sec-generatorfunction-constructor",
       "file": "spec-compliance/sec-27.3.md",
-      "issues": [1344]
+      "issues": [1345]
     },
     {
       "id": "sec-27.4",
@@ -908,7 +908,7 @@
       "skip": 0,
       "anchor": "sec-async-generator-function-constructor",
       "file": "spec-compliance/sec-27.5.md",
-      "issues": [1344]
+      "issues": [1345]
     },
     {
       "id": "sec-27.6",
@@ -932,7 +932,7 @@
       "skip": 0,
       "anchor": "sec-reflect-object",
       "file": "spec-compliance/sec-28.1.md",
-      "issues": [1334, 1345]
+      "issues": [1335, 1346]
     },
     {
       "id": "sec-28.2",
@@ -944,7 +944,7 @@
       "skip": 9,
       "anchor": "sec-proxy-objects",
       "file": "spec-compliance/sec-28.2.md",
-      "issues": []
+      "issues": [1355]
     },
     {
       "id": "sec-28.3",
@@ -956,7 +956,7 @@
       "skip": 0,
       "anchor": "sec-shadowrealm-objects",
       "file": "spec-compliance/sec-28.3.md",
-      "issues": []
+      "issues": [1356]
     },
     {
       "id": "sec-28.4",
@@ -968,7 +968,7 @@
       "skip": 0,
       "anchor": "sec-abstract-module-source",
       "file": "spec-compliance/sec-28.4.md",
-      "issues": []
+      "issues": [1357]
     },
     {
       "id": "annex-b",
@@ -985,14 +985,14 @@
     {
       "id": "sec-29",
       "title": "Memory Model",
-      "status": "na",
+      "status": "not_implemented",
       "pass": 0,
       "total": 0,
       "fail": 0,
       "skip": 0,
       "anchor": "sec-memory-model",
       "file": "spec-compliance/sec-29.md",
-      "issues": []
+      "issues": [1353]
     }
   ]
 }

@@ -22,4 +22,4 @@ AsyncGeneratorPrototype 26/48 (54%); AsyncIteratorPrototype 1/13 (7.7%) — rece
 
 ## Issues filed / referenced
 
-- [#1344](../plan/issues/sprints/50/1344-*.md)
+- [#1345](../plan/issues/sprints/50/1345-*.md)

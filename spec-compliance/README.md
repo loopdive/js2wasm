@@ -7,8 +7,8 @@ Total tests: 28116 / 48171 pass
 | --- | --- |
 | ✅ conforming | 5 |
 | ⚠️ partial | 54 |
-| ❌ not implemented | 20 |
-| ➖ not applicable | 3 |
+| ❌ not implemented | 22 |
+| ➖ not applicable | 1 |
 
 ## Sections
 
@@ -77,7 +77,7 @@ Total tests: 28116 / 48171 pass
 | [sec-24.3](sec-24.3.md) | WeakMap Objects | ⚠️ partial | 110/141 (78.0%) |
 | [sec-24.4](sec-24.4.md) | WeakSet Objects | ⚠️ partial | 76/85 (89.4%) |
 | [sec-25.1](sec-25.1.md) | ArrayBuffer Objects | ❌ not implemented | 87/196 (44.4%) |
-| [sec-25.2](sec-25.2.md) | SharedArrayBuffer Objects | ➖ not applicable | 0/104 (0.0%) |
+| [sec-25.2](sec-25.2.md) | SharedArrayBuffer Objects | ❌ not implemented | 0/104 (0.0%) |
 | [sec-25.3](sec-25.3.md) | DataView Objects | ⚠️ partial | 410/561 (73.1%) |
 | [sec-25.4](sec-25.4.md) | Atomics | ❌ not implemented | 92/382 (24.1%) |
 | [sec-25.5](sec-25.5.md) | JSON Object | ⚠️ partial | 87/165 (52.7%) |
@@ -95,4 +95,4 @@ Total tests: 28116 / 48171 pass
 | [sec-28.3](sec-28.3.md) | ShadowRealm Objects | ❌ not implemented | 3/64 (4.7%) |
 | [sec-28.4](sec-28.4.md) | Module Source Objects (AbstractModuleSource) | ❌ not implemented | 0/8 (0.0%) |
 | [annex-b](annex-b.md) | Annex B (Additional ECMAScript Features for Web Browsers) | ⚠️ partial | 555/1086 (51.1%) |
-| [sec-29](sec-29.md) | Memory Model | ➖ not applicable | — |
+| [sec-29](sec-29.md) | Memory Model | ❌ not implemented | — |

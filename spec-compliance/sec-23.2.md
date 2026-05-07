@@ -23,4 +23,4 @@ TypedArray prototype: 1200/1438 (83.4%). Uint8Array.fromBase64/fromHex (newer me
 
 ## Issues filed / referenced
 
-- [#1350](../plan/issues/sprints/50/1350-*.md)
+- [#1351](../plan/issues/sprints/50/1351-*.md)
