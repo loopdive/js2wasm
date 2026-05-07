@@ -279,7 +279,12 @@ export type FilterResult = { skip: true; reason: string } | { skip: false; reaso
 // Tests that cause the compiler to hang (infinite loop during compilation)
 const HANGING_TESTS = new Set([
   "test/built-ins/Promise/race/invoke-then.js", // #408: Promise.race compilation hang
-  "test/built-ins/Map/prototype/forEach/iterates-values-deleted-then-readded.js", // hangs: Map mutation during iteration
+  // #859: Map/forEach/iterates-values-deleted-then-readded.js previously hung
+  // because callback captures were immutable snapshots — `if (count === 0)`
+  // never became false, so the test infinitely re-added the deleted key. The
+  // ref-cell capture pattern (compileArrowAsCallback) now propagates the
+  // count++ mutation back to the outer local, terminating the loop after the
+  // spec'd 3 iterations.
   "test/built-ins/Temporal/Duration/from/argument-non-string.js", // hangs: Temporal runtime loop
 ]);
 
