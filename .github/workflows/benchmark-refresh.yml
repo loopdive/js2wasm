@@ -124,6 +124,7 @@ jobs:
         uses: actions/upload-artifact@v6
         if: always()
         with:
+          retention-days: 1
           name: benchmark-refresh-report
           path: |
             benchmark-reports/**
