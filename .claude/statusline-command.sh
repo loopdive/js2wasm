@@ -39,9 +39,10 @@ if [ -d "$status_dir" ]; then
     if [ "$elapsed" -lt 60 ]; then age="${elapsed}s"
     elif [ "$elapsed" -lt 3600 ]; then age="$((elapsed / 60))m"
     else age="$((elapsed / 3600))h$((elapsed % 3600 / 60))m"; fi
+    pr=$(jq -r '.pr // empty' "$f" 2>/dev/null)
     issue=$(jq -r '.issue // empty' "$f" 2>/dev/null)
     task=$(jq -r '.task // empty' "$f" 2>/dev/null)
-    ref="${issue:-${task}}"
+    [ -n "$pr" ] && ref="#${pr}" || ref="${issue:-${task}}"
     [ -n "$ref" ] && label="${ref} ${age}" || label="${age}"
     if [ "$elapsed" -ge 900 ]; then   color="48;5;196;37"
     elif [ "$elapsed" -ge 300 ]; then color="43;30"

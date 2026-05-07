@@ -67,6 +67,7 @@ import {
   wasiAllocStringData,
 } from "./builtins.js";
 import {
+  compileCallableElementAccessCall,
   compileCallablePropertyCall,
   compileClosureCall,
   compileGetterCallable,
@@ -6407,6 +6408,14 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         if (arrMethodResult !== undefined) return arrMethodResult;
       }
 
+      // ELEM ACCESS RESOLVED, NO METHOD MATCHED — try callable element type
+      // (#1306). Covers `fns[0](args)` and `fns[ConstKey](args)` where
+      // `fns` is an array (or other element-access-able value) of callables.
+      {
+        const cea = compileCallableElementAccessCall(ctx, fctx, expr, elemAccess);
+        if (cea !== undefined) return cea;
+      }
+
       // Fallback for resolved element access calls that didn't match any known method:
       // compile receiver, discard; compile each argument for side effects; return externref.
       {
@@ -6423,6 +6432,14 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         fctx.body.push({ op: "ref.null.extern" });
         return { kind: "externref" };
       }
+    }
+
+    // ELEM ACCESS UNRESOLVED — try callable element type (#1306) before
+    // falling through to the drop-everything path. Covers
+    // `mws[idx](c, next)` where `idx` is a runtime variable.
+    {
+      const cea = compileCallableElementAccessCall(ctx, fctx, expr, elemAccess);
+      if (cea !== undefined) return cea;
     }
 
     // Fallback for element access calls where the key couldn't be resolved statically:

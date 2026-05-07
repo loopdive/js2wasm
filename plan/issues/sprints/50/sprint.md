@@ -99,7 +99,8 @@ Order is recommended **dispatch order** (highest value first); see
 | Order | Issue | Title | Priority | Feasibility | Notes |
 |-------|-------|-------|----------|-------------|-------|
 | 7 | #1292 | lodash Tier 2 — un-skip Tier 2b/2c/2d after blockers | medium | low | Tail end; assigned to whichever dev lands the last blocker. |
-| 8 | #1223 | TDZ async/gen writer+reader fn-decl sharing | medium | hard | Parking lot. Pull only if capacity surplus. Decide: commit or backlog after S50. |
+| 8 | #1307 | CI: serialize Test262 Sharded globally to eliminate runner-pool contention | medium | low | PR #228 open. One-line concurrency group change. |
+| 9 | #1223 | TDZ async/gen writer+reader fn-decl sharing | medium | hard | Parking lot. Pull only if capacity surplus. Decide: commit or backlog after S50. |
 
 ## Architect specs needed
 
@@ -130,5 +131,22 @@ Order is recommended **dispatch order** (highest value first); see
 ## Issue Tables
 
 _Generated from issue files. Update issue `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
+
+### Ready
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1298 | Calling a function-typed value stored in a field/array/Map drops the call and returns null | high | ready |
+| #1303 | Wasm validation: f64.trunc emitted on externref operand when compiling lodash partial.js | medium | ready |
+| #1305 | Module-level var init leaks externref into bitwise op codegen (legacy path) | medium | ready |
+
+### In Progress
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1126 | Infer when JavaScript number flows can be safely lowered to int32 or uint32 | high | in-progress |
+| #1302 | Wasm validation: closure references invalid global index when compiling lodash flow.js | medium | in-progress |
+| #1306 | ElementAccessExpression call on closure-typed array drops call: mws[idx](c, next) emits ref.null | medium | in-progress |
+| #1307 | ci: serialize Test262 Sharded across PRs to eliminate runner-pool contention | medium | in-progress |
 
 <!-- GENERATED_ISSUE_TABLES_END -->

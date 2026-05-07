@@ -93,10 +93,25 @@ export function ensureExnTag(ctx: CodegenContext): number {
  * new import globals are inserted after module globals already exist.
  */
 function fixupModuleGlobalIndices(ctx: CodegenContext, threshold: number, delta: number): void {
+  // Dedupe per-call: an instr (or nested array node) reachable from multiple
+  // top-level bodies must only be shifted once per fixup call. The `shifted`
+  // Set below dedupes top-level Instr[] arrays, but nested arrays (if.then,
+  // block.body, try.body, try.catches[].body, try.catchAll) can be reached
+  // from multiple top-level paths (e.g. an if-then array that's also stored
+  // in a saved body via a manual swap pattern). Without per-call dedup, each
+  // additional reachability path applies an extra +delta, over-shifting the
+  // index past the declared global range (#1302 — lodash flow.js).
+  const visitedInstrs = new WeakSet<object>();
+  const visitedArrays = new WeakSet<Instr[]>();
   function shiftGlobalIndices(instrs: Instr[]): void {
+    if (visitedArrays.has(instrs)) return;
+    visitedArrays.add(instrs);
     for (const instr of instrs) {
       if ((instr.op === "global.get" || instr.op === "global.set") && instr.index >= threshold) {
-        instr.index += delta;
+        if (!visitedInstrs.has(instr as object)) {
+          visitedInstrs.add(instr as object);
+          instr.index += delta;
+        }
       }
       if ("body" in instr && Array.isArray((instr as any).body)) {
         shiftGlobalIndices((instr as any).body);

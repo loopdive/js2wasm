@@ -217,6 +217,7 @@ jobs:
         uses: actions/upload-artifact@v6
         if: always()
         with:
+          retention-days: 1
           name: test262-diff-branch-shard-${{ matrix.chunk }}
           path: |
             benchmarks/results/test262-results-${{ env.RUN_TIMESTAMP }}.jsonl
@@ -300,6 +301,7 @@ jobs:
         uses: actions/upload-artifact@v6
         if: always()
         with:
+          retention-days: 1
           name: test262-diff-main-shard-${{ matrix.chunk }}
           path: |
             benchmarks/results/test262-results-${{ env.RUN_TIMESTAMP }}.jsonl
@@ -355,6 +357,7 @@ jobs:
         uses: actions/upload-artifact@v6
         if: always()
         with:
+          retention-days: 1
           name: test262-diff-branch-merged
           path: branch-merged/**
           if-no-files-found: warn
@@ -423,6 +426,7 @@ jobs:
         uses: actions/upload-artifact@v6
         if: always()
         with:
+          retention-days: 1
           name: test262-diff-main-merged
           path: cached-main-results/**
           if-no-files-found: warn
@@ -507,6 +511,7 @@ jobs:
         uses: actions/upload-artifact@v6
         if: always()
         with:
+          retention-days: 1
           name: test262-diff-regressions-report
           path: diff-out/test262-regressions.txt
           if-no-files-found: warn
