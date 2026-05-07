@@ -2,7 +2,7 @@
 id: 1311
 sprint: 50
 title: "Map<string, AsyncHandler> dispatch null_deref in App.dispatch path"
-status: needs-architect-spec
+status: in-progress
 created: 2026-05-07
 updated: 2026-05-07
 priority: medium
@@ -168,3 +168,84 @@ Suspending this task back to the queue. Test cases in
 `.tmp/bisect{,2,3,4,5}.mts` of the issue-1311-map-async-handler-dispatch
 worktree document the reproducer minimally. Re-dispatch with architect
 spec OR to senior-dev who has the codegen context.
+
+## Root Cause (dev-a, post-bisect)
+
+The bisect's hypothesis (param-forwarding contract) was close but
+mis-located the culprit. The actual bug is at the **construction
+site**, not the storage path.
+
+`app.get("/hello", async (c) => c.text("world"))` — the arrow
+argument to a user-defined-method call goes through
+`isHostCallbackArgument` (`src/codegen/closures.ts`). The default
+property-access branch returned `true` for ALL method-call
+callbacks, sending the arrow through the `__make_callback` host
+path. `__make_callback` returns a JS-wrapped externref that is NOT
+a Wasm GC `__fn_wrap_N_struct`.
+
+That JS-wrapped externref is stored verbatim by `App_get` (via
+`Map.set`) and retrieved verbatim by `App_dispatch` (via
+`Map.get`). The dispatch site then runs the closure-struct
+dispatch path:
+
+```
+local.get $handler        ;; externref (JS-wrapped, not a Wasm struct)
+any.convert_extern        ;; anyref
+ref.test (ref __fn_wrap_0); fails because the externref isn't the struct
+(if (then ref.cast) (else ref.null))
+local.set $cast           ;; null when cast fails
+local.get $cast
+struct.get __fn_wrap_0 0  ;; <-- null deref
+```
+
+Why "free function setHandler" worked in the bisect: free-function
+identifier callees were already special-cased in
+`isHostCallbackArgument` (line 977-983, original #1300 fix) — the
+arrow there went through `compileArrowAsClosure`, building a real
+`__fn_wrap_N_struct`. The class-method case fell through that
+guard.
+
+Why direct literal assignment `h.fn = arrow` worked: that path
+calls `compileArrowAsClosure` directly via the assignment
+expression, never visiting `isHostCallbackArgument`.
+
+## Fix
+
+Extend `isHostCallbackArgument` to also detect property-access
+callees whose method is on a USER-DEFINED class. Walk the receiver
+type's symbol chain (including `getBaseTypes()` for inheritance)
+and check whether `${ClassName}_${methodName}` is in `funcMap`
+with a non-import index. If so, return `false` so the arrow is
+compiled as a closure-struct value via `compileArrowAsClosure`.
+
+Resulting flow:
+- `test()` builds the closure with `struct.new __fn_wrap_0` +
+  `extern.convert_any`.
+- `App_get` receives externref and stores via `Map.set`.
+- `App_dispatch` retrieves externref, `any.convert_extern` + cast
+  succeeds, `struct.get` returns the funcref, `call_ref` dispatches.
+
+The fix is narrow — host array HOFs (`forEach`, `map`, …) and other
+host method callbacks (`Promise.then`) continue through
+`__make_callback` since their methods aren't registered in
+`funcMap` as user-defined.
+
+## Test Results
+
+`tests/issue-1311.test.ts` — 7 tests, all pass:
+
+- canonical reproducer (Map<string, async Handler>) → "world"
+- Map<string, sync Handler> → "got:/a"
+- 404 missing-route fallback → "404"
+- multiple routes → "AA|BB"
+- direct field-access dispatch (no Map) → 21
+- regression guard: Array.forEach host callback → 10
+- regression guard: Map.forEach host callback → 30
+
+Adjacent suites pass on the fix branch (`issue-859`, `issue-1283`,
+`issue-1298`, `issue-1300`, `issue-1306`, `issue-457`, `issue-837`,
+`issue-1135`). Pre-existing failures on main
+(`promise-combinators`, `async-await`, `flatmap-closure`,
+`illegal-cast-closures-585`, `optional-direct-closure-call`) are
+unchanged — confirmed by running the same suites against
+`origin/main`.

@@ -1000,6 +1000,57 @@ export function isHostCallbackArgument(node: ts.Node, ctx: CodegenContext): bool
         // Fall through to host-callback path on any checker error
       }
     }
+    // (#1311) Method calls on user-defined classes — `recv.method(arrow)`.
+    // The receiving method's parameter is typed as a function value and the
+    // method body will treat the externref as a `__fn_wrap_N_struct` closure
+    // (read via `any.convert_extern` + `ref.test (ref $__fn_wrap_*)`).
+    // Routing through the host `__make_callback` path here returns a JS-
+    // wrapped externref (or null in the equivalence-test stub) that fails
+    // the closure-struct cast and null-derefs at the receiver's `struct.get`.
+    // Detect via the receiver's static type → resolved class name → funcMap
+    // lookup. Use the closure path when the method is user-defined.
+    if (ts.isPropertyAccessExpression(parent.expression)) {
+      const propAccess = parent.expression;
+      const methodName = propAccess.name.text;
+      try {
+        // 1. Resolve the receiver's static type → class name via symbol /
+        //    classExprNameMap, and look up `${className}_${methodName}` in
+        //    funcMap. Handles direct method calls.
+        const recvType = ctx.checker.getTypeAtLocation(propAccess.expression);
+        let className = recvType?.getSymbol?.()?.name;
+        if (className && !ctx.classSet.has(className)) {
+          className = ctx.classExprNameMap.get(className) ?? className;
+        }
+        if (className && ctx.classSet.has(className)) {
+          const fullName = `${className}_${methodName}`;
+          const funcIdx = ctx.funcMap.get(fullName);
+          if (funcIdx !== undefined && funcIdx >= ctx.numImportFuncs) {
+            return false;
+          }
+        }
+        // 2. Fallback: resolve the method symbol → its declaration → the
+        //    containing ClassDeclaration. This covers inherited methods
+        //    where `${recvClass}_${methodName}` isn't in funcMap because
+        //    the method lives on an ancestor class. Built-in host methods
+        //    (`Map.set`, `Array.map`, etc.) are excluded because their
+        //    declaring class names won't appear in funcMap as user funcs.
+        const methodSym = ctx.checker.getSymbolAtLocation(propAccess);
+        const methodDecl = methodSym?.valueDeclaration ?? methodSym?.declarations?.[0];
+        if (methodDecl && (ts.isMethodDeclaration(methodDecl) || ts.isMethodSignature(methodDecl))) {
+          const declParent = methodDecl.parent;
+          if ((ts.isClassDeclaration(declParent) || ts.isClassExpression(declParent)) && declParent.name) {
+            const declClassName = declParent.name.text;
+            const fullName = `${declClassName}_${methodName}`;
+            const funcIdx = ctx.funcMap.get(fullName);
+            if (funcIdx !== undefined && funcIdx >= ctx.numImportFuncs) {
+              return false;
+            }
+          }
+        }
+      } catch {
+        // Fall through to host-callback path on any checker error.
+      }
+    }
     // For method calls (property access), check if the method is known array HOF
     // (filter, map, etc.) — those have dedicated inline compilation and ARE handled
     // as closure calls. For other property accesses, treat as host callback.
