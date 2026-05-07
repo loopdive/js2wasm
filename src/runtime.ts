@@ -1460,6 +1460,7 @@ function resolveImport(
   intent: ImportIntent,
   deps?: Record<string, any>,
   callbackState?: { getExports: () => Record<string, Function> | undefined },
+  globalSandbox?: Record<string, any>,
 ): Function {
   switch (intent.type) {
     case "string_literal":
@@ -3912,11 +3913,17 @@ assert._isSameValue = isSameValue;
     case "declared_global": {
       const val = deps?.[intent.name];
       if (val !== undefined) return () => val;
-      if (intent.name === "globalThis") return () => globalThis;
+      // #1310: when a sandbox is supplied (e.g. by the test262 runner that
+      // wants per-test isolation against `Array.prototype.push` mutation),
+      // resolve `globalThis` and ambient globals against the sandbox first.
+      // Falls through to the real host globals when no sandbox is given,
+      // preserving the historical fast path.
+      const g = globalSandbox ?? (globalThis as any);
+      if (intent.name === "globalThis") return () => g;
       // Fall back to the host's ambient global (e.g. `Array`, `Object`) when
       // deps does not override it. This makes `x.constructor === Array`
       // compare against the real host Array constructor. (#1065)
-      const ambient = (globalThis as any)[intent.name];
+      const ambient = g[intent.name];
       if (ambient !== undefined) return () => ambient;
       return () => {};
     }
@@ -4186,7 +4193,7 @@ export function buildImports(
   manifest: ImportDescriptor[],
   deps?: Record<string, any>,
   stringPool?: string[],
-  options?: { domRoot?: Element | ShadowRoot },
+  options?: { domRoot?: Element | ShadowRoot; globalSandbox?: Record<string, any> },
 ): {
   env: Record<string, Function>;
   "wasm:js-string": typeof jsString;
@@ -4217,7 +4224,7 @@ export function buildImports(
       continue;
     }
 
-    fn = resolveImport(imp.intent, deps, callbackState);
+    fn = resolveImport(imp.intent, deps, callbackState, options?.globalSandbox);
 
     // DOM containment wrapping
     if (options?.domRoot) {
