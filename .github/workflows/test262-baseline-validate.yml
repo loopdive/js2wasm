@@ -1,14 +1,16 @@
 name: Test262 baseline validate
 
-# Spot-check 50 random `pass` entries from the committed
-# `benchmarks/results/test262-current.jsonl` against current main HEAD on
-# every PR. If any sampled "pass" entry no longer passes, the workflow
-# fails the PR with a clean message pointing at refresh-committed-baseline.
+# Spot-check 50 random `pass` entries from the LIVE baseline in
+# `loopdive/js2wasm-baselines` against current PR HEAD on every PR.
 #
-# Why: the committed JSONL is what `dev-self-merge` Step 4 reads for
-# bucket-by-path regression analysis. If it gets corrupted (mass-rewritten
-# by a malformed merge, desynced by a workflow bug), bucket analysis
-# silently produces wrong answers and the merge gate becomes unreliable.
+# Why: the committed JSONL lags behind main during rapid-merge windows
+# (refresh-committed-baseline.yml needs a full ~20 min sharded run to
+# complete). Using the baselines repo directly eliminates false-positive
+# failures caused by stale committed data (#1218 follow-up).
+#
+# The baselines repo is updated by `promote-baseline` in test262-sharded.yml
+# after every successful push-to-main run — always at most one sharded-run
+# behind main, never behind a PR's own changes.
 #
 # Cost: ~1 minute per run (50 tests × ~1s). See #1218.
 
@@ -16,7 +18,6 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - "benchmarks/results/test262-current.jsonl"
       - "src/**"
       - "scripts/validate-test262-baseline.ts"
       - ".github/workflows/test262-baseline-validate.yml"
@@ -48,6 +49,16 @@ jobs:
           corepack prepare pnpm@10.30.2 --activate
 
       - run: pnpm install --frozen-lockfile
+
+      - name: Fetch fresh baseline from baselines repo
+        run: |
+          git clone --depth=1 https://github.com/loopdive/js2wasm-baselines.git /tmp/js2wasm-baselines 2>/dev/null || true
+          if [ -f /tmp/js2wasm-baselines/test262-current.jsonl ]; then
+            cp /tmp/js2wasm-baselines/test262-current.jsonl benchmarks/results/test262-current.jsonl
+            echo "Baseline fetched from js2wasm-baselines ($(wc -l < benchmarks/results/test262-current.jsonl) entries)."
+          else
+            echo "Warning: baselines repo unavailable — falling back to committed JSONL."
+          fi
 
       - name: Validate baseline
         env:
