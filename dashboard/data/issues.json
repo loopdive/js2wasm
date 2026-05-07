@@ -222,7 +222,7 @@
       "depends_on": [],
       "goal": "ci-hardening",
       "status": "ready",
-      "sprint": ""
+      "sprint": "50"
     },
     {
       "id": "1230",
@@ -303,7 +303,7 @@
       "depends_on": [],
       "goal": "core-semantics",
       "status": "ready",
-      "sprint": ""
+      "sprint": "50"
     },
     {
       "id": "1158",
@@ -313,17 +313,7 @@
       "depends_on": [],
       "goal": "core-semantics",
       "status": "ready",
-      "sprint": ""
-    },
-    {
-      "id": "1155",
-      "title": "test262 worker classifies Wasm-level user exceptions as compile_error (~1,415 tests misreported)",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "test-infrastructure",
-      "status": "ready",
-      "sprint": ""
+      "sprint": "50"
     },
     {
       "id": "1154",
@@ -689,7 +679,7 @@
       ],
       "goal": "spec-completeness",
       "status": "ready",
-      "sprint": ""
+      "sprint": "50"
     },
     {
       "id": "1011",
@@ -1069,7 +1059,7 @@
       "depends_on": [],
       "goal": "async-model",
       "status": "ready",
-      "sprint": ""
+      "sprint": "50"
     },
     {
       "id": "846",
@@ -1099,7 +1089,7 @@
       "depends_on": [],
       "goal": "platform",
       "status": "ready",
-      "sprint": ""
+      "sprint": "50"
     },
     {
       "id": "833",
@@ -1504,16 +1494,6 @@
   ],
   "inprogress": [
     {
-      "id": "1298",
-      "title": "Calling a function-typed value stored in a field/array/Map drops the call and returns null",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "npm-library-support",
-      "status": "in-progress",
-      "sprint": "50"
-    },
-    {
       "id": "1206",
       "title": "fix(build-pages): copy benchmark JSONs + frame-nav-sync.js to top-level pages-dist paths (404s on landing page)",
       "priority": "medium",
@@ -1645,6 +1625,16 @@
       "goal": "npm-library-support",
       "status": "done",
       "sprint": "49"
+    },
+    {
+      "id": "1298",
+      "title": "Calling a function-typed value stored in a field/array/Map drops the call and returns null",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "done",
+      "sprint": "50"
     },
     {
       "id": "1297",
@@ -1969,7 +1959,7 @@
       "depends_on": [],
       "goal": "npm-library-support",
       "status": "done",
-      "sprint": "47"
+      "sprint": "50"
     },
     {
       "id": "1267",
@@ -1979,7 +1969,7 @@
       "depends_on": [],
       "goal": "correctness",
       "status": "done",
-      "sprint": "47"
+      "sprint": "50"
     },
     {
       "id": "1262",
@@ -3164,6 +3154,16 @@
       "goal": "developer-experience",
       "status": "done",
       "sprint": "44"
+    },
+    {
+      "id": "1155",
+      "title": "test262 worker classifies Wasm-level user exceptions as compile_error (~1,415 tests misreported)",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "test-infrastructure",
+      "status": "done",
+      "sprint": "50"
     },
     {
       "id": "1153",

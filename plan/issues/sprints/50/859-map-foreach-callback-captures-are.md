@@ -2,7 +2,7 @@
 id: 859
 sprint: 50
 title: "Map.forEach callback captures are immutable snapshots -- causes infinite loop on mutation during iteration"
-status: ready
+status: in-progress
 created: 2026-03-28
 updated: 2026-05-07
 priority: high
@@ -106,7 +106,78 @@ The ref cell infrastructure already exists in closures.ts for the closure path. 
 
 ## Acceptance criteria
 
-- [ ] `map.forEach(function(v, k) { count++; })` correctly increments the outer `count`
-- [ ] The test `Map/prototype/forEach/iterates-values-deleted-then-readded.js` passes (3 iterations, then stops)
-- [ ] Remove `Map/forEach` entry from HANGING_TESTS in `tests/test262-runner.ts`
-- [ ] Array.forEach, Array.map, Array.filter, etc. callbacks also propagate mutable captures
+- [x] `map.forEach(function(v, k) { count++; })` correctly increments the outer `count`
+- [x] The test `Map/prototype/forEach/iterates-values-deleted-then-readded.js` passes (3 iterations, then stops)
+- [x] Remove `Map/forEach` entry from HANGING_TESTS in `tests/test262-runner.ts`
+- [x] Array.forEach, Array.map, Array.filter, etc. callbacks also propagate mutable captures
+
+## Resolution (2026-05-07, branch `issue-859-foreach-capture-mutation`)
+
+The codegen fix (Option A — ref cells for mutable captures) was already
+landed in `src/codegen/closures.ts`'s `compileArrowAsCallback`. What was
+missing was test coverage and the HANGING_TESTS removal.
+
+### Verified mechanism (already present in `compileArrowAsCallback`)
+
+`compileArrowAsCallback` analyses captures via `collectWrittenIdentifiers`
+to mark which referenced names the callback body writes. For each
+mutable capture it:
+
+1. **Capture struct field**: declared as `(ref null $ref_cell_T)` instead
+   of plain `T` (line ~2244).
+2. **Read inside `__cb_N`**: cast captures externref → struct ref → `struct.get`
+   the ref-cell field, store in local; register the local in
+   `cbFctx.boxedCaptures` so identifier reads/writes inside the body
+   route through the cell (lines ~2358-2386).
+3. **Construction at call site**: emit `struct.new $ref_cell` over the
+   current outer-local value, `local.tee` into a fresh `__cb_rc_<name>_<id>`
+   local (kept for the writeback), then push that ref into the capture
+   struct (lines ~2511-2530).
+4. **Writeback**: queue `local.get $rc → ref.as_non_null → struct.get $ref_cell.value
+   → local.set $outer` instructions in `pendingCallbackWritebacks`. After
+   `compileCallExpression` returns, `compileExpressionInner` flushes
+   them so the outer local sees the cell's post-callback value
+   (lines ~2538-2554, plus `expressions.ts:720-722`).
+
+Reads inside the callback body go through `compileIdentifier`'s
+`boxedCaptures` branch (`expressions/identifiers.ts:351`), which emits
+the ref-cell `struct.get`. Writes go through
+`compileAssignmentExpression`'s `boxedCaptures` branch
+(`expressions/assignment.ts:119`), which emits a null-guarded
+`struct.set` on the cell.
+
+Postfix `count++` is handled by `compilePostfixUnary`'s
+`boxedCaptures` branch (`expressions/unary.ts:1053`).
+
+### Tests added (`tests/issue-859.test.ts`)
+
+8/8 PASS:
+- function-expression callback `count = count + 1` propagates
+- arrow callback propagates
+- postfix `count++` propagates
+- direct assignment `count = 7` propagates
+- `Set.forEach` callback mutation propagates
+- `Array.forEach` regression guard (inline path)
+- test262 spec scenario: delete + re-add, count = 3 (not infinite loop)
+- two captured locals propagate independently
+
+All tests run with `setExports(instance.exports)` called before invoking
+the export. Without `setExports`, the runtime's `callback_maker`
+short-circuits on `exports?.[`__cb_${id}`]?.()` and the callback never
+actually runs (the JS-side wrapper still resolves and returns
+undefined). That was an easy diagnosis trap during this work — leaving
+this note for the next dev who tries to reproduce the bug.
+
+### HANGING_TESTS update (`tests/test262-runner.ts`)
+
+Removed `test/built-ins/Map/prototype/forEach/iterates-values-deleted-then-readded.js`
+from the hang-skip set. Replaced the line with a comment explaining
+the historical pre-fix behaviour and pointing to the ref-cell fix.
+
+### Files changed
+
+- `tests/test262-runner.ts` — drop the Map/forEach hang entry, add
+  explanatory comment.
+- `tests/issue-859.test.ts` — 8 new tests (Map/Set/Array forEach,
+  postfix `++`, direct assignment, multi-capture, the test262 spec
+  scenario).
