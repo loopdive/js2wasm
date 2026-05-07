@@ -21,6 +21,7 @@ import { coerceType, compileExpression } from "../shared.js";
 import { emitTdzCheck } from "../statements.js";
 import { ensureLateImport, flushLateImportShifts, shiftLateImportIndices } from "./late-imports.js";
 import { emitStringBuilderRead, getBuilderInfo } from "../string-builder.js";
+import { isBuiltinSubtype, isBuiltinTypeName } from "../builtin-tags.js";
 
 export function emitLocalTdzCheck(ctx: CodegenContext, fctx: FunctionContext, name: string, flagIdx: number): void {
   const throwRefErrIdx = ensureLateImport(ctx, "__throw_reference_error", [{ kind: "externref" }], []);
@@ -600,11 +601,73 @@ function resolveInstanceOfRHS(ctx: CodegenContext, rightExpr: ts.Expression): st
 }
 
 /**
+ * Try to statically evaluate `LHS instanceof <ctorName>` using the LHS TypeScript
+ * type and the built-in type-tag registry (#1325).
+ *
+ * Returns:
+ *   - `true`  → result is provably 1
+ *   - `false` → result is provably 0
+ *   - `undefined` → cannot decide statically, fall through to runtime check
+ *
+ * This lets the compiler emit `i32.const 0/1` (after compiling LHS for side
+ * effects) without consulting the `__instanceof` JS host import — important
+ * for standalone / WASI mode where the import is unavailable.
+ */
+function tryStaticInstanceOf(ctx: CodegenContext, expr: ts.BinaryExpression, ctorName: string): boolean | undefined {
+  if (!isBuiltinTypeName(ctorName)) return undefined;
+
+  // 1. LHS is a user class? A WasmGC user-class struct is never an instance of
+  //    a JS built-in (Array / Error / Map / ...).
+  const leftTsType = ctx.checker.getTypeAtLocation(expr.left);
+  const lhsSymbolName = leftTsType.getSymbol()?.name;
+  if (lhsSymbolName !== undefined) {
+    if (ctx.classTagMap.has(lhsSymbolName)) {
+      return false;
+    }
+    // 2. LHS is itself a built-in (or matches the constructor's instance-type
+    //    name) — apply hierarchy reasoning.
+    if (isBuiltinTypeName(lhsSymbolName)) {
+      return isBuiltinSubtype(lhsSymbolName, ctorName);
+    }
+  }
+
+  // 3. LHS is a numeric / boolean primitive → instanceof of any object type is
+  //    always false. (Skip strings — `"" instanceof String` is false but the
+  //    TS type may be the wrapper, so we leave that to runtime.)
+  if (isNumberType(leftTsType) || isBooleanType(leftTsType)) {
+    return false;
+  }
+
+  return undefined;
+}
+
+/**
+ * Emit a constant-result `instanceof` after still compiling the LHS for side
+ * effects. Used by `compileHostInstanceOf` when `tryStaticInstanceOf` resolves
+ * the answer at compile time.
+ */
+function emitConstantInstanceOf(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  expr: ts.BinaryExpression,
+  result: boolean,
+): ValType {
+  const leftType = compileExpression(ctx, fctx, expr.left);
+  if (leftType) fctx.body.push({ op: "drop" });
+  fctx.body.push({ op: "i32.const", value: result ? 1 : 0 });
+  return { kind: "i32" };
+}
+
+/**
  * Compile `expr instanceof RHS` using a host import when the RHS class is not
  * in our struct system (e.g., TypeError, Array, Function, Promise). (#738)
  * Passes the value as externref and the constructor name as a string constant,
  * delegating to `__instanceof(value, ctorName) -> i32` host import which
  * looks up the constructor on the global object.
+ *
+ * For built-in RHS (Array, Error, *Error, Map, ...), tries `tryStaticInstanceOf`
+ * first to short-circuit when the LHS TS type makes the answer compile-time
+ * obvious — important for standalone/WASI mode (#1325).
  */
 function compileHostInstanceOf(ctx: CodegenContext, fctx: FunctionContext, expr: ts.BinaryExpression): ValType {
   // Resolve constructor name from the RHS expression (simple identifiers only)
@@ -619,6 +682,13 @@ function compileHostInstanceOf(ctx: CodegenContext, fctx: FunctionContext, expr:
     if (leftType) fctx.body.push({ op: "drop" });
     fctx.body.push({ op: "i32.const", value: 0 });
     return { kind: "i32" };
+  }
+
+  // Static fast-path: try compile-time evaluation against the built-in
+  // type-tag registry (#1325). When this resolves, we skip the host call.
+  const staticResult = tryStaticInstanceOf(ctx, expr, ctorName);
+  if (staticResult !== undefined) {
+    return emitConstantInstanceOf(ctx, fctx, expr, staticResult);
   }
 
   // Ensure the __instanceof host import exists
@@ -641,6 +711,12 @@ function compileHostInstanceOf(ctx: CodegenContext, fctx: FunctionContext, expr:
   const leftType = compileExpression(ctx, fctx, expr.left);
   if (!leftType) {
     fctx.body.push({ op: "ref.null.extern" });
+  } else if (leftType.kind === "i32" || leftType.kind === "f64") {
+    // Stack-level fast path: a primitive numeric value is never an instance of
+    // any constructor — drop and emit false. (Avoids a host call + boxing.)
+    fctx.body.push({ op: "drop" });
+    fctx.body.push({ op: "i32.const", value: 0 });
+    return { kind: "i32" };
   } else if (leftType.kind !== "externref") {
     coerceType(ctx, fctx, leftType, { kind: "externref" });
   }
