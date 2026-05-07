@@ -71,7 +71,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 concurrency:
-  group: test262-sharded-${{ github.event.pull_request.number || github.ref }}
+  group: test262-sharded
   cancel-in-progress: false
 
 jobs:
