@@ -88,3 +88,34 @@ Repeat the PR #254 approach of widening class-method binding-pattern
 params with initializers to externref. The typed ref_null path must
 handle this correctly, or a more targeted fix is needed in
 `emitExternrefDestructureGuard` / `destructureParamObjectExternref`.
+
+## Implementation Plan
+
+**Bundled with #1158.** The full implementation plan lives in
+`plan/issues/sprints/50/1158-destructureparamarray-fallback-eagerly-consumes-iterators.md`
+under "## Implementation Plan (BUNDLED — covers #1158 and #1159)".
+
+The fix for this issue specifically is **Change 1.2** in that plan —
+the nested-empty-pattern-with-initializer bypass in
+`destructureParamArray`. Summary:
+
+- Root cause: when the inner pattern is `[]` and the outer slot is
+  undefined, `emitNestedBindingDefault` runs the initializer and
+  coerces its externref result to the *outer slot's* declared type
+  (a vec or tuple struct). That coercion routes through
+  `buildVecFromExternref` / `buildTupleFromIterableFallback` in
+  `src/codegen/type-coercion.ts`, both of which call
+  `__array_from_iter(iter)` which calls `iter.next()`, incrementing
+  `iterCount`.
+- Fix: in `src/codegen/destructuring-params.ts` line 1128-1153 (and
+  the symmetric paths at 562-566 + 1027-1031), detect when the
+  nested binding name is an empty `ArrayBindingPattern`. Hold the
+  initializer's result as **externref** (no vec/tuple coercion) and
+  pass `elemType = { kind: "externref" }` to the recursive
+  `destructureParamArray`. The empty-pattern short-circuit at line
+  647 then fires without materialization.
+- Verification: Test 4 of `probe-1127-exact.test.ts` returns 0;
+  `meth-static-ary-ptrn-elem-ary-empty-init.js` flips to pass.
+
+See #1158's plan for exact code, helpers (`isPatternEmptyOnly`),
+edge cases, and the full Wasm IR walk-through.
