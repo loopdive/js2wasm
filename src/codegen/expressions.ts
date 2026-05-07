@@ -746,6 +746,38 @@ function compileExpressionInner(ctx: CodegenContext, fctx: FunctionContext, expr
       return callResult;
     }
     if (isAsyncCallExpression(ctx, expr)) {
+      // (#1313) `await asyncCall()` would otherwise leave a Promise object
+      // on the stack — string concatenation / arithmetic / property access
+      // on the result then sees `[object Promise]` because js2wasm has no
+      // synchronous Promise unwrap (would need JSPI / stack-switching).
+      //
+      // Workaround: skip the `Promise.resolve(...)` wrap when the call's
+      // parent is an `AwaitExpression`. The wasm async function body
+      // (`closures.ts:1165`) already returns the raw `T` value (not
+      // `Promise<T>`), so leaving it on the stack matches what await's
+      // passthrough lowering expects. For non-await consumers
+      // (`asyncCall().then(...)`, `const p = asyncCall();`) the wrap still
+      // fires and produces a real Promise that JS host code can chain off.
+      //
+      // This is the asymmetric strategy 1 from the issue: await as
+      // raw-T consumer, every other consumer as Promise consumer. Both
+      // shapes are observable in test262 today; this PR keeps both
+      // working while eliminating the `[object Promise]` stringification.
+      let parent: ts.Node | undefined = expr.parent;
+      while (
+        parent &&
+        (ts.isParenthesizedExpression(parent) ||
+          ts.isAsExpression(parent) ||
+          ts.isNonNullExpression(parent) ||
+          ts.isTypeAssertionExpression(parent))
+      ) {
+        parent = parent.parent;
+      }
+      if (parent && ts.isAwaitExpression(parent)) {
+        // Skip the wrap; await's passthrough lowering will leave the raw
+        // value on the stack for the consumer.
+        return callResult;
+      }
       const wrappedType = wrapAsyncReturn(ctx, fctx, callResult);
       // Wrap the call+Promise.resolve in try/catch so synchronous throws from
       // the async function body (e.g. TDZ ReferenceError during default param
