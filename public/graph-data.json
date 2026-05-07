@@ -18027,7 +18027,7 @@
       "title": "Wasm validation: closure references invalid global index when compiling lodash flow.js",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "50",
       "depends_on": [],
       "files": [],
@@ -18075,12 +18075,23 @@
       "title": "ElementAccessExpression call on closure-typed array drops call: mws[idx](c, next) emits ref.null",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "50",
       "depends_on": [],
       "files": [],
       "goal": "npm-library-support",
       "cluster": "npm-library-support"
+    },
+    {
+      "id": "1307",
+      "title": "ci: serialize Test262 Sharded across PRs to eliminate runner-pool contention",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "cluster": "sprint-50"
     }
   ],
   "links": [

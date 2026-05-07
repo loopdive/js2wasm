@@ -66,37 +66,35 @@ describe("#1292 lodash Tier 2 stress test — memoize, flow, partial, negate", (
   );
 
   /**
-   * Tier 2b — `flow.js`: composes an array of functions via reduce. The
-   * compiled module fails Wasm VALIDATION (not instantiation) with:
-   *   "Compiling function #945:\"__closure_837\" failed:
-   *    Invalid global index: 266 @+117088"
-   * The compiler emits a closure that references a global index past the
-   * declared range. Probably a global-index allocation issue when many
-   * closures (lodash has hundreds in the transitive graph) compete for the
-   * same global table. Tracked as **#1302**.
+   * Tier 2b — `flow.js`: composes an array of functions via reduce. Was
+   * failing Wasm VALIDATION with "Invalid global index: 266 @+117088" because
+   * `fixupModuleGlobalIndices` over-shifted nested instr arrays that were
+   * reachable from multiple top-level body paths (#1302). Fixed by deduping
+   * shifts per fixup call via a WeakSet of visited instructions.
    */
-  it.skip("Tier 2b flow — closure references invalid global index, fails Wasm validation (#1302)", async () => {
+  runIfInstalled("Tier 2b flow — compiles + validates (#1302 fix)", async () => {
     const result = compileProject("node_modules/lodash-es/flow.js", { allowJs: true });
     expect(result.success).toBe(true);
-    // Currently throws synchronously from `new WebAssembly.Module(...)`:
-    //   "Invalid global index: 266 @+117088"
     expect(() => new WebAssembly.Module(result.binary)).not.toThrow();
   });
 
   /**
-   * Tier 2c — `partial.js`: partial application via closure capture. The
-   * compiled module fails Wasm VALIDATION with:
-   *   "Compiling function #94:\"mergeData\" failed:
-   *    f64.trunc[0] expected type f64, found global.get of type externref @+36700"
-   * The codegen for `mergeData` emits an `f64.trunc` whose operand is a
-   * global of type externref instead of f64 — likely a missing externref→f64
-   * unbox before a numeric op in the lodash internals. Tracked as **#1303**.
+   * Tier 2c — `partial.js`: partial application via closure capture.
+   * Previously failed Wasm validation in `mergeData` with:
+   *   "f64.trunc[0] expected type f64, found global.get of type externref"
+   * Root-caused (#1303 / #1305) to a leak in `fixupModuleGlobalIndices`:
+   * recursively-shifted nested bodies were not added to the per-call
+   * `shifted` set, so duplicate `savedBodies` entries caused the same
+   * `global.get` instructions inside an `||` / `&&` side-buffer to be
+   * shifted multiple times. The over-shift drove a numeric global-get
+   * past the last numeric module global into the externref tail of the
+   * global table, so the legacy `compileBitwiseBinaryOp` site (which
+   * had emitted `f64.trunc` against what was f64 at compile time) ended
+   * up validating against an externref operand at link time.
    */
-  it.skip("Tier 2c partial — f64.trunc emitted on externref operand, fails Wasm validation (#1303)", async () => {
+  runIfInstalled("Tier 2c partial — compiles + validates after #1303/#1305 fix", async () => {
     const result = compileProject("node_modules/lodash-es/partial.js", { allowJs: true });
     expect(result.success).toBe(true);
-    // Currently throws:
-    //   "f64.trunc[0] expected type f64, found global.get of type externref"
     expect(() => new WebAssembly.Module(result.binary)).not.toThrow();
   });
 
