@@ -127,6 +127,73 @@ export function emitInlineMathFunctions(ctx: CodegenContext, needed: Set<string>
     return idx;
   }
 
+  // ─── Math.random ──────────────────────────────────────────────────
+  // #1322: WASI/standalone path. Uses `wasi_snapshot_preview1.random_get`
+  // (registered as an import in declarations.ts:collectMathImports finalize)
+  // to fill 8 bytes of linear memory, reads them as i64, masks to 53 bits,
+  // and multiplies by 2^-53 to produce a float in [0, 1).
+  //
+  // The scratch buffer lives at memory offset 64 — well inside the
+  // 1024-byte reserved area registerWasiImports sets aside via the
+  // bump pointer (which initialises to 1024). offsets 0..15 are used by
+  // __wasi_write_string for iovec/nwritten; we pick 64 to stay clear of
+  // any future stdout/stderr work.
+  if (needed.has("random")) {
+    const randomGetIdx = ctx.funcMap.get("random_get");
+    if (randomGetIdx === undefined) {
+      // collectMathImports / collectMathImports-finalize should have registered
+      // it before we got here. If missing, fall back to a constant 0 — better
+      // than crashing in instantiation, and the test suite will catch it.
+      addMathFunc({
+        name: "Math_random",
+        params: [],
+        results: f64Result,
+        locals: [],
+        body: [f64c(0)],
+      });
+    } else {
+      // The IR doesn't include `i64.load`, so we read 8 bytes as TWO `i32.load`s
+      // (low half at offset 0, high half at offset 4), zero-extend each to i64,
+      // and combine as `(hi << 32) | lo`. Then shift right 11 to keep the upper
+      // 53 significant bits and multiply by 2^-53 → uniform float in [0, 1).
+      addMathFunc({
+        name: "Math_random",
+        params: [],
+        results: f64Result,
+        locals: [],
+        body: [
+          // random_get(ptr=64, len=8) — fills memory[64..72] with entropy
+          i32const(64),
+          i32const(8),
+          { op: "call", funcIdx: randomGetIdx } as Instr,
+          { op: "drop" } as Instr, // ignore errno (best-effort)
+          // Low 32 bits: i64.extend_i32_u(i32.load offset=0 align=2)
+          i32const(64),
+          { op: "i32.load", offset: 0, align: 2 } as Instr,
+          { op: "i64.extend_i32_u" } as Instr,
+          // High 32 bits: i64.extend_i32_u(i32.load offset=4) << 32
+          i32const(64),
+          { op: "i32.load", offset: 4, align: 2 } as Instr,
+          { op: "i64.extend_i32_u" } as Instr,
+          { op: "i64.const", value: 32n } as Instr,
+          { op: "i64.shl" } as Instr,
+          // OR low + high
+          { op: "i64.or" } as Instr,
+          // Shift right 11 → keep upper 53 bits in unsigned i64
+          { op: "i64.const", value: 11n } as Instr,
+          { op: "i64.shr_u" } as Instr,
+          // Convert to f64 and multiply by 2^-53. After `shr_u 11` the value
+          // fits in 53 unsigned bits (max ~9e15), so `convert_i64_s` (which the
+          // backend supports — `convert_i64_u` is not in the IR union) gives
+          // an identical result.
+          { op: "f64.convert_i64_s" } as Instr,
+          f64c(1 / 9007199254740992), // 2^-53
+          mul,
+        ],
+      });
+    }
+  }
+
   // Determine which core functions we need based on what's requested
   const needSinCos = needed.has("sin") || needed.has("cos") || needed.has("tan");
   const needExp =

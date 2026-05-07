@@ -2754,6 +2754,7 @@ function registerWasiImports(ctx: CodegenContext, sourceFile: ts.SourceFile): vo
   // Check if source uses console.log/warn/error, process.exit, or node:fs functions
   let needsFdWrite = false;
   let needsProcExit = false;
+  let needsRandomGet = false;
 
   // ctx.wasiNodeFsFuncs is populated from the original source before import preprocessing
   // (see detectNodeFsImports in compiler.ts)
@@ -2775,6 +2776,14 @@ function registerWasiImports(ctx: CodegenContext, sourceFile: ts.SourceFile): vo
         propAccess.name.text === "exit"
       ) {
         needsProcExit = true;
+      }
+      // #1322: Math.random() in WASI mode uses random_get for entropy
+      if (
+        ts.isIdentifier(propAccess.expression) &&
+        propAccess.expression.text === "Math" &&
+        propAccess.name.text === "random"
+      ) {
+        needsRandomGet = true;
       }
     }
     forEachChild(node, visit);
@@ -2801,6 +2810,15 @@ function registerWasiImports(ctx: CodegenContext, sourceFile: ts.SourceFile): vo
     const procExitType = addFuncType(ctx, [{ kind: "i32" }], [], "$wasi_proc_exit");
     addImport(ctx, "wasi_snapshot_preview1", "proc_exit", { kind: "func", typeIdx: procExitType });
     ctx.wasiProcExitIdx = ctx.funcMap.get("proc_exit")!;
+  }
+
+  // #1322: random_get(buf_ptr: i32, buf_len: i32) -> errno (i32)
+  // Used by `Math_random` (emitted in math-helpers.ts:emitInlineMathFunctions).
+  // Registered HERE — before any defined helpers — so the late-import shift
+  // bug (CLAUDE.md "addUnionImports" note) doesn't break `__str_*` indices.
+  if (needsRandomGet) {
+    const randomGetType = addFuncType(ctx, [{ kind: "i32" }, { kind: "i32" }], [{ kind: "i32" }], "$wasi_random_get");
+    addImport(ctx, "wasi_snapshot_preview1", "random_get", { kind: "func", typeIdx: randomGetType });
   }
 
   // path_open(fd: i32, dirflags: i32, path: i32, path_len: i32, oflags: i32,
@@ -3719,9 +3737,15 @@ function collectMathImports(ctx: CodegenContext, sourceFile: ts.SourceFile): voi
 
   for (const method of needed) {
     if (method === "random") {
-      // Math.random requires entropy — must remain a host import
-      const typeIdx = addFuncType(ctx, [], [{ kind: "f64" }]);
-      addImport(ctx, "env", `Math_${method}`, { kind: "func", typeIdx });
+      // #1322: in WASI/standalone mode, route random through WASI random_get
+      // (the import is registered early by registerWasiImports). In JS-host
+      // mode keep the host import.
+      if (ctx.wasi) {
+        ctx.pendingMathMethods.add(method);
+      } else {
+        const typeIdx = addFuncType(ctx, [], [{ kind: "f64" }]);
+        addImport(ctx, "env", `Math_${method}`, { kind: "func", typeIdx });
+      }
     } else {
       // All other math methods get pure Wasm implementations
       ctx.pendingMathMethods.add(method);
