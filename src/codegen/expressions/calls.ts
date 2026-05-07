@@ -21,6 +21,7 @@ import {
   getOrCreateFuncRefWrapperTypes,
 } from "../closures.js";
 import { popBody, pushBody } from "../context/bodies.js";
+import { reportError } from "../context/errors.js";
 import { allocLocal, allocTempLocal, getLocalType, releaseTempLocal } from "../context/locals.js";
 import type { ClosureInfo, CodegenContext, FunctionContext } from "../context/types.js";
 import {
@@ -818,6 +819,26 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       fctx.body.push({ op: "call", funcIdx: evalIdx });
       return { kind: "externref" };
     }
+  }
+
+  // import.defer(...) / import.source(...) — Stage 3 proposals not implemented.
+  // Without this guard, falling through to type-resolution lower in the call
+  // pipeline triggers `Debug Failure: Trying to get the type of import.defer
+  // in import.defer(...)` from the TypeScript checker (it doesn't know how to
+  // type these meta-properties). Emit a clean compile error instead — for
+  // negative parse/early SyntaxError tests this counts as the expected error
+  // (compilation rejecting the source). #1315.
+  if (
+    ts.isMetaProperty(expr.expression) &&
+    expr.expression.keywordToken === ts.SyntaxKind.ImportKeyword &&
+    (expr.expression.name.text === "defer" || expr.expression.name.text === "source")
+  ) {
+    reportError(
+      ctx,
+      expr,
+      `SyntaxError: import.${expr.expression.name.text}(...) is not supported (Stage 3 proposal — import-defer / source-phase-imports)`,
+    );
+    return null;
   }
 
   // Dynamic import() — delegate to __dynamic_import host import.

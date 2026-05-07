@@ -1415,6 +1415,24 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
       }
     }
 
+    // ── import.defer(...) / import.source(...) — Stage 3 proposals ──
+    // Reported as SyntaxError so negative parse/early test262 tests covering
+    // the import-defer / source-phase-imports proposals correctly count as
+    // detecting the unsupported syntax. This walk runs over the whole AST
+    // (including unreferenced async arrow bodies) so we catch the constructs
+    // even in dead code where the codegen pipeline never visits them. (#1315)
+    if (
+      ts.isCallExpression(node) &&
+      ts.isMetaProperty(node.expression) &&
+      node.expression.keywordToken === ts.SyntaxKind.ImportKeyword &&
+      (node.expression.name.text === "defer" || node.expression.name.text === "source")
+    ) {
+      addError(
+        node,
+        `SyntaxError: import.${node.expression.name.text}(...) is not supported (Stage 3 proposal — import-defer / source-phase-imports)`,
+      );
+    }
+
     // ── new import() — always a SyntaxError ────────────────────────
     // ES spec: ImportCall is a CallExpression, not a NewExpression target.
     // Also applies to import.source() and import.defer() proposals.
