@@ -2590,6 +2590,33 @@ export function generateMultiModule(
     mod.stringLiteralValues = ctx.stringLiteralValues;
     mod.asyncFunctions = ctx.asyncFunctions;
 
+    // Emit exported struct field getter helpers for the runtime (mirrors
+    // generateModule path — #1308 surfaced that multi-source projects
+    // were missing these export emits).
+    emitStructFieldGetters(ctx);
+
+    // Emit __vec_get / __vec_len exports for runtime iterator fallback.
+    emitVecAccessExports(ctx);
+
+    // Emit __dv_byte_{len,get,set} exports for DataView host runtime.
+    emitDataViewByteExports(ctx);
+
+    // Emit __test_str_from_externref / __test_str_to_externref helpers
+    // (no-op unless ctx.testRuntime && ctx.nativeStrings).
+    emitTestRuntimeStringHelpers(ctx);
+
+    // Emit __call_@@iterator export for runtime Symbol.iterator dispatch.
+    emitIteratorMethodExport(ctx);
+
+    // Emit __call_fn_0 export for calling zero-arg closures from JS (#851, #1308).
+    emitClosureCallExport(ctx);
+
+    // Emit __call_fn_1 export for calling one-arg closures from JS (#1090, #1308).
+    emitClosureCallExport1(ctx);
+
+    // Emit __call_toString/__call_valueOf exports for ToPrimitive dispatch.
+    emitToPrimitiveMethodExports(ctx);
+
     // WASI: export _start entry point (before dead import elimination adjusts indices)
     if (ctx.wasi) {
       addWasiStartExport(ctx);

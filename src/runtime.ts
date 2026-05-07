@@ -4274,6 +4274,84 @@ export function buildImports(
   return result;
 }
 
+/**
+ * Wrap raw `instance.exports` so that any Wasm closure struct returned from
+ * a callable export becomes a JS-callable function (#1308).
+ *
+ * Without this wrapper, `exports.makeFn()` returns the raw Wasm closure
+ * struct — `typeof` reports `"object"`, the value is `[Object: null prototype] {}`,
+ * and direct invocation throws "is not a function". With the wrapper, the
+ * struct is replaced by a JS function that dispatches via the
+ * `__call_fn_N` exports the codegen emits (`__call_fn_0` for zero-arg
+ * closures, `__call_fn_1` for one-arg).
+ *
+ * Limitations / scope:
+ * - 0-arg closure returns: `wrapped()` works via `__call_fn_0`.
+ * - 1-arg closure returns: `wrapped(x)` works via `__call_fn_1`.
+ * - Variadic closures (`function(...args){...}`) are lifted as 0-arg
+ *   functions whose body reads `arguments`. Without a JS-side path to
+ *   populate `__extras_argv` + `__argc` before invoking, calling
+ *   `wrapped(2)` falls through to `__call_fn_0` and the closure body
+ *   sees an empty arguments object. Tracked as a follow-up.
+ * - Returned value from the wrapped closure that is itself a Wasm
+ *   struct is NOT recursively wrapped — only direct returns from
+ *   top-level exports. Recursive wrapping can be added if needed.
+ *
+ * Usage:
+ * ```ts
+ * const { instance } = await WebAssembly.instantiate(binary, imports);
+ * const exports = wrapExports(instance.exports);
+ * const negated = exports.negate(jsFn);  // typeof === "function"
+ * negated();                              // dispatches via __call_fn_0
+ * ```
+ */
+export function wrapExports(rawExports: WebAssembly.Exports): Record<string, any> {
+  const callFn0 = rawExports.__call_fn_0 as ((closure: any) => any) | undefined;
+  const callFn1 = rawExports.__call_fn_1 as ((closure: any, arg: any) => any) | undefined;
+
+  // Build a JS-callable wrapper around a Wasm closure struct.
+  const makeCallableClosureWrapper = (closure: any): ((...args: any[]) => any) => {
+    return function (this: any, ...args: any[]): any {
+      if (args.length === 1 && typeof callFn1 === "function") {
+        return callFn1(closure, args[0]);
+      }
+      if (typeof callFn0 === "function") {
+        // 0-arg dispatch — also the fallback for higher-arity calls until
+        // __extras_argv plumbing from JS lands. The closure body still
+        // executes; user-supplied args are simply not propagated.
+        return callFn0(closure);
+      }
+      throw new TypeError("Wasm closure returned to JS host is not callable: __call_fn_0/__call_fn_1 not exported");
+    };
+  };
+
+  const wrapped: Record<string, any> = Object.create(null);
+  for (const key of Object.keys(rawExports)) {
+    const val = (rawExports as Record<string, any>)[key];
+    // Pass non-callable exports (Globals, Memory, Tag) through unchanged.
+    if (typeof val !== "function") {
+      wrapped[key] = val;
+      continue;
+    }
+    // Pass internal helpers through unchanged so the runtime can still
+    // reach them by name (`__call_fn_0`, `__vec_get`, etc.).
+    if (key.startsWith("__")) {
+      wrapped[key] = val;
+      continue;
+    }
+    // Wrap user-visible callable exports — when they return a Wasm closure
+    // struct, replace it with a JS-callable proxy.
+    wrapped[key] = function (this: any, ...args: any[]): any {
+      const result = (val as Function).apply(this, args);
+      if (result != null && _isWasmStruct(result)) {
+        return makeCallableClosureWrapper(result);
+      }
+      return result;
+    };
+  }
+  return wrapped;
+}
+
 /** Instantiate a Wasm module, trying native wasm:js-string builtins first
  *  (Chrome 130+, Firefox 135+), falling back to the JS polyfill.
  *  Uses importedStringConstants to provide string literals as globals. */
