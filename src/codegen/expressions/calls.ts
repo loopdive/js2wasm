@@ -6780,10 +6780,49 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         sigParamWasmTypes.push(resolveWasmType(ctx, paramType));
       }
 
-      // Eagerly create the wrapper struct + funcref pair so any closure
-      // assigned later in this module reuses it via funcRefWrapperCache.
-      const resultTypes = sigRetWasm ? [sigRetWasm] : [];
-      const wrapperTypes = getOrCreateFuncRefWrapperTypes(ctx, sigParamWasmTypes, resultTypes);
+      // (#1298 PR #231 fix) Look up an existing wrapper struct/funcref pair
+      // for this signature WITHOUT registering a new one. The earlier draft
+      // of fix #3 called `getOrCreateFuncRefWrapperTypes` here to get
+      // order-independent dispatch, but registering a fresh wrapper struct
+      // at this fallback site polluted `closureInfoByTypeIdx` with a struct
+      // that wasn't actually used by any compiled closure. Downstream
+      // funcref-candidate scans (e.g. the identifier-callable-param path's
+      // multi-funcref dispatch at calls.ts:5106) then picked the unused
+      // wrapper as a candidate, mismatching the closure that was actually
+      // stored — `language/statements/function/S13_A18.js` reproduced this
+      // as a null-deref inside a lifted closure body. Conservative fix:
+      // only enter the dispatch path when a closure of this signature has
+      // already been registered (the original scan-only behavior), and
+      // gate THAT dispatch with ref.test. If no match, fall through to the
+      // graceful tail at the end of compileCallExpression.
+      let matchedClosureInfo: ClosureInfo | undefined;
+      let matchedStructTypeIdx: number | undefined;
+      for (const [typeIdx, info] of ctx.closureInfoByTypeIdx) {
+        if (info.paramTypes.length !== sigParamCount) continue;
+        if (sigRetWasm === null && info.returnType !== null) continue;
+        if (sigRetWasm !== null && info.returnType === null) continue;
+        if (sigRetWasm !== null && info.returnType !== null && sigRetWasm.kind !== info.returnType.kind) continue;
+        let paramsMatch = true;
+        for (let i = 0; i < sigParamCount; i++) {
+          if (sigParamWasmTypes[i]!.kind !== info.paramTypes[i]!.kind) {
+            paramsMatch = false;
+            break;
+          }
+        }
+        if (paramsMatch) {
+          matchedClosureInfo = info;
+          matchedStructTypeIdx = typeIdx;
+          break;
+        }
+      }
+      const wrapperTypes =
+        matchedClosureInfo && matchedStructTypeIdx !== undefined
+          ? {
+              closureInfo: matchedClosureInfo,
+              structTypeIdx: matchedStructTypeIdx,
+              liftedFuncTypeIdx: matchedClosureInfo.funcTypeIdx,
+            }
+          : null;
 
       if (wrapperTypes) {
         const closureInfo = wrapperTypes.closureInfo;
