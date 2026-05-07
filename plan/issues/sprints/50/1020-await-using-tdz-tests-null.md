@@ -2,9 +2,11 @@
 id: 1020
 sprint: 50
 title: "await-using TDZ tests: null_deref crash in assert_throwsAsync (4 false positives)"
-status: ready
+status: done
 created: 2026-04-11
 updated: 2026-05-07
+completed: 2026-05-07
+note: "Resolved as side-effect of #990 (await-using compilation). All 4 tests show pass in 2026-05-07 baseline."
 priority: medium
 feasibility: medium
 reasoning_effort: high
