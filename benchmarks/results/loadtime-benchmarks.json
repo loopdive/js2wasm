@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-01T10:22:45.459Z",
+  "timestamp": "2026-05-07T20:41:23.610Z",
   "benchmarks": [
     {
       "name": "fib",
@@ -1781,7 +1781,8 @@
         "display:grid;grid-template-columns:repeat(7,1fr);text-align:center;font-size:0.6rem;color:#666;margin-top:4px",
         "display:flex;align-items:center;justify-content:space-between;margin-top:0.75rem;font-size:0.85rem",
         "display:flex;align-items:center;justify-content:space-between;margin-top:0.5rem",
-        "padding:8px 28px;background:#fff;color:#111;border-radius:999px;cursor:pointer;font-size:0.9rem;font-weight:600"
+        "padding:8px 28px;background:#fff;color:#111;border-radius:999px;cursor:pointer;font-size:0.9rem;font-weight:600",
+        "timestamp"
       ]
     }
   ]

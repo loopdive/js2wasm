@@ -49,7 +49,7 @@ WASI HTTP enables serverless edge functions.
 | **704** | Wasm validation: immutable global set (284 CE) | 0 | done | high |
 | **799** | - Prototype chain subsystem (~2,500 tests) | 38 | done | critical |
 | **807** | Extract Date/Math/console built-ins from expressions.ts → builtins.ts | Backlog | ready | medium |
-| **837** | Stage 3: Map/WeakMap upsert — getOrInsert, getOrInsertComputed | 50 | ready | low |
+| **837** | Stage 3: Map/WeakMap upsert — getOrInsert, getOrInsertComputed | 50 | in-progress | low |
 | **863** | decodeURI/encodeURI failures: #0-0 error pattern (70 FAIL) | 35 | done | low |
 | **865** | Console wrapper for fd_write in JavaScript environments | Backlog | ready | medium |
 | **885** | README: update with real conformance numbers, architecture diagram, comparison table | 33 | done | high |

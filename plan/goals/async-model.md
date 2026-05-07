@@ -63,7 +63,7 @@ promise infrastructure.
 | **851** | Iterator close protocol not implemented (147 tests) | 31 | done | high |
 | **854** | Iterator protocol: null next/return/throw methods (126 tests) | 44 | done | high |
 | **855** | Promise resolution and async error handling (210 tests) | 35 | done | high |
-| **859** | Map.forEach callback captures are immutable snapshots -- causes infinite loop on mutation during iteration | 50 | ready | high |
+| **859** | Map.forEach callback captures are immutable snapshots -- causes infinite loop on mutation during iteration | 50 | done | high |
 | **860** | Promise executor and property-assigned functions not compiled as host callbacks | Backlog | ready | medium |
 | **875** | Research: ES standard support matrix for all JS-to-Wasm engines | 0 | done | medium |
 | **919** | Fix direct-eval arguments regressions introduced since the April 1 test262 baseline | 37 | done | high |
