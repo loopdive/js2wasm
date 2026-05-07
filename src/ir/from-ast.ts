@@ -3212,6 +3212,20 @@ function lowerBinary(expr: ts.BinaryExpression, cx: LowerCtx): IrValueId {
   const isF64 = ltVal.kind === "f64";
   const isI32 = ltVal.kind === "i32";
 
+  // #1126 Stage 3 — when both operands are i32-typed, the operands' IR
+  // signedness facts (set by Stage 1 when lowering the lattice) decide
+  // signed-vs-unsigned ops. Both operands "signed" means:
+  //   • bool/compare results (default-signed via `irVal`) → signed cmp
+  //   • i32-domain (int32) values → signed cmp, signed shift, signed cast
+  // Both operands "unsigned" (from u32-domain values) → unsigned variants.
+  // Mixed signedness on the same i32 storage kind widens to signed
+  // (the conservative choice — matches `i32.shr_s` semantics for values
+  // that fit in [-2^31, 2^31)). The `?? true` mirrors `irTypeEquals`'s
+  // default-is-signed convention.
+  const lhsSigned = lt.kind === "val" ? (lt.signed ?? true) : true;
+  const rhsSigned = rt.kind === "val" ? (rt.signed ?? true) : true;
+  const i32Unsigned = isI32 && !lhsSigned && !rhsSigned;
+
   let binop: IrBinop;
   let resultType: IrType;
 
@@ -3236,24 +3250,28 @@ function lowerBinary(expr: ts.BinaryExpression, cx: LowerCtx): IrValueId {
       binop = "f64.div";
       resultType = irVal({ kind: "f64" });
       break;
+    // #1126 Stage 3 — magnitude compares accept f64 OR i32 operands.
+    // i32 operands emit native `i32.{lt,le,gt,ge}_{s,u}` based on
+    // signedness; f64 keeps the legacy `f64.lt` etc. The result is
+    // always i32 (bool).
     case ts.SyntaxKind.LessThanToken:
-      requireF64(isF64, "<", cx.funcName);
-      binop = "f64.lt";
+      if (!isF64 && !isI32) requireF64(isF64, "<", cx.funcName);
+      binop = isF64 ? "f64.lt" : i32Unsigned ? "i32.lt_u" : "i32.lt_s";
       resultType = irVal({ kind: "i32" });
       break;
     case ts.SyntaxKind.LessThanEqualsToken:
-      requireF64(isF64, "<=", cx.funcName);
-      binop = "f64.le";
+      if (!isF64 && !isI32) requireF64(isF64, "<=", cx.funcName);
+      binop = isF64 ? "f64.le" : i32Unsigned ? "i32.le_u" : "i32.le_s";
       resultType = irVal({ kind: "i32" });
       break;
     case ts.SyntaxKind.GreaterThanToken:
-      requireF64(isF64, ">", cx.funcName);
-      binop = "f64.gt";
+      if (!isF64 && !isI32) requireF64(isF64, ">", cx.funcName);
+      binop = isF64 ? "f64.gt" : i32Unsigned ? "i32.gt_u" : "i32.gt_s";
       resultType = irVal({ kind: "i32" });
       break;
     case ts.SyntaxKind.GreaterThanEqualsToken:
-      requireF64(isF64, ">=", cx.funcName);
-      binop = "f64.ge";
+      if (!isF64 && !isI32) requireF64(isF64, ">=", cx.funcName);
+      binop = isF64 ? "f64.ge" : i32Unsigned ? "i32.ge_u" : "i32.ge_s";
       resultType = irVal({ kind: "i32" });
       break;
     case ts.SyntaxKind.EqualsEqualsEqualsToken:
@@ -3296,33 +3314,44 @@ function lowerBinary(expr: ts.BinaryExpression, cx: LowerCtx): IrValueId {
     // arm dispatches on the `js.*` prefix to emit the multi-instr
     // sequence using a per-function scratch local pair. Result is
     // always f64.
+    //
+    // #1126 Stage 3 — also accept i32 operands. The lowerer's fast path
+    // (in `lower.ts:case "binary"`) detects two i32 operands and emits
+    // the native `i32.*` op directly, skipping the ToInt32 dance. The
+    // result type stays f64 here so callers / returns / arithmetic
+    // consumers don't need to be aware of an i32-narrowed value — the
+    // lowerer tails the fast path with `f64.convert_i32_*`. Chained
+    // bitwise composition (where the f64 round-trip could be skipped)
+    // is left for a future Stage; the per-op fast path already covers
+    // the cost-dominant cases (bool|bool, bool&bool, compare-result
+    // bitwise reductions).
     case ts.SyntaxKind.AmpersandToken:
-      requireF64(isF64, "&", cx.funcName);
+      if (!isF64 && !isI32) requireF64(isF64, "&", cx.funcName);
       binop = "js.bitand";
       resultType = irVal({ kind: "f64" });
       break;
     case ts.SyntaxKind.BarToken:
-      requireF64(isF64, "|", cx.funcName);
+      if (!isF64 && !isI32) requireF64(isF64, "|", cx.funcName);
       binop = "js.bitor";
       resultType = irVal({ kind: "f64" });
       break;
     case ts.SyntaxKind.CaretToken:
-      requireF64(isF64, "^", cx.funcName);
+      if (!isF64 && !isI32) requireF64(isF64, "^", cx.funcName);
       binop = "js.bitxor";
       resultType = irVal({ kind: "f64" });
       break;
     case ts.SyntaxKind.LessThanLessThanToken:
-      requireF64(isF64, "<<", cx.funcName);
+      if (!isF64 && !isI32) requireF64(isF64, "<<", cx.funcName);
       binop = "js.shl";
       resultType = irVal({ kind: "f64" });
       break;
     case ts.SyntaxKind.GreaterThanGreaterThanToken:
-      requireF64(isF64, ">>", cx.funcName);
+      if (!isF64 && !isI32) requireF64(isF64, ">>", cx.funcName);
       binop = "js.shr_s";
       resultType = irVal({ kind: "f64" });
       break;
     case ts.SyntaxKind.GreaterThanGreaterThanGreaterThanToken:
-      requireF64(isF64, ">>>", cx.funcName);
+      if (!isF64 && !isI32) requireF64(isF64, ">>>", cx.funcName);
       binop = "js.shr_u";
       resultType = irVal({ kind: "f64" });
       break;

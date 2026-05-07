@@ -457,12 +457,32 @@ export type IrBinop =
   // i32 logical (for bool && / || — operands assumed 0|1)
   | "i32.and"
   | "i32.or"
+  // #1126 Stage 3 — native i32 magnitude compares. Emitted by the
+  // AST→IR lowerer when both operands of `<`, `<=`, `>`, `>=` are
+  // i32-typed (a bool, a comparison result, or an i32-domain value
+  // out of `js.bit*`). Signed vs unsigned is picked from the operands'
+  // `IrType.val.signed` flag (signed if either is signed; unsigned only
+  // when BOTH are unsigned `u32`). Result is i32 (bool).
+  | "i32.lt_s"
+  | "i32.le_s"
+  | "i32.gt_s"
+  | "i32.ge_s"
+  | "i32.lt_u"
+  | "i32.le_u"
+  | "i32.gt_u"
+  | "i32.ge_u"
   // Slice 11 (#1169n) — JS bitwise ops on f64 operands.
   // Each lowers to: ToInt32(lhs); ToInt32(rhs); i32.<op>; convert back to f64.
   // The `js.*` prefix marks them as composite (multi-Wasm-instr) ops; the
   // lowerer's `case "binary"` arm dispatches on this prefix to emit the
   // ToInt32 / convert dance using a per-function shared scratch local.
   // Result type is f64 for all.
+  //
+  // #1126 Stage 3 — when BOTH operands' IrTypes are already i32-shaped,
+  // the lowerer emits the native `i32.*` op directly and skips the
+  // ToInt32 dance. The AST→IR lowerer also narrows the result type
+  // from f64 to i32 in that case so chains of bitwise ops (e.g. an
+  // FNV-1a hash mixer `(h ^ b) * P | 0`) stay in the i32 domain.
   | "js.bitand"
   | "js.bitor"
   | "js.bitxor"
