@@ -7354,7 +7354,25 @@ function walkStmtForLetConst(ctx: CodegenContext, fctx: FunctionContext, stmt: t
         // will use, avoiding a slot-type mismatch on first assignment.
         const isI32Coerced =
           fctx.i32CoercedLocals?.has(name) === true && (varType.flags & ts.TypeFlags.NumberLike) !== 0;
-        const wasmType: ValType = isI32Coerced ? { kind: "i32" } : resolveWasmType(ctx, varType);
+        // (#1239) If the initializer is an object literal carrying get/set
+        // accessor declarations, the variable holds a JS host object
+        // (externref) — never the inferred wasmGC struct type. Tag here
+        // BEFORE allocating the slot so the hoisted local type matches
+        // what compileObjectLiteralWithAccessors will emit, and so
+        // resolveStructNameForExpr lookups against this var bail out
+        // immediately even from accesses earlier in compilation order.
+        const initIsAccessorLiteral =
+          decl.initializer !== undefined &&
+          ts.isObjectLiteralExpression(decl.initializer) &&
+          decl.initializer.properties.some((p) => ts.isGetAccessorDeclaration(p) || ts.isSetAccessorDeclaration(p));
+        if (initIsAccessorLiteral) {
+          ctx.externrefAccessorVars.add(name);
+        }
+        const wasmType: ValType = initIsAccessorLiteral
+          ? { kind: "externref" }
+          : isI32Coerced
+            ? { kind: "i32" }
+            : resolveWasmType(ctx, varType);
         allocLocal(fctx, name, wasmType);
         // Only add TDZ flag if static analysis can't prove all accesses are safe
         if (needsTdzFlag(ctx, decl)) {

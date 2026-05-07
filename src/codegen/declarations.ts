@@ -505,6 +505,15 @@ export function unifiedVisitNode(ctx: CodegenContext, state: UnifiedCollectorSta
       state.callbackFound = true;
     }
   }
+  // (#1239) Object literals carrying get/set accessor declarations also
+  // route through `__make_getter_callback` via compileObjectLiteralWithAccessors.
+  if (
+    !state.getterCallbackFound &&
+    ts.isObjectLiteralExpression(node) &&
+    node.properties.some((p) => ts.isGetAccessorDeclaration(p) || ts.isSetAccessorDeclaration(p))
+  ) {
+    state.getterCallbackFound = true;
+  }
   // ── getterCallbackFound: Object.defineProperty / Reflect.defineProperty with accessor descriptor (#929) ──
   // Also covers Object.defineProperties(obj, { p1: desc1, p2: desc2, ... }) (#1027)
   if (!state.getterCallbackFound && ts.isCallExpression(node)) {

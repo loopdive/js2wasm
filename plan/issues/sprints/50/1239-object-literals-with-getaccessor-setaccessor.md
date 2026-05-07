@@ -2,7 +2,7 @@
 id: 1239
 sprint: 50
 title: "object literals with GetAccessor/SetAccessor — route to __defineProperty_accessor + force-externref var tagging"
-status: ready
+status: done
 needs_architect_spec: true
 created: 2026-05-02
 updated: 2026-05-07

@@ -46,6 +46,7 @@ import {
 } from "./late-imports.js";
 import { emitMappedArgParamSync, emitMappedArgReverseSync } from "./logical-ops.js";
 import { resolveStructName, resolveStructNameForExpr } from "./misc.js";
+import { resolveEffectiveStructName } from "../property-access.js";
 import { compileStringBuilderAppend, getBuilderInfo } from "../string-builder.js";
 
 /**
@@ -2143,7 +2144,10 @@ function compileElementAssignment(
       if (fieldName !== undefined) {
         // Check for setter accessor first
         const objTsType = ctx.checker.getTypeAtLocation(target.expression);
-        const sName = resolveStructName(ctx, objTsType);
+        // (#1239) Use resolveEffectiveStructName so accessor-tagged
+        // identifiers bail out of the struct path and fall through to
+        // the externref host setter.
+        const sName = resolveEffectiveStructName(ctx, target.expression, objTsType);
         if (sName) {
           const accessorKey = `${sName}_${fieldName}`;
           if (ctx.classAccessorSet.has(accessorKey)) {
@@ -2411,7 +2415,9 @@ function compileElementAssignment(
     if (fieldName !== undefined) {
       // Check for setter accessor first (obj['prop'] = val where prop has a setter)
       const objTsType = ctx.checker.getTypeAtLocation(target.expression);
-      const sName = resolveStructName(ctx, objTsType);
+      // (#1239) Use resolveEffectiveStructName for consistency with the
+      // PropertyAccessExpression path above.
+      const sName = resolveEffectiveStructName(ctx, target.expression, objTsType);
       if (sName) {
         const accessorKey = `${sName}_${fieldName}`;
         if (ctx.classAccessorSet.has(accessorKey)) {
