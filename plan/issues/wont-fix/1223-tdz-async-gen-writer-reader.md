@@ -106,8 +106,60 @@ Closed as wont-fix after fourth consecutive deferral (S47 → S48 → S49 → S5
 
 2. **No test262 leverage**: cited in every deferral. The failing pattern (`for await ([x] of ...)` destructure-assign writer visible to reader fn-decl) covers a narrow async generator usage. No measurable conformance gain.
 
-3. **Complexity/value ratio**: three-part fix (extend `collectWrittenIdentifiers`, boxed-capture-aware destructure emit, Stage 1 gate) with high coordination cost and low standalone value.
+3. **Complexity/value ratio**: the issue's three-part fix (Parts A+B+C) UNDER-states the actual scope (see senior-dev findings below).
 
 4. **Sprint 50 was the explicit decision point**: sprint 50 goals stated "Pull only if capacity surplus. Decide: commit or backlog after S50." Capacity was used on higher-value issues. Decision: wont-fix.
 
-Senior-dev investigation (2026-05-07) confirmed the issue still reproduces on main and the fix path is unchanged from prior analysis — no shortcuts emerged.
+### Senior-dev investigation findings (2026-05-07)
+
+I built a 10-case probe (`.tmp/probe-1223.mts`) and ran it against current main
+(commit `e08854705`). **The issue still reproduces** in 3 of 10 cases — all the
+function-scoped `let x` + nested gen/async writer + separate reader fn-decl
+pattern. Module-level `let x` and same-function nested readers already work
+correctly today.
+
+**The fix scope is ~3× larger than the issue file describes.** The issue's
+Parts A+B+C are necessary but not sufficient. Two additional gaps surface
+when Part A is applied in isolation (failure mode shifts from stale-read to
+the same `RuntimeError: dereferencing a null pointer` that broke 48+ tests
+in PR #98 R3):
+
+- **Part D (NEW)** — `src/codegen/expressions/calls.ts:5425`: the non-mutable
+  cap-prepend reads `cap.outerLocalIdx` directly. After a mutable
+  cap-prepend (e.g. writer's first call) boxes the outer local via
+  `localMap[x] := __boxed_x`, the reader's `cap.outerLocalIdx` still points
+  to the *original* f64 slot which holds the initial value (never updated
+  through the cell). Reader reads stale. ~40 LoC.
+
+- **Part E (NEW)** — the issue's Part B references
+  `compileForOfAssignDestructuringExternref` (loops.ts:1503), which is
+  already box-aware (#1258 added that, line 1643). But `for ([x] of [[1]])`
+  with vec/struct elements does NOT flow through the externref path —
+  it flows through `compileForOfAssignDestructuring` (loops.ts:1111), which
+  does direct `local.set targetLocal` (line 1385) with NO `boxedCaptures`
+  handling. ~80–150 LoC. Multiple parallel destructure-assign emit sites
+  (object-pattern, nested array, bare `[x] = arr` outside for-of) likely
+  need the same parallel fix.
+
+Total fix scope: **~250–350 LoC across 3–4 files** (closures.ts, calls.ts,
+loops.ts, possibly nested-declarations.ts and expressions.ts) with HIGH
+regression risk on a code path that has historically broken 48+ test262
+tests on similar attempts.
+
+**Trivial workaround exists**: replace `for ([x] of arr)` with
+`for (const pair of arr) { x = pair[0]; }` — works today.
+
+Estimated fix yield: 5–15 additional test262 passes on the
+`async-{func,gen}-decl-dstr-*` cluster (174/267 passing today).
+Real-world frequency: lodash, hono, day.js corpora don't hit it.
+
+### Decision
+
+The cost-benefit (~300 LoC + high risk + small yield + trivial workaround)
+does not justify the work. Recommended close, with a "known limitation"
+note added to spec-completeness docs pointing users to the workaround.
+
+Re-opening triggers: any future change that converges the multiple
+destructure-assign emit sites into a unified `emitDestructureAssignTarget`
+helper (e.g. via the IR-side Slice 14 abstraction) — at that point
+parts A+D+E collapse to a single helper change and become tractable.
