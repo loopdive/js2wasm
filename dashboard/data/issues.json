@@ -69,19 +69,6 @@
       "sprint": ""
     },
     {
-      "id": "1223",
-      "title": "TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up)",
-      "priority": "medium",
-      "feasibility": "hard",
-      "depends_on": [
-        "1177",
-        "1205"
-      ],
-      "goal": "crash-free",
-      "status": "backlog",
-      "sprint": "backlog"
-    },
-    {
       "id": "1133",
       "title": "Fibonacci story points, velocity tracking, and token-budgeted sprint sizing",
       "priority": "high",
@@ -185,6 +172,18 @@
     }
   ],
   "ready": [
+    {
+      "id": "1309",
+      "title": "Hono Tier 6 — Web API surface (Request/Response) + async handlers",
+      "priority": "low",
+      "feasibility": "hard",
+      "depends_on": [
+        "1298"
+      ],
+      "goal": "npm-library-support",
+      "status": "ready",
+      "sprint": "50"
+    },
     {
       "id": "1308",
       "title": "Wasm closure struct returned to JS host is not JS-callable",
@@ -2308,6 +2307,19 @@
       "goal": "core-semantics",
       "status": "done",
       "sprint": "47"
+    },
+    {
+      "id": "1223",
+      "title": "TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up)",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [
+        "1177",
+        "1205"
+      ],
+      "goal": "crash-free",
+      "status": "wont-fix",
+      "sprint": "backlog"
     },
     {
       "id": "1222",

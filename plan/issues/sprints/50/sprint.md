@@ -138,6 +138,7 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 |---|---|---|---|
 | #1298 | Calling a function-typed value stored in a field/array/Map drops the call and returns null | high | ready |
 | #1308 | Wasm closure struct returned to JS host is not JS-callable | medium | ready |
+| #1309 | Hono Tier 6 — Web API surface (Request/Response) + async handlers | low | ready |
 
 ### In Progress
 

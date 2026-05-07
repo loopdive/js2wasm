@@ -17023,8 +17023,8 @@
       "id": "1223",
       "title": "TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up)",
       "priority": "medium",
-      "status": "backlog",
-      "raw_status": "backlog",
+      "status": "done",
+      "raw_status": "wont-fix",
       "sprint": "backlog",
       "depends_on": [
         "1177",
@@ -18104,6 +18104,20 @@
       "files": [],
       "goal": "npm-library-support",
       "cluster": "npm-library-support"
+    },
+    {
+      "id": "1309",
+      "title": "Hono Tier 6 — Web API surface (Request/Response) + async handlers",
+      "priority": "low",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [
+        "1298"
+      ],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
     }
   ],
   "links": [
@@ -18170,14 +18184,6 @@
     {
       "source": "1197",
       "target": "1199"
-    },
-    {
-      "source": "1177",
-      "target": "1223"
-    },
-    {
-      "source": "1205",
-      "target": "1223"
     },
     {
       "source": "1090",
@@ -18952,12 +18958,24 @@
       "target": "1126"
     },
     {
+      "source": "1298",
+      "target": "1309"
+    },
+    {
       "source": "317",
       "target": "320"
     },
     {
       "source": "321",
       "target": "320"
+    },
+    {
+      "source": "1177",
+      "target": "1223"
+    },
+    {
+      "source": "1205",
+      "target": "1223"
     },
     {
       "source": "1261",
@@ -20044,7 +20062,8 @@
         "1304",
         "1305",
         "1306",
-        "1308"
+        "1308",
+        "1309"
       ],
       "track": "supporting track"
     },
@@ -24132,6 +24151,10 @@
       "issue": "1308"
     },
     {
+      "goal": "npm-library-support",
+      "issue": "1309"
+    },
+    {
       "goal": "observability",
       "issue": "880"
     },
@@ -28130,6 +28153,10 @@
       "issue": "1308"
     },
     {
+      "goal": "core-semantics",
+      "issue": "1309"
+    },
+    {
       "goal": "platform",
       "issue": "111"
     },
@@ -28384,6 +28411,10 @@
     {
       "goal": "platform",
       "issue": "1308"
+    },
+    {
+      "goal": "platform",
+      "issue": "1309"
     },
     {
       "goal": "core-semantics",
