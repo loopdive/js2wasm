@@ -1185,9 +1185,8 @@ export function destructureParamArray(
         fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 1 });
         fctx.body.push({ op: "i32.const", value: i });
         emitBoundsCheckedArrayGetUndef(ctx, fctx, arrTypeIdx, elemType);
-        if (elemType.kind !== "externref") {
-          coerceType(ctx, fctx, elemType, externType);
-        }
+        // elemType is narrowed to non-externref at line 1179, so always coerce.
+        coerceType(ctx, fctx, elemType, externType);
         fctx.body.push({ op: "local.set", index: emptyTmp });
         if (element.initializer) {
           // Default fires only when the slot is undefined — coerce the
