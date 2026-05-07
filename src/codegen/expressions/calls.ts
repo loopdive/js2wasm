@@ -914,6 +914,39 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
     }
   }
 
+  // Unwrap `expr!(...)` non-null assertions on the callee (#1298). The TS type
+  // of NonNullExpression is the original type minus null/undefined, so the
+  // underlying PropertyAccessExpression / Identifier / etc. dispatch sees a
+  // callable type. Mirrors the ParenthesizedExpression unwrap above.
+  if (ts.isNonNullExpression(expr.expression)) {
+    let inner: ts.Expression = expr.expression.expression;
+    // Strip nested non-null assertions: `obj.fn!!(...)`
+    while (ts.isNonNullExpression(inner)) {
+      inner = inner.expression;
+    }
+    // Only build a synthetic CallExpression for LeftHandSide-shaped inner
+    // expressions; non-LHS (e.g. binary, conditional) would be re-wrapped in
+    // ParenthesizedExpression by ts.factory and infinite-recurse. For those,
+    // fall through to compileExpressionCallee.
+    if (
+      !ts.isFunctionExpression(inner) &&
+      !ts.isArrowFunction(inner) &&
+      !ts.isBinaryExpression(inner) &&
+      !ts.isConditionalExpression(inner) &&
+      !ts.isPrefixUnaryExpression(inner) &&
+      !ts.isPostfixUnaryExpression(inner)
+    ) {
+      const syntheticCall = ts.factory.createCallExpression(
+        inner as ts.Expression as ts.LeftHandSideExpression,
+        expr.typeArguments,
+        expr.arguments,
+      );
+      ts.setTextRange(syntheticCall, expr);
+      (syntheticCall as any).parent = expr.parent;
+      return compileCallExpression(ctx, fctx, syntheticCall as ts.CallExpression);
+    }
+  }
+
   // Handle super.method() calls — resolve to ParentClass_method with this as first arg
   if (
     ts.isPropertyAccessExpression(expr.expression) &&
@@ -5008,7 +5041,13 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       const isKnownVariable =
         calleeLocalIdx !== undefined || calleeModGlobal !== undefined || calleeCapturedGlobal !== undefined;
       const calleeTsType = ctx.checker.getTypeAtLocation(expr.expression);
-      const callSigs = isKnownVariable ? calleeTsType.getCallSignatures?.() : undefined;
+      let callSigs = isKnownVariable ? calleeTsType.getCallSignatures?.() : undefined;
+      if (isKnownVariable && (!callSigs || callSigs.length === 0)) {
+        // (#1298) `Fn | null | undefined` callees: strip nullable members
+        // before reading call signatures. Storage is externref either way.
+        const nonNull = ctx.checker.getNonNullableType(calleeTsType);
+        callSigs = nonNull.getCallSignatures?.();
+      }
       if (callSigs && callSigs.length > 0) {
         const sig = callSigs[0]!;
         const sigParamCount = sig.parameters.length;
@@ -6572,7 +6611,13 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
   if (ts.isCallExpression(expr.expression)) {
     // Get the TS type of the inner call result — should be a callable type
     const innerResultTsType = ctx.checker.getTypeAtLocation(expr.expression);
-    const callSigs = innerResultTsType.getCallSignatures?.();
+    let callSigs = innerResultTsType.getCallSignatures?.();
+    if (!callSigs || callSigs.length === 0) {
+      // (#1298) Strip nullable members for callees like `Map<K, Fn>.get(...)`
+      // whose return type is `Fn | undefined`. Storage is externref either way.
+      const nonNull = ctx.checker.getNonNullableType(innerResultTsType);
+      callSigs = nonNull.getCallSignatures?.();
+    }
 
     if (callSigs && callSigs.length > 0) {
       const sig = callSigs[0]!;

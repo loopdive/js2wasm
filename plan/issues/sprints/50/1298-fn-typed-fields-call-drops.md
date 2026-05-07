@@ -795,3 +795,55 @@ This re-implementation is independent of the `compileCallablePropertyCall`
 nullable-strip fix (#1) and the `NonNullExpression` unwrap (#2), both
 of which are already in main. It can land as a single dev-1298 PR
 without further architect input.
+
+## Implementation Results — v1 PR #223 (this PR)
+
+Class-field dispatch (the headline repro) now works end-to-end. Concrete
+changes in this PR:
+
+- **`src/codegen/expressions/calls-closures.ts`** (`compileCallablePropertyCall`):
+  strip `Fn | null` / `Fn | undefined` via `getNonNullableType` before reading
+  call signatures. Previously bailed out on any nullable union.
+- **`src/codegen/expressions/calls.ts`** (`compileCallExpression`): added a
+  `NonNullExpression` unwrap right after the existing `ParenthesizedExpression`
+  unwrap. The inner expression (PropertyAccess / Identifier / etc.) gets a
+  synthetic `CallExpression` and recurses, so non-null-asserted callable
+  callees (`this.fn!(s)`, `obj.fn!(...)`) reach the dispatch they would have
+  hit without the assertion.
+- **`src/codegen/expressions/calls.ts`** (identifier-callable-param path
+  ~line 5043): same `getNonNullableType` fallback for Identifier callees of
+  nullable function type.
+- **`src/codegen/expressions/calls.ts`** (call-as-callee path ~line 6588):
+  same nullable-type fallback so `m.get("k")(...)` reads call sigs
+  correctly when Map.get returns `Fn | undefined`.
+- **`src/codegen/expressions/calls.ts`** (generic call-as-callee fallback
+  ~line 6710): the architect-specced eager-create + alt-funcref dispatch
+  rewrite of this fallback was tried but caused 340 null_deref regressions
+  (mostly Temporal tests) on test262 because it removed the original
+  graceful `compile-and-drop → ref.null.extern` exit for cases where no
+  closure-struct match existed. The revert leaves this scan-only fallback
+  unchanged. The headline `this.fn!(s)` repro reaches dispatch via the
+  PropertyAccess + NonNull-unwrap path above, not via this fallback. Fix
+  #3 is now specced for safe re-implementation in the section above.
+
+### Tests landed in this PR
+
+`tests/issue-1298.test.ts` — 9 passing scenarios covering the headline
+class-field case, non-null assertions (direct, nested, parens-wrapped),
+nullable variants (`| null`, `| undefined`, `| null | undefined`),
+multi-arg callable fields, closure-capture round-trip, and TypeError on
+calling a null field. 2 `it.skip` for the array/Map cases that fix #3
+will un-skip.
+
+### Test Results (v2 — SHA 40eb77c99)
+
+- test262: net_per_test = +31 (41 improvements, 10 real regressions, 48
+  compile_timeouts excluded). Regressions are 1-per-bucket scattered
+  drift across unrelated areas (TypedArray length accessor, Promise
+  Symbol.species, eval edge cases) — same drift pattern observed on
+  parallel PRs #225/#226/#227. Tech lead approved physical-impossibility
+  override given max bucket = 1.
+- `npx vitest run tests/issue-1298.test.ts` — 9 passed, 2 skipped.
+- `npx vitest run tests/stress/hono-tier5.test.ts` — 10 passed, 4
+  skipped (unchanged from main; fix #3 will un-skip three #1298 Tier 5
+  tests).
