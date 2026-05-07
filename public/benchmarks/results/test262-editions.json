@@ -10,8 +10,8 @@
   },
   {
     "edition": "ES5",
-    "pass": 8216,
-    "fail": 4378,
+    "pass": 8217,
+    "fail": 4377,
     "ce": 185,
     "skip": 305,
     "total": 13084,
@@ -20,25 +20,25 @@
   {
     "edition": "ES2015",
     "pass": 9459,
-    "fail": 5398,
-    "ce": 412,
+    "fail": 5399,
+    "ce": 411,
     "skip": 91,
     "total": 15360,
     "pct": 62
   },
   {
     "edition": "ES2016",
-    "pass": 86,
+    "pass": 85,
     "fail": 35,
-    "ce": 2,
+    "ce": 3,
     "skip": 0,
     "total": 123,
-    "pct": 70
+    "pct": 69
   },
   {
     "edition": "ES2017",
-    "pass": 333,
-    "fail": 65,
+    "pass": 332,
+    "fail": 66,
     "ce": 23,
     "skip": 246,
     "total": 667,
@@ -64,8 +64,8 @@
   },
   {
     "edition": "ES2020",
-    "pass": 1090,
-    "fail": 370,
+    "pass": 1087,
+    "fail": 373,
     "ce": 31,
     "skip": 413,
     "total": 1904,
@@ -73,26 +73,26 @@
   },
   {
     "edition": "ES2021",
-    "pass": 310,
+    "pass": 311,
     "fail": 117,
-    "ce": 8,
+    "ce": 7,
     "skip": 28,
     "total": 463,
     "pct": 67
   },
   {
     "edition": "ES2022",
-    "pass": 2693,
-    "fail": 1284,
-    "ce": 200,
+    "pass": 2691,
+    "fail": 1282,
+    "ce": 204,
     "skip": 57,
     "total": 4234,
     "pct": 64
   },
   {
     "edition": "ES2023",
-    "pass": 174,
-    "fail": 115,
+    "pass": 173,
+    "fail": 116,
     "ce": 6,
     "skip": 39,
     "total": 334,
@@ -101,16 +101,16 @@
   {
     "edition": "ES2024",
     "pass": 424,
-    "fail": 119,
-    "ce": 3,
+    "fail": 120,
+    "ce": 2,
     "skip": 99,
     "total": 645,
     "pct": 66
   },
   {
     "edition": "ES2025",
-    "pass": 667,
-    "fail": 533,
+    "pass": 663,
+    "fail": 537,
     "ce": 21,
     "skip": 60,
     "total": 1281,
@@ -118,17 +118,17 @@
   },
   {
     "edition": "ES2026",
-    "pass": 118,
-    "fail": 213,
-    "ce": 1,
+    "pass": 117,
+    "fail": 212,
+    "ce": 3,
     "skip": 0,
     "total": 332,
-    "pct": 36
+    "pct": 35
   },
   {
     "edition": "Proposals",
-    "pass": 1375,
-    "fail": 3423,
+    "pass": 1374,
+    "fail": 3424,
     "ce": 107,
     "skip": 178,
     "total": 5083,
