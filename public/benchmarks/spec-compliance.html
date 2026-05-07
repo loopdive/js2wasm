@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ECMAScript 2026 Compliance — js2wasm</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root { --fg: #222; --muted: #666; --bg: #fafafa; --card: #fff; --border: #e3e3e3;
+          --conforming: #1a7f37; --partial: #b08800; --not_implemented: #cf222e; --na: #888; }
+  * { box-sizing: border-box; }
+  body { font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; color: var(--fg); background: var(--bg); margin: 0; padding: 24px; }
+  h1 { margin: 0 0 8px; font-size: 22px; }
+  .sub { color: var(--muted); margin-bottom: 24px; }
+  .summary { display: flex; gap: 12px; margin-bottom: 24px; flex-wrap: wrap; }
+  .pill { background: var(--card); border: 1px solid var(--border); border-radius: 999px; padding: 6px 14px; font-weight: 500; }
+  .pill .n { font-weight: 700; margin-right: 4px; }
+  .pill.c { color: var(--conforming); }
+  .pill.p { color: var(--partial); }
+  .pill.n { color: var(--not_implemented); }
+  .pill.x { color: var(--na); }
+  .total { background: #1f6feb; color: white; border: none; }
+  table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { background: #f0f0f0; font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: #555; }
+  tr:last-child td { border-bottom: none; }
+  tr.row-c td:first-child { border-left: 3px solid var(--conforming); }
+  tr.row-p td:first-child { border-left: 3px solid var(--partial); }
+  tr.row-n td:first-child { border-left: 3px solid var(--not_implemented); }
+  tr.row-x td:first-child { border-left: 3px solid var(--na); }
+  .id { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12px; color: var(--muted); }
+  .status { white-space: nowrap; font-weight: 500; }
+  .status.c { color: var(--conforming); }
+  .status.p { color: var(--partial); }
+  .status.n { color: var(--not_implemented); }
+  .status.x { color: var(--na); }
+  .bar { display: inline-block; width: 100px; height: 8px; background: #eee; border-radius: 4px; vertical-align: middle; margin-right: 8px; overflow: hidden; }
+  .bar > span { display: block; height: 100%; background: var(--conforming); }
+  .row-p .bar > span { background: var(--partial); }
+  .row-n .bar > span { background: var(--not_implemented); }
+  .filter { margin-bottom: 12px; }
+  .filter button { background: var(--card); border: 1px solid var(--border); padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px; margin-right: 6px; }
+  .filter button.active { background: #1f6feb; color: white; border-color: #1f6feb; }
+  a { color: #1f6feb; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .meta { font-size: 12px; color: var(--muted); }
+  details summary { cursor: pointer; padding: 6px 0; }
+  .issues { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .issues a { margin-right: 6px; }
+</style>
+</head>
+<body>
+<h1>ECMAScript 2026 Compliance — js2wasm</h1>
+<div class="sub" id="meta"></div>
+
+<div class="summary" id="summary"></div>
+
+<div class="filter">
+  <button data-f="all" class="active">All</button>
+  <button data-f="conforming">Conforming</button>
+  <button data-f="partial">Partial</button>
+  <button data-f="not_implemented">Not implemented</button>
+  <button data-f="na">N/A</button>
+</div>
+
+<table>
+  <thead>
+    <tr>
+      <th style="width: 90px">Section</th>
+      <th>Title</th>
+      <th style="width: 110px">Status</th>
+      <th style="width: 240px">Coverage</th>
+      <th style="width: 200px">Issues</th>
+    </tr>
+  </thead>
+  <tbody id="rows"></tbody>
+</table>
+
+<p class="meta" style="margin-top:24px">
+  Source: <a href="https://github.com/loopdive/js2wasm/blob/main/spec-compliance/summary.json">spec-compliance/summary.json</a> ·
+  Per-section detail: <a href="https://github.com/loopdive/js2wasm/tree/main/spec-compliance">spec-compliance/</a>
+</p>
+
+<script>
+const STATUS_ICON = { conforming: "✅", partial: "⚠️", not_implemented: "❌", na: "➖" };
+const STATUS_CLASS = { conforming: "c", partial: "p", not_implemented: "n", na: "x" };
+
+async function load() {
+  // Try fetch first; fall back to embedded if loaded over file://
+  let data;
+  try {
+    const r = await fetch("../../spec-compliance/summary.json");
+    if (!r.ok) throw new Error(r.status);
+    data = await r.json();
+  } catch {
+    try {
+      const r = await fetch("/spec-compliance/summary.json");
+      if (!r.ok) throw new Error(r.status);
+      data = await r.json();
+    } catch (e) {
+      document.getElementById("rows").innerHTML = '<tr><td colspan="5">Could not load summary.json — open this page from the dashboard server.</td></tr>';
+      return;
+    }
+  }
+  render(data);
+}
+
+function pill(label, n, cls) {
+  const d = document.createElement("div");
+  d.className = "pill " + cls;
+  d.innerHTML = '<span class="n">' + n + '</span>' + label;
+  return d;
+}
+
+function render(data) {
+  const meta = document.getElementById("meta");
+  const totalPct = data.totalTests ? ((data.totalPass / data.totalTests) * 100).toFixed(1) : "0";
+  meta.textContent = "Generated " + data.generated + " · Test262 coverage " + data.totalPass.toLocaleString() + " / " + data.totalTests.toLocaleString() + " (" + totalPct + "%)";
+
+  const sumEl = document.getElementById("summary");
+  sumEl.appendChild(pill("conforming", data.conforming, "c"));
+  sumEl.appendChild(pill("partial", data.partial, "p"));
+  sumEl.appendChild(pill("not implemented", data.not_implemented, "n"));
+  sumEl.appendChild(pill("not applicable", data.not_applicable, "x"));
+  const totalSections = data.conforming + data.partial + data.not_implemented + data.not_applicable;
+  sumEl.appendChild(pill("sections audited", totalSections, "total"));
+
+  const rows = document.getElementById("rows");
+  for (const s of data.sections) {
+    const tr = document.createElement("tr");
+    tr.className = "row-" + STATUS_CLASS[s.status];
+    tr.dataset.status = s.status;
+
+    const idTd = document.createElement("td");
+    idTd.className = "id";
+    idTd.textContent = s.id;
+    tr.appendChild(idTd);
+
+    const titleTd = document.createElement("td");
+    const a = document.createElement("a");
+    a.href = "https://github.com/loopdive/js2wasm/blob/main/" + s.file;
+    a.textContent = s.title;
+    titleTd.appendChild(a);
+    tr.appendChild(titleTd);
+
+    const statusTd = document.createElement("td");
+    statusTd.className = "status " + STATUS_CLASS[s.status];
+    statusTd.textContent = STATUS_ICON[s.status] + " " + s.status.replace(/_/g, " ");
+    tr.appendChild(statusTd);
+
+    const covTd = document.createElement("td");
+    if (s.total > 0) {
+      const pct = ((s.pass / s.total) * 100);
+      covTd.innerHTML = '<span class="bar"><span style="width:' + pct.toFixed(1) + '%"></span></span>' + s.pass + ' / ' + s.total + ' (' + pct.toFixed(1) + '%)';
+    } else {
+      covTd.innerHTML = '<span class="meta">—</span>';
+    }
+    tr.appendChild(covTd);
+
+    const issuesTd = document.createElement("td");
+    issuesTd.className = "issues";
+    if (s.issues && s.issues.length) {
+      for (const id of s.issues) {
+        const il = document.createElement("a");
+        il.href = "https://github.com/loopdive/js2wasm/issues/" + id;
+        il.textContent = "#" + id;
+        issuesTd.appendChild(il);
+      }
+    } else {
+      issuesTd.innerHTML = '<span class="meta">—</span>';
+    }
+    tr.appendChild(issuesTd);
+
+    rows.appendChild(tr);
+  }
+
+  // Filter buttons
+  document.querySelectorAll(".filter button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".filter button").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      const f = btn.dataset.f;
+      for (const tr of document.querySelectorAll("#rows tr")) {
+        tr.style.display = (f === "all" || tr.dataset.status === f) ? "" : "none";
+      }
+    });
+  });
+}
+
+load();
+</script>
+</body>
+</html>
