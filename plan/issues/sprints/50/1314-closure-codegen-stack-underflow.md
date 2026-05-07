@@ -178,3 +178,186 @@ careful instrumentation of `shiftLateImportIndices` and the manual
        default-init expression in the right path, per senior-dev's "Fix
        sketch" above.
 4. Validate against ALL 5 probe cases + the original test262 cluster.
+
+## Implementation Plan (architect-spec, senior-developer, 2026-05-07)
+
+### Confirmed root cause
+
+Validated dev-1302's analysis by reading `src/codegen/expressions/late-imports.ts:19-106` (`shiftLateImportIndices`) and `src/codegen/context/bodies.ts` (`pushBody`/`popBody`).
+
+`shiftLateImportIndices` walks ALL of these to update `funcIdx` references after a late import shifts function indices:
+
+```ts
+shiftInstrs(fctx.body);                              // current body
+for (const sb of fctx.savedBodies) shiftInstrs(sb);  // saved-body stack
+for (const f of ctx.mod.functions) shiftInstrs(f.body);
+for (const parent of ctx.funcStack) {
+  shiftInstrs(parent.body);
+  for (const sb of parent.savedBodies) shiftInstrs(sb);
+}
+for (const pb of ctx.parentBodiesStack) shiftInstrs(pb);
+if (ctx.pendingInitBody) shiftInstrs(ctx.pendingInitBody);
+```
+
+The walker recurses into nested `body`/`then`/`else`/`catches`/`catchAll` arrays. Set-deduplicated to prevent double-shifting.
+
+The canonical body-swap helpers `pushBody(fctx)` and `popBody(fctx, saved)` in `src/codegen/context/bodies.ts` correctly push the saved buffer onto `fctx.savedBodies` so the walker sees it.
+
+**The bug**: `destructureParamArray` (and ~145 other call sites in `src/codegen`) does a manual `fctx.body = newBuf` swap, holding the old `fctx.body` only as a JS local. That JS local is invisible to `shiftLateImportIndices`. If a recursive emission inside the swap triggers `flushLateImportShifts`, calls already emitted into the OUTER buffer (the JS-local-saved one) keep their stale `funcIdx`. Calls in the INNER buffer (`fctx.body`) get correctly shifted.
+
+After the swap unwinds (`fctx.body = savedBody`), the outer buffer becomes the active body again — its calls are now silently broken: `call N` may now point to a different function (e.g., a host import that was added to position N during the missed shift).
+
+For the canonical repro `const f = ([x = g()]) => x;`:
+- `g` is registered in funcMap at index N (some user-function position).
+- `destructureParamArray` enters the manual swap at `:730` (tuple-struct fast path) or `:768` (externref-legacy path).
+- During the swap, `compileExpression(initializer)` for `x = g()` emits `call N` into the swap-target buffer for the default-init path.
+- Other emissions into the outer buffer ALSO emitted call instructions earlier (e.g., the destructure-param dispatcher's `call __extern_*` setup).
+- `ensureLateImport` for `__extern_length`, `__extern_get_idx`, `__array_from_iter` (lines 785-798) fires WHILE the swap is active.
+- `flushLateImportShifts` shifts indices — walks `fctx.body` (= swap-target) and `fctx.savedBodies`, but the OUTER `realBody` JS local is invisible.
+- Calls in the outer buffer with `funcIdx >= importsBefore` should have shifted but didn't. Now `call $g` points to wherever `funcIdx` lands after the shift collision (often `__extern_length_import`, which takes 1 externref → "need 1, got 0" trap).
+
+### Fix
+
+**Single change** — replace the two manual swaps in `src/codegen/destructuring-params.ts` with `pushBody`/`popBody`:
+
+#### Site 1 — `destructure-params.ts:730-739` (tuple-struct fast path)
+
+Current code:
+```ts
+const savedBody = fctx.body;
+const fastPathInstrs: Instr[] = [];
+fctx.body = fastPathInstrs;
+fctx.body.push({ op: "local.get", index: anyTmp } as Instr);
+fctx.body.push({ op: "ref.cast", typeIdx: ti });
+fctx.body.push({ op: "local.set", index: tupleLocal });
+destructureParamArray(ctx, fctx, tupleLocal, pattern, tupType);
+fctx.body.push({ op: "i32.const", value: 1 } as Instr);
+fctx.body.push({ op: "local.set", index: dstrDoneLocal });
+fctx.body = savedBody;
+```
+
+Replace with:
+```ts
+const savedBody = pushBody(fctx);   // pushes the outer buffer onto savedBodies
+const fastPathInstrs = fctx.body;   // capture the new (empty) buffer reference
+fctx.body.push({ op: "local.get", index: anyTmp } as Instr);
+fctx.body.push({ op: "ref.cast", typeIdx: ti });
+fctx.body.push({ op: "local.set", index: tupleLocal });
+destructureParamArray(ctx, fctx, tupleLocal, pattern, tupType);
+fctx.body.push({ op: "i32.const", value: 1 } as Instr);
+fctx.body.push({ op: "local.set", index: dstrDoneLocal });
+popBody(fctx, savedBody);
+```
+
+`pushBody` returns the saved (outer) buffer reference and creates a fresh empty `fctx.body`. The outer buffer goes onto `fctx.savedBodies` for the duration of the swap. `popBody` removes it from the stack and restores `fctx.body`.
+
+**Important**: the variable `fastPathInstrs` (used later in `testInstrs.if.then`) must reference the inner buffer. After `pushBody`, that's `fctx.body`. Capture it before any pushes that would reallocate the array. This works because `pushBody` sets `fctx.body = []` and returns the prior body — the newly-created `[]` lives at `fctx.body` until `popBody` swaps it back.
+
+Add the `pushBody`/`popBody` import at the top of the file:
+```ts
+import { popBody, pushBody } from "./context/bodies.js";
+```
+
+#### Site 2 — `destructure-params.ts:768-770` (externref-legacy buffer)
+
+Current code:
+```ts
+const externrefLegacyBody: Instr[] = [];
+const realBody = fctx.body;
+fctx.body = externrefLegacyBody;
+// ... emit into externrefLegacyBody ...
+// (no explicit fctx.body = realBody — the buffer is later wrapped into an if-instr)
+```
+
+This site has additional complexity because `externrefLegacyBody` is later wrapped into an `if` instr and pushed into `realBody`. The current code doesn't restore `fctx.body` until the wrap step. The fix:
+
+```ts
+const realBody = pushBody(fctx);          // outer is now in savedBodies
+const externrefLegacyBody = fctx.body;    // = the new empty inner buffer
+// ... emit into externrefLegacyBody (= fctx.body) ...
+// At the wrap step (the existing fctx.body.push for the outer if-instr):
+popBody(fctx, realBody);                  // restore outer
+realBody.push({ op: "if", ... });          // wrap the legacy body into the if
+```
+
+Find the existing wrap step (around `destructure-params.ts:960-965`, where the `if-then-else` instr wraps `directCastInstrs` and `convertInstrs`) — that's the natural pop point. The pop must happen BEFORE the wrap-push so subsequent emissions (the wrap-push itself) go into the outer buffer.
+
+#### Audit other sites (follow-up issue, NOT this PR)
+
+`grep -n "fctx\.body = " src/codegen/**/*.ts` shows ~145 manual swap sites. Most are local-only (no recursive emission that could trigger late imports), but some may have the same bug latent. Recommend filing a follow-up to:
+1. Add a lint check that flags `fctx.body =` outside `pushBody`/`popBody`.
+2. Audit each site for late-import-during-swap exposure.
+
+Not in scope for this fix — the immediate 87-CE failures are fully addressed by the two sites above.
+
+### Test plan
+
+Add `tests/issue-1314.test.ts` with at least these cases (from dev-1302's bisect probe + senior-dev's trifecta):
+
+```ts
+// 1. Simple — minimum repro
+"const f = ([x = g()]) => x" → instantiate succeeds, returns 7 with [], 99 with [99]
+
+// 2. Trifecta variant
+"function* g() {} var f; f = ([[,] = g()]) => {}; f([[]])" → instantiate succeeds
+
+// 3. Nested with non-elision (regression check — already works)
+"function* g() {} const f = ([[a] = g()]) => a" → still passes
+
+// 4. Multiple late-imports during swap (stress)
+"const f = ([x = arr[0], y = obj.k, z = fn()]) => x" → instantiate succeeds
+
+// 5. Recursive nested defaults (deep swap-stack)
+"const f = ([[a = g()] = h()] = i()) => a" → instantiate succeeds
+```
+
+Each case asserts:
+- `compile()` returns success
+- `WebAssembly.instantiate()` succeeds (validates no Wasm validation errors)
+- The exported function returns the expected value
+
+### Edge cases
+
+1. **Re-entrant swaps**: if a recursive `destructureParamArray` call also enters a swap, `pushBody` correctly stacks them on `savedBodies`. The walker sees the entire stack. ✓
+
+2. **Exception during recursive emit**: if the recursive `compileExpression` throws (e.g., for an unsupported expression), `popBody` won't run, leaving `fctx.savedBodies` in an inconsistent state. Wrap in try/finally:
+   ```ts
+   const saved = pushBody(fctx);
+   try {
+     // ... emit ...
+   } finally {
+     popBody(fctx, saved);
+   }
+   ```
+   This is defensive — current codegen doesn't typically throw from these paths, but adding `finally` blocks costs nothing and prevents future regressions.
+
+3. **`fastPathInstrs` reference held across swap**: the spec captures `fastPathInstrs` as `fctx.body` AFTER `pushBody`. This reference is stable (the array is allocated by `pushBody` and not reallocated). The later use in `testInstrs.if.then` is safe.
+
+4. **Multiple iterations of the tuple-struct loop** (line 707-762): each iteration enters and exits its own swap. Each iteration's `pushBody`/`popBody` pair is balanced. The walker correctly sees only the OUTER buffer in `savedBodies` during each swap. ✓
+
+5. **Late-imports added BEFORE the swap** (lines 785-798 in current code): these `ensureLateImport` calls happen in the OUTER buffer scope. Their shifts walk only `fctx.body` (= outer) and the existing `fctx.savedBodies` (might be non-empty if we're in a parent swap). After the fix, the outer scope's `savedBodies` is whatever it was (correct).
+
+### Risk assessment
+
+**Low risk** for the immediate fix. Changes:
+- 2 sites, ~6 lines of code each
+- Drop-in replacement using existing helpers (`pushBody`/`popBody` are well-tested via the rest of the codebase)
+- Preserves all current emission semantics — only adds the missed `fctx.savedBodies` tracking
+
+**Regression vector**: any other emission site that depended on `fctx.savedBodies` being empty during the destructure-param dispatch would break. None exist (the dispatcher doesn't call externally-visible APIs that inspect `savedBodies`).
+
+**Recovery**: if CI shows regressions, the fix is trivially revertable (one commit).
+
+### Estimated scope
+
+- Code changes: ~12 LoC across 2 sites in `src/codegen/destructuring-params.ts`
+- Imports: 1 line for `pushBody`/`popBody` import
+- Tests: 5 cases in `tests/issue-1314.test.ts`, ~80 LoC
+
+Total: **~100 LoC**. Down from the original "~250-350 LoC" estimate because the fix is purely structural (use the right helpers) rather than restructuring the destructure dispatcher.
+
+### Out of scope
+
+- Project-wide audit of the 145 other manual `fctx.body =` swap sites (follow-up issue).
+- Lint check to prevent new manual swaps (follow-up issue).
+- Refactoring the destructure-params dispatcher to be less complex (orthogonal cleanup).
