@@ -1,6 +1,6 @@
 ---
 id: 1306
-sprint: 49
+sprint: 50
 title: "ElementAccessExpression call on closure-typed array drops call: mws[idx](c, next) emits ref.null"
 status: ready
 created: 2026-05-03

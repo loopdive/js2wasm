@@ -1,6 +1,6 @@
 ---
 id: 1302
-sprint: 49
+sprint: 50
 title: "Wasm validation: closure references invalid global index when compiling lodash flow.js"
 status: ready
 created: 2026-05-03

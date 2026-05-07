@@ -1,5 +1,17 @@
 # Project Diary
 
+## 2026-05-07 — Sprint 49 close / Sprint 50 start
+
+**Sprint 49 closed.** 4-day sprint (2026-05-03 → 2026-05-07). 8 issues merged.
+
+**Landed**: #1290 TS7 forEachChild compat, #1296 dashboard Wasm dogfood, #1297 Hono Tier 5 (Application + middleware), #1299 virtual dispatch fix, #1300 closure outer-param fix, #1301 closure env field-type fix, #1304 typeof externref function fix. Plus #1241 triage.
+
+**Deferred to S50**: closure call dispatch wave 2 (#1298, #1306), lodash Tier 2 blocker cluster (#1302, #1303, #1305), #1126 IR Stage 3, #1292 lodash Tier 2 un-skip.
+
+**Demoted to backlog**: #1223 TDZ async/gen sharing (third deferral, no test262 leverage).
+
+**Sprint 50 started.** Theme: closure/call dispatch correctness wave 2 + #1126 IR Stage 3. Architect spec gating #1298+#1306; senior-dev on #1126 Stage 3. test262 baseline: 27,769 / 48,171 pass (57.7%).
+
 ## 2026-05-03 — Sprint 47 close
 
 **Sprint 47 closed.** 3-day sprint (2026-05-01 → 2026-05-03). 631 commits, 50+ issues completed.

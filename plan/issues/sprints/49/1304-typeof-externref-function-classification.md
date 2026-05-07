@@ -2,9 +2,10 @@
 id: 1304
 sprint: 49
 title: "typeof on externref-wrapped JS function returns 'object' instead of 'function'"
-status: in-progress
+status: done
 created: 2026-05-03
-updated: 2026-05-03
+updated: 2026-05-07
+completed: 2026-05-04
 priority: medium
 feasibility: medium
 reasoning_effort: medium

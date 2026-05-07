@@ -1,6 +1,6 @@
 ---
 id: 1303
-sprint: 49
+sprint: 50
 title: "Wasm validation: f64.trunc emitted on externref operand when compiling lodash partial.js"
 status: ready
 created: 2026-05-03

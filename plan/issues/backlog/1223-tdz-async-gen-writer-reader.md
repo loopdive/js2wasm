@@ -1,8 +1,8 @@
 ---
 id: 1223
-sprint: 49
+sprint: backlog
 title: "TDZ async/gen: writer+reader fn-decl sharing via destructure-assign path (#1205 follow-up)"
-status: deferred
+status: backlog
 created: 2026-05-01
 updated: 2026-05-01
 priority: medium

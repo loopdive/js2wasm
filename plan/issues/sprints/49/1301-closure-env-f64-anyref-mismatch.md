@@ -2,9 +2,10 @@
 id: 1301
 sprint: 49
 title: "Closure environment field-type mismatch: struct.new[0] expected f64, got anyref"
-status: in-progress
+status: done
 created: 2026-05-03
-updated: 2026-05-03
+updated: 2026-05-07
+completed: 2026-05-04
 priority: medium
 feasibility: medium
 reasoning_effort: medium

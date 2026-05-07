@@ -1,6 +1,6 @@
 ---
 id: 1298
-sprint: 49
+sprint: 50
 title: "Calling a function-typed value stored in a field/array/Map drops the call and returns null"
 status: ready
 created: 2026-05-03
