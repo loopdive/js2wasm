@@ -2,7 +2,7 @@
 id: 1384
 sprint: 51
 title: "CE: static async method with PrivateName — 'not enough arguments on the stack' (249 tests)"
-status: ready
+status: in-progress
 created: 2026-05-08
 priority: high
 feasibility: medium
@@ -391,3 +391,95 @@ Expected outcomes:
   worktree before starting Phase 1 instrumentation.
 - **Sprint 51 spec-completeness goal**: this issue is high-impact (249 tests).
   Net improvement should be ≥ +200 once landed.
+
+---
+
+## Implementation Notes (senior-dev, 2026-05-08, branch issue-1384-async-arity)
+
+### Root cause (verified empirically)
+
+The architect's hypothesis-1 was almost right but slightly off-target. The leak is
+NOT that `cbFctx.body` is missed by the shifter — my Phase-1 instrumentation
+showed the leaky body is the **OUTER** `$test.body`, not `cbFctx.body`.
+
+Trace of the 6-line reproducer's flush events (numImports starts at 60 after
+addUnionImports adds 12 type-helper imports during $f compilation):
+
+| Step | Event | importsBefore | added | fctx | currentFunc | Outcome |
+|------|-------|---------------|-------|------|-------------|---------|
+| 1 | addUnionImports +12 (during $f) | 60 | 12 | n/a | $f | OK — walks $f, $test, currentFunc |
+| 2 | flush Promise_then add | 72 | 1 | $test | $test | OK — empty body |
+| 3 | flush Promise_all add (in receiver) | 73 | 1 | $test | $test | shifts call 73→74 in $test.body (= call $f) |
+| 4 | flush Promise_resolve+reject add (in async-wrap) | 74 | 2 | $test | $test | shifts call 74→76 in $test.body |
+| 5 | flush 3 imports added during cb body compilation | 76 | 3 | __cb_0 | __cb_0 | **MISSED** — call 76 in funcStack($test).body should shift to 79 |
+
+Wait — step 5's diagnostic said `liveBodies=1` (cbFctx.body). funcStack should
+include $test (after the savedFunc swap). But the diagnostic showed ZERO
+shifts in step 5, even though $test.body had `call 76`.
+
+The actual leak: **`shiftLateImportIndices` did not walk `ctx.currentFunc.body`
+when `fctx ≠ ctx.currentFunc`.** This matters because:
+
+- During `compileArrowAsCallback`'s param-coercion phase
+  (`closures.ts:2470 — coerceType(ctx, cbFctx, ...)`), `fctx=cbFctx` is passed
+  to the shifter, but `ctx.currentFunc=$test` (savedFunc swap hasn't happened
+  yet at that point).
+- The shifter walks `fctx.body=cbFctx.body` but skips `ctx.currentFunc.body=
+  $test.body`.
+- `$test.body` is also not on `funcStack` yet (no swap), and `func.body =
+  fctx.body` only happens at the END of `compileFunctionBody`, so
+  `ctx.mod.functions[$test].body` is still the empty initial array.
+- Net effect: `$test.body`'s `call $f` instruction stays at the stale funcIdx,
+  pointing to a different (import) function with different arity → CE.
+
+**For this 6-line reproducer specifically**, the leak fires at step 5 above,
+not at param-coercion — the cb has no ref/ref_null params, so no param-coercion
+runs. Step 5's leak is similar: 3 imports get added during cb body compilation
+(for tuple-narrowing helpers `__array_from_iter`, `__extern_get_idx`,
+`__extern_is_undefined`), `fctx=__cb_0`, `ctx.currentFunc=__cb_0` after the
+swap, BUT funcStack=[$test] should make $test.body reachable. Diagnostic
+showed it WASN'T being walked — probably because of how `mod.functions[$test]
+.body` is the empty initial array at that moment, AND ctx.funcStack walks
+parentFctx.body (=$test.body live array which IS reachable here).
+
+Actually, both routes ($test live via funcStack, $test live via currentFunc)
+can fire. The fix covers both: the `shifted` Set dedupes redundant walks.
+
+### Fix shape (combined Fix A + Fix C from architect spec)
+
+Two prongs, each closes a separate leak window:
+
+**Prong 1 (root-cause):** `shiftLateImportIndices` now walks
+`ctx.currentFunc.body` (and its savedBodies) in addition to `fctx.body`.
+Catches the case where the shifter is called with a non-currentFunc fctx
+(e.g. `coerceType(ctx, cbFctx, ...)` while `ctx.currentFunc=outer`).
+
+**Prong 2 (defense in depth):** New `ctx.liveBodies: Set<Instr[]>`. The two
+arrow-compilation paths (`compileArrowAsCallback`,
+`compileArrowAsClosure`) register their newly-allocated body array in
+`liveBodies` BEFORE any emit, and remove it after the function is attached
+to `ctx.mod.functions`. All three shifters (`addUnionImports`,
+`addStringImports`, `shiftLateImportIndices`) walk `liveBodies`.
+
+### Files changed
+
+| File | Change |
+|------|--------|
+| `src/codegen/context/types.ts` | Add `liveBodies: Set<Instr[]>` to `CodegenContext`. |
+| `src/codegen/context/create-context.ts` | Initialize `liveBodies: new Set()`. |
+| `src/codegen/closures.ts` | `compileArrowAsCallback` + `compileArrowAsClosure` add cbFctx/liftedFctx body to `ctx.liveBodies` early; remove after `mod.functions.push`. |
+| `src/codegen/expressions/late-imports.ts` | `shiftLateImportIndices` now walks `ctx.currentFunc.body` (Prong 1) and `ctx.liveBodies` (Prong 2). |
+| `src/codegen/index.ts` | `addStringImports` + `addUnionImports` shifters walk `ctx.liveBodies` (Prong 2). |
+
+Net: +65 lines, no deletions.
+
+### Verification
+
+- 6-line reproducer (`.tmp/probe-1384-min.mts`): ✅ PASS (compile + Wasm validate).
+- All 3 representative test262 class-element fixtures: ✅ PASS.
+- `tests/issue-1384.test.ts` (4 cases): ✅ PASS — covers the minimum
+  reproducer, `Promise.race`, static-class-method dispatch, and chained
+  `.then(...).then(...)`.
+- Pre-existing failures (tagged-template-literal compile errors,
+  promise-chains async-as-Promise tests, issue-1197 peephole assertion)
+  unchanged on this branch — confirmed by stashing the fix and re-running.
