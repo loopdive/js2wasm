@@ -217,3 +217,48 @@ type errors — verified by stashing my changes. Test sources have
 +5–15 net (vs architect's +50). The +50 estimate assumed solving all
 7 method gaps; Slice A solves only the empty-array undefined gap.
 Realistic for a focused, low-risk PR.
+
+## Slice B investigation (senior-dev, 2026-05-08)
+
+**Slice A landed** (PR #289 +29 net). Investigated remaining gaps for
+Slice B. Findings:
+
+### "Length-NaN coercion" gap is the array-like bridge (#1358)
+
+The probe `obj.length=NaN; obj.push = Array.prototype.push; obj.push(-1)`
+shows that AFTER push, `obj.length` reads back as `null` (instead of 1).
+Even the BASELINE case `obj.length=2; obj.push(99)` shows length=2 after
+push (should be 3).
+
+Root cause: our wasm-side proxy doesn't reflect mutations from native
+Array.prototype methods. This is the array-like dispatch bridge —
+**already in_progress under #1358** for another dev. Duplicating that
+work would conflict; deferring Slice B's length-coercion sub-slice
+to land alongside #1358.
+
+### Symbol-as-arg → TypeError (overlaps #1343)
+
+`compileArrayFill` at line 5390-5407 (and similar in `copyWithin`)
+unconditionally coerces `start`/`end` args to `f64` via `__unbox_number`,
+which silently returns NaN for Symbol args. Per spec ToIntegerOrInfinity
+must throw TypeError on Symbol.
+
+Fix would emit a runtime Symbol check before the coercion. But this
+overlaps significantly with **#1343 (Boolean wrapper + Symbol
+coercion TypeErrors)** which is already in_progress. To avoid
+duplicating Symbol-coercion infrastructure, deferring this until the
+runtime helpers from #1343 land.
+
+### Achievable Slice B today: limited
+
+Direct probes show the remaining gaps either:
+- Need #1358's array-like dispatch fix (length-NaN cases).
+- Need #1343's Symbol coercion infrastructure (Symbol → TypeError).
+- Need new constructor handling (`new Array().unshift` length=0 bug).
+- Need MaxSafeInteger i64 length math (push at 2^53-1 → RangeError).
+
+Each is a non-trivial standalone issue. Slice A's +29 net is what's
+reachable without deeper infrastructure work. **Recommend pausing
+Slice B** until #1358 / #1343 land, then re-scope.
+
+Senior-dev returning task to queue. Architect re-spec recommended.
