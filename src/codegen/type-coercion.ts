@@ -2138,25 +2138,18 @@ function emitToStringResultToF64ByKind(ctx: CodegenContext, fctx: FunctionContex
 export function emitSafeExternrefToF64(ctx: CodegenContext, fctx: FunctionContext): void {
   addUnionImports(ctx);
   const unboxIdx = ctx.funcMap.get("__unbox_number")!;
-  const typeofNumIdx = ctx.funcMap.get("__typeof_number")!;
-  const tmpLocal = allocTempLocal(fctx, { kind: "externref" });
-  fctx.body.push({ op: "local.tee", index: tmpLocal } as unknown as Instr);
-  // Check if it's a JS number (typeof === "number")
-  fctx.body.push({ op: "call", funcIdx: typeofNumIdx });
-  fctx.body.push({
-    op: "if",
-    blockType: { kind: "val", type: { kind: "f64" } },
-    then: [
-      // JS number: safe to unbox
-      { op: "local.get", index: tmpLocal } as Instr,
-      { op: "call", funcIdx: unboxIdx } as Instr,
-    ],
-    else: [
-      // Not a number (GC struct, string, null, etc.): return NaN
-      { op: "f64.const", value: NaN } as Instr,
-    ],
-  } as unknown as Instr);
-  releaseTempLocal(fctx, tmpLocal);
+  // (#1379) `__unbox_number` calls JS `Number(v)` which implements the spec
+  // ToNumber operation: null→0, undefined→NaN, "1"→1, "abc"→NaN, true→1,
+  // and ToPrimitive→Number for objects (with #1319's fix that returns
+  // "[object Object]" for wasm-structs without conversion methods, this
+  // path no longer throws on plain GC structs). Pre-#1379 we gated the
+  // call behind a `__typeof_number` check and returned NaN otherwise —
+  // that broke `var x = null; ++x` (expected 1, got NaN), `var x = "1";
+  // x--` (expected 0, got NaN), and the rest of the
+  // language/expressions/{prefix,postfix}-{increment,decrement} cluster.
+  // Routing through `__unbox_number` directly gives spec-correct ToNumeric
+  // for the f64 numeric path.
+  fctx.body.push({ op: "call", funcIdx: unboxIdx });
 }
 
 /**
