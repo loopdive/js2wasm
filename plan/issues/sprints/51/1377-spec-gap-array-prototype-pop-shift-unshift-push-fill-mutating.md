@@ -262,3 +262,68 @@ reachable without deeper infrastructure work. **Recommend pausing
 Slice B** until #1358 / #1343 land, then re-scope.
 
 Senior-dev returning task to queue. Architect re-spec recommended.
+
+## Slice B re-attempt (senior-dev, 2026-05-08, after tech-lead push)
+
+Tech-lead overrode the pause and asked me to start with length-NaN
+coercion. Re-investigated. Findings:
+
+### The mutation isn't persisting
+
+Key probe (Test C in `.tmp/probe-trace.mts`):
+
+```ts
+const obj: any = {};
+obj.length = 2;
+const v = (Array.prototype.push as any).call(obj, 99);
+return JSON.stringify({v: v, length: obj.length, two: obj[2]});
+```
+
+Output: `{"v":3,"length":2}` (note: `two` key absent).
+
+So push **returns** 3 (correct), but `obj.length` reads back as 2 and
+`obj[2]` is undefined. **The native push.call mutated something, but
+not the same `obj` we read length from.**
+
+### Imports observed
+
+Compile of the above test produces these imports:
+- `__extern_method_call` (used for `obj.push(...)` dispatch)
+- `__extern_get` (used for `obj.length`, `obj[2]` reads)
+- `__extern_set` (used for `obj.length = 2`)
+
+`__extern_method_call(obj, "push", [99])`:
+- `_isWasmStruct(obj)` is false (plain JS).
+- `fn = obj["push"]` → Array.prototype.push.
+- `fn.apply(obj, [99])` → native push runs on obj.
+- Returns `_unwrapForHost(3) = 3`.
+
+`__extern_get(obj, "length")` → `_safeGet(obj, "length")` → `obj.length`.
+
+So both reads should hit the same plain JS object — there's no proxy
+wrap because `_isWasmStruct(obj)` is false.
+
+### Hypothesis (unverified — needs WAT dump)
+
+The wasm-side externref for `obj` may be **boxed/unboxed differently
+across calls**, so `__extern_method_call`'s `obj` parameter and
+`__extern_get`'s `obj` parameter end up pointing to different JS
+objects. That would explain why mutations on one don't appear in the
+other.
+
+Requires:
+1. WAT dump of the binary to confirm the externref values flowing into
+   each import.
+2. Trace runtime print of `obj === obj_after` identity check.
+
+Out of scope for this session. **Returning task to queue with this
+deeper hypothesis.** Architect should re-spec with the externref-
+identity question as the central concern.
+
+### Probe artifacts
+
+All in `.tmp/` of `issue-1377b-length-coercion`:
+- `probe-length.mts` — 5 length scenarios.
+- `probe-trace.mts` — Tests A-E narrowing the bug.
+- `probe-codepath.mts` — Confirms `__extern_method_call` + `__extern_get`
+  are the imports used (not `__proto_method_call` or `__extern_length`).
