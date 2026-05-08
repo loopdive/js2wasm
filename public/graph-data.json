@@ -18135,8 +18135,8 @@
       "id": "1311",
       "title": "Map<string, AsyncHandler> dispatch null_deref in App.dispatch path",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "50",
       "depends_on": [],
       "files": [],
@@ -18506,10 +18506,10 @@
     },
     {
       "id": "1342",
-      "title": "spec gap: Boolean wrapper + Symbol coercion TypeErrors (24 + 45 test262 fails)",
+      "title": "spec gap: JSON.stringify replacer/toJSON/property-list (49 of 66 test262 fails)",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "50",
       "depends_on": [],
       "files": [],
@@ -18578,10 +18578,10 @@
     },
     {
       "id": "1348",
-      "title": "spec gap: class static initialization order + private field semantics (significant share of 1500+ class fails)",
+      "title": "spec gap: for-of doesn't IteratorClose on body throw (portion of 389 fails)",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "50",
       "depends_on": [],
       "files": [],
@@ -18700,8 +18700,8 @@
       "id": "1358",
       "title": "spec gap: Array.prototype.{filter,map,every,some,forEach,reduce} on array-like (.call) receivers — ~452 assertion_fail",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -18712,8 +18712,8 @@
       "id": "1359",
       "title": "spec gap: Array.prototype.{splice,slice,concat,toSpliced,toReversed} — @@species, sparse handling, IsConcatSpreadable (~150 fails)",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -18724,8 +18724,8 @@
       "id": "1360",
       "title": "spec gap: Array.prototype.{indexOf,lastIndexOf,includes} — SameValueZero, sparse, fromIndex coercion (~210 fails)",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -18736,8 +18736,8 @@
       "id": "1361",
       "title": "spec gap: Array.prototype.sort — comparator validation, stability, ToString fallback (~46 fails)",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -18748,8 +18748,8 @@
       "id": "1362",
       "title": "spec gap: Object.defineProperties — apply full descriptor map (332 fails)",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -18760,8 +18760,8 @@
       "id": "1363",
       "title": "spec gap: class dstr — 'Cannot destructure null/undefined' in method default-binding (~700 runtime_errors)",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -18773,7 +18773,7 @@
       "title": "spec gap: class elements — method/field descriptor enumerable/configurable/writable (~700 fails)",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -18784,8 +18784,8 @@
       "id": "1365",
       "title": "spec gap: class private fields, methods, accessors and brand checks (~97 fails in elements/private-*)",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -18805,11 +18805,23 @@
       "cluster": "spec-completeness"
     },
     {
+      "id": "1366a",
+      "title": "spec gap: class extends Error/TypeError/RangeError — builtin subclassing via existing host imports (+40-60 passes)",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
       "id": "1367",
       "title": "spec gap: Iterator.prototype helpers — get-next-once, non-constructible, return-on-throw (~244 fails)",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -18820,8 +18832,8 @@
       "id": "1368",
       "title": "spec gap: Promise.{all,allSettled,any,race} — resolver-element semantics, ctor type-check (~109 fails)",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -18832,8 +18844,8 @@
       "id": "1369",
       "title": "spec gap: String.prototype.{split,replace,replaceAll,match,matchAll} — limit, @@split/@@replace/@@match protocol (~150 fails)",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -18844,8 +18856,8 @@
       "id": "1370",
       "title": "IR: claim class methods and constructors (largest legacy bypass)",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -18856,8 +18868,8 @@
       "id": "1371",
       "title": "IR: expand external-call whitelist to stop rejecting host imports and Math.*",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -18868,8 +18880,8 @@
       "id": "1372",
       "title": "IR: support destructuring params (removes param-shape-rejected bypass)",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -18892,8 +18904,8 @@
       "id": "1374",
       "title": "IR: string for-of and for-in through IR (removes legacy fallback for string iteration)",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -18916,8 +18928,8 @@
       "id": "1376",
       "title": "IR: fallback telemetry gate — CI fails when unintended legacy bypasses exceed threshold",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -18928,8 +18940,8 @@
       "id": "1377",
       "title": "spec gap: Array.prototype.{push,pop,shift,unshift,fill,copyWithin,reverse} — mutation on array-like + length writes (~80 fails)",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -18952,8 +18964,8 @@
       "id": "1379",
       "title": "spec gap: prefix/postfix ++/-- on null/undefined/string operands — ToNumeric coercion (~40 fails)",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "in-progress",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -18964,8 +18976,8 @@
       "id": "1380",
       "title": "spec gap: equality (==, !=, ===, !==) — Symbol/BigInt coercion + ReferenceError propagation (~55 fails)",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -18977,8 +18989,32 @@
       "title": "spec gap: String.prototype.{substring,slice,indexOf,search,charAt,charCodeAt,codePointAt,at,includes,startsWith,endsWith,trim,concat} edge cases (~128 fails)",
       "priority": "medium",
       "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1382",
+      "title": "structural: Wasm closures not JS-callable from host imports — bridge gap",
+      "priority": "high",
+      "status": "ready",
       "raw_status": "ready",
       "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "ir-full-coverage",
+      "cluster": "ir-full-coverage"
+    },
+    {
+      "id": "1383",
+      "title": "narrower typeof-gated strict-equality fix (follow-up to closed PR #272 / #1380)",
+      "priority": "medium",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "",
       "depends_on": [],
       "files": [],
       "goal": "spec-completeness",
@@ -18988,21 +19024,20 @@
       "id": "1384",
       "title": "CE: static async method with PrivateName — 'not enough arguments on the stack' (249 tests)",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "51",
       "depends_on": [],
       "files": [],
       "goal": "spec-completeness",
-      "cluster": "spec-completeness",
-      "compiler_errors": 249
+      "cluster": "spec-completeness"
     },
     {
       "id": "1385",
       "title": "HANG: Temporal/Duration/from/argument-non-string.js — infinite runtime loop",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -19013,6 +19048,19 @@
       "id": "1386",
       "title": "HANG: Promise/race/invoke-then.js — compilation or runtime infinite loop",
       "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness",
+      "compiler_errors": 6
+    },
+    {
+      "id": "1387",
+      "title": "feat: implement `with` statement — architect exploration of dynamic-scope compilation strategies",
+      "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
       "sprint": "51",
@@ -19020,7 +19068,80 @@
       "files": [],
       "goal": "spec-completeness",
       "cluster": "spec-completeness",
-      "compiler_errors": 6
+      "compiler_errors": 294
+    },
+    {
+      "id": "1388",
+      "title": "runtime: null.next — yield* / async-generator iterator construction returns null in class methods (316 fails)",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1389",
+      "title": "fix: false CE — var + function-declaration same name at top-level scope",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1390",
+      "title": "fix: import-defer proposal tests fail as CE (no test export) when TEST262_INCLUDE_PROPOSALS=1",
+      "priority": "low",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness",
+      "compiler_errors": 31
+    },
+    {
+      "id": "1391",
+      "title": "infra: CI feed baseline staleness detection — warn when baseline_sha diverges from current main",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "reliability",
+      "cluster": "reliability"
+    },
+    {
+      "id": "1392",
+      "title": "IR: null-safe access primitives — ref.is_null IrUnop + value-producing if/else IR node",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "ir-full-coverage",
+      "cluster": "ir-full-coverage"
+    },
+    {
+      "id": "1393",
+      "title": "infra: content-hash CI cache + GitHub Merge Queue — eliminate baseline drift and redundant re-runs",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "ci-reliability",
+      "cluster": "ci-reliability"
     }
   ],
   "links": [
@@ -21316,6 +21437,7 @@
         "1364",
         "1365",
         "1366",
+        "1366a",
         "1367",
         "1368",
         "1369",
@@ -21324,9 +21446,14 @@
         "1379",
         "1380",
         "1381",
+        "1383",
         "1384",
         "1385",
-        "1386"
+        "1386",
+        "1387",
+        "1388",
+        "1389",
+        "1390"
       ]
     },
     {
@@ -26281,6 +26408,10 @@
     },
     {
       "goal": "spec-completeness",
+      "issue": "1366a"
+    },
+    {
+      "goal": "spec-completeness",
       "issue": "1367"
     },
     {
@@ -26313,6 +26444,10 @@
     },
     {
       "goal": "spec-completeness",
+      "issue": "1383"
+    },
+    {
+      "goal": "spec-completeness",
       "issue": "1384"
     },
     {
@@ -26322,6 +26457,22 @@
     {
       "goal": "spec-completeness",
       "issue": "1386"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1387"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1388"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1389"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1390"
     },
     {
       "goal": "standalone-mode",
@@ -30815,6 +30966,10 @@
     },
     {
       "goal": "async-model",
+      "issue": "1366a"
+    },
+    {
+      "goal": "async-model",
       "issue": "1367"
     },
     {
@@ -30847,6 +31002,10 @@
     },
     {
       "goal": "async-model",
+      "issue": "1383"
+    },
+    {
+      "goal": "async-model",
       "issue": "1384"
     },
     {
@@ -30856,6 +31015,22 @@
     {
       "goal": "async-model",
       "issue": "1386"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1387"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1388"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1389"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1390"
     },
     {
       "goal": "symbol-protocol",
@@ -31407,6 +31582,10 @@
     },
     {
       "goal": "symbol-protocol",
+      "issue": "1366a"
+    },
+    {
+      "goal": "symbol-protocol",
       "issue": "1367"
     },
     {
@@ -31439,6 +31618,10 @@
     },
     {
       "goal": "symbol-protocol",
+      "issue": "1383"
+    },
+    {
+      "goal": "symbol-protocol",
       "issue": "1384"
     },
     {
@@ -31448,6 +31631,22 @@
     {
       "goal": "symbol-protocol",
       "issue": "1386"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1387"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1388"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1389"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1390"
     },
     {
       "goal": "builtin-methods",
@@ -31999,6 +32198,10 @@
     },
     {
       "goal": "builtin-methods",
+      "issue": "1366a"
+    },
+    {
+      "goal": "builtin-methods",
       "issue": "1367"
     },
     {
@@ -32031,6 +32234,10 @@
     },
     {
       "goal": "builtin-methods",
+      "issue": "1383"
+    },
+    {
+      "goal": "builtin-methods",
       "issue": "1384"
     },
     {
@@ -32040,6 +32247,22 @@
     {
       "goal": "builtin-methods",
       "issue": "1386"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1387"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1388"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1389"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1390"
     },
     {
       "goal": "property-model",
@@ -32591,6 +32814,10 @@
     },
     {
       "goal": "property-model",
+      "issue": "1366a"
+    },
+    {
+      "goal": "property-model",
       "issue": "1367"
     },
     {
@@ -32623,6 +32850,10 @@
     },
     {
       "goal": "property-model",
+      "issue": "1383"
+    },
+    {
+      "goal": "property-model",
       "issue": "1384"
     },
     {
@@ -32632,6 +32863,22 @@
     {
       "goal": "property-model",
       "issue": "1386"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1387"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1388"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1389"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1390"
     },
     {
       "goal": "iterator-protocol",

@@ -180,7 +180,6 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
-| #1311 | Map<string, AsyncHandler> dispatch null_deref in App.dispatch path | medium | ready |
 | #1312 | Async recursive function (next() compose pattern) — Unhandled rejection | medium | ready |
 | #1314 | Wasm codegen: __closure_N stack underflow — call emits wrong argument count | high | ready |
 | #1318 | test harness: 'returned N' bare exit code — capture last assertion detail (~8,900 vague failures) | high | ready |
@@ -202,13 +201,11 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | #1339 | spec gap: AggregateError + SuppressedError errors-iterable + cause coercion (37 test262 fails) | medium | ready |
 | #1340 | spec gap: AggregateError + SuppressedError errors-iterable + cause coercion (37 test262 fails) | medium | ready |
 | #1341 | spec gap: Iterator.prototype helpers wasm_compile errors (89 of 245 fails) | high | ready |
-| #1342 | spec gap: Boolean wrapper + Symbol coercion TypeErrors (24 + 45 test262 fails) | medium | ready |
 | #1343 | spec gap: Boolean wrapper + Symbol coercion TypeErrors (24 + 45 test262 fails) | medium | ready |
 | #1344 | spec gap: Date.prototype string formatters and parsers (174 of 485 test262 fails) | medium | ready |
 | #1345 | spec gap: Generator/AsyncIterator prototype receiver TypeErrors + return/throw (52 + 12 test262 fails) | medium | ready |
 | #1346 | spec gap: Reflect.* invariant checks mirror internal-method bugs (83 test262 fails) | medium | ready |
 | #1347 | spec gap: for-of doesn't IteratorClose on body throw (portion of 389 fails) | high | ready |
-| #1348 | spec gap: class static initialization order + private field semantics (significant share of 1500+ class fails) | high | ready |
 | #1349 | spec gap: BigInt typed-path eager f64 assumptions (47 test262 fails, 4 illegal_cast + 13 runtime) | medium | ready |
 | #1350 | spec gap: ArrayBuffer resizable + TypedArray detached-buffer guards (100 + 39 test262 fails) | medium | ready |
 | #1351 | spec gap: ArrayBuffer resizable + TypedArray detached-buffer guards (100 + 39 test262 fails) | medium | ready |
@@ -223,6 +220,8 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | #1322 | Math.random() has no standalone fallback — requires JS host import in WASI/standalone mode | low | in-progress |
 | #1325 | instanceof against built-in types: compile-time type-tag registry eliminates JS host for common cases | medium | in-progress |
 | #1336 | spec gap: Object.assign drops getters / Symbol keys (27 of 38 test262 fails) | medium | in-progress |
+| #1342 | spec gap: JSON.stringify replacer/toJSON/property-list (49 of 66 test262 fails) | medium | in-progress |
+| #1348 | spec gap: for-of doesn't IteratorClose on body throw (portion of 389 fails) | high | in-progress |
 
 ### Done
 
@@ -249,6 +248,7 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | #1308 | Wasm closure struct returned to JS host is not JS-callable | medium | done |
 | #1309 | Hono Tier 6 — Web API surface (Request/Response) + async handlers | low | done |
 | #1310 | vm.createContext sandbox isolation for test262 global contamination | medium | done |
+| #1311 | Map<string, AsyncHandler> dispatch null_deref in App.dispatch path | medium | done |
 | #1313 | await is a passthrough — does not unwrap Promise from async-call expressions | high | done |
 | #1316 | illegal cast error: add expected type and actual value context (142 opaque runtime failures) | medium | done |
 | #1317 | null dereference error: add expression / variable context (573 opaque runtime failures) | medium | done |

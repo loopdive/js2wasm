@@ -133,13 +133,13 @@ pass rate goes from "good" to "excellent."
 | **1339** | spec gap: AggregateError + SuppressedError errors-iterable + cause coercion (37 test262 fails) | 50 | ready | medium |
 | **1340** | spec gap: AggregateError + SuppressedError errors-iterable + cause coercion (37 test262 fails) | 50 | ready | medium |
 | **1341** | spec gap: Iterator.prototype helpers wasm_compile errors (89 of 245 fails) | 50 | ready | high |
-| **1342** | spec gap: Boolean wrapper + Symbol coercion TypeErrors (24 + 45 test262 fails) | 50 | ready | medium |
+| **1342** | spec gap: JSON.stringify replacer/toJSON/property-list (49 of 66 test262 fails) | 50 | in-progress | medium |
 | **1343** | spec gap: Boolean wrapper + Symbol coercion TypeErrors (24 + 45 test262 fails) | 50 | ready | medium |
 | **1344** | spec gap: Date.prototype string formatters and parsers (174 of 485 test262 fails) | 50 | ready | medium |
 | **1345** | spec gap: Generator/AsyncIterator prototype receiver TypeErrors + return/throw (52 + 12 test262 fails) | 50 | ready | medium |
 | **1346** | spec gap: Reflect.* invariant checks mirror internal-method bugs (83 test262 fails) | 50 | ready | medium |
 | **1347** | spec gap: for-of doesn't IteratorClose on body throw (portion of 389 fails) | 50 | ready | high |
-| **1348** | spec gap: class static initialization order + private field semantics (significant share of 1500+ class fails) | 50 | ready | high |
+| **1348** | spec gap: for-of doesn't IteratorClose on body throw (portion of 389 fails) | 50 | in-progress | high |
 | **1349** | spec gap: BigInt typed-path eager f64 assumptions (47 test262 fails, 4 illegal_cast + 13 runtime) | 50 | ready | medium |
 | **1350** | spec gap: ArrayBuffer resizable + TypedArray detached-buffer guards (100 + 39 test262 fails) | 50 | ready | medium |
 | **1351** | spec gap: ArrayBuffer resizable + TypedArray detached-buffer guards (100 + 39 test262 fails) | 50 | ready | medium |
@@ -148,26 +148,32 @@ pass rate goes from "good" to "excellent."
 | **1355** | spec backlog: Proxy implementation beyond JS-host fallback (235 test262 fails) | backlog | backlog | low |
 | **1356** | spec backlog: ShadowRealm implementation (61 test262 fails, requires per-realm parser) | backlog | backlog | low |
 | **1357** | spec backlog: AbstractModuleSource constructor (Stage 3 import-source proposal, 8 test262 fails) | backlog | backlog | low |
-| **1358** | spec gap: Array.prototype.{filter,map,every,some,forEach,reduce} on array-like (.call) receivers — ~452 assertion_fail | 51 | ready | high |
-| **1359** | spec gap: Array.prototype.{splice,slice,concat,toSpliced,toReversed} — @@species, sparse handling, IsConcatSpreadable (~150 fails) | 51 | in-progress | high |
-| **1360** | spec gap: Array.prototype.{indexOf,lastIndexOf,includes} — SameValueZero, sparse, fromIndex coercion (~210 fails) | 51 | in-progress | high |
-| **1361** | spec gap: Array.prototype.sort — comparator validation, stability, ToString fallback (~46 fails) | 51 | in-progress | medium |
-| **1362** | spec gap: Object.defineProperties — apply full descriptor map (332 fails) | 51 | ready | high |
-| **1363** | spec gap: class dstr — 'Cannot destructure null/undefined' in method default-binding (~700 runtime_errors) | 51 | in-progress | high |
-| **1364** | spec gap: class elements — method/field descriptor enumerable/configurable/writable (~700 fails) | 51 | ready | high |
-| **1365** | spec gap: class private fields, methods, accessors and brand checks (~97 fails in elements/private-*) | 51 | ready | medium |
+| **1358** | spec gap: Array.prototype.{filter,map,every,some,forEach,reduce} on array-like (.call) receivers — ~452 assertion_fail | 51 | done | high |
+| **1359** | spec gap: Array.prototype.{splice,slice,concat,toSpliced,toReversed} — @@species, sparse handling, IsConcatSpreadable (~150 fails) | 51 | done | high |
+| **1360** | spec gap: Array.prototype.{indexOf,lastIndexOf,includes} — SameValueZero, sparse, fromIndex coercion (~210 fails) | 51 | done | high |
+| **1361** | spec gap: Array.prototype.sort — comparator validation, stability, ToString fallback (~46 fails) | 51 | done | medium |
+| **1362** | spec gap: Object.defineProperties — apply full descriptor map (332 fails) | 51 | done | high |
+| **1363** | spec gap: class dstr — 'Cannot destructure null/undefined' in method default-binding (~700 runtime_errors) | 51 | done | high |
+| **1364** | spec gap: class elements — method/field descriptor enumerable/configurable/writable (~700 fails) | 51 | in-progress | high |
+| **1365** | spec gap: class private fields, methods, accessors and brand checks (~97 fails in elements/private-*) | 51 | done | medium |
 | **1366** | spec gap: class subclass + subclass-builtins prototype chain (~154 fails) | 51 | ready | medium |
-| **1367** | spec gap: Iterator.prototype helpers — get-next-once, non-constructible, return-on-throw (~244 fails) | 51 | ready | high |
-| **1368** | spec gap: Promise.{all,allSettled,any,race} — resolver-element semantics, ctor type-check (~109 fails) | 51 | ready | medium |
-| **1369** | spec gap: String.prototype.{split,replace,replaceAll,match,matchAll} — limit, @@split/@@replace/@@match protocol (~150 fails) | 51 | in-progress | medium |
-| **1377** | spec gap: Array.prototype.{push,pop,shift,unshift,fill,copyWithin,reverse} — mutation on array-like + length writes (~80 fails) | 51 | ready | medium |
+| **1366a** | spec gap: class extends Error/TypeError/RangeError — builtin subclassing via existing host imports (+40-60 passes) | 51 | done | high |
+| **1367** | spec gap: Iterator.prototype helpers — get-next-once, non-constructible, return-on-throw (~244 fails) | 51 | done | high |
+| **1368** | spec gap: Promise.{all,allSettled,any,race} — resolver-element semantics, ctor type-check (~109 fails) | 51 | done | medium |
+| **1369** | spec gap: String.prototype.{split,replace,replaceAll,match,matchAll} — limit, @@split/@@replace/@@match protocol (~150 fails) | 51 | done | medium |
+| **1377** | spec gap: Array.prototype.{push,pop,shift,unshift,fill,copyWithin,reverse} — mutation on array-like + length writes (~80 fails) | 51 | done | medium |
 | **1378** | spec gap: try/catch/finally — error type fidelity, finally completion override, dstr-binding (~85 fails) | 51 | in-progress | medium |
-| **1379** | spec gap: prefix/postfix ++/-- on null/undefined/string operands — ToNumeric coercion (~40 fails) | 51 | in-progress | medium |
-| **1380** | spec gap: equality (==, !=, ===, !==) — Symbol/BigInt coercion + ReferenceError propagation (~55 fails) | 51 | ready | medium |
-| **1381** | spec gap: String.prototype.{substring,slice,indexOf,search,charAt,charCodeAt,codePointAt,at,includes,startsWith,endsWith,trim,concat} edge cases (~128 fails) | 51 | ready | medium |
-| **1384** | CE: static async method with PrivateName — 'not enough arguments on the stack' (249 tests) | 51 | ready | high |
-| **1385** | HANG: Temporal/Duration/from/argument-non-string.js — infinite runtime loop | 51 | ready | medium |
-| **1386** | HANG: Promise/race/invoke-then.js — compilation or runtime infinite loop | 51 | ready | medium |
+| **1379** | spec gap: prefix/postfix ++/-- on null/undefined/string operands — ToNumeric coercion (~40 fails) | 51 | done | medium |
+| **1380** | spec gap: equality (==, !=, ===, !==) — Symbol/BigInt coercion + ReferenceError propagation (~55 fails) | 51 | done | medium |
+| **1381** | spec gap: String.prototype.{substring,slice,indexOf,search,charAt,charCodeAt,codePointAt,at,includes,startsWith,endsWith,trim,concat} edge cases (~128 fails) | 51 | in-progress | medium |
+| **1383** | narrower typeof-gated strict-equality fix (follow-up to closed PR #272 / #1380) | Backlog | backlog | medium |
+| **1384** | CE: static async method with PrivateName — 'not enough arguments on the stack' (249 tests) | 51 | done | high |
+| **1385** | HANG: Temporal/Duration/from/argument-non-string.js — infinite runtime loop | 51 | done | medium |
+| **1386** | HANG: Promise/race/invoke-then.js — compilation or runtime infinite loop | 51 | done | medium |
+| **1387** | feat: implement `with` statement — architect exploration of dynamic-scope compilation strategies | 51 | ready | medium |
+| **1388** | runtime: null.next — yield* / async-generator iterator construction returns null in class methods (316 fails) | 51 | done | high |
+| **1389** | fix: false CE — var + function-declaration same name at top-level scope | 51 | done | medium |
+| **1390** | fix: import-defer proposal tests fail as CE (no test export) when TEST262_INCLUDE_PROPOSALS=1 | 51 | done | low |
 
 <!-- AUTOGENERATED:GOAL-ISSUES-END -->
 
