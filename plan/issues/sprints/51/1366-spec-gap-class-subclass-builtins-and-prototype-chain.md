@@ -2,7 +2,7 @@
 id: 1366
 sprint: 51
 title: "spec gap: class subclass + subclass-builtins prototype chain (~154 fails)"
-status: ready
+status: in-progress
 created: 2026-05-08
 priority: medium
 feasibility: medium

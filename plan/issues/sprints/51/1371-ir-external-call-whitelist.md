@@ -2,7 +2,7 @@
 id: 1371
 sprint: 51
 title: "IR: expand external-call whitelist to stop rejecting host imports and Math.*"
-status: ready
+status: in-progress
 created: 2026-05-08
 priority: high
 feasibility: medium
