@@ -1,0 +1,22 @@
+{
+  "pr": 316,
+  "conclusion": "success",
+  "head_branch": "issue-1392-ir-null-safe-primitives",
+  "head_sha": "415123ff519aacd5f4216e422982d709a5f349ed",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25574721197",
+  "timestamp": "2026-05-08T20:12:31Z",
+  "pass": 27655,
+  "fail": 14269,
+  "compile_error": 1151,
+  "snapshot_delta": -2,
+  "net_per_test": 38,
+  "regressions": 52,
+  "regressions_real": 11,
+  "regressions_wasm_change": 11,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 41,
+  "improvements": 49,
+  "baseline_sha": "415123ff519aacd5f4216e422982d709a5f349ed",
+  "baseline_staleness_commits": 15,
+  "baseline_stale": false
+}
