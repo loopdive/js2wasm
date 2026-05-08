@@ -297,7 +297,10 @@ const HANGING_TESTS = new Set([
   // ref-cell capture pattern (compileArrowAsCallback) now propagates the
   // count++ mutation back to the outer local, terminating the loop after the
   // spec'd 3 iterations.
-  "test/built-ins/Temporal/Duration/from/argument-non-string.js", // hangs: Temporal runtime loop
+  // #1385: Temporal/Duration/from/argument-non-string.js no longer hangs.
+  // Local probe (May 2026): wrapTest + compile + instantiate + test() runs
+  // ~1.2s total; test() throws WebAssembly.Exception immediately because
+  // `Temporal` is not defined in our runtime. No iteration, no hang. Removed.
 ]);
 
 export function shouldSkip(source: string, meta: Test262Meta, filePath?: string): FilterResult {
