@@ -1,6 +1,6 @@
 ---
 id: 1387
-sprint: ~
+sprint: 51
 title: "feat: implement `with` statement — architect exploration of dynamic-scope compilation strategies"
 status: ready
 created: 2026-05-08
