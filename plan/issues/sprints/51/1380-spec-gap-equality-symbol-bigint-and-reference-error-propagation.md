@@ -164,3 +164,54 @@ Spec ordering: left first, then right.
 ### Estimated impact
 
 +40 passes. §13.11 climbs from 62% to ~90%.
+
+## Implementation notes (Slice A: ReferenceError, dev-1389, 2026-05-08)
+
+### Slice A: undeclared-identifier ReferenceError on equality
+
+**Scope**: ~20 LoC in `src/codegen/expressions/identifiers.ts` `compileIdentifier`.
+
+The bug: when the identifier had no TypeScript symbol (truly undeclared
+variable), the codegen path emitted a raw `throw ref.null.extern` wrapped
+in the exception tag. JS-host caught that as a null externref, so
+`e instanceof ReferenceError` was always `false` — the test262 sample
+S11.9.1_A2.1_T3 reported `Actual: null` (i.e., `1 == undeclared` returned
+without throwing or threw a non-ReferenceError).
+
+The fix: replace the raw throw with a proper call to the
+`__throw_reference_error` host import, mirroring the existing
+`emitStaticTdzThrow` and `emitLocalTdzCheck` patterns. The host helper
+constructs a real `ReferenceError("<name> is not defined")` instance
+that catch-blocks correctly identify.
+
+In standalone/WASI mode (where `__throw_reference_error` is unavailable)
+we fall back to the raw exception-tag throw — that mode already lacks a
+JS host to construct error objects.
+
+### Tests
+
+`tests/issue-1380.test.ts` — 6 unit tests:
+- `1 == undeclared` throws `ReferenceError` (S11.9.1_A2.1_T3 pattern)
+- `undeclared == 1` (left-side) throws `ReferenceError`
+- `1 !== undeclared` and `1 === undeclared` (strict variants)
+- ReferenceError message contains the identifier name
+- Declared variables still work (regression guard)
+
+### Other gaps deferred (Slices B/C/D follow-ups)
+
+Per architect's Approach (sections A–D), these remain open:
+
+| Gap | Sample test | Status |
+|-----|-------------|--------|
+| BigInt vs Object wrapper via ToPrimitive | `does-not-equals/bigint-and-object.js` | deferred — needs `__to_primitive` host fix for BigInt wrappers |
+| Symbol-to-primitive throws TypeError | `equals/coerce-symbol-to-prim-return-prim.js` | deferred — needs ToPrimitive Symbol-throws path |
+| Full §7.2.13 type-table dispatch via `__abstract_equality` | various Number×String×Boolean×Object | deferred — needs new host helper + binary-ops dispatcher |
+
+These need either new runtime helpers or a binary-ops refactor; out of
+scope for this focused Slice A fix.
+
+### Estimated impact (Slice A)
+
++5–10 net. Targets `S11.9.1_A2.1_T3.js` and any other tests that catch
+on `e instanceof ReferenceError` after evaluating an undeclared
+identifier in equality position. Larger gains require Slices B/C/D.

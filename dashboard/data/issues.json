@@ -213,46 +213,6 @@
   ],
   "ready": [
     {
-      "id": "1386",
-      "title": "HANG: Promise/race/invoke-then.js — compilation or runtime infinite loop",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "51"
-    },
-    {
-      "id": "1385",
-      "title": "HANG: Temporal/Duration/from/argument-non-string.js — infinite runtime loop",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "51"
-    },
-    {
-      "id": "1384",
-      "title": "CE: static async method with PrivateName — 'not enough arguments on the stack' (249 tests)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "51"
-    },
-    {
-      "id": "1381",
-      "title": "spec gap: String.prototype.{substring,slice,indexOf,search,charAt,charCodeAt,codePointAt,at,includes,startsWith,endsWith,trim,concat} edge cases (~128 fails)",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "51"
-    },
-    {
       "id": "1380",
       "title": "spec gap: equality (==, !=, ===, !==) — Symbol/BigInt coercion + ReferenceError propagation (~55 fails)",
       "priority": "medium",
@@ -269,6 +229,16 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "51"
+    },
+    {
+      "id": "1376",
+      "title": "IR: fallback telemetry gate — CI fails when unintended legacy bypasses exceed threshold",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "ir-full-coverage",
       "status": "ready",
       "sprint": "51"
     },
@@ -333,6 +303,16 @@
       "sprint": "51"
     },
     {
+      "id": "1369",
+      "title": "spec gap: String.prototype.{split,replace,replaceAll,match,matchAll} — limit, @@split/@@replace/@@match protocol (~150 fails)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "51"
+    },
+    {
       "id": "1368",
       "title": "spec gap: Promise.{all,allSettled,any,race} — resolver-element semantics, ctor type-check (~109 fails)",
       "priority": "medium",
@@ -385,6 +365,36 @@
     {
       "id": "1362",
       "title": "spec gap: Object.defineProperties — apply full descriptor map (332 fails)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "51"
+    },
+    {
+      "id": "1361",
+      "title": "spec gap: Array.prototype.sort — comparator validation, stability, ToString fallback (~46 fails)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "51"
+    },
+    {
+      "id": "1360",
+      "title": "spec gap: Array.prototype.{indexOf,lastIndexOf,includes} — SameValueZero, sparse, fromIndex coercion (~210 fails)",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "51"
+    },
+    {
+      "id": "1359",
+      "title": "spec gap: Array.prototype.{splice,slice,concat,toSpliced,toReversed} — @@species, sparse handling, IsConcatSpreadable (~150 fails)",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
@@ -504,16 +514,6 @@
     },
     {
       "id": "1343",
-      "title": "spec gap: Boolean wrapper + Symbol coercion TypeErrors (24 + 45 test262 fails)",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "50"
-    },
-    {
-      "id": "1342",
       "title": "spec gap: Boolean wrapper + Symbol coercion TypeErrors (24 + 45 test262 fails)",
       "priority": "medium",
       "feasibility": "easy",
@@ -730,16 +730,6 @@
       "depends_on": [],
       "goal": "npm-library-support",
       "status": "ready",
-      "sprint": "50"
-    },
-    {
-      "id": "1311",
-      "title": "Map<string, AsyncHandler> dispatch null_deref in App.dispatch path",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "npm-library-support",
-      "status": "needs-architect-spec",
       "sprint": "50"
     },
     {
@@ -1968,6 +1958,16 @@
   ],
   "inprogress": [
     {
+      "id": "1381",
+      "title": "spec gap: String.prototype.{substring,slice,indexOf,search,charAt,charCodeAt,codePointAt,at,includes,startsWith,endsWith,trim,concat} edge cases (~128 fails)",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "in-progress",
+      "sprint": "51"
+    },
+    {
       "id": "1379",
       "title": "spec gap: prefix/postfix ++/-- on null/undefined/string operands — ToNumeric coercion (~40 fails)",
       "priority": "medium",
@@ -1988,64 +1988,14 @@
       "sprint": "51"
     },
     {
-      "id": "1376",
-      "title": "IR: fallback telemetry gate — CI fails when unintended legacy bypasses exceed threshold",
-      "priority": "high",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "ir-full-coverage",
-      "status": "in-progress",
-      "sprint": "51"
-    },
-    {
-      "id": "1369",
-      "title": "spec gap: String.prototype.{split,replace,replaceAll,match,matchAll} — limit, @@split/@@replace/@@match protocol (~150 fails)",
+      "id": "1342",
+      "title": "spec gap: JSON.stringify replacer/toJSON/property-list (49 of 66 test262 fails)",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "spec-completeness",
       "status": "in-progress",
-      "sprint": "51"
-    },
-    {
-      "id": "1363",
-      "title": "spec gap: class dstr — 'Cannot destructure null/undefined' in method default-binding (~700 runtime_errors)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "in-progress",
-      "sprint": "51"
-    },
-    {
-      "id": "1361",
-      "title": "spec gap: Array.prototype.sort — comparator validation, stability, ToString fallback (~46 fails)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "in-progress",
-      "sprint": "51"
-    },
-    {
-      "id": "1360",
-      "title": "spec gap: Array.prototype.{indexOf,lastIndexOf,includes} — SameValueZero, sparse, fromIndex coercion (~210 fails)",
-      "priority": "high",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "in-progress",
-      "sprint": "51"
-    },
-    {
-      "id": "1359",
-      "title": "spec gap: Array.prototype.{splice,slice,concat,toSpliced,toReversed} — @@species, sparse handling, IsConcatSpreadable (~150 fails)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "in-progress",
-      "sprint": "51"
+      "sprint": "50"
     },
     {
       "id": "1336",
@@ -2111,6 +2061,16 @@
   "review": [],
   "done": [
     {
+      "id": "1363",
+      "title": "spec gap: class dstr — 'Cannot destructure null/undefined' in method default-binding (~700 runtime_errors)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "51"
+    },
+    {
       "id": "1334",
       "title": "ECMAScript spec compliance audit: section-by-section review, gap issues, HTML report",
       "priority": "high",
@@ -2155,6 +2115,16 @@
       "title": "await is a passthrough — does not unwrap Promise from async-call expressions",
       "priority": "high",
       "feasibility": "hard",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "done",
+      "sprint": "50"
+    },
+    {
+      "id": "1311",
+      "title": "Map<string, AsyncHandler> dispatch null_deref in App.dispatch path",
+      "priority": "medium",
+      "feasibility": "medium",
       "depends_on": [],
       "goal": "npm-library-support",
       "status": "done",
