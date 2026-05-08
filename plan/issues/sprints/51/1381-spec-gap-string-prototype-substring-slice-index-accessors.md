@@ -360,3 +360,62 @@ Suggest breaking into three sub-issues:
 Once these three land, the remaining clusters in this issue (Symbol
 arg coercion, surrogate pair edge cases) overlap with #1343 (Symbol)
 and are negligible-impact.
+
+## 2026-05-08 follow-up investigation (dev-1390)
+
+### Cluster 2 — already fixed
+
+PR #279 (`79497376c — fix(#1381): pad missing endsWith/lastIndexOf
+position with JS undefined`) added `lastIndexOf` to the
+`padsUndefined` set in `expressions/calls.ts:4545`. Probed locally
+on the worktree branch:
+
+- `"abcabc".lastIndexOf("a")` → 3 ✓
+- `"abcabc".lastIndexOf("a", 4)` → 3 ✓
+- `"abcabc".lastIndexOf("a", 2)` → 0 ✓
+- `"abc".lastIndexOf("a")` → 0 ✓
+- `"abc".lastIndexOf("z")` → -1 ✓
+
+5/5 pass. The original Cluster 2 dev-incr investigation note is
+out of date.
+
+### Cluster 3 — table change alone is insufficient (escalation)
+
+Tried the `STRING_METHODS` extension for `includes`/`startsWith`/
+`endsWith` from `params: [externref]` to
+`params: [externref, externref]`. Ran a focused probe:
+
+```ts
+"abc".endsWith("c", 2)   // expected: false. before fix: true (pos dropped)
+"abc".startsWith("b", 1) // expected: true. before fix: false (pos dropped)
+"abc".includes("a", 1)   // expected: false. before fix: true (pos dropped)
+```
+
+After the table change, the dispatch's existing padding loop fires
+correctly for missing position args (verified via debug print
+showing `body.len` going from 2 → 3 with `ref.null.extern`
+appended, then 4 with the call appended). But the emitted WAT shows
+only 3 instructions — the call has 2 args, not 3. Wasm validation
+then fails with `call[0] expected externref, found f64.const of
+type f64`.
+
+The `ref.null.extern` pad disappears between the end of
+`compileCallExpression` and final WAT emission. Traced through
+`stack-balance.ts`, `fixups.ts`, `peephole.ts` — none explicitly
+strip `ref.null.extern`.
+
+Most likely root cause (consistent with the typeIdx-mismatch class
+of bugs seen in PR #294): the host import is registered with the
+OLD funcType (2 params) and a separate `(type 9)` is created for
+the new 3-param sig but the import isn't migrated to it. WAT
+evidence: `(import ... (type 1))` for `string_includes`, while the
+explicitly-named 3-param `(type $type9)` is unused. The
+post-codegen pass that walks calls and trims args to match the
+import's funcType then drops the third arg.
+
+**Reverted the table change**. Suggest filing as `#1381c1`:
+"investigate why STRING_METHODS extensions don't propagate to host
+import funcType — likely double registration with stale typeIdx
+binding". Same root-cause family as the PR #294 regressions
+currently being chased; wait for that work to land first or kick
+to senior-dev.
