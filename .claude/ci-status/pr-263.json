@@ -1,0 +1,19 @@
+{
+  "pr": 263,
+  "conclusion": "success",
+  "head_branch": "issue-1342-boolean-symbol-coercion",
+  "head_sha": "ecbfb2796c64b8df4ed581d537da70a4418e464d",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25527083497",
+  "timestamp": "2026-05-08T00:21:52Z",
+  "pass": 26776,
+  "fail": 14119,
+  "compile_error": 846,
+  "snapshot_delta": -5,
+  "net_per_test": 34,
+  "regressions": 41,
+  "regressions_real": 4,
+  "regressions_wasm_change": 4,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 37,
+  "improvements": 38
+}
