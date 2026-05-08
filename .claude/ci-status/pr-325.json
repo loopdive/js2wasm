@@ -1,0 +1,22 @@
+{
+  "pr": 325,
+  "conclusion": "success",
+  "head_branch": "issue-1352b-regexp-string-equality",
+  "head_sha": "d0078eabce7ac5a8981acd71441f1a654153e587",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25578674638",
+  "timestamp": "2026-05-08T21:24:53Z",
+  "pass": 27765,
+  "fail": 14149,
+  "compile_error": 1165,
+  "snapshot_delta": 43,
+  "net_per_test": 81,
+  "regressions": 43,
+  "regressions_real": 7,
+  "regressions_wasm_change": 7,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 36,
+  "improvements": 88,
+  "baseline_sha": "d0078eabce7ac5a8981acd71441f1a654153e587",
+  "baseline_staleness_commits": 4,
+  "baseline_stale": false
+}
