@@ -2599,7 +2599,12 @@ function detectEarlyErrors(sourceFile: ts.SourceFile): CompileError[] {
           }
         }
       } else if (ts.isFunctionDeclaration(stmt) && stmt.name) {
-        lexicalNames.add(stmt.name.text);
+        // At SourceFile scope, function declarations are var-scoped — no conflict with var
+        // (LexicallyDeclaredNames does not include VarDeclaredNames per ES §13.1.1).
+        // Only inside a Block are function declarations lexically scoped (ES §B.3.2).
+        if (ts.isBlock(block)) {
+          lexicalNames.add(stmt.name.text);
+        }
       } else if (ts.isClassDeclaration(stmt) && stmt.name) {
         lexicalNames.add(stmt.name.text);
       }
