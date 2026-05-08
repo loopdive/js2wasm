@@ -3443,32 +3443,40 @@ assert._isSameValue = isSameValue;
       if (name === "__create_generator")
         return (buf: any[], pendingThrow: any) => {
           let index = 0;
-          return {
-            next() {
-              if (index < buf.length) {
-                return { value: buf[index++], done: false };
-              }
-              // If the generator body threw before yielding all values,
-              // re-throw on the first next() call after buffer is exhausted.
-              if (pendingThrow !== null && pendingThrow !== undefined) {
-                const e = pendingThrow;
-                pendingThrow = null;
-                throw e;
-              }
-              return { value: undefined, done: true };
-            },
-            return(value: any) {
-              index = buf.length;
-              return { value, done: true };
-            },
-            throw(e: any) {
-              index = buf.length;
+          // (#1367) Generator objects must inherit from Iterator.prototype so
+          // helpers like .drop, .take, .map, .filter, .some, .every, .find,
+          // .reduce, .toArray, .forEach, .flatMap work without extra plumbing
+          // (Iterator.prototype methods are spec-compliant in the host engine
+          // including AlreadyCalled / IteratorClose semantics).
+          const proto = (
+            typeof (globalThis as any).Iterator === "function" ? ((globalThis as any).Iterator as any).prototype : null
+          ) as any;
+          const obj: any = proto ? Object.create(proto) : {};
+          obj.next = function () {
+            if (index < buf.length) {
+              return { value: buf[index++], done: false };
+            }
+            // If the generator body threw before yielding all values,
+            // re-throw on the first next() call after buffer is exhausted.
+            if (pendingThrow !== null && pendingThrow !== undefined) {
+              const e = pendingThrow;
+              pendingThrow = null;
               throw e;
-            },
-            [Symbol.iterator]() {
-              return this;
-            },
+            }
+            return { value: undefined, done: true };
           };
+          obj.return = function (value: any) {
+            index = buf.length;
+            return { value, done: true };
+          };
+          obj.throw = function (e: any) {
+            index = buf.length;
+            throw e;
+          };
+          obj[Symbol.iterator] = function () {
+            return this;
+          };
+          return obj;
         };
       if (name === "__create_async_generator")
         return (buf: any[], pendingThrow: any) => {
@@ -3598,17 +3606,24 @@ assert._isSameValue = isSameValue;
               const len = vecLen(obj);
               if (typeof len === "number" && len >= 0) {
                 let i = 0;
-                return {
-                  next() {
-                    if (i >= len) return { value: undefined, done: true };
-                    const val = vecGet(obj, i);
-                    i++;
-                    return { value: val, done: false };
-                  },
-                  [Symbol.iterator]() {
-                    return this;
-                  },
+                // (#1367) Synthesized iterators MUST inherit from
+                // Iterator.prototype so .drop/.take/.map/.filter etc. resolve.
+                const iterProto = (
+                  typeof (globalThis as any).Iterator === "function"
+                    ? ((globalThis as any).Iterator as any).prototype
+                    : null
+                ) as any;
+                const iterObj: any = iterProto ? Object.create(iterProto) : {};
+                iterObj.next = function () {
+                  if (i >= len) return { value: undefined, done: true };
+                  const val = vecGet(obj, i);
+                  i++;
+                  return { value: val, done: false };
                 };
+                iterObj[Symbol.iterator] = function () {
+                  return this;
+                };
+                return iterObj;
               }
             }
           }
