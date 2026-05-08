@@ -4064,7 +4064,32 @@ function collectPromiseImports(ctx: CodegenContext, sourceFile: ts.SourceFile): 
       node.expression.expression.text === "Promise"
     ) {
       const method = node.expression.name.text;
-      if (method === "all" || method === "race" || method === "resolve" || method === "reject") {
+      // (#1368) include allSettled/any so they get pre-registered with the 2-arg
+      // aggregator signature alongside all/race.
+      if (
+        method === "all" ||
+        method === "race" ||
+        method === "allSettled" ||
+        method === "any" ||
+        method === "resolve" ||
+        method === "reject"
+      ) {
+        needed.add(method);
+      }
+    }
+    // (#1368) Detect `Promise.METHOD.call(...)` patterns so their imports get
+    // registered (otherwise the late path would see the existing-but-wrong-arity
+    // pre-registration that was implicit before this fix).
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      node.expression.name.text === "call" &&
+      ts.isPropertyAccessExpression(node.expression.expression) &&
+      ts.isIdentifier(node.expression.expression.expression) &&
+      node.expression.expression.expression.text === "Promise"
+    ) {
+      const method = node.expression.expression.name.text;
+      if (method === "all" || method === "race" || method === "allSettled" || method === "any") {
         needed.add(method);
       }
     }
@@ -4108,7 +4133,11 @@ function collectPromiseImports(ctx: CodegenContext, sourceFile: ts.SourceFile): 
   for (const method of needed) {
     const importName = `Promise_${method}`;
     if (!ctx.funcMap.has(importName)) {
-      const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
+      // (#1368) Aggregators (all/race/allSettled/any) take (thisArg, iterable);
+      // resolve/reject keep their original 1-arg signature.
+      const isAggregator = method === "all" || method === "race" || method === "allSettled" || method === "any";
+      const params: ValType[] = isAggregator ? [{ kind: "externref" }, { kind: "externref" }] : [{ kind: "externref" }];
+      const typeIdx = addFuncType(ctx, params, [{ kind: "externref" }]);
       addImport(ctx, "env", importName, { kind: "func", typeIdx });
     }
   }
