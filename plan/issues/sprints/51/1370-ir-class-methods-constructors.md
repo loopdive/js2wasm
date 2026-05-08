@@ -103,3 +103,279 @@ already handles this — verify it covers IR-claimed methods.
 
 This is the highest-impact single IR expansion. Class-heavy numeric code (matrix math,
 physics engines, parsers) is entirely on legacy today. Feasibility: hard. Assign to senior dev.
+
+---
+
+## Architect Spec (2026-05-08, Phase A focused)
+
+### Naming convention — verified from the source
+
+**Critical correction to the original spec** (which had `${ClassName}.${methodName}` —
+that is wrong). The legacy `class-bodies.ts` registers names with **underscores**:
+
+| What | Key in `ctx.funcMap` | Source |
+|------|----------------------|--------|
+| Constructor | `${className}_new` | `class-bodies.ts:216` (`const ctorName = \`${className}_new\`;`) |
+| Instance method | `${className}_${methodName}` | `class-bodies.ts:275` (`const fullName = \`${className}_${methodName}\`;`) |
+| Static method | `${className}_${methodName}` (same shape) | `class-bodies.ts:284` (`ctx.staticMethodSet.add(fullName)`) |
+
+Senior-dev's session note said "constructor uses `${className}` (no `_new` suffix at this
+level)" — that's also wrong. **Use `${className}_new` for the constructor.** Confirmed
+again by `ClassRegistry.resolve` in `src/ir/integration.ts:1392-1408`, which declares
+`constructorFuncName = \`${shape.className}_new\`` and `methodFuncName: \`${className}_${name}\``.
+
+Other class-bodies.ts sets the IR layer must consult:
+- `ctx.classMethodSet` (instance methods, line 286)
+- `ctx.staticMethodSet` (static methods, line 284)
+- `ctx.generatorFunctions` (generator methods, line 292)
+- `ctx.asyncFunctions` (async methods, line 316)
+- `ctx.funcUsesArguments` (methods that read `arguments`, line 338)
+- `ctx.classThrowsOnEval` (static `prototype` clash, line 280)
+
+### Phase A — selector extension in `src/ir/select.ts`
+
+#### Existing structure to extend
+
+`planIrCompilation` at line 106-229 is the entry point. Today it:
+1. `collectLocalClasses(sourceFile)` at line 121 → populates `Set<string>` of class names.
+2. Walks `sourceFile.statements` for `ts.isFunctionDeclaration` (line 140-157) → individually claims.
+3. Builds call graph (line 180), drops external-callers (line 187-192), closes under
+   the local caller/callee relation (line 194-221).
+4. Returns `IrSelection`.
+
+`whyNotIrClaimable(fn, typeMap, localClasses)` at line 242-287 and its mirror
+`isIrClaimable(fn, typeMap, localClasses)` at line 289-347 perform the per-function
+checks. Both take a `ts.FunctionDeclaration` today.
+
+#### Phase A changes
+
+**1. Extend `IrSelection` to track claimed class members.**
+
+`src/ir/select.ts:87-93`:
+
+```ts
+export interface IrSelection {
+  readonly funcs: ReadonlySet<string>;
+  // NEW: synthetic-name set keyed by `${className}_${methodName}` for instance/static
+  // methods, and `${className}_new` for constructors. Populated only when class
+  // members are IR-eligible. Empty in pre-Phase-A behavior.
+  readonly classMembers?: ReadonlySet<string>;
+  readonly fallbacks?: ReadonlyArray<IrFallback>;
+}
+```
+
+Add a new fallback reason value `"class-method"` to the union at line 68-80:
+
+```ts
+export type IrFallbackReason =
+  | "unnamed"
+  | ...existing reasons...
+  | "class-method"     // NEW: method-shape unsupported (e.g. abstract, private name)
+  | "deferred-feature";
+```
+
+**2. Generalize the per-function check to also accept methods.**
+
+The simplest way: split the type-resolution logic into a node-shape-agnostic helper,
+then add a sibling `whyNotIrClaimableMethod(member: ts.MethodDeclaration, ...)`.
+
+In practice, since `ts.FunctionDeclaration`, `ts.MethodDeclaration`, and
+`ts.ConstructorDeclaration` all have `.parameters`, `.body`, `.type`, `.modifiers`,
+`.typeParameters`, and `.asteriskToken` (for methods/decls), the existing
+`whyNotIrClaimable` body works almost verbatim for method declarations — we just
+need to widen the input type. Recommend:
+
+```ts
+type IrClaimableSubject = ts.FunctionDeclaration | ts.MethodDeclaration | ts.ConstructorDeclaration;
+
+function whyNotIrClaimable(
+  fn: IrClaimableSubject,
+  typeMap: TypeMap | undefined,
+  localClasses: ReadonlySet<string>,
+  isMethod: boolean,
+): IrFallbackReason | null { ... }
+```
+
+Add at the top of the function body (so methods don't trip on the unnamed check):
+
+```ts
+if (!isMethod && !fn.name) return "unnamed";
+```
+
+**Method-specific guards** to add to `whyNotIrClaimable` when `isMethod === true`:
+
+- Reject computed property names (`name === undefined`): return `"class-method"`.
+- Reject getters/setters via `ts.SyntaxKind.GetKeyword` / `SetKeyword` modifiers
+  (handled separately for the legacy path; out of Phase A scope) → `"class-method"`.
+- Reject abstract methods (no body): return `"body-shape-rejected"` (already
+  handled — `if (!body) return "body-shape-rejected";`).
+- Reject async methods: return `"deferred-feature"` for now (Phase D).
+- Reject generator methods: return `"deferred-feature"` for now (Phase D).
+- Reject methods on classes that extend a parent: return `"class-method"`. Phase A
+  scope is **flat classes only**; inheritance and `super` calls require a separate
+  slice.
+
+**3. New top-level walk in `planIrCompilation` after the FunctionDeclaration loop.**
+
+Insert immediately after line 157 (after the FunctionDeclaration loop), BEFORE the
+"if (individuallyClaimed.size === 0) return EMPTY;" guard at line 159:
+
+```ts
+// Phase A (#1370): class methods + constructors.
+//
+// For each top-level class declaration, walk its members and claim:
+//   - the constructor (synthetic name `${ClassName}_new`)
+//   - each instance method (`${ClassName}_${methodName}`)
+//   - each static method (same shape)
+//
+// Method bodies use the SAME shape rules as FunctionDeclarations.
+// The funcMap pre-allocation in class-bodies.ts must run BEFORE
+// compileIrPathFunctions so the IR can patch existing slots.
+const individuallyClaimedClassMembers = new Set<string>();
+const classMemberDeclByName = new Map<string, ts.MethodDeclaration | ts.ConstructorDeclaration>();
+for (const stmt of sourceFile.statements) {
+  if (!ts.isClassDeclaration(stmt)) continue;
+  if (!stmt.name) continue; // anonymous class — skip
+  const className = stmt.name.text;
+  // Skip classes with parent — Phase A doesn't support `super`.
+  if (stmt.heritageClauses?.some((h) => h.token === ts.SyntaxKind.ExtendsKeyword)) continue;
+  for (const member of stmt.members) {
+    let memberName: string;
+    let isCtor = false;
+    if (ts.isConstructorDeclaration(member)) {
+      memberName = `${className}_new`;
+      isCtor = true;
+    } else if (ts.isMethodDeclaration(member) && member.name) {
+      const methodNameRaw = phase1MemberName(member.name); // helper: identifier/string-literal/numeric only
+      if (methodNameRaw === null) continue; // computed name — skip
+      memberName = `${className}_${methodNameRaw}`;
+    } else {
+      continue; // get/set/property — out of Phase A
+    }
+    classMemberDeclByName.set(memberName, member);
+    const reason = trackFallbacks
+      ? whyNotIrClaimable(member, typeMap, localClasses, /*isMethod*/ true)
+      : isIrClaimable(member, typeMap, localClasses, /*isMethod*/ true)
+        ? null
+        : "class-method";
+    if (reason === null) {
+      individuallyClaimedClassMembers.add(memberName);
+    } else if (trackFallbacks) {
+      fallbackReasons.set(memberName, reason);
+    }
+  }
+}
+```
+
+`phase1MemberName` is a small helper:
+
+```ts
+function phase1MemberName(name: ts.PropertyName): string | null {
+  if (ts.isIdentifier(name)) return name.text;
+  if (ts.isStringLiteral(name) || ts.isNumericLiteral(name)) return name.text;
+  return null; // computed / private — Phase A skips
+}
+```
+
+**4. Don't extend the call-graph closure in Phase A.**
+
+Class methods aren't in the call-graph yet — Phase A claims method bodies independently.
+The existing `localClasses` exemption at `select.ts:1581-1604` (the `ts.isNewExpression`
+branch in `buildLocalCallGraph`) and the `ts.isPropertyAccessExpression` branch at
+`select.ts:1620-1631` already let outer functions call IR-claimed methods because the
+class methods retain stable signatures (the legacy pre-allocation phase set them).
+
+When Phase B replaces the body, the **signature stays the same** (same `typeIdx`),
+so the existing `call $${className}_${methodName}` instructions in legacy callers
+remain valid. This is the same correctness invariant the FunctionDeclaration IR path
+already relies on.
+
+**Risk to track:** if a method is re-typed by Phase B's IR lowerer (e.g. f64 →
+externref unboxing), the typeIdx changes and legacy callers break. **Phase A
+must reject any method whose IR-resolved signature would differ from the
+legacy-allocated signature.** This requires a parity check between
+`whyNotIrClaimable`'s resolved param/return types and the legacy
+`resolveWasmType(...)` output. Implementation: after computing the IR-resolved
+shape, look up the existing typeIdx from `ctx.funcMap.get(memberName)` /
+`ctx.mod.types[...]` and compare. If different, reject as `"class-method"`.
+
+**5. Return updated IrSelection.**
+
+At the existing return paths (lines 159-165, 222-228), include the class members
+when populated:
+
+```ts
+return { funcs: claimed, classMembers: claimedClassMembers, fallbacks };
+```
+
+#### Diagnostic / regression coverage for Phase A
+
+Run these existing IR integration tests after the Phase A change. They exercise
+the FunctionDeclaration IR path and should remain green:
+
+- `tests/ir-integration.test.ts` — primary IR integration suite
+- `tests/ir-class-instance.test.ts` — Slice 4 class-instance use in OUTER funcs
+- `tests/ir-vec-pipeline.test.ts` — vec / array IR codegen
+- `tests/ir-string.test.ts` — string IR codegen
+- `tests/ir-generator.test.ts` — generator IR codegen
+- `tests/ir-tagged-union.test.ts` — tagged-union pass
+
+For the new behavior, write a focused test under `.tmp/probe-1370-phaseA.mts`:
+
+```ts
+import { compile } from "../src/index.ts";
+const src = `
+class Calc {
+  add(a: number, b: number): number { return a + b; }
+  mul(a: number, b: number): number { return a * b; }
+}
+export function run(): number {
+  const c = new Calc();
+  return c.add(2, 3) + c.mul(4, 5);
+}`;
+const r = compile(src, { fileName: "test.ts", experimentalIR: true, trackFallbacks: true });
+console.log(r.success);
+console.log(r.irReport); // should list Calc_add, Calc_mul
+```
+
+The expected outcome (Phase A only — Phase B not yet built):
+- `r.irReport.compiled` lists `["run"]` (not yet `Calc_add` etc., since Phase B
+  doesn't exist) — but the **selector** must report Calc_add / Calc_mul in
+  `selection.classMembers`. Phase A is selector-only; the integration loop is
+  Phase B.
+- No regression in `tests/ir-class-instance.test.ts`.
+
+### Phase B sketch (out of scope for this spec, but flagged)
+
+Phase B in `src/ir/integration.ts:compileIrPathFunctions`:
+
+1. After the existing FunctionDeclaration loop (line 157-199 in current main),
+   add a parallel loop that iterates `selected.classMembers` (NEW field).
+2. For each `${className}_${methodName}`, look up the declaration via the
+   selection's tracked map (we'll need to thread it through), call
+   `lowerFunctionAstToIr` with the method node — and to do that we need to
+   widen `lowerFunctionAstToIr`'s parameter from `ts.FunctionDeclaration` to
+   `ts.FunctionDeclaration | ts.MethodDeclaration | ts.ConstructorDeclaration`.
+3. Patch `ctx.mod.functions[funcIdx - ctx.numImportFuncs]` with the lowered body
+   (mirror line 466-475 in integration.ts).
+4. Constructor body is special: must allocate `struct.new $ClassName` and
+   thread `__self` through the body. Defer to Phase C.
+
+### Phase C-D notes (deferred)
+
+- **Phase C — constructor body**: needs new IR conventions for `this.field = x`
+  and the implicit `return $self`. See existing legacy `compileConstructorBody`
+  in `src/codegen/expressions/new-super.ts:780-830` for the reference pattern.
+- **Phase D — async/generator methods**: integrate with `ctx.asyncFunctions` /
+  `ctx.generatorFunctions` so the IR lowerer emits the right func-kind. The
+  existing slice-7a generator IR (`from-ast.ts:243-251`) is the template.
+- **Phase E — inheritance**: requires `super.method()` and the parent struct
+  prefix in field indices. Out of #1370 scope.
+
+### Open question for the dev
+
+`lowerFunctionAstToIr(fn: ts.FunctionDeclaration, ...)` at `from-ast.ts:182` currently
+only accepts FunctionDeclaration. Phase A is selector-only and does NOT call this
+function for methods, so this is **deferred to Phase B**. When Phase B lands, the
+parameter type must widen and `fn.name.text` lookups need an `isMethod`-aware
+fallback (since MethodDeclaration `.name` is `PropertyName`, not `Identifier`).
