@@ -18437,7 +18437,7 @@
       "title": "spec gap: Object.assign drops getters / Symbol keys (27 of 38 test262 fails)",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "50",
       "depends_on": [],
       "files": [],
@@ -18761,7 +18761,7 @@
       "title": "spec gap: class dstr — 'Cannot destructure null/undefined' in method default-binding (~700 runtime_errors)",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -18833,7 +18833,7 @@
       "title": "spec gap: String.prototype.{split,replace,replaceAll,match,matchAll} — limit, @@split/@@replace/@@match protocol (~150 fails)",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -18917,7 +18917,7 @@
       "title": "IR: fallback telemetry gate — CI fails when unintended legacy bypasses exceed threshold",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -18941,7 +18941,7 @@
       "title": "spec gap: try/catch/finally — error type fidelity, finally completion override, dstr-binding (~85 fails)",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -18975,6 +18975,42 @@
     {
       "id": "1381",
       "title": "spec gap: String.prototype.{substring,slice,indexOf,search,charAt,charCodeAt,codePointAt,at,includes,startsWith,endsWith,trim,concat} edge cases (~128 fails)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1384",
+      "title": "CE: static async method with PrivateName — 'not enough arguments on the stack' (249 tests)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1385",
+      "title": "HANG: Temporal/Duration/from/argument-non-string.js — infinite runtime loop",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1386",
+      "title": "HANG: Promise/race/invoke-then.js — compilation or runtime infinite loop",
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
@@ -21285,7 +21321,10 @@
         "1378",
         "1379",
         "1380",
-        "1381"
+        "1381",
+        "1384",
+        "1385",
+        "1386"
       ]
     },
     {
@@ -26271,6 +26310,18 @@
       "issue": "1381"
     },
     {
+      "goal": "spec-completeness",
+      "issue": "1384"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1385"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1386"
+    },
+    {
       "goal": "standalone-mode",
       "issue": "34"
     },
@@ -30793,6 +30844,18 @@
       "issue": "1381"
     },
     {
+      "goal": "async-model",
+      "issue": "1384"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1385"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1386"
+    },
+    {
       "goal": "symbol-protocol",
       "issue": "10"
     },
@@ -31373,6 +31436,18 @@
       "issue": "1381"
     },
     {
+      "goal": "symbol-protocol",
+      "issue": "1384"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1385"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1386"
+    },
+    {
       "goal": "builtin-methods",
       "issue": "10"
     },
@@ -31953,6 +32028,18 @@
       "issue": "1381"
     },
     {
+      "goal": "builtin-methods",
+      "issue": "1384"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1385"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1386"
+    },
+    {
       "goal": "property-model",
       "issue": "10"
     },
@@ -32531,6 +32618,18 @@
     {
       "goal": "property-model",
       "issue": "1381"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1384"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1385"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1386"
     },
     {
       "goal": "iterator-protocol",
