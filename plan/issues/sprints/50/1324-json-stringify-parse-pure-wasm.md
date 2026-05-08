@@ -2,7 +2,7 @@
 id: 1324
 sprint: 50
 title: "JSON.stringify and JSON.parse: implement in pure Wasm, eliminate JS host dependency"
-status: ready
+status: done
 created: 2026-05-07
 updated: 2026-05-07
 priority: medium
@@ -65,3 +65,52 @@ formatting (superseded by #1321) and proper unicode escape handling.
 - `src/ir/lower.ts` — route JSON call sites to Wasm implementations
 - `src/runtime.ts` — gate existing JS fallback on JS-host-mode only
 - `tests/issue-1324.test.ts`
+
+## Implementation Results — primitives slice (this PR)
+
+Per-tech-lead-direction (option b), this PR landed only the
+primitive-typed slice; full object/array stringify and the entire
+parse path are tracked under #1353 (architect-spec follow-up).
+
+Implemented in `src/codegen/expressions/calls.ts` via a new
+`tryEmitJsonStringifyPrimitive(ctx, fctx, arg)` helper that runs
+BEFORE the `JSON_stringify` host-import dispatch. When the argument's
+TypeScript type is statically a primitive (Null / Undefined /
+BooleanLike / NumberLike), the helper emits pure Wasm that produces
+the JSON-correct externref string and returns true; the call site
+skips the host import. For all other shapes (StringLike, BigInt,
+Object, Union, Any, …) the helper returns false (no stack effect)
+and the existing host call runs unchanged.
+
+Per spec § 25.5.2 step 11, NaN and ±Infinity serialize to `"null"`.
+Implemented via `(x - x) === 0` finiteness test before
+`number_toString` — NaN-NaN and ±∞-±∞ both produce NaN, falsifying
+the equality.
+
+`undefined` returns the JS `undefined` value (not a string), via
+`emitUndefined` so JS-host mode pulls from `__get_undefined`.
+
+### Tests
+
+`tests/issue-1324.test.ts` — 13 passing scenarios:
+- `null`, `true`, `false`, integer, decimal, negative number
+- `NaN`, `Infinity`, `-Infinity` → `"null"` per spec
+- `undefined` → JS undefined (not a string)
+- statically-typed `boolean` and `number` variables
+- object input falls through to host (no regression)
+- string input falls through to host (no regression)
+- replacer/space args compiled for side effects on primitive arg
+
+Sanity-checked against `tests/issue-{837,1239,1267,1268,1298,1313,
+1316}.test.ts` — 56 pass / 3 skip (unchanged from main).
+
+### Out of scope — see #1353
+
+- Object / array shape walking (depends on WasmGC field-enumeration design)
+- `JSON.parse` (depends on dynamic property-bag struct design)
+- `string` runtime escape (compile-time-known string literals fall
+  through to the host today; primitives slice handles boolean and
+  number, not string)
+- BigInt TypeError throw (deferred to #1353)
+- Replacer function support, `space` pretty-print, `toJSON` protocol —
+  all deferred per architect spec request.

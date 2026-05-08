@@ -80,7 +80,7 @@ import { tryStaticEvalInline } from "./eval-inline.js";
 import { compileExternMethodCall, compileSpreadCallArgs, emitLazyProtoGet } from "./extern.js";
 import { getFuncParamTypes, getWasmFuncReturnType, isEffectivelyVoidReturn, wasmFuncReturnsVoid } from "./helpers.js";
 import { analyzeTdzAccessByPos, emitLocalTdzCheck, emitStaticTdzThrow } from "./identifiers.js";
-import { ensureLateImport, flushLateImportShifts, shiftLateImportIndices } from "./late-imports.js";
+import { emitUndefined, ensureLateImport, flushLateImportShifts, shiftLateImportIndices } from "./late-imports.js";
 import { resolveStructName } from "./misc.js";
 import { compileSuperElementMethodCall, compileSuperMethodCall } from "./new-super.js";
 import { ensureNativeStringExternBridge } from "../native-strings.js";
@@ -157,6 +157,131 @@ function resolveClosureInfoFromLocal(
     return ctx.closureInfoByTypeIdx.get(localType.typeIdx);
   }
   return undefined;
+}
+
+/**
+ * (#1324 primitives slice) Try to emit `JSON.stringify(arg)` for a
+ * statically-typed primitive value as pure Wasm — no JS host call.
+ *
+ * Supported shapes (all leave an externref string on the stack):
+ *   - `null`       → string `"null"`
+ *   - `undefined`  → undefined (ref.null.extern) — per spec §25.5.2,
+ *                    `JSON.stringify(undefined)` returns `undefined`,
+ *                    not the string "null"
+ *   - `boolean`    → string `"true"` or `"false"`
+ *   - `number`     → result of `number_toString(value)`, except
+ *                    `NaN`/`±Infinity` serialize to the string `"null"`
+ *                    per §25.5.2 step 11
+ *
+ * Deferred to #1353 (full architect spec):
+ *   - `string`  — needs runtime JSON-escape helper
+ *   - `bigint`  — needs runtime check + TypeError throw
+ *   - object / array — needs WasmGC shape walking
+ *
+ * Returns `true` and pushes an externref onto the wasm stack when
+ * emission succeeded; returns `false` (no stack effect) otherwise so
+ * the caller can fall through to the `JSON_stringify` host import.
+ */
+function tryEmitJsonStringifyPrimitive(ctx: CodegenContext, fctx: FunctionContext, arg: ts.Expression): boolean {
+  let argType: ts.Type;
+  try {
+    argType = ctx.checker.getTypeAtLocation(arg);
+  } catch {
+    return false;
+  }
+  const flags = argType.flags;
+
+  // Skip ambiguous shapes (any/unknown/union/object/intersection) — let
+  // the caller fall through to the host import which handles them.
+  const ambiguousMask =
+    ts.TypeFlags.Any |
+    ts.TypeFlags.Unknown |
+    ts.TypeFlags.Union |
+    ts.TypeFlags.Intersection |
+    ts.TypeFlags.Object |
+    ts.TypeFlags.NonPrimitive |
+    ts.TypeFlags.TypeParameter;
+  if (flags & ambiguousMask) return false;
+
+  // null literal
+  if (flags & ts.TypeFlags.Null) {
+    const t = compileExpression(ctx, fctx, arg);
+    if (t) fctx.body.push({ op: "drop" } as Instr);
+    compileStringLiteral(ctx, fctx, "null", arg);
+    return true;
+  }
+
+  // undefined / void — `JSON.stringify(undefined)` returns the JS
+  // `undefined` value (not the string "undefined" or "null"). Emit via
+  // the existing `emitUndefined` helper so JS sees the right value
+  // (host-mode pulls it from `__get_undefined`; standalone mode falls
+  // back to `ref.null.extern` which JS sees as `null` — acceptable per
+  // the existing helper's documented contract).
+  if (flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Void)) {
+    const t = compileExpression(ctx, fctx, arg);
+    if (t) fctx.body.push({ op: "drop" } as Instr);
+    emitUndefined(ctx, fctx);
+    return true;
+  }
+
+  // boolean / true / false
+  if (flags & ts.TypeFlags.BooleanLike) {
+    const argResult = compileExpression(ctx, fctx, arg, { kind: "i32" });
+    if (argResult === null) {
+      // Failed to compile the arg as i32 — abandon (no stack effect from this fn).
+      return false;
+    }
+    addStringConstantGlobal(ctx, "true");
+    addStringConstantGlobal(ctx, "false");
+    const trueIdx = ctx.stringGlobalMap.get("true");
+    const falseIdx = ctx.stringGlobalMap.get("false");
+    if (trueIdx === undefined || falseIdx === undefined) return false;
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: { kind: "externref" } },
+      then: [{ op: "global.get", index: trueIdx } as Instr],
+      else: [{ op: "global.get", index: falseIdx } as Instr],
+    } as Instr);
+    return true;
+  }
+
+  // number / numeric literal
+  if (flags & ts.TypeFlags.NumberLike) {
+    const numToStrIdx = ctx.funcMap.get("number_toString");
+    if (numToStrIdx === undefined) return false;
+    addStringConstantGlobal(ctx, "null");
+    const nullStrIdx = ctx.stringGlobalMap.get("null");
+    if (nullStrIdx === undefined) return false;
+
+    const argResult = compileExpression(ctx, fctx, arg, { kind: "f64" });
+    if (argResult === null) return false;
+
+    // Stack: [f64 value]. Save to a local so we can both test for
+    // finiteness AND pass to number_toString in the finite branch.
+    const valLocal = allocTempLocal(fctx, { kind: "f64" });
+    fctx.body.push({ op: "local.set", index: valLocal } as Instr);
+
+    // isFinite check: x - x === 0. NaN-NaN and ±Infinity-±Infinity both
+    // produce NaN, which fails the equality. Finite values produce 0.
+    fctx.body.push({ op: "local.get", index: valLocal } as Instr);
+    fctx.body.push({ op: "local.get", index: valLocal } as Instr);
+    fctx.body.push({ op: "f64.sub" } as Instr);
+    fctx.body.push({ op: "f64.const", value: 0 } as Instr);
+    fctx.body.push({ op: "f64.eq" } as Instr);
+
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: { kind: "externref" } },
+      then: [{ op: "local.get", index: valLocal } as Instr, { op: "call", funcIdx: numToStrIdx } as Instr],
+      else: [{ op: "global.get", index: nullStrIdx } as Instr],
+    } as Instr);
+    releaseTempLocal(fctx, valLocal);
+    return true;
+  }
+
+  // string / bigint / unhandled — fall through to the host import. Full
+  // pure-Wasm support tracked under #1353.
+  return false;
 }
 
 /**
@@ -3091,6 +3216,25 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
     if (ts.isIdentifier(propAccess.expression) && propAccess.expression.text === "JSON") {
       const method = propAccess.name.text;
       if ((method === "stringify" || method === "parse") && expr.arguments.length >= 1) {
+        // (#1324 primitives slice) For JSON.stringify of statically-typed
+        // primitive values (null / undefined / boolean / number), emit the
+        // result as pure Wasm so standalone-mode (no JS host) builds work.
+        // Object/array/string/bigint cases fall through to the existing
+        // JSON_stringify host import — full pure-Wasm shape walking is
+        // tracked under #1353 (architect-spec follow-up).
+        if (method === "stringify") {
+          if (tryEmitJsonStringifyPrimitive(ctx, fctx, expr.arguments[0]!)) {
+            // Compile remaining args (replacer, space) for their side
+            // effects only — primitive stringify ignores them per spec
+            // §25.5.2 (replacer doesn't observe primitives, space only
+            // affects nested output).
+            for (let i = 1; i < expr.arguments.length; i++) {
+              const t = compileExpression(ctx, fctx, expr.arguments[i]!);
+              if (t) fctx.body.push({ op: "drop" } as Instr);
+            }
+            return { kind: "externref" };
+          }
+        }
         const importName = `JSON_${method}`;
         const funcIdx = ctx.funcMap.get(importName);
         if (funcIdx !== undefined) {
