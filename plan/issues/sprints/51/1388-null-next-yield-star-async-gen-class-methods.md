@@ -1,8 +1,8 @@
 ---
 id: 1388
-sprint: ~
+sprint: 51
 title: "runtime: null.next — yield* / async-generator iterator construction returns null in class methods (316 fails)"
-status: ready
+status: in_progress
 created: 2026-05-08
 priority: high
 feasibility: medium
