@@ -1,14 +1,15 @@
 ---
 id: 50
-status: active
+status: done
 created: 2026-05-07
 started: 2026-05-07
+wrapped: 2026-05-08
 wrap_checklist:
-  status_closed: false
-  retro_written: false
-  diary_updated: false
-  end_tag_pushed: false
-  begin_tag_pushed: false
+  status_closed: true
+  retro_written: true
+  diary_updated: true
+  end_tag_pushed: true
+  begin_tag_pushed: true
 ---
 
 # Sprint 50
@@ -235,3 +236,28 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | #1317 | null dereference error: add expression / variable context (573 opaque runtime failures) | medium | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->
+
+## Retrospective
+
+**Result**: Test262 pass rate moved from ~28,000 to ~28,140+ over the sprint. Theme shifted mid-sprint from "closure/call dispatch wave 2" to "spec-completeness audit" — architect-s51 filed 17 targeted spec-gap issues + 7 IR retirement tasks that become sprint 51's backbone.
+
+**What went well**:
+- Architect session produced 25 issues with full implementation plans — best spec coverage work to date
+- Error message improvements (#1316, #1317) cut the opaque failure rate significantly  
+- Baseline drift was correctly identified (7/36 regressions in PR #256 were real; rest were 8s timeout false positives)
+- Timeout raised from 8s to 30s — will eliminate ~36 false compile_timeout regressions per PR going forward
+
+**What didn't go well**:
+- Sprint theme was outdated by mid-sprint; didn't formally pivot the sprint.md
+- PR #257 (#1312 async recursion) had 38 real regressions from function-index shift side-effect — blocked
+- PR #268 (#1358 array-like) had -18 net — orphaned dev pushed code that introduced regressions
+- TEST_TIMEOUT_MS change went directly to main without a PR (process violation)
+- Sprint was never formally closed — wrap checklist completed retroactively
+
+**Carry-overs to Sprint 51**:
+- #1311 (PR #264, -5 net — needs fix)
+- #1312 (PR #257, 38 regressions — needs senior-dev)
+- #1324 (JSON stringify — CI failure)
+- #1325 (instanceof tags — PR open)
+- #1326 (async microtask — CI failure)
+- #1336, #1337, #1338, #1339, #1342 (unstarted spec-gap issues from s50 planning)
