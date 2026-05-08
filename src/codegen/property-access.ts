@@ -15,6 +15,7 @@ import { popBody } from "./context/bodies.js";
 import { reportError, reportErrorNoNode } from "./context/errors.js";
 import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
+import { emitFuncRefAsClosure, emitObjectMethodAsClosure } from "./closures.js";
 import { emitLazyProtoGet, findExternInfoForMember } from "./expressions/extern.js";
 import { patchStructNewForAddedField } from "./expressions/late-imports.js";
 import { addUnionImports, resolveWasmType } from "./index.js";
@@ -1174,15 +1175,35 @@ export function compilePropertyAccess(
         fctx.body.push({ op: "ref.null.extern" });
         return { kind: "externref" };
       }
-      // ClassName.staticMethod — return function reference as externref (#820)
-      // This handles the case where a static method is accessed as a value
-      // (e.g., `var ref = C.method`) rather than called directly.
-      // Note: funcref is NOT a subtype of anyref in the Wasm GC type system,
-      // so we cannot use extern.convert_any to convert ref.func to externref.
-      // Instead, we return null externref as a placeholder — the method reference
-      // is not callable through externref dispatch, but this prevents null deref
-      // traps from the generic property access fallthrough path.
-      if (ctx.staticMethodSet.has(fullName) || ctx.classMethodSet.has(fullName)) {
+      // ClassName.staticMethod — return a callable closure-struct externref.
+      //
+      // (#1388) Previously emitted `ref.null.extern` because funcref isn't a
+      // subtype of anyref. Now we wrap the static method in a closure struct
+      // (struct.new with a funcref field) via `emitFuncRefAsClosure`, then
+      // convert the struct ref to externref with `extern.convert_any`.
+      //
+      // The call site (calls.ts:5380) sees a callable variable, casts the
+      // externref back to the matching closure struct type, and dispatches
+      // via `call_ref` through a trampoline. This makes the detached pattern
+      // `const gen = C.staticMethod; gen()` actually invoke the method,
+      // unblocking 273 test262 cases for class async-generator yield-star
+      // tests that follow this exact extraction pattern.
+      if (ctx.staticMethodSet.has(fullName)) {
+        const funcIdx = ctx.funcMap.get(fullName);
+        if (funcIdx !== undefined) {
+          const closureRef = emitFuncRefAsClosure(ctx, fctx, fullName, funcIdx);
+          if (closureRef) {
+            fctx.body.push({ op: "extern.convert_any" });
+            return { kind: "externref" };
+          }
+          // Fallback if closure construction fails for any reason
+          fctx.body.push({ op: "ref.null.extern" });
+          return { kind: "externref" };
+        }
+      }
+      // Instance method accessed as `ClassName.method` (without prototype) —
+      // unusual; keep the legacy null placeholder to preserve existing behavior.
+      if (ctx.classMethodSet.has(fullName)) {
         const funcIdx = ctx.funcMap.get(fullName);
         if (funcIdx !== undefined) {
           fctx.body.push({ op: "ref.null.extern" });
@@ -1197,6 +1218,43 @@ export function compilePropertyAccess(
         if (funcIdx !== undefined) {
           const retType = emitGetterCallWithDummy(ctx, fctx, resolvedClass, getterName, funcIdx);
           return retType ?? { kind: "externref" };
+        }
+      }
+    }
+  }
+
+  // (#1388) ClassName.prototype.<method> — return a callable closure-struct
+  // externref for the instance method. Mirrors the static-method handler
+  // above but uses `emitObjectMethodAsClosure` so the trampoline drops the
+  // closure-self and supplies a sentinel for the instance-method's `this`
+  // parameter.
+  //
+  // Failing tests like `var gen = C.prototype.gen; gen()` expect `gen()` to
+  // dispatch to the instance method without a real receiver. The yield-star
+  // tests under `language/{expressions,statements}/class/async-gen-method`
+  // rely on this extraction pattern; without it, `gen` was previously
+  // resolved to a stale externref and `iter.next` on the result was null.
+  if (
+    ts.isPropertyAccessExpression(expr.expression) &&
+    ts.isIdentifier(expr.expression.expression) &&
+    expr.expression.name.text === "prototype"
+  ) {
+    const rawName = expr.expression.expression.text;
+    const className = ctx.classExprNameMap.get(rawName) ?? rawName;
+    if (ctx.classSet.has(className)) {
+      const fullName = `${className}_${propName}`;
+      // Only intercept actual instance methods. Skip static methods (they
+      // live on the constructor, not the prototype) and accessors (handled
+      // below by the existing accessor path on element access).
+      if (ctx.classMethodSet.has(fullName) && !ctx.staticMethodSet.has(fullName)) {
+        const funcIdx = ctx.funcMap.get(fullName);
+        const structTypeIdx = ctx.structMap.get(className);
+        if (funcIdx !== undefined && structTypeIdx !== undefined) {
+          const closureRef = emitObjectMethodAsClosure(ctx, fctx, fullName, funcIdx, structTypeIdx);
+          if (closureRef) {
+            fctx.body.push({ op: "extern.convert_any" });
+            return { kind: "externref" };
+          }
         }
       }
     }
@@ -2458,8 +2516,23 @@ export function compileElementAccess(
           const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
           return globalDef?.type ?? { kind: "f64" };
         }
-        // Check static method — return externref placeholder
-        if (ctx.staticMethodSet.has(fullName) || ctx.classMethodSet.has(fullName)) {
+        // (#1388) Static method via element access: `ClassName['method']`.
+        // Mirror the property-access path — emit a callable closure-struct
+        // externref instead of the legacy `ref.null.extern` so that
+        // `const f = C['method']; f()` actually invokes the method.
+        if (ctx.staticMethodSet.has(fullName)) {
+          const funcIdx = ctx.funcMap.get(fullName);
+          if (funcIdx !== undefined) {
+            const closureRef = emitFuncRefAsClosure(ctx, fctx, fullName, funcIdx);
+            if (closureRef) {
+              fctx.body.push({ op: "extern.convert_any" });
+              return { kind: "externref" };
+            }
+            fctx.body.push({ op: "ref.null.extern" });
+            return { kind: "externref" };
+          }
+        }
+        if (ctx.classMethodSet.has(fullName)) {
           const funcIdx = ctx.funcMap.get(fullName);
           if (funcIdx !== undefined) {
             fctx.body.push({ op: "ref.null.extern" });
