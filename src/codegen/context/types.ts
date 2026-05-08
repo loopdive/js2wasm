@@ -431,6 +431,20 @@ export interface CodegenContext {
   >;
   /** Map from child className → parent className (for local class inheritance) */
   classParentMap: Map<string, string>;
+  /**
+   * (#1366a) Map from child className → built-in JS parent name when the parent
+   * is a host-constructible builtin (Error / TypeError / RangeError / ...).
+   * Subclass instances are externref-backed; `super(args)` lowers to
+   * `__new_<Parent>(args)` instead of the field-walk path.
+   */
+  classBuiltinParentMap: Map<string, string>;
+  /**
+   * (#1366a) Set of class names whose runtime instance representation is
+   * externref (NOT a WasmGC struct). Constructor return type, `new` result
+   * type, and `instanceof` routing all consult this set. Currently populated
+   * for subclasses of host-constructible builtins.
+   */
+  classExternrefBackedSet: Set<string>;
   /** Counter for assigning unique class tags (for instanceof support) */
   classTagCounter: number;
   /** Map from class name → unique tag value (for instanceof support) */

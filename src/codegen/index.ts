@@ -5519,6 +5519,14 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type, _depth = 0
     }
     // Check named structs (interfaces, type aliases)
     if (name && name !== "__type" && name !== "__object" && ctx.structMap.has(name)) {
+      // (#1366a) Externref-backed user classes (e.g. `class Sub extends Error`)
+      // have their instance live as a real JS object; the registered struct
+      // type exists for tag/registry bookkeeping only. Wasm-typed values for
+      // these types must be externref so callers see what `<className>_new`
+      // actually returns.
+      if (ctx.classExternrefBackedSet.has(name)) {
+        return { kind: "externref" };
+      }
       return { kind: "ref", typeIdx: ctx.structMap.get(name)! };
     }
     // Check anonymous type registry

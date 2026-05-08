@@ -2,7 +2,7 @@
 id: 1391
 sprint: 51
 title: "infra: CI feed baseline staleness detection — warn when baseline_sha diverges from current main"
-status: ready
+status: in-progress
 created: 2026-05-08
 priority: high
 feasibility: medium
@@ -77,3 +77,67 @@ guard:
 - `test262-sharded.yml` — where the regression report is generated
 - `check-cwd.sh` — the merge gate that reads `pr-NNN.json`
 - PR #294 incident: baseline_sha=58e1fee70, actual net=-140 (feed) vs +103 (artifacts)
+
+## Implementation (PR #TBD)
+
+### Note on the actual feed source
+
+The issue file calls out `test262-sharded.yml` and `check-cwd.sh`, but the
+authoritative feed writer is now `.github/workflows/ci-status-feed.yml`,
+triggered on `Test262 Differential` completion (see commit bf62a8998 — wired
+on May 3 2026 specifically to address staleness). The merge gate logic that
+reads the feed lives in `.claude/skills/dev-self-merge.md`, not `check-cwd.sh`
+(which is a per-Bash-call cwd guard, unrelated to merge decisions).
+
+This PR therefore touches:
+
+- `.github/workflows/ci-status-feed.yml` — compute and emit
+  `baseline_sha`, `baseline_staleness_commits`, `baseline_stale`.
+- `.claude/skills/dev-self-merge.md` — short-circuit step 1a that
+  escalates to tech lead when `baseline_stale: true`.
+
+### Workflow changes
+
+After parsing `test262-report-merged.json` (which includes the artifact's
+`baseline_sha`), the feed writer:
+
+1. Reads `baseline_sha` from the merged-report JSON. If absent / unknown,
+   skip the staleness check.
+2. `git fetch --depth=200 origin <baseline_sha>` so the merge-base count is
+   computable from a shallow checkout.
+3. `git rev-list --count baseline_sha..HEAD` → `baseline_staleness_commits`.
+4. If `baseline_staleness_commits > 50`, set `baseline_stale: true` and emit
+   `::warning::` annotation + a job-summary entry with the drift count.
+5. Always include `baseline_sha`, `baseline_staleness_commits`, and
+   `baseline_stale` in the JSON output so downstream tooling has them.
+
+### Gate change
+
+`/dev-self-merge` step 1a (new): if `baseline_stale: true`, emit the
+escalation prompt and stop — do not run the regression-count criteria, which
+would otherwise hard-block on inflated drift numbers.
+
+### Scope notes
+
+- Only `Test262 Differential` triggers `ci-status-feed.yml`. PRs gated by
+  `Test262 Sharded` go through a different artifact path; staleness
+  detection there can be added later if the team re-introduces the Sharded
+  feed writer. (As of bf62a8998 the Sharded path no longer writes the
+  PR-level feed.)
+- `ci-status-basic.yml` (test/docs-only PRs) writes `test262_skipped: true`
+  — no baseline involved, no change needed.
+
+## Acceptance criteria status
+
+- ✅ #1: `pr-NNN.json` includes `baseline_staleness_commits` for every PR
+  whose feed comes from `ci-status-feed.yml` and where the artifact carries
+  a `baseline_sha`.
+- ✅ #2: When `baseline_staleness_commits > 50`, `baseline_stale: true` is
+  set in the feed.
+- ✅ #3: `/dev-self-merge` (the merge gate that reads `pr-NNN.json`)
+  honours `baseline_stale: true` and escalates instead of hard-blocking.
+- ✅ #4: CI summary prints a staleness warning + `::warning::` annotation
+  when the flag is set.
+- (out of scope) #5: `refresh-committed-baseline.yml` already exists and is
+  unchanged by this PR — listed in the issue's acceptance criteria as a
+  reminder that staleness shouldn't accumulate under normal operation.
