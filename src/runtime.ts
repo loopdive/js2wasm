@@ -1032,6 +1032,34 @@ function _wrapForHost(obj: any, exports: Record<string, Function> | undefined): 
   const target: Record<string | symbol, any> = Object.create(null);
 
   const safeGetField = (key: any): any => {
+    // #1336 — accessor properties (Object.defineProperty(obj, k, {get})) must
+    // INVOKE the getter, not return a descriptor. Sidecar stores the descriptor
+    // function under `__get_<k>` (string) or in `_wasmStructAccessors` (symbol).
+    // Note: getters defined in a TS object literal compile to a Wasm closure
+    // (typeof === "object"); call those via __call_fn_0 export.
+    const invokeGetter = (g: any): any | undefined => {
+      if (g == null) return undefined;
+      if (typeof g === "function") return (g as Function).call(obj);
+      if (typeof g === "object" && _isWasmStruct(g) && exports) {
+        const callFn0 = exports["__call_fn_0"];
+        if (typeof callFn0 === "function") return callFn0(g);
+      }
+      return undefined;
+    };
+    if (typeof key === "string") {
+      const wasmSc = _wasmStructProps.get(obj);
+      const getter = wasmSc?.[`__get_${key}` as string];
+      if (getter !== undefined) {
+        const v = invokeGetter(getter);
+        if (v !== undefined) return v;
+      }
+    } else if (typeof key === "symbol") {
+      const accessor = _wasmStructAccessors.get(obj)?.get(key);
+      if (accessor?.get !== undefined) {
+        const v = invokeGetter(accessor.get);
+        if (v !== undefined) return v;
+      }
+    }
     // Sidecar first (handles both string and symbol keys)
     const sc = _sidecarGet(obj, key);
     if (sc !== undefined) return sc;
@@ -1072,8 +1100,25 @@ function _wrapForHost(obj: any, exports: Record<string, Function> | undefined): 
     for (const k of fieldNames) keys.add(k);
     const sc = _wasmStructProps.get(obj);
     if (sc) {
-      for (const k of Object.getOwnPropertyNames(sc)) keys.add(k);
+      for (const k of Object.getOwnPropertyNames(sc)) {
+        // #1336 — `__get_x` / `__set_x` are accessor descriptor entries; they
+        // must NOT enumerate as own keys. Surface the underlying property name
+        // (`x`) instead so Object.assign / spread copy honours the accessor.
+        if (k.startsWith("__get_")) {
+          keys.add(k.slice("__get_".length));
+        } else if (k.startsWith("__set_")) {
+          keys.add(k.slice("__set_".length));
+        } else {
+          keys.add(k);
+        }
+      }
       for (const k of Object.getOwnPropertySymbols(sc)) keys.add(k);
+    }
+    // #1336 — Symbol-keyed accessors (set via Object.defineProperty with a
+    // Symbol property name) live in `_wasmStructAccessors`, not `_wasmStructProps`.
+    const accMap = _wasmStructAccessors.get(obj);
+    if (accMap) {
+      for (const k of accMap.keys()) keys.add(k);
     }
     return Array.from(keys);
   };
