@@ -2,7 +2,7 @@
 id: 1390
 sprint: 51
 title: "fix: import-defer proposal tests fail as CE (no test export) when TEST262_INCLUDE_PROPOSALS=1"
-status: ready
+status: done
 created: 2026-05-08
 priority: low
 feasibility: easy
