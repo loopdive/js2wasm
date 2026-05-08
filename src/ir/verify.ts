@@ -177,6 +177,13 @@ function collectUses(instr: IrBlock["instrs"][number]): readonly IrValueId[] {
       return [instr.rand];
     case "select":
       return [instr.condition, instr.whenTrue, instr.whenFalse];
+    case "if":
+      // (#1392) The arm buffers are emission-internal — their SSA defs
+      // and uses live within their own scope (analogous to forof.vec /
+      // try). Surface only the `cond` for the straight-line walk;
+      // `thenValue` / `elseValue` are arm-internal too. The lowerer
+      // walks the arms separately when emitting Wasm if/else.
+      return [instr.cond];
     case "raw.wasm":
       return [];
     case "box":

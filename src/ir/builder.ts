@@ -200,6 +200,56 @@ export class IrFunctionBuilder {
     return result;
   }
 
+  /**
+   * (#1392) Emit `unary("ref.is_null", val)` — tests a Wasm reference for
+   * null. Result is `i32` (1 if null, 0 otherwise). The shorthand
+   * `nullCheck` name surfaces the optional-chain use case at the call
+   * site where the from-ast lowering tests an `?.` receiver.
+   *
+   * `val`'s IrType MUST be a `val`-kind wrapping a Wasm reference type
+   * (`ref` / `ref_null` / `externref` / `funcref`); the verifier and the
+   * Wasm validator together reject other operand shapes.
+   */
+  nullCheck(val: IrValueId): IrValueId {
+    return this.emitUnary("ref.is_null", val, irVal({ kind: "i32" }));
+  }
+
+  /**
+   * (#1392) Emit a value-producing short-circuiting if/else. Both `then`
+   * and `else` are pre-collected instruction buffers (typically built
+   * via `collectBodyInstrs(...)`); the lowerer emits a Wasm
+   * `if (result T) ... else ... end` so only the matching branch
+   * executes.
+   *
+   * `thenValue` / `elseValue` are SSA value IDs DEFINED INSIDE the
+   * corresponding arm — the lowerer emits each arm's instruction tree
+   * and leaves the carrier value on the Wasm stack at end-of-arm; the
+   * post-block `local.set` binds the if-instr's result to whichever
+   * carrier ran.
+   */
+  emitIf(args: {
+    cond: IrValueId;
+    then: readonly IrInstr[];
+    thenValue: IrValueId;
+    else: readonly IrInstr[];
+    elseValue: IrValueId;
+    resultType: IrType;
+  }): IrValueId {
+    const result = this.allocator.fresh();
+    this.valueTypes.set(result, args.resultType);
+    this.pushInstr({
+      kind: "if",
+      cond: args.cond,
+      then: args.then,
+      thenValue: args.thenValue,
+      else: args.else,
+      elseValue: args.elseValue,
+      result,
+      resultType: args.resultType,
+    });
+    return result;
+  }
+
   // --- string ops (#1169a) ------------------------------------------------
 
   emitStringConst(value: string): IrValueId {
@@ -837,15 +887,18 @@ export class IrFunctionBuilder {
    * Returns the captured body instrs.
    */
   collectBodyInstrs(emit: () => void): IrInstr[] {
-    if (this.bodyBuffer !== null) {
-      throw new Error(`IrFunctionBuilder: nested collectBodyInstrs not supported (func ${this.name})`);
-    }
+    // (#1392) Nesting support — required for nested optional chains
+    // (`a?.b?.c` lowers to nested `IrInstrIf`s, each with its own arm
+    // buffer). Save & restore the previous buffer so emissions inside
+    // the inner `emit()` route to its own buffer; instructions emitted
+    // AFTER the inner returns continue routing to the outer buffer.
+    const previous = this.bodyBuffer;
     const buffer: IrInstr[] = [];
     this.bodyBuffer = buffer;
     try {
       emit();
     } finally {
-      this.bodyBuffer = null;
+      this.bodyBuffer = previous;
     }
     return buffer;
   }

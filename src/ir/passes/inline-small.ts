@@ -367,6 +367,30 @@ function renameInstrOperands(inst: IrInstr, rename: ReadonlyMap<IrValueId, IrVal
       if (c === inst.condition && t === inst.whenTrue && f === inst.whenFalse) return inst;
       return { ...inst, condition: c, whenTrue: t, whenFalse: f };
     }
+    case "if": {
+      // (#1392) Renames in the cond + carrier values; arm-buffer instrs
+      // are walked recursively (each gets its own renameInstrOperands
+      // call). Conservative — if any sub-instr changed, rebuild the if;
+      // otherwise return unchanged.
+      const c = mapId(rename, inst.cond);
+      const t = mapId(rename, inst.thenValue);
+      const e = mapId(rename, inst.elseValue);
+      const newThen: IrInstr[] = [];
+      const newElse: IrInstr[] = [];
+      let armChanged = false;
+      for (const sub of inst.then) {
+        const r = renameInstrOperands(sub, rename);
+        if (r !== sub) armChanged = true;
+        newThen.push(r);
+      }
+      for (const sub of inst.else) {
+        const r = renameInstrOperands(sub, rename);
+        if (r !== sub) armChanged = true;
+        newElse.push(r);
+      }
+      if (c === inst.cond && t === inst.thenValue && e === inst.elseValue && !armChanged) return inst;
+      return { ...inst, cond: c, thenValue: t, elseValue: e, then: newThen, else: newElse };
+    }
     case "box":
     case "unbox":
     case "tag.test": {

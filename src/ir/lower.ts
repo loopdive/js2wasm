@@ -300,6 +300,20 @@ export interface IrLowerResolver {
    * through the same single tag.
    */
   ensureExnTag?(): number;
+  /**
+   * (#1392) Emit a null-check Wasm op sequence for an externref operand.
+   * Returns `[ref.is_null]` for plain GC ref-typed receivers (the
+   * common case used by the IR's `unary("ref.is_null", ...)` path),
+   * or a host-import call sequence in modes that test JS null/undefined
+   * via a host helper.
+   *
+   * Currently the IR's `unary("ref.is_null", val)` path emits the Wasm
+   * op directly via the unary-dispatch arm; this resolver method is
+   * kept for backends that want to override the lowering (e.g. testing
+   * an externref via `__extern_is_null` or similar). When absent the
+   * lowerer's unary path uses the plain `ref.is_null` Wasm instruction.
+   */
+  nullCheck?(): readonly Instr[];
 }
 
 export interface IrLowerResult {
@@ -360,6 +374,12 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
       for (const sub of instr.cond) registerInstrDefs(sub, blockId);
       for (const sub of instr.body) registerInstrDefs(sub, blockId);
       for (const sub of instr.update) registerInstrDefs(sub, blockId);
+    }
+    // (#1392) walk into if's then/else buffers so SSA defs inside an arm
+    // register in the def maps.
+    if (instr.kind === "if") {
+      for (const sub of instr.then) registerInstrDefs(sub, blockId);
+      for (const sub of instr.else) registerInstrDefs(sub, blockId);
     }
   };
   for (const block of func.blocks) {
@@ -450,6 +470,20 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
         for (const u of collectForOfBodyUses(instr.body)) recordUse(u, -1);
         for (const u of collectForOfBodyUses(instr.update)) recordUse(u, -1);
         recordUse(instr.condValue, -1);
+      }
+      // (#1392) `if` arms — same `-1` block id convention as for-of
+      // bodies. Outer SSA values referenced inside an arm need to be
+      // pre-materialised into Wasm locals so the arm's inline code can
+      // `local.get` them (since the arm's structured Wasm if-block runs
+      // INSIDE the surrounding block but reads from outer locals).
+      // The thenValue / elseValue are the carrier values left on the
+      // stack at end-of-arm — recording them ensures their defs survive
+      // DCE and that they're accessible at the carrier-emission site.
+      if (instr.kind === "if") {
+        for (const u of collectForOfBodyUses(instr.then)) recordUse(u, -1);
+        for (const u of collectForOfBodyUses(instr.else)) recordUse(u, -1);
+        recordUse(instr.thenValue, -1);
+        recordUse(instr.elseValue, -1);
       }
     }
     for (const u of collectTerminatorUses(block)) recordUse(u, blockId);
@@ -778,6 +812,64 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
         emitValue(instr.condition, out);
         out.push({ op: "select" });
         return;
+      case "if": {
+        // (#1392) Value-producing short-circuiting if/else. Lowers to:
+        //   <cond>
+        //   if (result T)
+        //     <then arm instrs (SSA materialisation rules)>
+        //     <emit thenValue tree-style — leaves value on stack>
+        //   else
+        //     <else arm instrs>
+        //     <emit elseValue tree-style>
+        //   end
+        // Each arm's last stack-top becomes the if-block's result; the
+        // outer SSA `result` is bound by the caller's `local.set`
+        // (handled by `emitBlockBody` since this instr has a result).
+        if (instr.resultType === null) {
+          throw new Error(`ir/lower: IrInstrIf without resultType (${func.name})`);
+        }
+        const armResultType = lowerIrTypeToValType(instr.resultType, resolver, func.name);
+        const blockType: BlockType = { kind: "val", type: armResultType };
+
+        // Helper: emit a body buffer using the same SSA-materialisation
+        // rules as `try` / `forof.*`. Cross-block uses get pre-emitted
+        // and `local.set`; void-result instrs emit in place; intra-arm
+        // multi-use values emit at their use site via the tee pattern.
+        const emitArmBody = (bodyInstrs: readonly IrInstr[], target: Instr[]): void => {
+          for (const bodyInstr of bodyInstrs) {
+            if (bodyInstr.result === null) {
+              emitInstrTree(bodyInstr, target);
+            } else if (crossBlock.has(bodyInstr.result)) {
+              emitInstrTree(bodyInstr, target);
+              target.push({ op: "local.set", index: localIdx.get(bodyInstr.result)! });
+              materialized.add(bodyInstr.result);
+            }
+            // Intra-arm multi-use: handled at use site via tee pattern.
+          }
+        };
+
+        // 1. Emit cond.
+        emitValue(instr.cond, out);
+
+        // 2. THEN arm.
+        const thenBody: Instr[] = [];
+        emitArmBody(instr.then, thenBody);
+        emitValue(instr.thenValue, thenBody);
+
+        // 3. ELSE arm.
+        const elseBody: Instr[] = [];
+        emitArmBody(instr.else, elseBody);
+        emitValue(instr.elseValue, elseBody);
+
+        // 4. Wrap in `if (result T) ... else ... end`.
+        out.push({
+          op: "if",
+          blockType,
+          then: thenBody,
+          else: elseBody,
+        });
+        return;
+      }
       case "raw.wasm":
         for (const op of instr.ops) out.push(op);
         return;
@@ -1812,6 +1904,12 @@ function collectIrUses(instr: IrInstr): readonly IrValueId[] {
       return [instr.rand];
     case "select":
       return [instr.condition, instr.whenTrue, instr.whenFalse];
+    case "if":
+      // (#1392) Surface only the cond at top level. Arm-buffer uses of
+      // OUTER SSA values are surfaced separately via collectForOfBodyUses
+      // so the cross-block / multi-use counters properly materialise
+      // them in Wasm locals before the if-instr emits.
+      return [instr.cond];
     case "raw.wasm":
       return [];
     case "box":
@@ -1962,6 +2060,15 @@ export function collectForOfBodyUses(body: readonly IrInstr[]): IrValueId[] {
       for (const u of collectForOfBodyUses(instr.body)) uses.push(u);
       for (const u of collectForOfBodyUses(instr.update)) uses.push(u);
       uses.push(instr.condValue);
+    }
+    // (#1392) Recurse into if's then/else arms so outer SSA values
+    // referenced inside an arm are correctly counted as cross-block
+    // uses (driving Wasm-local materialisation).
+    if (instr.kind === "if") {
+      for (const u of collectForOfBodyUses(instr.then)) uses.push(u);
+      for (const u of collectForOfBodyUses(instr.else)) uses.push(u);
+      uses.push(instr.thenValue);
+      uses.push(instr.elseValue);
     }
   }
   return uses;

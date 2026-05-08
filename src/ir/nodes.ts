@@ -512,7 +512,14 @@ export type IrUnop =
   | "f64.sqrt"
   | "f64.floor"
   | "f64.ceil"
-  | "f64.trunc";
+  | "f64.trunc"
+  // (#1392) `ref.is_null` — tests whether a Wasm reference is null. Result
+  // is i32 (1 if null, 0 otherwise). Used by the optional-chain lowering
+  // to short-circuit `recv?.prop` when `recv` is null. The Wasm op is
+  // valid for `ref` / `ref_null` / externref / funcref operands; the IR
+  // type carrier on `IrInstrUnary.rand` must be a `val`-kind IrType
+  // wrapping one of those.
+  | "ref.is_null";
 
 export interface IrInstrBinary extends IrInstrBase {
   readonly kind: "binary";
@@ -538,6 +545,36 @@ export interface IrInstrSelect extends IrInstrBase {
   readonly condition: IrValueId;
   readonly whenTrue: IrValueId;
   readonly whenFalse: IrValueId;
+}
+
+/**
+ * (#1392) Value-producing if/else expression. UNLIKE `select`, this
+ * SHORT-CIRCUITS — only one branch's instructions are executed. Used by
+ * the optional-chain lowering (`recv?.prop`) where the right-hand side
+ * (`recv.prop`) MUST NOT execute when `recv` is null.
+ *
+ * The two arm buffers (`then` / `else`) are self-contained instruction
+ * lists collected via `IrFunctionBuilder.collectBodyInstrs(...)`. They
+ * may reference SSA values defined OUTSIDE the if-instr (those are
+ * available through Wasm locals), but values defined INSIDE one arm are
+ * NOT visible to the other arm or to instructions following the if.
+ *
+ * The carrier values are `thenValue` / `elseValue` — IrValueIds defined
+ * inside the corresponding arm. The lowerer emits a Wasm
+ * `if (result T) ... else ... end` block where each arm leaves its
+ * carrier value on the stack; the post-block `local.set` binds the
+ * result to the if-instr's `result` SSA value.
+ *
+ * Both arms must produce values of `resultType`. The verifier rejects
+ * shape mismatches.
+ */
+export interface IrInstrIf extends IrInstrBase {
+  readonly kind: "if";
+  readonly cond: IrValueId;
+  readonly then: readonly IrInstr[];
+  readonly thenValue: IrValueId;
+  readonly else: readonly IrInstr[];
+  readonly elseValue: IrValueId;
 }
 
 /**
@@ -1611,6 +1648,8 @@ export type IrInstr =
   | IrInstrBinary
   | IrInstrUnary
   | IrInstrSelect
+  // (#1392) Value-producing short-circuiting if/else — used by optional-chain.
+  | IrInstrIf
   | IrInstrRawWasm
   | IrInstrBox
   | IrInstrUnbox

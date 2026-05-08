@@ -989,6 +989,20 @@ function makeResolver(
     ensureExnTag(): number {
       return ensureExnTag(ctx);
     },
+    // -------------------------------------------------------------------
+    // Null-check dispatch (#1392).
+    //
+    // The IR primitive `unary("ref.is_null", val)` lowers to the Wasm
+    // `ref.is_null` op directly via the unary-dispatch arm in lower.ts.
+    // This resolver method is the formal entry point — it returns the
+    // canonical Wasm op sequence for a null check on a Wasm reference.
+    // Custom backends (e.g. WASI without externref) could override to
+    // emit a host helper call instead. The default returns the bare
+    // `ref.is_null` instruction.
+    // -------------------------------------------------------------------
+    nullCheck(): readonly Instr[] {
+      return [{ op: "ref.is_null" }];
+    },
   };
 }
 
