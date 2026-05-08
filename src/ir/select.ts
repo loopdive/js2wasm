@@ -77,6 +77,13 @@ export type IrFallbackReason =
   | "external-call" // calls a non-local identifier (parseInt, etc.)
   | "call-graph-closure" // local caller/callee not claimed
   | "type-resolution-failure" // overrideMap couldn't be built (set externally)
+  // #1370 Phase A — class method / constructor of a shape the IR selector
+  // doesn't yet handle. Examples: methods on a class with an `extends`
+  // clause (Phase E — inheritance), get/set accessors, abstract methods,
+  // computed property names. Distinguished from `body-shape-rejected` so a
+  // future slice can tell "method-specific gate failure" apart from generic
+  // body-shape rejections that apply to top-level FunctionDeclarations too.
+  | "class-method"
   | "deferred-feature"; // permanently excluded (eval, with, import(), Proxy)
 
 export interface IrFallback {
@@ -86,6 +93,16 @@ export interface IrFallback {
 
 export interface IrSelection {
   readonly funcs: ReadonlySet<string>;
+  /** #1370 Phase A — synthetic-name set keyed by `${className}_${methodName}`
+   *  for instance/static methods, and `${className}_new` for constructors.
+   *  Populated when class members are IR-eligible. The naming convention
+   *  matches `ctx.funcMap` (see `class-bodies.ts:216,275,284`) so Phase B
+   *  can patch pre-allocated function slots by direct lookup.
+   *
+   *  Phase A is selector-only — the `IrSelection.classMembers` is reported
+   *  but `compileIrPathFunctions` does NOT yet patch class-method bodies.
+   *  Phase B wires the integration loop. */
+  readonly classMembers?: ReadonlySet<string>;
   /** Top-level FunctionDeclaration names that did NOT make it into `funcs`,
    *  paired with the rejection reason. Only populated when
    *  `IrSelectionOptions.trackFallbacks` is true. */
@@ -156,12 +173,114 @@ export function planIrCompilation(
     }
   }
 
+  // -------------------------------------------------------------------------
+  // #1370 Phase A — class methods + constructors.
+  //
+  // For each top-level class declaration, walk its members and claim:
+  //   - the constructor (synthetic name `${ClassName}_new`),
+  //   - each instance method (`${ClassName}_${methodName}`),
+  //   - each static method (same shape — class-bodies.ts uses the same
+  //     `${className}_${methodName}` key for static and instance).
+  //
+  // Method bodies use the SAME shape rules as FunctionDeclarations (the
+  // existing `isPhase1StatementList`). The legacy `collectClassDeclaration`
+  // pass in `class-bodies.ts` pre-allocates funcMap entries with stable
+  // signatures BEFORE `compileIrPathFunctions` runs, which means Phase B
+  // (when wired) will patch existing slots rather than reserve new ones.
+  //
+  // Phase A scope:
+  //   - Flat classes only — classes with `extends` defer to Phase E
+  //     (inheritance + super.method() lowering).
+  //   - Identifier / string-literal / numeric-literal property names only.
+  //   - No async, no generators (deferred-feature), no abstract, no
+  //     get/set accessors (class-method).
+  //
+  // Phase A is **selector-only**: `compileIrPathFunctions` does not yet
+  // patch class-method bodies. Phase B will iterate `classMembers` and do
+  // the integration. Until then, populating `classMembers` is informative —
+  // the legacy `class-bodies.ts` path continues to emit the methods.
+  // -------------------------------------------------------------------------
+  const individuallyClaimedClassMembers = new Set<string>();
+  for (const stmt of sourceFile.statements) {
+    if (!ts.isClassDeclaration(stmt)) continue;
+    if (!stmt.name) continue; // anonymous / default-export class — Phase A skips
+    const className = stmt.name.text;
+    // Phase A doesn't support `super` — skip classes with any heritage clause
+    // that introduces a parent (TS allows `implements` clauses too, which are
+    // erased at emit time and don't affect codegen, so only `extends` is
+    // disqualifying). Track the rejection reason for every method so the
+    // telemetry shows them as `class-method` rather than silently dropping.
+    const hasParent = stmt.heritageClauses?.some((h) => h.token === ts.SyntaxKind.ExtendsKeyword) ?? false;
+    for (const member of stmt.members) {
+      let memberName: string;
+      let memberNode: ts.MethodDeclaration | ts.ConstructorDeclaration;
+      if (ts.isConstructorDeclaration(member)) {
+        memberName = `${className}_new`;
+        memberNode = member;
+      } else if (ts.isMethodDeclaration(member)) {
+        if (!member.name) {
+          // Defensive — TS parser always populates `.name` for
+          // MethodDeclaration; the `null` branch is unreachable in practice.
+          continue;
+        }
+        const methodNameRaw = phase1MemberName(member.name);
+        if (methodNameRaw === null) {
+          // Computed property name (`[expr]() {}`) or private identifier
+          // (`#name() {}`) — Phase A doesn't claim these.
+          if (trackFallbacks) {
+            fallbackReasons.set(`${className}_<computed>`, "class-method");
+          }
+          continue;
+        }
+        memberName = `${className}_${methodNameRaw}`;
+        memberNode = member;
+      } else {
+        // PropertyDeclaration (field), GetAccessorDeclaration,
+        // SetAccessorDeclaration, IndexSignatureDeclaration,
+        // SemicolonClassElement, ClassStaticBlockDeclaration — none are
+        // claimed by Phase A. Telemetry reasons:
+        //   - get/set → "class-method" (will be lowered with the rest of
+        //     the class member surface in a follow-up slice).
+        //   - PropertyDeclaration → not a function — out of IR's scope.
+        if (trackFallbacks && (ts.isGetAccessorDeclaration(member) || ts.isSetAccessorDeclaration(member))) {
+          const accessorName = member.name && phase1MemberName(member.name);
+          const key = `${className}_${accessorName ?? "<accessor>"}`;
+          fallbackReasons.set(key, "class-method");
+        }
+        continue;
+      }
+      if (hasParent) {
+        if (trackFallbacks) fallbackReasons.set(memberName, "class-method");
+        continue;
+      }
+      const reason = trackFallbacks
+        ? whyNotIrClaimable(memberNode, typeMap, localClasses, /*isMethod*/ true)
+        : isIrClaimable(memberNode, typeMap, localClasses, /*isMethod*/ true)
+          ? null
+          : "class-method"; // sentinel — not used when trackFallbacks=false
+      if (reason === null) {
+        individuallyClaimedClassMembers.add(memberName);
+      } else if (trackFallbacks) {
+        fallbackReasons.set(memberName, reason);
+      }
+    }
+  }
+
   if (individuallyClaimed.size === 0) {
-    if (!trackFallbacks) return EMPTY;
+    // Phase A: even when no top-level FunctionDeclaration is claimed, the
+    // class-member walk above may have populated `individuallyClaimedClassMembers`.
+    // Emit a selection that carries those even though `funcs` is empty.
+    if (!trackFallbacks) {
+      if (individuallyClaimedClassMembers.size === 0) return EMPTY;
+      return { funcs: new Set<string>(), classMembers: individuallyClaimedClassMembers };
+    }
     const fallbacks: IrFallback[] = [];
     for (const [name, reason] of fallbackReasons) fallbacks.push({ name, reason });
     for (let i = 0; i < unnamedCount; i++) fallbacks.push({ name: `<unnamed:${i}>`, reason: "unnamed" });
-    return { funcs: new Set<string>(), fallbacks };
+    if (individuallyClaimedClassMembers.size === 0) {
+      return { funcs: new Set<string>(), fallbacks };
+    }
+    return { funcs: new Set<string>(), classMembers: individuallyClaimedClassMembers, fallbacks };
   }
 
   // -------------------------------------------------------------------------
@@ -220,12 +339,20 @@ export function planIrCompilation(
     }
   }
 
-  if (!trackFallbacks) return { funcs: claimed };
+  // #1370 Phase A: thread the class-member claim set through the final
+  // return. The set is `undefined` when empty so consumers can check for
+  // its presence cheaply (and keeps existing fixtures stable when no class
+  // declarations are present).
+  const classMembers = individuallyClaimedClassMembers.size > 0 ? individuallyClaimedClassMembers : undefined;
+
+  if (!trackFallbacks) {
+    return classMembers ? { funcs: claimed, classMembers } : { funcs: claimed };
+  }
 
   const fallbacks: IrFallback[] = [];
   for (const [name, reason] of fallbackReasons) fallbacks.push({ name, reason });
   for (let i = 0; i < unnamedCount; i++) fallbacks.push({ name: `<unnamed:${i}>`, reason: "unnamed" });
-  return { funcs: claimed, fallbacks };
+  return classMembers ? { funcs: claimed, classMembers, fallbacks } : { funcs: claimed, fallbacks };
 }
 
 // ---------------------------------------------------------------------------
@@ -233,36 +360,102 @@ export function planIrCompilation(
 // ---------------------------------------------------------------------------
 
 /**
+ * #1370 Phase A: a node accepted by the per-function IR claim check. The
+ * three shapes share enough surface (`.parameters`, `.body`, `.type`,
+ * `.modifiers`, `.typeParameters`, `.asteriskToken`) that the existing
+ * `whyNotIrClaimable` body works almost verbatim once the input type is
+ * widened. The `isMethod` flag at the call site distinguishes
+ * FunctionDeclaration (top-level, with required name and Slice-1+ rules)
+ * from MethodDeclaration / ConstructorDeclaration (class-owned, with
+ * extra method-specific guards).
+ */
+type IrClaimableSubject = ts.FunctionDeclaration | ts.MethodDeclaration | ts.ConstructorDeclaration;
+
+/**
  * Variant of `isIrClaimable` that returns the rejection reason instead of a
  * boolean. Returns null on accept. Used by `planIrCompilation` when
  * `trackFallbacks` is enabled so the dispatcher can log/throw with a useful
  * cause for each legacy fallback. Mirrors `isIrClaimable` exactly — keep the
  * two in sync.
+ *
+ * #1370 Phase A: widened to also accept ts.MethodDeclaration and
+ * ts.ConstructorDeclaration. Pass `isMethod=true` when invoked for a class
+ * member; the function applies the same body / param / return-type gate as
+ * for top-level FunctionDeclarations, with method-specific guards added
+ * inline (no name → ConstructorDeclaration is fine; computed name →
+ * `class-method`; async/generator/abstract methods are filtered ahead of
+ * this call so the existing reasons (`body-shape-rejected`,
+ * `deferred-feature`) cover them).
  */
 function whyNotIrClaimable(
-  fn: ts.FunctionDeclaration,
+  fn: IrClaimableSubject,
   typeMap: TypeMap | undefined,
   localClasses: ReadonlySet<string>,
+  isMethod: boolean = false,
 ): IrFallbackReason | null {
-  if (!fn.name) return "unnamed";
+  // Top-level FunctionDeclaration must be named; constructor declarations
+  // never carry a `name`; a MethodDeclaration with an undefined / computed
+  // name is rejected as a Phase-A method-shape failure.
+  if (!isMethod) {
+    if (!ts.isFunctionDeclaration(fn) || !fn.name) return "unnamed";
+  }
   if (fn.typeParameters && fn.typeParameters.length > 0) return "type-parameters";
-  if (fn.modifiers && fn.modifiers.some((m) => m.kind !== ts.SyntaxKind.ExportKeyword)) return "non-export-modifier";
+  // Modifier surface differs between FunctionDeclaration and class members:
+  //   - FunctionDeclaration: `export` is the only acceptable modifier.
+  //   - Method/Constructor: ignore visibility (`public`/`private`/`protected`)
+  //     and `static` for the IR claim check; reject `abstract`, `async`, and
+  //     accessor (`get`/`set`) modifiers explicitly so they slot into the
+  //     right fallback bucket.
+  if (!isMethod) {
+    if (fn.modifiers && fn.modifiers.some((m) => m.kind !== ts.SyntaxKind.ExportKeyword)) return "non-export-modifier";
+  } else {
+    if (fn.modifiers) {
+      for (const m of fn.modifiers) {
+        if (m.kind === ts.SyntaxKind.AbstractKeyword) return "class-method";
+        if (m.kind === ts.SyntaxKind.AsyncKeyword) return "deferred-feature";
+      }
+    }
+  }
 
-  const isGenerator = !!fn.asteriskToken;
+  // Generator detection. ConstructorDeclaration has no asteriskToken.
+  const isGenerator = (ts.isFunctionDeclaration(fn) || ts.isMethodDeclaration(fn)) && !!fn.asteriskToken;
   if (isGenerator && fn.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword)) {
     return "async-generator";
   }
+  // #1370 Phase A: defer generator methods (and constructors-as-generators
+  // are syntactically invalid). The top-level FunctionDeclaration generator
+  // path lands via Slice 7a's lowerer; lifting that to method position
+  // requires extra wiring (Phase D).
+  if (isMethod && isGenerator) return "deferred-feature";
 
-  const entry = typeMap?.get(fn.name.text);
+  // Method/constructor names don't participate in TypeMap propagation today
+  // — that map is keyed by top-level FunctionDeclaration text. Phase A
+  // simply skips the propagation lookup for class members; resolveReturnType
+  // / resolveParamType still fall back to the AST annotation, which is
+  // sufficient for the explicit-typed-method shape the spec targets.
+  const entry = !isMethod && ts.isFunctionDeclaration(fn) && fn.name ? typeMap?.get(fn.name.text) : undefined;
 
   let isVoidReturn = false;
   if (!isGenerator) {
-    const returnResolved = resolveReturnType(fn, entry?.returnType);
-    if (returnResolved === null) return "return-type-not-resolvable";
-    isVoidReturn = returnResolved === "void";
+    if (ts.isConstructorDeclaration(fn)) {
+      // Constructors have no source-level return type — they always return
+      // the constructed instance. Phase A doesn't yet flow that through to
+      // the IR (Phase C builds the `struct.new + $self` epilogue). For now
+      // we accept the shape and treat the return resolution as "object"
+      // implicitly; Phase B/C will use the className from the parent node
+      // to produce the correct class-typed return.
+    } else {
+      const returnResolved = resolveReturnType(fn, entry?.returnType);
+      if (returnResolved === null) return "return-type-not-resolvable";
+      isVoidReturn = returnResolved === "void";
+    }
   }
 
   const scope = new Set<string>();
+  // Method bodies and constructor bodies see `this` as an implicit local;
+  // mark it so a `return this;` / `this.field` reference passes the
+  // identifier-in-scope check at Phase-1 expression position.
+  if (isMethod) scope.add("this");
   for (let i = 0; i < fn.parameters.length; i++) {
     const p = fn.parameters[i]!;
     if (!ts.isIdentifier(p.name)) return "param-shape-rejected";
@@ -280,6 +473,18 @@ function whyNotIrClaimable(
 
   const body = fn.body;
   if (!body) return "body-shape-rejected";
+  // #1370 Phase A: constructor bodies don't have a return-statement tail —
+  // the legacy lowerer (and Phase C) synthesise the implicit `return this;`.
+  // Accept the body as a list of Phase-1 body statements instead, which
+  // covers `this.field = expr;`, `this.method(...)`, and bare calls. This
+  // mirrors how try/catch/finally bodies are checked (see `isPhase1TryStatement`).
+  if (ts.isConstructorDeclaration(fn)) {
+    const ctorScope = new Set(scope);
+    for (const s of body.statements) {
+      if (!isPhase1BodyStatement(s, ctorScope, localClasses)) return "body-shape-rejected";
+    }
+    return null;
+  }
   if (!isPhase1StatementList(body.statements, scope, localClasses, isGenerator, isVoidReturn))
     return "body-shape-rejected";
 
@@ -287,63 +492,17 @@ function whyNotIrClaimable(
 }
 
 function isIrClaimable(
-  fn: ts.FunctionDeclaration,
+  fn: IrClaimableSubject,
   typeMap: TypeMap | undefined,
   localClasses: ReadonlySet<string>,
+  isMethod: boolean = false,
 ): boolean {
-  if (!fn.name) return false;
-  if (fn.typeParameters && fn.typeParameters.length > 0) return false;
-  if (fn.modifiers && fn.modifiers.some((m) => m.kind !== ts.SyntaxKind.ExportKeyword)) return false;
-
-  // Slice 7a (#1169f): accept `function*` (generator). The generator's
-  // source-level return type is `Generator<T>` / `IterableIterator<T>` —
-  // those resolve to ResolvedKind="object" in `resolveReturnType` and
-  // would normally pass the type gate but force the lowerer down the
-  // shape-resolution path. The lowerer overrides the IR-level result
-  // type to `externref` regardless of the source annotation, so the
-  // selector just needs to permit the function shape. Async generators
-  // (`async function*`) are NOT in 7a — defer to a follow-up slice.
-  const isGenerator = !!fn.asteriskToken;
-  if (isGenerator && fn.modifiers?.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword)) {
-    return false;
-  }
-
-  const entry = typeMap?.get(fn.name.text);
-
-  // Return type must resolve to a concrete primitive (or, for
-  // generators, ANY annotation — the lowerer overrides to externref).
-  // For generators the source-level return type is typically
-  // `Generator<number>` (TypeReferenceNode → ResolvedKind="object"),
-  // but missing or unusual annotations also pass; the lowerer always
-  // emits externref for generator results regardless of what the
-  // selector saw.
-  let isVoidReturn = false;
-  if (!isGenerator) {
-    const returnResolved = resolveReturnType(fn, entry?.returnType);
-    if (returnResolved === null) return false;
-    isVoidReturn = returnResolved === "void";
-  }
-
-  // All params must resolve to a concrete primitive.
-  const scope = new Set<string>();
-  for (let i = 0; i < fn.parameters.length; i++) {
-    const p = fn.parameters[i]!;
-    if (!ts.isIdentifier(p.name)) return false;
-    if (p.questionToken) return false;
-    if (p.dotDotDotToken) return false;
-    if (p.initializer) return false;
-    if (scope.has(p.name.text)) return false;
-
-    const mapped = entry?.params[i];
-    const paramResolved = resolveParamType(p, mapped);
-    if (paramResolved === null) return false;
-
-    scope.add(p.name.text);
-  }
-
-  const body = fn.body;
-  if (!body) return false;
-  return isPhase1StatementList(body.statements, scope, localClasses, isGenerator, isVoidReturn);
+  // #1370 Phase A: keeping `isIrClaimable` and `whyNotIrClaimable` in sync
+  // is brittle when both have to grow new method-specific guards. Delegate
+  // to the reason-returning variant; the per-call overhead of allocating
+  // and discarding a string return is negligible against the AST walk in
+  // `isPhase1StatementList`.
+  return whyNotIrClaimable(fn, typeMap, localClasses, isMethod) === null;
 }
 
 /**
@@ -395,7 +554,15 @@ function resolveParamType(p: ts.ParameterDeclaration, mapped: LatticeType | unde
   return null;
 }
 
-function resolveReturnType(fn: ts.FunctionDeclaration, mapped: LatticeType | undefined): ResolvedKind {
+// #1370 Phase A: widened to also accept ts.MethodDeclaration. The `.type`
+// (return-type annotation) field is identical in shape across both AST
+// nodes (it's `TypeNode | undefined`), and so is the dispatch logic below.
+// ts.ConstructorDeclaration is excluded — constructors don't carry a
+// source-level return type; the caller short-circuits before this.
+function resolveReturnType(
+  fn: ts.FunctionDeclaration | ts.MethodDeclaration,
+  mapped: LatticeType | undefined,
+): ResolvedKind {
   if (fn.type) {
     if (fn.type.kind === ts.SyntaxKind.NumberKeyword) return "f64";
     if (fn.type.kind === ts.SyntaxKind.BooleanKeyword) return "bool";
@@ -1265,6 +1432,15 @@ function isPhase1Expr(expr: ts.Expression, scope: ReadonlySet<string>, localClas
     // A bare identifier that isn't in scope is not a valid Phase-1 expr.
     return scope.has(expr.text);
   }
+  // #1370 Phase A — `this` reference inside a method or constructor body.
+  // The selector marks `this` as an in-scope binding for class members
+  // (see `whyNotIrClaimable` with `isMethod=true`); accept the keyword
+  // expression here if "this" is in scope. Outside of class members the
+  // keyword never enters scope, so this branch is a no-op for the
+  // FunctionDeclaration path.
+  if (expr.kind === ts.SyntaxKind.ThisKeyword) {
+    return scope.has("this");
+  }
   if (ts.isPrefixUnaryExpression(expr)) {
     if (!isPhase1PrefixOp(expr.operator)) return false;
     return isPhase1Expr(expr.operand, scope, localClasses);
@@ -1495,6 +1671,27 @@ function phase1PropertyName(name: ts.PropertyName): string | null {
   if (ts.isIdentifier(name)) return name.text;
   if (ts.isStringLiteral(name)) return name.text;
   if (ts.isNumericLiteral(name)) return name.text; // matches JS — `{ 0: x }` → "0"
+  return null;
+}
+
+/**
+ * #1370 Phase A: extract a class-member's name as a string suitable for the
+ * `${className}_${methodName}` synthetic key the legacy `class-bodies.ts`
+ * registers in `ctx.funcMap`. Mirrors `phase1PropertyName`'s acceptance set
+ * — identifier / string-literal / numeric-literal — but is its own function
+ * so a future slice that broadens object-literal property acceptance
+ * (e.g. computed-key constants) doesn't accidentally widen the class
+ * member naming surface, where collision with non-Phase-1 members would
+ * cause Phase B to patch the wrong slot.
+ *
+ * Returns null for computed names (`[expr]() {}`) and private identifiers
+ * (`#priv() {}`) — Phase A can't form a stable funcMap key for either.
+ */
+function phase1MemberName(name: ts.PropertyName): string | null {
+  if (ts.isIdentifier(name)) return name.text;
+  if (ts.isStringLiteral(name)) return name.text;
+  if (ts.isNumericLiteral(name)) return name.text;
+  // ComputedPropertyName, PrivateIdentifier — Phase A skips both.
   return null;
 }
 

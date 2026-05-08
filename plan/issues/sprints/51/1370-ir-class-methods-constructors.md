@@ -2,7 +2,7 @@
 id: 1370
 sprint: 51
 title: "IR: claim class methods and constructors (largest legacy bypass)"
-status: ready
+status: review
 created: 2026-05-08
 priority: high
 feasibility: hard
@@ -379,3 +379,219 @@ only accepts FunctionDeclaration. Phase A is selector-only and does NOT call thi
 function for methods, so this is **deferred to Phase B**. When Phase B lands, the
 parameter type must widen and `fn.name.text` lookups need an `isMethod`-aware
 fallback (since MethodDeclaration `.name` is `PropertyName`, not `Identifier`).
+
+---
+
+## Phase A — Implementation Notes (2026-05-08, senior-dev-1370)
+
+PR: https://github.com/loopdive/js2wasm/pull/293
+
+### What landed
+
+`src/ir/select.ts`:
+
+1. **`IrSelection.classMembers`** — new optional `ReadonlySet<string>` field. Populated
+   only when class members are claimed; left `undefined` otherwise so existing fixtures
+   don't shift.
+2. **`IrFallbackReason` += `"class-method"`** — for shapes the selector recognises but
+   can't yet handle (extends parent, accessors, abstract, computed/private name).
+3. **`IrClaimableSubject` union** = `FunctionDeclaration | MethodDeclaration | ConstructorDeclaration`.
+   `whyNotIrClaimable` and `isIrClaimable` widened with an `isMethod` flag. To stay in
+   sync, `isIrClaimable` now delegates to `whyNotIrClaimable === null` (negligible
+   overhead vs. the AST walk).
+4. **Method-specific guards** at the top of `whyNotIrClaimable`:
+   - Top-level: name required, only `export` modifier allowed.
+   - Method: `abstract` → `class-method`, `async` → `deferred-feature`.
+   - Method generator → `deferred-feature` (Phase D).
+   - Constructor: skipped return-type resolution (no source-level type).
+5. **`scope.add("this")`** — class-member subject implicitly puts `this` in scope.
+6. **`isPhase1Expr` accepts `ts.SyntaxKind.ThisKeyword`** when `scope.has("this")`.
+   No-op for FunctionDeclaration path because outer functions never put `this` in scope.
+7. **Constructor body** — checked via `isPhase1BodyStatement` rather than
+   `isPhase1StatementList`, since constructors don't have a return-tail. Phase C will
+   synthesise the implicit `return this`.
+8. **New walk after FunctionDeclaration loop** — for each top-level `ClassDeclaration`:
+   - Skip anonymous classes (no name).
+   - Skip classes with `extends` clause; tag every member as `class-method` for
+     telemetry. Phase E (inheritance) addresses these.
+   - Iterate members:
+     - `ConstructorDeclaration` → `${className}_new`
+     - `MethodDeclaration` → `${className}_${methodName}` (via `phase1MemberName`)
+     - `GetAccessorDeclaration` / `SetAccessorDeclaration` → `class-method` fallback
+     - everything else → silently skipped (PropertyDeclaration is not a function).
+   - Use the same selector predicate; cache claim/reason in
+     `individuallyClaimedClassMembers` / `fallbackReasons`.
+9. **Return paths** thread `classMembers` through. Empty → undefined.
+
+`scripts/check-ir-fallbacks.ts`:
+
+10. `class-method` added to the `UNINTENDED` set so the budget gate tracks
+    Phase E / accessor-slice retirement progress.
+
+### Critical correction (kept from architect spec)
+
+Funcmap keys use **underscores**, not dots: `${className}_new`, `${className}_${methodName}`.
+Confirmed via `class-bodies.ts:216,275,284`.
+
+### Out of scope (Phase B+)
+
+- `src/ir/integration.ts` — no changes. `compileIrPathFunctions` still iterates only
+  FunctionDeclaration; methods on the legacy class-bodies path emit normally.
+- Signature parity check between IR-resolved and legacy-allocated typeIdx — needs `ctx`
+  access; deferred to Phase B where the integration loop sees `ctx`.
+- `lowerFunctionAstToIr` widening — deferred to Phase B.
+- Constructor body `struct.new $ClassName + $self` epilogue — Phase C.
+
+### Verification
+
+`.tmp/probe-1370-phaseA.mts` — `class Calc { add(a, b); mul(a, b); }`:
+- `funcs: ["run"]`
+- `classMembers: ["Calc_add", "Calc_mul"]`
+- `fallbacks: []`
+
+`.tmp/probe-1370-rejections.mts` — six cases:
+- constructor + method → `[Point_add, Point_new]`
+- extends parent → claims `Base_foo`, rejects `Derived_bar` as `class-method`
+- async method → `deferred-feature`
+- generator method → `deferred-feature`
+- get/set accessor → `class-method`
+- static method → claimed (`M_add`)
+
+Test results:
+- 14 IR-related test files: 334/335 pass (1 unrelated env failure, pre-existing on main)
+- 6 class-equivalence test files: 22/22 pass
+- IR fallback baseline unchanged (example corpus has no classes today)
+
+---
+
+## Phase B Notes (from integration reading, 2026-05-08)
+
+These are findings from reading `src/ir/integration.ts`, `src/ir/from-ast.ts`, and
+`src/codegen/class-bodies.ts` AFTER Phase A landed. Captured here so the next agent
+doesn't re-derive them. **Phase B implementation goes on a NEW branch** (`issue-1370-ir-phase-b`)
+off `origin/main` once PR #293 merges — do not code Phase B on the Phase A branch.
+
+### Phase B integration target
+
+`src/ir/integration.ts:156-199` is the FunctionDeclaration loop. The Phase B class-member
+loop is structurally a parallel version of it:
+
+1. Walk `sourceFile.statements` for `ts.isClassDeclaration(stmt)`.
+2. For each member, derive the synthetic name (constructor → `${className}_new`;
+   method → `${className}_${methodName}` via `phase1MemberName` from select.ts).
+3. Skip if `selected.classMembers` does not contain the synthetic name.
+4. Call the (widened) `lowerFunctionAstToIr(member, options)` — passing the synthetic
+   name explicitly via `options.funcName` (new field, see below).
+5. Verify via `verifyIrFunction`.
+6. Push to `built[]` so Phase 2 (hygiene/inline/mono) and Phase 3 (Wasm lowering) run
+   uniformly across top-level functions and class members.
+7. Phase 3 patch (line 452-480) already does `funcMap.get(name)` lookup → it works
+   unchanged for `${className}_${methodName}` keys.
+
+### `lowerFunctionAstToIr` widening (`src/ir/from-ast.ts:182-280`)
+
+Required changes:
+
+1. **Param type**: `ts.FunctionDeclaration | ts.MethodDeclaration | ts.ConstructorDeclaration`.
+2. **Line 183-185**: drop `if (!fn.name) throw`. ConstructorDeclaration has no name
+   node; MethodDeclaration's `.name` is `ts.PropertyName` (could be Identifier,
+   StringLiteral, NumericLiteral, ComputedPropertyName, PrivateIdentifier — only the
+   first three pass the selector). Accept name via a new `options.funcName: string`
+   field; throw only if the caller didn't supply it AND the AST doesn't have one.
+3. **Line 190**: `const name = options.funcName ?? fn.name.text` — fall back when caller
+   doesn't override.
+4. **Line 202** (`!!fn.asteriskToken`): only valid on FunctionDeclaration / MethodDeclaration.
+   `ts.isConstructorDeclaration(fn) ? false : !!fn.asteriskToken`.
+5. **Line 211** (`fn.type`): ConstructorDeclaration has no `.type` field. Phase B skips
+   constructor-body lowering anyway (Phase C concern); the parity check below should
+   refuse constructors until Phase C lands. For methods, `fn.type` is the same shape as
+   FunctionDeclaration.
+6. **`collectMutatedLetNames(fn)` at line 668**: signature widening only — body access
+   (`fn.body`) works for all three subjects.
+7. **`hasExportModifier(fn)` at line 485**: irrelevant for class members (they're not
+   directly exported); the `built` push uses `result.main` whose `exported` flag is
+   driven by `options.exported`. Pass `false` for class members.
+
+### CRITICAL — `self` param wiring for instance methods
+
+Confirmed via `class-bodies.ts:301`: instance method signatures pre-allocated by the
+legacy path are `[(ref $structTypeIdx), ...userParams]`. The synthetic `self` param is
+the first slot in the typeIdx; the legacy method body reads it as `local.get 0` and
+binds it to `this`.
+
+**The IR's lowered body MUST mirror this layout — `self` first, then user params, in
+that order.** `lowerFunctionAstToIr` currently iterates only `fn.parameters` (line
+212-221), which excludes the synthetic `self`. Phase B has to inject `self` for
+instance methods:
+
+- Static method: skip — no `self`. The class-bodies pre-allocation also skips it.
+- Constructor: skip at Phase B — Phase C will allocate via `struct.new` in body.
+- Instance method: prepend `self` to the SSA params, type `IrType.class { className }`.
+  Bind `this` in scope to that SSA value so `this.field` / `this.method()` references
+  work in the body.
+
+**Where to inject**: in `lowerFunctionAstToIr`, between `builder.openBlock()` (line 234)
+and the user-body lowering. Add a new option `options.selfParam?: { className: string }`;
+when set, call `builder.addParam("__self", IrType.class)` first, then `scope.set("this", { kind: "local", value: selfV, type: classType })`. The user `fn.parameters` loop runs
+afterwards, producing param SSA #1, #2, ... matching the legacy `local.get 1`,
+`local.get 2`, ... offsets.
+
+### Signature parity guard (per architect spec)
+
+Before patching `ctx.mod.functions[localIdx].body`, compare:
+- The IR-lowered Wasm signature (from `lowerIrFunctionToWasm(entry.fn, resolver).func.typeIdx`)
+- The pre-allocated typeIdx (`ctx.mod.functions[localIdx].typeIdx`)
+
+If they differ, skip the patch and emit a warning. The legacy class-bodies path
+already wrote a working body for that slot, so dropping the IR substitution is safe.
+
+The mismatch case to worry about most: legacy `resolveWasmType` produces `f64` for
+`number`, but IR's propagation could resolve a method with no annotation as `i32` via
+TypeMap — leaving the legacy callers calling through the `f64` typeIdx while the IR
+body expects `i32`. The selector's `entry = typeMap?.get(name)` lookup at
+`select.ts:432` is a no-op for class members in Phase A (we explicitly bypassed
+TypeMap); Phase B should keep that bypass to minimize signature drift, OR widen the
+TypeMap key scheme to include `${className}_${methodName}`. Recommendation: stay
+bypass-only for Phase B; revisit in Phase D when method TypeMap propagation lands.
+
+### `funcMap` confirmation (`src/codegen/class-bodies.ts`)
+
+- `ctx.funcMap.set(${className}_new, ctorFuncIdx)` — line 253
+- `ctx.funcMap.set(${className}_${methodName}, methodFuncIdx)` — line 343
+- Empty `body: []` slot pre-allocated and waiting to be patched (lines 255-261, 345-351)
+
+### Selector ↔ Integration handoff
+
+Two options:
+1. **Re-walk class declarations** in Phase B's integration loop. Cost: O(#classes × #members)
+   per source file — negligible. Simpler — selector stays as-is.
+2. **Selector exposes `Map<memberName, ts.MethodDeclaration | ts.ConstructorDeclaration>`**.
+   Cleaner but requires another field on `IrSelection`.
+
+Recommendation: option 1. Selector exposes only string sets; integration walks the AST
+itself to find the declaration node. Mirrors how the FunctionDeclaration loop works.
+
+### Constructor body (Phase C, deferred)
+
+`compileConstructorBody` reference: `src/codegen/class-bodies.ts` (later in the file)
+plus `src/codegen/expressions/new-super.ts:780-830`. The IR equivalent:
+
+- Allocate `struct.new $ClassName` at body entry; bind to `__self` SSA local.
+- Lower `this.field = expr` as `struct.set $ClassName $fieldIdx __self <expr>`.
+- Tail: `return $self`.
+
+This requires either:
+- A new IrNode for "constructor entry" + "constructor exit" (clean), or
+- Lowerer convention: when `cx.funcKind === "constructor"`, emit the prologue/epilogue
+  inline (faster to land).
+
+### Test plan for Phase B
+
+- Reuse `.tmp/probe-1370-phaseA.mts` as a baseline — Phase B should still pass.
+- Add `.tmp/probe-1370-phaseB.mts` that compiles the Calc class and verifies the
+  Wasm body for `Calc_add` is the IR-lowered shape (e.g. via `wat` text + assertion).
+- Run `tests/equivalence/ir-slice4-classes.test.ts` — should remain green; behaviour
+  parity is the key invariant.
+- Run `tests/classes.test.ts` — expect the env failures unchanged from Phase A.
+- IR fallback baseline: should DROP for `class-method` bucket as Phase B claims
+  more methods. Run `pnpm run check:ir-fallbacks -- --update` and commit.
