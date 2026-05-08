@@ -1497,11 +1497,25 @@ function compileNewExpression(ctx: CodegenContext, fctx: FunctionContext, expr: 
     return { kind: "externref" };
   }
 
-  // Handle `new Object()` — create an empty struct (equivalent to {})
+  // Handle `new Object()` — create an empty object (equivalent to `{}`).
+  // (#1343) Previously this emitted `ref.null.extern`, but JS spec treats
+  // `new Object()` as a real object: `Boolean(new Object()) === true`,
+  // `(new Object()).hasOwnProperty(...) === false`, etc. Returning null
+  // externref made the receiver fall through every host-import branch
+  // expecting a real object, e.g. `Boolean(new Object())` returned `false`
+  // because `__to_boolean(null) === 0`.
+  //
+  // Use `__object_create(null)` host import to produce a fresh empty
+  // object. Falls back to `ref.null.extern` only if the import can't be
+  // registered (preserving the legacy shape so we never regress further).
   if (ts.isIdentifier(expr.expression) && expr.expression.text === "Object") {
-    // Look for an empty struct type, or create an externref null as empty object
-    // In non-fast mode, an empty object is just an externref null
-    // In fast mode or when we have struct types, emit a minimal struct
+    const createIdx = ensureLateImport(ctx, "__object_create", [{ kind: "externref" }], [{ kind: "externref" }]);
+    flushLateImportShifts(ctx, fctx);
+    if (createIdx !== undefined) {
+      fctx.body.push({ op: "ref.null.extern" });
+      fctx.body.push({ op: "call", funcIdx: createIdx });
+      return { kind: "externref" };
+    }
     fctx.body.push({ op: "ref.null.extern" });
     return { kind: "externref" };
   }

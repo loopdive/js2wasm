@@ -5225,9 +5225,14 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         return { kind: "i32" };
       }
       if (argType?.kind === "externref") {
-        // Check if this is a string type — use string length > 0 for truthiness
+        // Check if this is a primitive string type — use string length > 0 for truthiness.
+        // (#1343) Restrict to PRIMITIVE strings only; `new String("")` is a wrapper
+        // object (always truthy, even when empty per spec) and would be incorrectly
+        // reported as falsy by a length check. Same caveat for any other JS wrapper.
         const argTsType = ctx.checker.getTypeAtLocation(expr.arguments[0]!);
-        if (isStringType(argTsType)) {
+        const isPrimString =
+          (argTsType.flags & ts.TypeFlags.String) !== 0 || (argTsType.flags & ts.TypeFlags.StringLiteral) !== 0;
+        if (isPrimString) {
           addStringImports(ctx);
           const lenIdx = ctx.jsStringImports.get("length");
           if (lenIdx !== undefined) {
@@ -5237,7 +5242,20 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             return { kind: "i32" };
           }
         }
-        // externref: truthy if non-null (and not "" or 0 — but we can't check that without host)
+        // (#1343) Use the host `__to_boolean` helper for full ECMA-262
+        // §7.1.2 semantics. Previously we only checked `ref.is_null`,
+        // which returned 1 for JS `undefined` (defined externref, not
+        // a null reference) and broke `Boolean(undefined) === false` plus
+        // every other ToBoolean edge case (NaN, +/-0, "", 0n, wrapper
+        // objects which must always be truthy).
+        const toBoolIdx = ensureLateImport(ctx, "__to_boolean", [{ kind: "externref" }], [{ kind: "i32" }]);
+        flushLateImportShifts(ctx, fctx);
+        if (toBoolIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx: toBoolIdx });
+          return { kind: "i32" };
+        }
+        // Fallback: the legacy null-only check (preserves prior behaviour
+        // when the host import couldn't be registered).
         fctx.body.push({ op: "ref.is_null" } as Instr);
         fctx.body.push({ op: "i32.const", value: 1 });
         fctx.body.push({ op: "i32.xor" } as Instr);
@@ -6184,14 +6202,79 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             fctx.body.push({ op: "local.get", index: retLocal });
             return iifeWasmRetType;
           } else {
-            // Void IIFE — just compile inline
+            // Void IIFE — wrap the body in a block so that `return` inside
+            // the IIFE exits ONLY the IIFE rather than the enclosing function
+            // (#1348). Without this wrapper, e.g.
+            //   (function () { for (var x of it) { return; } }());
+            // would emit a Wasm `return` from the outer function, dropping
+            // any `for-of`-followups (post-IIFE asserts) and breaking the
+            // §14.7.5 IteratorClose-on-return semantics expected by callers.
+            const savedBody = fctx.body;
+            fctx.savedBodies.push(savedBody);
+            const blockBody: Instr[] = [];
+            fctx.body = blockBody;
+
+            // Save and override returnType: void IIFE has no return value,
+            // so any `return <expr>;` inside the body should drop the value
+            // (we model this by setting returnType=null which causes
+            // compileReturnStatement to drop the expression value).
+            const savedReturnType = fctx.returnType;
+            fctx.returnType = null;
+
             // Hoist let/const with TDZ flags so accesses before init throw (#790)
             hoistLetConstWithTdz(ctx, fctx, bodyStmts as unknown as ts.Statement[]);
             // Hoist function declarations so they're available before textual position
             hoistFunctionDeclarations(ctx, fctx, bodyStmts as unknown as ts.Statement[]);
+
+            // Increase block depth so return→br targets the right level
+            fctx.blockDepth++;
             for (const stmt of bodyStmts) {
               compileStatement(ctx, fctx, stmt);
             }
+            fctx.blockDepth--;
+
+            // Restore outer function's return type
+            fctx.returnType = savedReturnType;
+            fctx.savedBodies.pop();
+            fctx.body = savedBody;
+
+            // Post-process: replace `return` / `return_call` / `return_call_ref`
+            // with `br <depth>`. Tail-call optimization in compileReturnStatement
+            // may have merged call+return into return_call; inside an IIFE we
+            // must undo that and lower it back to a plain call.
+            function patchVoidReturns(instrs: Instr[], depth: number): void {
+              for (let i = 0; i < instrs.length; i++) {
+                const op = instrs[i]!.op;
+                if (op === "return") {
+                  // void IIFE: no value to capture — replace with br
+                  instrs[i] = { op: "br", depth } as Instr;
+                } else if (op === "return_call" || op === "return_call_ref") {
+                  // Undo tail-call: rewrite as plain call + br
+                  const instr = instrs[i] as any;
+                  instr.op = op === "return_call" ? "call" : "call_ref";
+                  instrs.splice(i + 1, 0, { op: "br", depth } as Instr);
+                  i++; // skip inserted br
+                }
+                const instr = instrs[i] as any;
+                if (instr.then) patchVoidReturns(instr.then, depth + 1);
+                if (instr.else) patchVoidReturns(instr.else, depth + 1);
+                if (instr.body && Array.isArray(instr.body)) patchVoidReturns(instr.body, depth + 1);
+                if (instr.catchAll && Array.isArray(instr.catchAll)) patchVoidReturns(instr.catchAll, depth + 1);
+                if (Array.isArray(instr.catches)) {
+                  for (const c of instr.catches) {
+                    if (Array.isArray(c.body)) patchVoidReturns(c.body, depth + 1);
+                  }
+                }
+              }
+            }
+            patchVoidReturns(blockBody, 0);
+
+            // Emit: block { <body> }
+            fctx.body.push({
+              op: "block",
+              blockType: { kind: "empty" },
+              body: blockBody,
+            } as Instr);
             return VOID_RESULT;
           }
         }

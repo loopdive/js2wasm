@@ -23,7 +23,7 @@ import {
   compileLogicalAssignment,
   isCompoundAssignment,
 } from "./expressions/assignment.js";
-import { emitThrowString } from "./expressions/helpers.js";
+import { emitThrowString, resolveDeclaringClassForPrivateName } from "./expressions/helpers.js";
 import { ensureExternIsUndefinedImport, ensureLateImport } from "./expressions/late-imports.js";
 import { compileLogicalAnd, compileLogicalOr, compileNullishCoalescing } from "./expressions/logical-ops.js";
 import { tryStaticToNumber } from "./expressions/misc.js";
@@ -414,6 +414,40 @@ export function compileBinaryExpression(
 
   // `key in obj` — compile-time property existence check
   if (op === ts.SyntaxKind.InKeyword) {
+    // #1365 — `#x in obj` is a RUNTIME brand check, not a compile-time
+    // property-name lookup. Per ES2022 §12.10.3 (RelationalExpression :
+    // PrivateIdentifier `in` ShiftExpression), the result is `true` iff
+    // `obj` carries the brand of the class that lexically declared `#x`,
+    // and `false` otherwise (no throw, even when obj isn't an object).
+    //
+    // Today the generic `in` path returns a compile-time `i32.const` based
+    // on whether the receiver type's struct happens to have `__priv_<name>`
+    // as a field. That conflates two unrelated classes both declaring a
+    // private named the same — `#x in instanceOfDifferentClass` returns
+    // true when it should return false.
+    //
+    // Fix: emit a runtime `ref.test` against the declaring class's struct.
+    // Falls through to the legacy path if the resolver can't find the
+    // declaring class (defensive — well-formed source always finds it).
+    if (ts.isPrivateIdentifier(expr.left)) {
+      const declared = resolveDeclaringClassForPrivateName(ctx, expr.left);
+      if (declared) {
+        // Compile the receiver. Coerce externref → anyref so ref.test sees
+        // a concrete heap-typed value. Class refs are already eqref-rooted.
+        const objResult = compileExpression(ctx, fctx, expr.right);
+        if (objResult?.kind === "externref") {
+          fctx.body.push({ op: "any.convert_extern" } as Instr);
+        }
+        // Note: ref.test against the struct typeIdx returns 0 even for
+        // null refs (per Wasm GC spec), matching the spec's "no throw,
+        // returns false" behavior.
+        fctx.body.push({ op: "ref.test", typeIdx: declared.structTypeIdx } as Instr);
+        return { kind: "i32" };
+      }
+      // No declaring class found — fall through to the legacy compile-time
+      // path. The compile-time bool will be wrong but at least won't trap.
+    }
+
     const rightType = ctx.checker.getTypeAtLocation(expr.right);
     const rightWasm = resolveWasmType(ctx, rightType);
 
