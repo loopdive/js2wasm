@@ -595,3 +595,114 @@ This requires either:
 - Run `tests/classes.test.ts` — expect the env failures unchanged from Phase A.
 - IR fallback baseline: should DROP for `class-method` bucket as Phase B claims
   more methods. Run `pnpm run check:ir-fallbacks -- --update` and commit.
+
+---
+
+## Phase B — Implementation Notes (2026-05-08, senior-dev-1370)
+
+PR: https://github.com/loopdive/js2wasm/pull/295
+
+Phase B wires the IR integration loop for class **instance methods**.
+Static methods and constructors are deferred (see scope notes below).
+
+### What landed
+
+1. **`lowerFunctionAstToIr` widened** (`src/ir/from-ast.ts`):
+   - Param type: `FunctionDeclaration | MethodDeclaration | ConstructorDeclaration`.
+   - New `options.funcName` for caller-supplied names (MethodDeclaration's
+     `.name` is `PropertyName`, not Identifier; ConstructorDeclaration has
+     no name node).
+   - New `options.selfParam: { type: IrType }` injects a synthetic `__self`
+     first param. Mirrors `class-bodies.ts:301`'s `[(ref $structTypeIdx),
+     ...userParams]` layout exactly so legacy callers' `call` ops still
+     match the typeIdx after the patch.
+   - Binds `this` in the body's scope to the `__self` SSA value. Existing
+     slice-4 `class.get` / `class.set` / `class.method` lowerings handle
+     `this.field` / `this.method()` via the `IrType.class` shape carried
+     on the binding.
+   - `lowerExpr` accepts `ts.SyntaxKind.ThisKeyword` and returns the
+     `this` SSA value from scope.
+   - `collectMutatedLetNames` widened to the same union.
+   - ConstructorDeclaration is rejected at the lowerer with a clean
+     error (Phase C work).
+
+2. **Class-member walk in `compileIrPathFunctions`** (`src/ir/integration.ts`):
+   - New parallel loop after the FunctionDeclaration loop. Walks
+     `sourceFile.statements` for `ClassDeclaration`, filters to
+     non-static `MethodDeclaration` whose synthetic name is in
+     `selected.classMembers`. Looks up `classShapes.get(className)`,
+     builds the `IrType.class` self-param, calls `lowerFunctionAstToIr`.
+   - Skip branches: classes with `extends` (defensive — selector already
+     rejects), missing class shape, static modifier, abstract modifier,
+     computed/private member name.
+   - `BuiltFn` gains `classMember?: boolean` flag. Threaded through
+     hygiene/inline/mono pipeline stages.
+
+3. **Funcidx allocation skip** (`src/ir/integration.ts`):
+   - Class members already have a funcIdx pre-allocated by
+     `class-bodies.ts`. The new `if (entry.classMember) continue;`
+     prevents the integration's clone-allocation step from registering
+     a duplicate slot.
+
+4. **Signature parity guard** (`src/ir/integration.ts`):
+   - Before patching the slot, compares `wasmFunc.typeIdx` (IR-lowered)
+     to `existing.typeIdx` (legacy pre-allocated). On mismatch:
+     - Don't patch — legacy body stays in place.
+     - Emit a `severity: warning` diagnostic: `"class-method typeIdx
+       parity mismatch: IR=N, legacy=M — keeping legacy body"`.
+   - Top-level FunctionDeclarations DON'T need this guard — their
+     pre-allocated body was empty and no legacy callers depend on the
+     slot's prior typeIdx.
+
+5. **Early-return short-circuit relaxed** (`src/ir/integration.ts:93`):
+   - Old: `if (selected.funcs.size === 0) return EMPTY;`
+   - New: `if (selected.funcs.size === 0 && (!selected.classMembers || selected.classMembers.size === 0)) return EMPTY;`
+   - A source file with only a class (no top-level functions) can now
+     reach the class-member walk.
+
+6. **`safeSelection` threads `classMembers`** (`src/codegen/index.ts:854`):
+   - The class-method override map isn't built (class methods are typed
+     via the class shape, not TypeMap propagation). Pass the
+     `classMembers` set through unchanged.
+
+### Phase B verification
+
+- `.tmp/probe-1370-phaseB.mts` — `class Calc { add(a,b); mul(a,b); }` →
+  `run()` returns 25 in both legacy and IR. Values match.
+- `.tmp/probe-1370-phaseB-trace.mts` — confirms `Calc_add` body is the
+  IR-lowered shape (`local.get 1`, `local.get 2`, `f64.add`, `return`)
+  and not the legacy `$name`-prefixed form.
+- `.tmp/probe-1370-phaseB-this-method.mts` — `class Counter { next();
+  nextNext() }` with `this.next()` cross-method call → both methods
+  IR-compiled, returns 7.
+
+Test results:
+- Class equivalence tests (6 files): 22/22 pass (incl.
+  `ir-slice4-classes.test.ts` exercising slice-4 class instance use
+  patterns from outer functions).
+- IR test suite (14 files): 327/327 pass.
+- TypeScript clean.
+- IR fallback budget gate: no regression.
+
+### Out of scope (Phase B deferred)
+
+- **Static methods** — funcMap key shape is the same
+  (`${className}_${methodName}`) but no `self` injection. Could be a
+  small follow-up — just skip the `selfParam` option when
+  `hasStaticModifier(member)`. The selector already claims them in
+  Phase A.
+- **Constructors** — Phase C builds the `struct.new $ClassName` allocation
+  + `__self` SSA binding + `return $self` epilogue. Phase B's lowerer
+  rejects ConstructorDeclaration with a clear error.
+- **Inheritance / `super`** — Phase E. Phase A's selector already
+  rejects classes with `extends`.
+
+### Risk notes
+
+- The signature parity guard will surface as a warning in CI if any
+  test triggers a mismatch. Watch the Phase B PR's test262 output for
+  `class-method typeIdx parity mismatch` warnings — they indicate
+  classes whose methods can't be claimed safely yet (likely f64-vs-i32
+  resolution differences). If the guard fires for many cases, the
+  `IrClassShape` projection in `buildIrClassShapes` (`src/codegen/index.ts:480`)
+  may need to align more closely with `resolveWasmType`'s output.
