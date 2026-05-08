@@ -851,8 +851,15 @@ export function generateModule(
       // Only request IR compilation for functions we successfully built
       // overrides for (the selector may have claimed more, but if we
       // couldn't map types safely we leave them to legacy).
+      //
+      // #1370 Phase B: thread `classMembers` through to the integration
+      // loop. Class methods don't go through `overrideMap` (they're
+      // typed via the class shape, not the TypeMap-derived overrides);
+      // the integration's class-member walk consults `classShapes`
+      // directly. Pass the set unmodified.
       const safeSelection = {
         funcs: new Set<string>([...selection.funcs].filter((n) => overrideMap.has(n))),
+        classMembers: selection.classMembers,
       };
       const report = compileIrPathFunctions(ctx, ast.sourceFile, safeSelection, overrideMap, classShapes);
       // Slice 12 (#1169o) — IR-path failures are NOT compile errors. The
