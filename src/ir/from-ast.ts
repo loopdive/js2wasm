@@ -1432,6 +1432,96 @@ function isIrTypeNullable(t: IrType): boolean {
 }
 
 /**
+ * #1375 Slice B — IR-native short-circuit lowering for `extern_recv?.prop`
+ * using the (#1392) `emitIfElse` + `emitRefIsNull` primitives.
+ *
+ * Pattern:
+ *   if (ref.is_null(recv)) { result = <undef sentinel of propType> }
+ *   else                   { result = <className>_get_<propName>(recv) }
+ *
+ * The sentinel for the null arm depends on the property's ValType:
+ *   - `f64`        — `f64.const NaN` (matches JS `undefined → Number → NaN`)
+ *   - `i32`        — `i32.const 0`   (rare for extern props; pragmatic)
+ *   - `externref`  — `ref.null.extern`
+ *   - `ref_null T` — `ref.null` of the appropriate heap type
+ *   - other refs   — fall through to legacy (cannot widen to ref_null
+ *                    inside an `if` arm without type-system support)
+ *
+ * When the prop type isn't one of the supported sentinels, we throw to
+ * legacy fallback — the existing slice-11 behavior for the rest of #1375.
+ */
+function lowerOptionalExternPropertyAccess(
+  propName: string,
+  recv: IrValueId,
+  recvType: IrType,
+  cx: LowerCtx,
+): IrValueId {
+  if (recvType.kind !== "extern") {
+    throw new Error(`ir/from-ast: lowerOptionalExternPropertyAccess called with non-extern recv in ${cx.funcName}`);
+  }
+  const className = recvType.className;
+  const info = cx.resolver?.getExternClassInfo?.(className);
+  if (!info) {
+    throw new Error(`ir/from-ast: extern class ${className} not registered in ${cx.funcName}`);
+  }
+  const prop = info.properties.get(propName);
+  if (!prop) {
+    throw new Error(`ir/from-ast: extern class ${className} has no property "${propName}" in ${cx.funcName}`);
+  }
+  const propValType = prop.type;
+  const resultType: IrType = irVal(propValType);
+
+  // Limit Slice B to prop types whose IR-claimed ValType matches the
+  // actual host-import return type. The extern-class registry for some
+  // properties (notably numeric ones like `Map.size`, `RegExp.lastIndex`)
+  // declares `prop.type: f64` but the underlying `<className>_get_<prop>`
+  // host import actually returns `externref` (boxed Number) — `lowerExpr`
+  // for the non-`?.` case relies on a downstream coercion in `lowerBinary`
+  // / `coerceType` to unbox before use. Inside our `emitIfElse` arm the
+  // unboxing isn't reached, so the elseValue's wasm type (externref)
+  // mismatches the if-result type (f64) at Wasm validation time.
+  //
+  // Safe types here: those where the IR-declared ValType matches the
+  // host-import wasm return type 1:1. `externref` is always safe (the
+  // host returns externref, which is what we want). We bail on `f64`
+  // and `i32` to legacy until the prop registry tracks the actual
+  // host-import return type alongside the declared TS type.
+  if (propValType.kind !== "externref") {
+    throw new Error(
+      `ir/from-ast: optional ?.${propName} on extern ${className} with non-externref prop type (${describeIrType(resultType)}) deferred to legacy in ${cx.funcName}`,
+    );
+  }
+
+  // Compute is_null condition before opening the if-arms, so the cond
+  // SSA value is defined at the if-instr's emission point (per IrInstrIf
+  // contract: condition lives in the outer scope).
+  const cond = cx.builder.emitRefIsNull(recv);
+
+  // Build the "null arm": emit a `ref.null.extern` matching the result
+  // type. `collectBodyInstrs` re-routes builder emits into the arm's
+  // buffer; the SSA value defined inside the callback becomes `thenValue`.
+  let thenValue!: IrValueId;
+  const thenBody = cx.builder.collectBodyInstrs(() => {
+    thenValue = cx.builder.emitConst({ kind: "null", ty: resultType }, resultType);
+  });
+
+  // Build the "non-null arm": emit the actual extern-property access.
+  let elseValue!: IrValueId;
+  const elseBody = cx.builder.collectBodyInstrs(() => {
+    elseValue = cx.builder.emitExternProp(className, propName, recv, resultType);
+  });
+
+  return cx.builder.emitIfElse({
+    cond,
+    then: thenBody,
+    thenValue,
+    else: elseBody,
+    elseValue,
+    resultType,
+  });
+}
+
+/**
  * Lower a property access expression.
  *
  * Slice 1 (#1169a) handles `<string>.length` (the only `.length` form
@@ -1459,25 +1549,32 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, cx: LowerCtx): I
   // Optional chaining (`obj?.prop`, #1281). For receivers whose lowered
   // IrType is provably non-null (struct shapes, class instances, strings,
   // non-null refs), `?.` is redundant safety syntax and we lower it like
-  // a regular `.` access. For genuinely nullable IrTypes (ref_null, raw
-  // externref) the IR has no short-circuit primitive yet — throw so the
-  // function falls back to legacy, where `compileOptionalPropertyAccess`
-  // already emits the null-guarded `if/else` block.
+  // a regular `.` access. For genuinely nullable IrTypes the path
+  // depends on the receiver kind:
   //
-  // #1375 narrow slice — before throwing, consult the TS-narrowing
-  // fast-path. Some receivers' IrType is conservatively flagged as
-  // nullable (notably `extern`, which is `externref` at the Wasm level
-  // and could carry null at the JS host) but TypeScript's type narrowing
-  // proves them non-null in the calling context (e.g. `m: Map<string,
-  // number>` with no `| undefined`). When TS proves non-null, treat the
-  // `?.` as a redundant safety syntax and fall through to the regular
-  // `.` access path — exactly mirroring the non-null IrType case above.
+  //   - TS-narrowing fast-path (#1375 Slice A): when TypeScript proves
+  //     the expression's type is non-null (`getNonNullableType(t) === t`),
+  //     fall through to the regular `.` access — `Map<...>` without
+  //     `| undefined` is a common case the IR's conservative
+  //     `isIrTypeNullable` flags as nullable but TS proves safe.
+  //   - Extern host-class receiver (#1375 Slice B): use the new (#1392)
+  //     `emitIfElse` + `emitRefIsNull` IR primitives to short-circuit.
+  //     Returns the property's value when the receiver is non-null, or
+  //     a null/NaN sentinel of the property's IrType when null.
+  //   - Other nullable kinds (raw externref, ref_null val): still throw
+  //     to legacy fallback, where `compileOptionalPropertyAccess`
+  //     already emits a Wasm-level `if/else` null-guarded access. The
+  //     IR doesn't yet have a unified prop-access dispatch for those.
   if (expr.questionDotToken && isIrTypeNullable(recvType)) {
     const tsNonNull = cx.resolver?.isExpressionTsNonNullable?.(expr.expression) === true;
-    if (!tsNonNull) {
+    if (tsNonNull) {
+      // Fall through: TS-proven non-null → lower as ordinary `.prop` access.
+    } else if (recvType.kind === "extern") {
+      // Slice B — IR-native short-circuit on extern receivers.
+      return lowerOptionalExternPropertyAccess(propName, recv, recvType, cx);
+    } else {
       throw new Error(`ir/from-ast: optional chaining (?.) on nullable receiver not in slice 11 (${cx.funcName})`);
     }
-    // Fall through: TS-proven non-null → lower as ordinary `.prop` access.
   }
 
   if (recvType.kind === "string") {
