@@ -1,0 +1,19 @@
+{
+  "pr": 279,
+  "conclusion": "success",
+  "head_branch": "issue-1381-string-accessors",
+  "head_sha": "79497376c90a7c8fcbab20712c7235a99ee47624",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25539887104",
+  "timestamp": "2026-05-08T07:03:48Z",
+  "pass": 26691,
+  "fail": 14205,
+  "compile_error": 846,
+  "snapshot_delta": -130,
+  "net_per_test": 38,
+  "regressions": 50,
+  "regressions_real": 9,
+  "regressions_wasm_change": 9,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 41,
+  "improvements": 47
+}
