@@ -2,7 +2,7 @@
 id: 1378
 sprint: 51
 title: "spec gap: try/catch/finally — error type fidelity, finally completion override, dstr-binding (~85 fails)"
-status: done
+status: in-progress
 created: 2026-05-08
 priority: medium
 feasibility: medium
