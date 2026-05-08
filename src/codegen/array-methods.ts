@@ -12,7 +12,7 @@ import type { Instr, ValType } from "../ir/types.js";
 import { reportError } from "./context/errors.js";
 import { allocLocal, getLocalType } from "./context/locals.js";
 import type { ClosureInfo, CodegenContext, FunctionContext } from "./context/types.js";
-import { addArrayIteratorImports, addStringImports, resolveWasmType } from "./index.js";
+import { addArrayIteratorImports, addStringImports, addUnionImports, resolveWasmType } from "./index.js";
 import { addStringConstantGlobal, ensureExnTag, localGlobalIdx } from "./registry/imports.js";
 import { getArrTypeIdxFromVec, getOrRegisterArrayType, getOrRegisterVecType } from "./registry/types.js";
 import {
@@ -328,7 +328,15 @@ const ARRAY_LIKE_METHOD_SET = new Set([
   "map",
   "reduce",
   "reduceRight",
+  // Search methods (#1360) — no callback; compare each element against the
+  // search value via __host_eq (strict equality) or __same_value_zero (includes).
+  "indexOf",
+  "lastIndexOf",
+  "includes",
 ]);
+
+/** Search methods handled inline (no callback). #1360 */
+const ARRAY_LIKE_SEARCH_METHODS = new Set(["indexOf", "lastIndexOf", "includes"]);
 
 /**
  * Compile Array.prototype.METHOD.call(anyReceiver, callback, ...args) for any-typed receivers.
@@ -411,6 +419,12 @@ export function compileArrayLikePrototypeCall(
       }
       p = p.parent;
     }
+  }
+
+  // #1360 — Search methods: indexOf/lastIndexOf/includes don't take a callback.
+  // Branch into the dedicated search compiler before the callback-validity check.
+  if (ARRAY_LIKE_SEARCH_METHODS.has(methodName)) {
+    return compileArrayLikePrototypeSearch(ctx, fctx, callExpr, methodName, receiverArg);
   }
 
   // every/some/forEach/find/findIndex: callback is args[1]
@@ -1071,6 +1085,356 @@ export function compileArrayLikePrototypeCall(
     default:
       return undefined;
   }
+}
+
+/**
+ * #1360 — Inline-compile `Array.prototype.{indexOf,lastIndexOf,includes}`
+ * against an externref array-like receiver.
+ *
+ * Iterates [0, len) (or [len-1, 0] for `lastIndexOf`) using
+ * `__extern_length` + `__extern_get_idx`. For `indexOf`/`lastIndexOf`,
+ * gates each iteration on `__extern_has_idx` so missing properties (sparse
+ * holes) are skipped per spec §23.1.3.16/§23.1.3.20. For `includes`, every
+ * index is visited (spec §23.1.3.13 uses `Get`, which returns `undefined`
+ * for missing keys — same effect as iterating without the HasProperty gate
+ * since the search element is also coerced to externref/undefined).
+ *
+ * Comparison:
+ *   - indexOf/lastIndexOf — `__host_eq` (Strict Equality, NaN ≠ NaN, +0 = -0)
+ *   - includes            — `__same_value_zero` (NaN = NaN, +0 = -0)
+ *
+ * fromIndex coercion:
+ *   `i32.trunc_sat_f64_s` happens to map +Inf → INT_MAX, -Inf → INT_MIN,
+ *   NaN → 0. Combined with the existing typed-array clamp logic
+ *   (negative → max(len + n, 0) for forward; clamp to len-1 for backward),
+ *   that produces the spec-correct start index for every Inf/NaN/finite case.
+ *   Verified by `tests/issue-1360.test.ts`.
+ */
+function compileArrayLikePrototypeSearch(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  callExpr: ts.CallExpression,
+  methodName: string,
+  receiverArg: ts.Expression,
+): ValType | null | typeof VOID_RESULT | undefined {
+  // `compileArrayLikePrototypeCall` is dispatched from
+  // `Array.prototype.METHOD.call(receiver, ...methodArgs)`, where
+  // callExpr.arguments[0] is `receiver` (passed to us as `receiverArg`) and
+  // [1+] are the method arguments. Search methods need at least one method
+  // argument: the search value.
+  if (callExpr.arguments.length < 2) return undefined;
+
+  const isLast = methodName === "lastIndexOf";
+  const isIncludes = methodName === "includes";
+
+  // Late imports — receiver iteration + element comparison.
+  const lenFn = ensureLateImport(ctx, "__extern_length", [{ kind: "externref" }], [{ kind: "f64" }]);
+  const getIdxFn = ensureLateImport(
+    ctx,
+    "__extern_get_idx",
+    [{ kind: "externref" }, { kind: "f64" }],
+    [{ kind: "externref" }],
+  );
+  const hasIdxFn = ensureLateImport(
+    ctx,
+    "__extern_has_idx",
+    [{ kind: "externref" }, { kind: "f64" }],
+    [{ kind: "i32" }],
+  );
+  const cmpFn = isIncludes
+    ? ensureLateImport(ctx, "__same_value_zero", [{ kind: "externref" }, { kind: "externref" }], [{ kind: "i32" }])
+    : ensureLateImport(ctx, "__host_eq", [{ kind: "externref" }, { kind: "externref" }], [{ kind: "i32" }]);
+  if (lenFn === undefined || getIdxFn === undefined || hasIdxFn === undefined || cmpFn === undefined) return undefined;
+  flushLateImportShifts(ctx, fctx);
+
+  // Compile receiver to externref local.
+  const receiverTmp = allocLocal(fctx, `__alis_recv_${fctx.locals.length}`, { kind: "externref" });
+  const recvType = compileExpression(ctx, fctx, receiverArg, { kind: "externref" });
+  if (recvType && recvType.kind !== "externref") {
+    fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+  }
+  if (recvType === null) {
+    fctx.body.push({ op: "ref.null.extern" });
+  }
+  fctx.body.push({ op: "local.set", index: receiverTmp });
+
+  // len = i32(__extern_length(receiver)). Saturating cast clamps +Inf/-Inf/NaN
+  // safely; spec uses ToLength but our array-like loops cap at i32 range.
+  const lenTmp = allocLocal(fctx, `__alis_len_${fctx.locals.length}`, { kind: "i32" });
+  fctx.body.push({ op: "local.get", index: receiverTmp });
+  fctx.body.push({ op: "call", funcIdx: lenFn });
+  fctx.body.push({ op: "i32.trunc_sat_f64_s" });
+  fctx.body.push({ op: "local.set", index: lenTmp });
+
+  // Search value (externref). For booleans we MUST box via __box_boolean so the
+  // resulting externref is a JS boolean (not a number), since strict equality /
+  // SameValueZero against host-stored booleans (e.g. `obj[k] = true`) requires
+  // the same primitive type. The default coerceType i32→externref path uses
+  // __box_number, which would turn `true` into the number 1 — and `1 === true`
+  // is false in JS. Likewise null/undefined need to round-trip as themselves.
+  const searchTmp = allocLocal(fctx, `__alis_search_${fctx.locals.length}`, { kind: "externref" });
+  // `compileArrayLikePrototypeCall` shape: args[0] is the receiver (already
+  // bound to receiverArg), args[1] is the search value, args[2] is fromIndex.
+  const searchExpr = callExpr.arguments[1]!;
+  const searchTsType = ctx.checker.getTypeAtLocation(searchExpr);
+  const searchIsBoolean =
+    searchTsType !== undefined &&
+    ((searchTsType.flags & ts.TypeFlags.Boolean) !== 0 || (searchTsType.flags & ts.TypeFlags.BooleanLiteral) !== 0);
+  const searchType = compileExpression(ctx, fctx, searchExpr, { kind: "externref" });
+  if (searchType === null) {
+    fctx.body.push({ op: "ref.null.extern" });
+  } else if (searchType.kind === "i32" && searchIsBoolean) {
+    // Box boolean as actual JS boolean. addUnionImports is idempotent and
+    // installs __box_boolean alongside the other any-value helpers.
+    addUnionImports(ctx);
+    const boxBoolIdx = ctx.funcMap.get("__box_boolean");
+    if (boxBoolIdx !== undefined) {
+      fctx.body.push({ op: "call", funcIdx: boxBoolIdx });
+    } else {
+      // Last-resort fallback: drops the i32 and pushes null so the program
+      // is still well-formed. Should never trigger in practice.
+      coerceType(ctx, fctx, searchType, { kind: "externref" });
+    }
+  } else if (searchType.kind !== "externref") {
+    coerceType(ctx, fctx, searchType, { kind: "externref" });
+  }
+  fctx.body.push({ op: "local.set", index: searchTmp });
+
+  // Loop index (i32) — always allocated; defaulted below.
+  const iTmp = allocLocal(fctx, `__alis_i_${fctx.locals.length}`, { kind: "i32" });
+
+  // Result accumulator: i32 (boolean) for includes, f64 (-1 default) for indexOf/lastIndexOf.
+  let resTmp: number;
+  if (isIncludes) {
+    resTmp = allocLocal(fctx, `__alis_res_${fctx.locals.length}`, { kind: "i32" });
+    fctx.body.push({ op: "i32.const", value: 0 });
+  } else {
+    resTmp = allocLocal(fctx, `__alis_res_${fctx.locals.length}`, { kind: "f64" });
+    fctx.body.push({ op: "f64.const", value: -1 });
+  }
+  fctx.body.push({ op: "local.set", index: resTmp });
+
+  // ── fromIndex coercion ───────────────────────────────────────────
+  // Compile fromIndex argument (or default) into an i32 starting index.
+  // Forward (indexOf/includes): default 0; negative → max(len+n, 0); else clamp irrelevant
+  //   (loop exit handles n >= len). Inf/NaN handled by trunc_sat (+Inf → INT_MAX
+  //   loops zero times → -1; -Inf → INT_MIN, len+INT_MIN < 0 → max with 0; NaN → 0).
+  // Backward (lastIndexOf): default len-1; negative → len+n (may stay <0 → exits
+  //   immediately); else clamp to len-1. Inf/NaN: +Inf → INT_MAX → clamps to len-1;
+  //   -Inf → INT_MIN, len+INT_MIN <0 → exits to -1; NaN → 0 → loop runs from index 0.
+  if (callExpr.arguments.length >= 3) {
+    const argType = compileExpression(ctx, fctx, callExpr.arguments[2]!, { kind: "f64" });
+    if (argType && argType.kind !== "f64") {
+      coerceType(ctx, fctx, argType, { kind: "f64" });
+    }
+    if (argType === null) {
+      // Failed to compile fromIndex; treat as 0 (forward) or len-1 (backward).
+      if (isLast) {
+        fctx.body.push({ op: "local.get", index: lenTmp });
+        fctx.body.push({ op: "i32.const", value: 1 });
+        fctx.body.push({ op: "i32.sub" });
+        fctx.body.push({ op: "local.set", index: iTmp });
+      } else {
+        fctx.body.push({ op: "i32.const", value: 0 });
+        fctx.body.push({ op: "local.set", index: iTmp });
+      }
+    } else {
+      fctx.body.push({ op: "i32.trunc_sat_f64_s" });
+      fctx.body.push({ op: "local.set", index: iTmp });
+      if (isLast) {
+        // If negative, k = len + n. (Skip the clamp, else block below handles it.)
+        fctx.body.push({ op: "local.get", index: iTmp });
+        fctx.body.push({ op: "i32.const", value: 0 });
+        fctx.body.push({ op: "i32.lt_s" });
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "empty" },
+          then: [
+            { op: "local.get", index: lenTmp } as Instr,
+            { op: "local.get", index: iTmp } as Instr,
+            { op: "i32.add" } as Instr,
+            { op: "local.set", index: iTmp } as Instr,
+          ],
+          else: [
+            // n >= 0: k = min(n, len - 1)
+            { op: "local.get", index: iTmp } as Instr,
+            { op: "local.get", index: lenTmp } as Instr,
+            { op: "i32.const", value: 1 } as Instr,
+            { op: "i32.sub" } as Instr,
+            { op: "i32.gt_s" } as Instr,
+            {
+              op: "if",
+              blockType: { kind: "empty" },
+              then: [
+                { op: "local.get", index: lenTmp } as Instr,
+                { op: "i32.const", value: 1 } as Instr,
+                { op: "i32.sub" } as Instr,
+                { op: "local.set", index: iTmp } as Instr,
+              ],
+            } as Instr,
+          ],
+        } as Instr);
+      } else {
+        // Forward: if negative, k = max(len + n, 0)
+        fctx.body.push({ op: "local.get", index: iTmp });
+        fctx.body.push({ op: "i32.const", value: 0 });
+        fctx.body.push({ op: "i32.lt_s" });
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "empty" },
+          then: [
+            { op: "local.get", index: lenTmp } as Instr,
+            { op: "local.get", index: iTmp } as Instr,
+            { op: "i32.add" } as Instr,
+            { op: "local.tee", index: iTmp } as Instr,
+            { op: "i32.const", value: 0 } as Instr,
+            { op: "i32.lt_s" } as Instr,
+            {
+              op: "if",
+              blockType: { kind: "empty" },
+              then: [{ op: "i32.const", value: 0 } as Instr, { op: "local.set", index: iTmp } as Instr],
+            } as Instr,
+          ],
+        } as Instr);
+      }
+    }
+  } else {
+    // No fromIndex provided: default 0 (forward) or len-1 (backward).
+    if (isLast) {
+      fctx.body.push({ op: "local.get", index: lenTmp });
+      fctx.body.push({ op: "i32.const", value: 1 });
+      fctx.body.push({ op: "i32.sub" });
+    } else {
+      fctx.body.push({ op: "i32.const", value: 0 });
+    }
+    fctx.body.push({ op: "local.set", index: iTmp });
+  }
+
+  // ── Loop body ────────────────────────────────────────────────────
+  // Outer block: "exit on found".
+  // Inner loop: forward (i++) or backward (i--).
+  // Each iteration:
+  //   1. Loop-exit guard: forward i >= len → break; backward i < 0 → break.
+  //   2. For includes: skip the HasProperty gate; spec uses Get. For
+  //      indexOf/lastIndexOf: gate on __extern_has_idx, missing → skip.
+  //   3. Load element via __extern_get_idx, compare via __host_eq /
+  //      __same_value_zero, on match store result and break.
+  //   4. Increment / decrement index, branch back to loop start.
+
+  // Loop exit guard
+  const loopExit: Instr[] = isLast
+    ? [
+        { op: "local.get", index: iTmp } as Instr,
+        { op: "i32.const", value: 0 } as Instr,
+        { op: "i32.lt_s" } as Instr,
+        { op: "br_if", depth: 1 } as Instr,
+      ]
+    : [
+        { op: "local.get", index: iTmp } as Instr,
+        { op: "local.get", index: lenTmp } as Instr,
+        { op: "i32.ge_s" } as Instr,
+        { op: "br_if", depth: 1 } as Instr,
+      ];
+
+  // HasProperty gate (only for indexOf/lastIndexOf)
+  const hasIdxCheck: Instr[] = [
+    { op: "local.get", index: receiverTmp } as Instr,
+    { op: "local.get", index: iTmp } as Instr,
+    { op: "f64.convert_i32_s" } as unknown as Instr,
+    { op: "call", funcIdx: hasIdxFn } as Instr,
+  ];
+
+  // Element compare: leaves i32 (0/1) on the stack
+  const compareInstrs: Instr[] = [
+    { op: "local.get", index: receiverTmp } as Instr,
+    { op: "local.get", index: iTmp } as Instr,
+    { op: "f64.convert_i32_s" } as unknown as Instr,
+    { op: "call", funcIdx: getIdxFn } as Instr,
+    { op: "local.get", index: searchTmp } as Instr,
+    { op: "call", funcIdx: cmpFn } as Instr,
+  ];
+
+  // On-match: write result + break the outer block (depth 3 from inside the
+  // gated `if` body — escape `if` (depth 1) → `loop` (depth 2) → outer block).
+  const onMatchDepthGated = 3;
+  const onMatchDepthUngated = 2;
+  const onMatchInstrs = (depth: number): Instr[] =>
+    isIncludes
+      ? [
+          { op: "i32.const", value: 1 } as Instr,
+          { op: "local.set", index: resTmp } as Instr,
+          { op: "br", depth } as Instr,
+        ]
+      : [
+          { op: "local.get", index: iTmp } as Instr,
+          { op: "f64.convert_i32_s" } as unknown as Instr,
+          { op: "local.set", index: resTmp } as Instr,
+          { op: "br", depth } as Instr,
+        ];
+
+  // Step (i++ / i--)
+  const stepInstr: Instr[] = isLast
+    ? [
+        { op: "local.get", index: iTmp } as Instr,
+        { op: "i32.const", value: 1 } as Instr,
+        { op: "i32.sub" } as Instr,
+        { op: "local.set", index: iTmp } as Instr,
+        { op: "br", depth: 0 } as Instr,
+      ]
+    : [
+        { op: "local.get", index: iTmp } as Instr,
+        { op: "i32.const", value: 1 } as Instr,
+        { op: "i32.add" } as Instr,
+        { op: "local.set", index: iTmp } as Instr,
+        { op: "br", depth: 0 } as Instr,
+      ];
+
+  // Per-iteration core (without HasProperty gate)
+  const matchAndBreakInner: Instr[] = [
+    ...compareInstrs,
+    {
+      op: "if",
+      blockType: { kind: "empty" },
+      then: onMatchInstrs(onMatchDepthGated),
+    } as Instr,
+  ];
+
+  const matchAndBreakUngated: Instr[] = [
+    ...compareInstrs,
+    {
+      op: "if",
+      blockType: { kind: "empty" },
+      then: onMatchInstrs(onMatchDepthUngated),
+    } as Instr,
+  ];
+
+  // For indexOf/lastIndexOf: gate on HasProperty.
+  // For includes: spec uses Get (visits every index up to len, missing → undefined).
+  const iterationCore: Instr[] = isIncludes
+    ? matchAndBreakUngated
+    : [
+        ...hasIdxCheck,
+        {
+          op: "if",
+          blockType: { kind: "empty" },
+          then: matchAndBreakInner,
+        } as Instr,
+      ];
+
+  fctx.body.push({
+    op: "block",
+    blockType: { kind: "empty" },
+    body: [
+      {
+        op: "loop",
+        blockType: { kind: "empty" },
+        body: [...loopExit, ...iterationCore, ...stepInstr],
+      } as Instr,
+    ],
+  });
+
+  fctx.body.push({ op: "local.get", index: resTmp });
+  return isIncludes ? { kind: "i32" } : { kind: "f64" };
 }
 
 /**

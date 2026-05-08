@@ -3964,6 +3964,17 @@ assert._isSameValue = isSameValue;
       // Handles null == undefined → true and other JS coercion rules.
       // eslint-disable-next-line eqeqeq
       return (a: any, b: any) => (a == b ? 1 : 0);
+    case "same_value_zero":
+      // #1360 — SameValueZero comparison (§7.2.11).
+      // Same as Strict Equality except NaN === NaN is true.
+      // +0 and -0 compare equal (unlike SameValue / Object.is).
+      // Used by Array.prototype.includes for array-like receivers.
+      return (a: any, b: any) => {
+        if (a === b) return 1;
+        // eslint-disable-next-line no-self-compare
+        if (typeof a === "number" && typeof b === "number" && a !== a && b !== b) return 1;
+        return 0;
+      };
     case "date_new":
       return () => new Date();
     case "date_now":
