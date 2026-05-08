@@ -39,19 +39,19 @@ Two parallel tracks:
 |----|-------|----------|--------|
 | #1312 | Async recursion fix (pre-registration) | high | **done** — PR #283 +135 |
 | #1334 | Object.defineProperty descriptor attribute fidelity | high | **done** — PR #304 |
-| #1343 | Boolean wrapper + Symbol coercion TypeErrors | medium | pending |
-| #1344 | Date.prototype string formatters and parsers | medium | pending |
+| #1343 | Boolean wrapper + Symbol coercion TypeErrors | medium | **done** — PR #312 +77 |
+| #1344 | Date.prototype string formatters and parsers | medium | in_progress — PR #318 in CI |
 | #1347 | for-of IteratorClose on non-callable return | medium | **done** — PR #265 |
-| #1348 | for-of IteratorClose on abrupt body completion | medium | in_progress |
+| #1348 | for-of IteratorClose on abrupt body completion | medium | **done** — PR #314 +58 |
 | #1358 | Array callback methods on array-like receivers | high | **done** — PR #268 |
 | #1359 | Array.splice/slice/concat species and sparse | high | **done** — PR #277 |
 | #1360 | Array.indexOf/lastIndexOf/includes strict equality | high | **done** — PR #274 +50 |
 | #1361 | Array.sort comparator stability | medium | **done** — PR #280 +40 |
 | #1362 | Object.defineProperties property descriptor map | medium | **done** — PR #282 |
 | #1363 | Class dstr — cannot-destructure-null | high | **done** — merged |
-| #1364 | Class elements method/field descriptor fidelity | medium | **in_progress** — PR #310 (dev-1390, #1364a slice) |
-| #1365 | Class private fields and brand checks | medium | pending |
-| #1366 | Class subclass builtins + prototype chain | medium | pending |
+| #1364 | Class elements method/field descriptor fidelity | medium | **done** — PR #310 |
+| #1365 | Class private fields and brand checks | medium | **done** — PR #313 +23 |
+| #1366 | Class subclass builtins + prototype chain | medium | in_progress — PR #315 in CI |
 | #1366a | Class extends Error/TypeError builtin subclassing | high | **done** — PR #307 |
 | #1367 | Iterator helpers protocol invariants | medium | **done** — PR #287 +89 |
 | #1368 | Promise.all/allSettled/any/race resolver-element | medium | **done** — PR #286 +37 |
@@ -61,7 +61,7 @@ Two parallel tracks:
 | #1372 | IR: destructuring params | high | **done** — PR #301 |
 | #1373 | IR: async functions | high | pending |
 | #1374 | IR: string for-of and for-in | high | **done** — PR #306 |
-| #1375 | IR: full optional-chain support | medium | **in_progress** — dev-1389 (task #19) |
+| #1375 | IR: full optional-chain support | medium | blocked — needs #1392 IR primitives |
 | #1376 | IR: fallback telemetry gate | high | **done** — PR #285 |
 | #1377 | Array mutating methods length-overflow + receiver | medium | partial — Slices A+B done (PRs #289, #299) |
 | #1378 | try/catch/finally completion override + error fidelity | medium | **done** — merged |
@@ -90,6 +90,16 @@ Two parallel tracks:
 - **#1391**: CI feed baseline staleness. Done PR #308.
 - **#1334**: Object.defineProperty descriptor fidelity (sprint 50 carry-over). Done PR #304.
 - **#1366a**: Error subclassing slice. Done PR #307.
+- **#1343**: Boolean/Symbol coercion TypeErrors. Done PR #312 +77.
+- **#1348**: for-of IteratorClose abrupt body. Done PR #314 +58.
+- **#1352**: Set new methods set-like — PR #317 in CI (task #27).
+- **#1365**: Class private fields and brand checks. Done PR #313 +23.
+- **#1366**: Class subclass builtins — PR #315 in CI (task #25).
+- **#1344**: Date.prototype formatters — PR #318 in CI (task #24).
+- **#1392**: IR null-safe primitives — PR #316 in CI (task #23); unblocks #1375.
+- **#1393**: CI content-hash cache + merge queue. Done: content-hash already in
+  `test262-differential.yml`; merge queue enabled via GitHub Ruleset #16153215;
+  `dev-self-merge.md` updated to `--auto --merge`.
 
 ## Session results (2026-05-08)
 
@@ -128,24 +138,27 @@ Two parallel tracks:
 | #306 | #1374 IR string for-of | — | |
 | #307 | #1366a Error subclassing | — | |
 | #308 | #1391 CI staleness detection | — | |
+| #310 | #1364 class method descriptors | — | |
+| #312 | #1343 Boolean/Symbol coercion | +77 | |
+| #313 | #1365 class private fields | +23 | |
+| #314 | #1348 for-of IteratorClose abrupt | +58 | |
 
 ## Remaining work
 
-**In progress:**
-- #1364a instance method descriptors — PR #310 in CI (dev-1390)
-- #1375 IR optional chain — dev-1389 implementing (task #19)
-- #309 docs PR (string position escalation) — pending CI merge
+**In progress (CI pending):**
+- #1366 class subclass builtins — PR #315 in CI (dev-regression-fix, task #25)
+- #1392 IR null-safe primitives — PR #316 in CI (senior-dev-1384, task #23)
+- #1344 Date.prototype formatters — PR #318 in CI (dev-1388, task #24)
+- #1352 Set new methods set-like — PR #317 in CI (dev-1390-2, task #27)
+
+**In progress (implementing):**
+- #1375 IR optional chain — blocked on #1392; dev-1389 pivoted (task #19)
 
 **Pending (no active dev):**
 - #1373 IR async functions
-- #1343 Boolean/Symbol TypeErrors
-- #1344 Date.prototype formatters
-- #1348 for-of IteratorClose abrupt body
-- #1365 class private fields
 - #1382 Wasm closures not JS-callable
 - #1384 async chain arity (architect spec ready)
-- #1366 class subclass builtins (needs architect for full scope)
 
 **Blocked:**
+- #1375 IR optional chain → waiting on #1392 (task #23) to merge
 - #1377 Slices C+ → externref identity bug
-- #1366 (full) → architect spec for super() forwarding

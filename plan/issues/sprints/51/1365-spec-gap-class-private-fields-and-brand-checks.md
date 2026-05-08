@@ -2,7 +2,7 @@
 id: 1365
 sprint: 51
 title: "spec gap: class private fields, methods, accessors and brand checks (~97 fails in elements/private-*)"
-status: ready
+status: done
 created: 2026-05-08
 priority: medium
 feasibility: hard
