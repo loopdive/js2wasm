@@ -163,3 +163,57 @@ expectations for ALL three cases.
 ### Estimated impact
 
 +50 passes. Cleanup of common Array mutation paths.
+
+## Implementation notes (senior-dev, 2026-05-08)
+
+### Slice A: empty-array pop/shift returns undefined (not null)
+
+**Scope**: 30 LoC in `src/codegen/array-methods.ts`. Initialize result
+local to `__get_undefined()` for externref/anyref element types so
+empty-array `arr.pop()` and `arr.shift()` return JS `undefined` per
+spec §23.1.3.20.5 and §23.1.3.27.5 instead of `ref.null.extern` (which
+JS sees as `null`).
+
+The bug: `compileArrayPop` and `compileArrayShift` had
+`if (length > 0) { ... pop logic; result = data[i]; }` with no else.
+On empty array, the if didn't fire and `result` stayed at its wasm
+default (ref.null.extern → JS null). Fix: explicitly initialize result
+to `emitUndefined(...)` BEFORE the if, so the empty case yields
+spec-compliant undefined.
+
+Targeted at externref/anyref element types only — f64-element arrays
+keep their NaN default (acceptable; numeric callers use length checks),
+and i32 keeps 0.
+
+### Other gaps (deferred)
+
+| Gap | Pattern | Status |
+|-----|---------|--------|
+| Length-NaN coercion | `obj.length = NaN; obj.push(x)` should set length=1 | Deferred — array-like dispatch path |
+| MaxSafeInteger overflow | `arr.push` when length=2^53-1 should throw RangeError | Deferred — needs i64 length checks |
+| Frozen-receiver TypeError | `Object.freeze(arr); arr.push(x)` should throw | Deferred — needs frozen-bit |
+| `new Array().unshift(1)` returns 0 | new Array() length tracking | Deferred — constructor path |
+| `Array.prototype.push.call(obj, x)` with arbitrary obj | Some edge cases fail | Deferred — overlaps with #1358 |
+| `pop` reset on NaN length | `obj.length=NaN; obj.pop()` should set length=0 | Deferred — host path |
+
+These all need either new codegen emitters or runtime bridge fixes that
+are out of scope for Slice A's focused 30-LoC fix.
+
+### Tests
+
+- `tests/issue-1377.test.ts` — 7 unit tests covering pop/shift on empty,
+  non-empty, length tracking, repeated drain, f64-element no-crash. All pass.
+
+### Pre-existing failures
+
+`tests/array-methods.test.ts` has 2 tests (`pop > returns last element`,
+`shift > returns first element`) that fail on origin/main with TS strict
+type errors — verified by stashing my changes. Test sources have
+`return arr.pop()` against a `: number` return type, triggering
+"Type 'number | undefined' is not assignable to type 'number'". Unrelated.
+
+### Estimated impact (revised)
+
++5–15 net (vs architect's +50). The +50 estimate assumed solving all
+7 method gaps; Slice A solves only the empty-array undefined gap.
+Realistic for a focused, low-risk PR.
