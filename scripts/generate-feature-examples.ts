@@ -905,6 +905,44 @@ const match = RegExp.$1; // not supported`,
 
   // ── Proposals ───────────────────────────────────────────────────────────
   {
+    name: "Hono-style router (Map + closures + classes)",
+    edition: "npm libraries",
+    badge: "partial",
+    description: "Hono web-framework patterns: class-based router, Map route table, closure handlers, method chaining",
+    js: `type Handler = (c: Context) => string;
+
+class Context {
+  path: string;
+  constructor(path: string) { this.path = path; }
+  text(s: string): string { return s; }
+}
+
+class App {
+  routes: Map<string, Handler> = new Map();
+
+  get(path: string, handler: Handler): App {
+    this.routes.set(path, handler);
+    return this;
+  }
+
+  dispatch(path: string): string {
+    const handler = this.routes.get(path);
+    if (handler == null) return "404 Not Found";
+    return handler(new Context(path));
+  }
+}
+
+const app = new App();
+app.get("/", c => c.text("Hello, World!"))
+   .get("/api/users", c => c.text("Users: Alice, Bob"))
+   .get("/api/health", c => c.text("ok"));
+
+console.log(app.dispatch("/"));          // Hello, World!
+console.log(app.dispatch("/api/users")); // Users: Alice, Bob
+console.log(app.dispatch("/404"));       // 404 Not Found`,
+    testCategories: [],
+  },
+  {
     name: "Temporal",
     edition: "Proposals",
     badge: "none",

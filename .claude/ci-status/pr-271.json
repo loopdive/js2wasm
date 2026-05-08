@@ -1,0 +1,19 @@
+{
+  "pr": 271,
+  "conclusion": "success",
+  "head_branch": "issue-1363-class-dstr-null-fix",
+  "head_sha": "cdbd6c3854a0b11aa7f46e6cb53f6183a7708215",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25538324706",
+  "timestamp": "2026-05-08T05:47:06Z",
+  "pass": 26688,
+  "fail": 14216,
+  "compile_error": 845,
+  "snapshot_delta": -133,
+  "net_per_test": -92,
+  "regressions": 377,
+  "regressions_real": 338,
+  "regressions_wasm_change": 338,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 39,
+  "improvements": 246
+}

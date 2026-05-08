@@ -2,7 +2,7 @@
 id: 1363
 sprint: 51
 title: "spec gap: class dstr — 'Cannot destructure null/undefined' in method default-binding (~700 runtime_errors)"
-status: ready
+status: in-progress
 created: 2026-05-08
 priority: high
 feasibility: medium
@@ -169,3 +169,44 @@ prologue is emitted INSIDE the wrapped function body, not before.
 +450 net passes on the runtime_error bucket alone; cascades may resolve
 additional assertion_fail in the same dstr/ tree (some assertions chain on
 post-destructure state). §15.7 lifts from 67% to ~73%.
+
+## Implementation Notes (2026-05-08)
+
+The architect's spec misidentified the root cause. The failing test262 sources
+do **not** use `[] = []` (literal empty default) — they use closure variables:
+
+```js
+var iter = function*() { iterations += 1; }();
+class C {
+  method([] = iter) { ... }   // default is `iter`, not `[]`
+}
+```
+
+When `wrapTest` wraps the JS source in `export function test() { ... }`,
+both `iter` and `class C` end up as locals of `test()`. Class methods compile
+to module-level Wasm functions and cannot capture enclosing-function locals.
+`compileExpression(iter)` from inside the class method's parameter-default
+prologue resolves to `ref.null.extern` (silent fallback), then the
+destructuring guard throws "Cannot destructure 'null' or 'undefined'".
+
+**The fix is at the test262 runner layer, not the compiler.** Existing
+hoisting (`tests/test262-runner.ts:1971`) already handles `var x = <number>;`
+and `var x;` — extended to handle `var x = <expr>;` with bracket/paren/string-
+aware scanning so call-expression, IIFE, and complex-object initializers
+referenced from class bodies are hoisted to module scope.
+
+A separate compiler bug (generator IIFE `function*(){...}()` eagerly runs the
+body instead of producing a lazy iterator) prevents a few of the listed
+test262 files from passing fully — that is unrelated to the destructure-null
+trap and is filed separately.
+
+## Test Results
+
+- `tests/issue-1363.test.ts` — 7/7 pass
+- `async-gen-meth-static-dflt-obj-ptrn-empty.js` — fail → pass
+- `async-private-gen-meth-dflt-ary-init-iter-no-close.js` — fail → pass
+- Two remaining tests (`async-gen-meth-dflt-ary-ptrn-empty.js`,
+  `meth-dflt-ary-ptrn-empty.js`) are blocked on the orthogonal generator-IIFE
+  eagerness bug — destructure-null trap is fixed but the inline assertion
+  `iterations === 0` fails because `var iter = function*(){...}()` eagerly
+  runs the body.

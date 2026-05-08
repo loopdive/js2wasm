@@ -41,16 +41,6 @@
       "sprint": "backlog"
     },
     {
-      "id": "1353",
-      "title": "spec backlog: §29 Memory Model implementation (multi-thread Wasm)",
-      "priority": "low",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "backlog",
-      "sprint": "backlog"
-    },
-    {
       "id": "1266",
       "title": "compiler flag --no-eval-scope-write: TypeError instead of shadow scope deopt",
       "priority": "medium",
@@ -235,16 +225,6 @@
     {
       "id": "1380",
       "title": "spec gap: equality (==, !=, ===, !==) — Symbol/BigInt coercion + ReferenceError propagation (~55 fails)",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "51"
-    },
-    {
-      "id": "1379",
-      "title": "spec gap: prefix/postfix ++/-- on null/undefined/string operands — ToNumeric coercion (~40 fails)",
       "priority": "medium",
       "feasibility": "easy",
       "depends_on": [],
@@ -461,6 +441,16 @@
       "goal": "spec-completeness",
       "status": "ready",
       "sprint": "51"
+    },
+    {
+      "id": "1353",
+      "title": "JSON.stringify (objects/arrays) + JSON.parse: architect spec for Wasm shape-walking and recursive-descent parser",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "standalone-mode",
+      "status": "ready",
+      "sprint": "50"
     },
     {
       "id": "1352",
@@ -717,26 +707,6 @@
       "title": "Async standalone: implement microtask queue + CPS scheduler in Wasm for Promise/async without JS host",
       "priority": "low",
       "feasibility": "hard",
-      "depends_on": [],
-      "goal": "standalone-mode",
-      "status": "ready",
-      "sprint": "50"
-    },
-    {
-      "id": "1325",
-      "title": "instanceof against built-in types: compile-time type-tag registry eliminates JS host for common cases",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "standalone-mode",
-      "status": "ready",
-      "sprint": "50"
-    },
-    {
-      "id": "1324",
-      "title": "JSON.stringify and JSON.parse: implement in pure Wasm, eliminate JS host dependency",
-      "priority": "medium",
-      "feasibility": "medium",
       "depends_on": [],
       "goal": "standalone-mode",
       "status": "ready",
@@ -2048,6 +2018,26 @@
   ],
   "inprogress": [
     {
+      "id": "1379",
+      "title": "spec gap: prefix/postfix ++/-- on null/undefined/string operands — ToNumeric coercion (~40 fails)",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "in-progress",
+      "sprint": "51"
+    },
+    {
+      "id": "1325",
+      "title": "instanceof against built-in types: compile-time type-tag registry eliminates JS host for common cases",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "standalone-mode",
+      "status": "in-progress",
+      "sprint": "50"
+    },
+    {
       "id": "1322",
       "title": "Math.random() has no standalone fallback — requires JS host import in WASI/standalone mode",
       "priority": "low",
@@ -2097,6 +2087,16 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "npm-library-support",
+      "status": "done",
+      "sprint": "50"
+    },
+    {
+      "id": "1324",
+      "title": "JSON.stringify and JSON.parse: implement in pure Wasm, eliminate JS host dependency",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "standalone-mode",
       "status": "done",
       "sprint": "50"
     },

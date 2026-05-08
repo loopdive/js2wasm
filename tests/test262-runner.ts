@@ -1984,7 +1984,10 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
     classBodies.push(cm[1]!);
   }
   // Track hoisted var metadata for proper declaration generation
-  const hoistedVarMeta = new Map<string, { type: "number"; init: string } | { type: "any" }>();
+  const hoistedVarMeta = new Map<
+    string,
+    { type: "number"; init: string } | { type: "any" } | { type: "expr"; fullDecl: string }
+  >();
   if (classBodies.length > 0) {
     const classBodyText = classBodies.join("\n");
     for (const vm of body.matchAll(varDeclNumericPattern)) {
@@ -2006,6 +2009,70 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
         hoistedVarMeta.set(varName, { type: "any" });
       }
     }
+
+    // #1363 — Hoist var declarations with arbitrary expression initializers
+    // referenced from class bodies. Class methods compile to module-level Wasm
+    // functions and cannot capture enclosing-function locals; without hoisting,
+    // a method's parameter default `[] = iter` resolves to ref.null.extern,
+    // causing a "Cannot destructure 'null' or 'undefined'" trap when invoked.
+    //
+    // The hoisting strategy converts:
+    //   var iter = function*() { iterations += 1; }();
+    // into module-scope `let iter: any;` plus an in-body assignment
+    // `iter = function*() { iterations += 1; }();` that runs in original order.
+    //
+    // Bracket/paren/brace-depth-aware scan to capture the full initializer
+    // expression up to the matching `;` (handles nested function bodies, object
+    // literals with computed keys, string literals, comments, regex literals).
+    const findVarStmtEnd = (src: string, eqPos: number): number => {
+      let depth = 0;
+      let i = eqPos + 1;
+      while (i < src.length) {
+        const c = src[i]!;
+        if (c === "/" && src[i + 1] === "/") {
+          // line comment — skip to newline
+          while (i < src.length && src[i] !== "\n") i++;
+          continue;
+        }
+        if (c === "/" && src[i + 1] === "*") {
+          // block comment
+          i += 2;
+          while (i < src.length && !(src[i] === "*" && src[i + 1] === "/")) i++;
+          i += 2;
+          continue;
+        }
+        if (c === "'" || c === '"' || c === "`") {
+          const quote = c;
+          i++;
+          while (i < src.length && src[i] !== quote) {
+            if (src[i] === "\\") i += 2;
+            else i++;
+          }
+          i++;
+          continue;
+        }
+        if (c === "{" || c === "(" || c === "[") depth++;
+        else if (c === "}" || c === ")" || c === "]") depth--;
+        else if (c === ";" && depth === 0) return i;
+        i++;
+      }
+      return -1;
+    };
+
+    const varInitStart = /\bvar\s+(\w+)\s*=/g;
+    for (const vm of body.matchAll(varInitStart)) {
+      const varName = vm[1]!;
+      if (hoistedVars.has(varName)) continue;
+      // Check if this variable is referenced in any class body
+      if (!new RegExp(`\\b${varName}\\b`).test(classBodyText)) continue;
+      const matchStart = vm.index!;
+      const eqPos = matchStart + vm[0].length - 1; // position of '='
+      const semiPos = findVarStmtEnd(body, eqPos);
+      if (semiPos < 0) continue;
+      const fullDecl = body.slice(matchStart, semiPos + 1);
+      hoistedVars.add(varName);
+      hoistedVarMeta.set(varName, { type: "expr", fullDecl });
+    }
   }
 
   // Build hoisted declarations (module-level) and strip them from the function body
@@ -2017,6 +2084,22 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
       if (meta?.type === "number") {
         hoistedDecls += `let ${v}: number = ${meta.init};\n`;
         bodyForFunc = bodyForFunc.replace(new RegExp(`\\bvar\\s+${v}\\s*=\\s*${meta.init}\\s*;`), ``);
+      } else if (meta?.type === "expr") {
+        // #1363 — Var with expression initializer referenced from class body.
+        // Hoist `let v: any;` to module scope and rewrite the in-body
+        // declaration to a plain assignment so initialization order is
+        // preserved. (Side-effects in the initializer must run when the
+        // surrounding code reaches that statement, not at module init.)
+        hoistedDecls += `let ${v}: any;\n`;
+        // Replace the captured `var v = <expr>;` with `v = <expr>;`. Use a
+        // literal substring replace (not regex) — the expression may contain
+        // characters that mean things in regex. fullDecl includes the
+        // trailing `;`.
+        const replacement = meta.fullDecl.replace(/^\s*var\s+/, "");
+        const idx = bodyForFunc.indexOf(meta.fullDecl);
+        if (idx >= 0) {
+          bodyForFunc = bodyForFunc.slice(0, idx) + replacement + bodyForFunc.slice(idx + meta.fullDecl.length);
+        }
       } else {
         // Uninit var: hoist as any (externref in Wasm)
         hoistedDecls += `let ${v}: any;\n`;
