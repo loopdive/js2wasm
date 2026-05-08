@@ -75,9 +75,6 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1358 | spec gap: Array.prototype.{filter,map,every,some,forEach,reduce} on array-like (.call) receivers — ~452 assertion_fail | high | ready |
-| #1359 | spec gap: Array.prototype.{splice,slice,concat,toSpliced,toReversed} — @@species, sparse handling, IsConcatSpreadable (~150 fails) | high | ready |
-| #1360 | spec gap: Array.prototype.{indexOf,lastIndexOf,includes} — SameValueZero, sparse, fromIndex coercion (~210 fails) | high | ready |
-| #1361 | spec gap: Array.prototype.sort — comparator validation, stability, ToString fallback (~46 fails) | medium | ready |
 | #1362 | spec gap: Object.defineProperties — apply full descriptor map (332 fails) | high | ready |
 | #1364 | spec gap: class elements — method/field descriptor enumerable/configurable/writable (~700 fails) | high | ready |
 | #1365 | spec gap: class private fields, methods, accessors and brand checks (~97 fails in elements/private-*) | medium | ready |
@@ -101,6 +98,9 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
+| #1359 | spec gap: Array.prototype.{splice,slice,concat,toSpliced,toReversed} — @@species, sparse handling, IsConcatSpreadable (~150 fails) | high | in-progress |
+| #1360 | spec gap: Array.prototype.{indexOf,lastIndexOf,includes} — SameValueZero, sparse, fromIndex coercion (~210 fails) | high | in-progress |
+| #1361 | spec gap: Array.prototype.sort — comparator validation, stability, ToString fallback (~46 fails) | medium | in-progress |
 | #1363 | spec gap: class dstr — 'Cannot destructure null/undefined' in method default-binding (~700 runtime_errors) | high | in-progress |
 | #1369 | spec gap: String.prototype.{split,replace,replaceAll,match,matchAll} — limit, @@split/@@replace/@@match protocol (~150 fails) | medium | in-progress |
 | #1376 | IR: fallback telemetry gate — CI fails when unintended legacy bypasses exceed threshold | high | in-progress |

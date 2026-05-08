@@ -149,9 +149,9 @@ pass rate goes from "good" to "excellent."
 | **1356** | spec backlog: ShadowRealm implementation (61 test262 fails, requires per-realm parser) | backlog | backlog | low |
 | **1357** | spec backlog: AbstractModuleSource constructor (Stage 3 import-source proposal, 8 test262 fails) | backlog | backlog | low |
 | **1358** | spec gap: Array.prototype.{filter,map,every,some,forEach,reduce} on array-like (.call) receivers — ~452 assertion_fail | 51 | ready | high |
-| **1359** | spec gap: Array.prototype.{splice,slice,concat,toSpliced,toReversed} — @@species, sparse handling, IsConcatSpreadable (~150 fails) | 51 | ready | high |
-| **1360** | spec gap: Array.prototype.{indexOf,lastIndexOf,includes} — SameValueZero, sparse, fromIndex coercion (~210 fails) | 51 | ready | high |
-| **1361** | spec gap: Array.prototype.sort — comparator validation, stability, ToString fallback (~46 fails) | 51 | ready | medium |
+| **1359** | spec gap: Array.prototype.{splice,slice,concat,toSpliced,toReversed} — @@species, sparse handling, IsConcatSpreadable (~150 fails) | 51 | in-progress | high |
+| **1360** | spec gap: Array.prototype.{indexOf,lastIndexOf,includes} — SameValueZero, sparse, fromIndex coercion (~210 fails) | 51 | in-progress | high |
+| **1361** | spec gap: Array.prototype.sort — comparator validation, stability, ToString fallback (~46 fails) | 51 | in-progress | medium |
 | **1362** | spec gap: Object.defineProperties — apply full descriptor map (332 fails) | 51 | ready | high |
 | **1363** | spec gap: class dstr — 'Cannot destructure null/undefined' in method default-binding (~700 runtime_errors) | 51 | in-progress | high |
 | **1364** | spec gap: class elements — method/field descriptor enumerable/configurable/writable (~700 fails) | 51 | ready | high |

@@ -283,7 +283,14 @@ export type FilterResult = { skip: true; reason: string } | { skip: false; reaso
 
 // Tests that cause the compiler to hang (infinite loop during compilation)
 const HANGING_TESTS = new Set([
-  "test/built-ins/Promise/race/invoke-then.js", // #408: Promise.race compilation hang
+  // (#1386) `test/built-ins/Promise/race/invoke-then.js` previously hung at
+  // compile time on the `p1.then = p2.then = p3.then = function(a, b) {…}`
+  // chained assignment. Verified 2026-05-08: compile completes in ~1.8s
+  // (well under the 5s threshold) — wrapped through `wrapTest`, the test
+  // returns 6 type-mismatch CEs about the `.then` function signature
+  // (returns void instead of `Promise<…>`). The test now registers as
+  // `compile_error`, not a hang. Reclassifying skip → compile_error is a
+  // bookkeeping move, not a regression.
   // #859: Map/forEach/iterates-values-deleted-then-readded.js previously hung
   // because callback captures were immutable snapshots — `if (count === 0)`
   // never became false, so the test infinitely re-added the deleted key. The

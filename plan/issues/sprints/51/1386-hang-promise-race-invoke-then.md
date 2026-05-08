@@ -55,3 +55,33 @@ If runtime hang: trace the Promise.race iteration that never terminates.
 1. Test terminates within 5 seconds (pass, fail, or CE — no hang).
 2. Remove the HANGING_TESTS entry for `test/built-ins/Promise/race/invoke-then.js`.
 3. No regression in Promise.race suite.
+
+## Investigation result (senior-dev, 2026-05-08)
+
+**Compile no longer hangs.** Empirically verified via the suggested probe
+(through `wrapTest`):
+
+```
+shouldSkip: { skip: false }
+compile elapsed: 1563 ms
+compile success: false
+compile errors count: 6
+5s threshold: PASS
+```
+
+The 6 compile errors are TypeScript-style type mismatches on
+`p1.then = p2.then = p3.then = function(a, b) {…}` — our compiler
+infers the lambda returns `void` while `.then` expects
+`Promise<TResult1 | PromiseLike<TResult1>>`. These errors are
+correct behavior for a TS-strict compiler; the test source is
+sloppy-mode JS that monkey-patches `.then` directly.
+
+The historical "hang" referenced by the comment ("#408: Promise.race
+compilation hang") no longer reproduces — the compiler completes
+quickly and produces deterministic errors. Reclassifying this entry
+from `skip` → `compile_error` is a bookkeeping move, not a regression
+(the test was never passing).
+
+Fix: remove the HANGING_TESTS entry. Test will report as `compile_error`
+in baseline tally. No runtime hang risk because the test never reaches
+runtime.

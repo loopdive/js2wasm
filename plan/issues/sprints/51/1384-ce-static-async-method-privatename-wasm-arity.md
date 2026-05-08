@@ -87,6 +87,45 @@ console.log(r.success ? 'OK' : r.errors[0].message);
 - `src/codegen/class-bodies.ts` — static method emitter, async wrapper
 - `src/codegen/closures.ts` — async trampoline construction
 
+## Investigation results (senior-dev, 2026-05-08)
+
+**Root cause is NOT PrivateName / Unicode / class-bodies.** The architect's
+hypothesis was misleading. After empirical bisection from the failing
+test262 file, the minimum reproducer is just **6 lines**:
+
+```ts
+async function f(): Promise<any> { return 1; }
+export function test(): number {
+  Promise.all([f()]).then(r => r);
+  return 1;
+}
+```
+
+Result: `WebAssembly.instantiate(): Compiling function #N:"test" failed:
+not enough arguments on the stack for call (need 2, got 0)`
+
+### Trigger conditions (verified)
+
+The bug fires if and only if ALL three are true:
+
+1. **Receiver is `Promise.all([asyncCall()])`** (or any expression returning `Promise<any[]>`).
+2. **`.then(callback)` callback param is UNTYPED** — `r => r` fails; `(r: any) => r` works.
+3. **The async function returns `Promise<any>` / `Promise<unknown>` / `Promise<heterogeneous>`** — `Promise<number>` works.
+
+### What does NOT fix it
+
+Adding `flushLateImportShifts(ctx, fctx)` AFTER the callback arg compilation at `calls.ts:3647` — verified, same error. The shift mechanism IS invoked but indices remain stale.
+
+### Workarounds
+
+- Split into intermediate variable: `var p = Promise.all([f()]); p.then(r => r);`
+- Type the callback: `Promise.all([f()]).then((r: any) => r);`
+- Make the async function return `Promise<number>`.
+
+### Reproducers
+
+In `.tmp/` of `issue-1384-static-async-private` worktree: `probe-min9.mts`, `probe-types.mts`, `probe-instance.mts`.
+
 ---
 
 ## Architect Spec (2026-05-08)

@@ -1,0 +1,19 @@
+{
+  "pr": 289,
+  "conclusion": "success",
+  "head_branch": "issue-1377-array-mutators",
+  "head_sha": "b3a0824db9018adb7554199317274bb8478e36ad",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25544227885",
+  "timestamp": "2026-05-08T08:15:05Z",
+  "pass": 27123,
+  "fail": 14689,
+  "compile_error": 1263,
+  "snapshot_delta": -30,
+  "net_per_test": 29,
+  "regressions": 74,
+  "regressions_real": 30,
+  "regressions_wasm_change": 30,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 44,
+  "improvements": 59
+}
