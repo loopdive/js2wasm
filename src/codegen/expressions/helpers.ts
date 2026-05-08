@@ -16,7 +16,7 @@ import { getLocalType } from "../context/locals.js";
 import type { CodegenContext, FunctionContext } from "../context/types.js";
 import { stringConstantExternrefInstrs } from "../native-strings.js";
 import { addStringConstantGlobal, ensureExnTag } from "../registry/imports.js";
-import { coerceType, valTypesMatch } from "../shared.js";
+import { coerceType, ensureLateImport, flushLateImportShifts, valTypesMatch } from "../shared.js";
 
 /**
  * Emit a Wasm throw instruction with a string error message.
@@ -26,6 +26,81 @@ import { coerceType, valTypesMatch } from "../shared.js";
 export function emitThrowString(ctx: CodegenContext, fctx: FunctionContext, message: string): void {
   addStringConstantGlobal(ctx, message);
   fctx.body.push(...stringConstantExternrefInstrs(ctx, message));
+  const tagIdx = ensureExnTag(ctx);
+  fctx.body.push({ op: "throw", tagIdx });
+}
+
+/**
+ * #1365 — Resolve the class struct that declared a `#name` PrivateIdentifier.
+ *
+ * Per ES2022 §15.7, a private name is lexically scoped to the class body that
+ * declares it. To brand-check `obj.#x`, we need to know which class struct
+ * to test the receiver against.
+ *
+ * Strategy: walk up `node.parent` from the PrivateIdentifier to find the
+ * enclosing class declaration whose body declared `#x`. The TS parser
+ * preserves `parent` links via `setParentNodes`. If multiple nested classes
+ * each declare `#x`, the innermost wins (lexical shadowing — same as
+ * regular variable scope).
+ *
+ * Returns `undefined` when:
+ *   - The PrivateIdentifier isn't lexically inside any class (parser will
+ *     have already caught this as a syntax error, but defensive).
+ *   - The class hasn't been registered with a struct (e.g. external class,
+ *     or compilation order issue).
+ *
+ * Returns the matched class's struct typeIdx and the legacy field name
+ * (`__priv_<text>`) so the caller can emit `ref.test` / `ref.cast` /
+ * `struct.get` against the right slot.
+ */
+export function resolveDeclaringClassForPrivateName(
+  ctx: CodegenContext,
+  node: ts.PrivateIdentifier,
+): { className: string; structTypeIdx: number; fieldName: string } | undefined {
+  const fieldName = "__priv_" + node.text.slice(1);
+  let current: ts.Node | undefined = node.parent;
+  while (current) {
+    if ((ts.isClassDeclaration(current) || ts.isClassExpression(current)) && current.name) {
+      const className = current.name.text;
+      const structFields = ctx.structFields.get(className);
+      // Only return when this class actually declared the private name —
+      // a nested class that doesn't declare `#x` shouldn't shadow the outer.
+      if (structFields?.some((f) => f.name === fieldName)) {
+        const structTypeIdx = ctx.structMap.get(className);
+        if (structTypeIdx !== undefined) {
+          return { className, structTypeIdx, fieldName };
+        }
+      }
+    }
+    current = current.parent;
+  }
+  return undefined;
+}
+
+/**
+ * #1365 — Emit a Wasm throw of a real TypeError INSTANCE (not a bare string).
+ *
+ * Required for spec-compliant `assert.throws(TypeError, fn)` test262 cases —
+ * those check `e instanceof TypeError` on the caught value, which requires
+ * the thrown ref to be a real TypeError-tagged externref produced by the
+ * `__new_TypeError(message)` host import (registered via the same path
+ * `new TypeError(msg)` uses, see `expressions/new-super.ts:1411-1453`).
+ *
+ * Standalone fallback: if `__new_TypeError` import isn't available, throw
+ * the message string instead. The instanceof check won't pass in that
+ * mode, but the throw is observable and the caller still aborts.
+ */
+export function emitThrowTypeError(ctx: CodegenContext, fctx: FunctionContext, message: string): void {
+  addStringConstantGlobal(ctx, message);
+  fctx.body.push(...stringConstantExternrefInstrs(ctx, message));
+  const newTypeErrorIdx = ensureLateImport(ctx, "__new_TypeError", [{ kind: "externref" }], [{ kind: "externref" }]);
+  flushLateImportShifts(ctx, fctx);
+  if (newTypeErrorIdx !== undefined) {
+    fctx.body.push({ op: "call", funcIdx: newTypeErrorIdx });
+  }
+  // If the import isn't available, the message externref is still on the
+  // stack — degrade to throwing a string. Both paths produce the same
+  // exception tag.
   const tagIdx = ensureExnTag(ctx);
   fctx.body.push({ op: "throw", tagIdx });
 }

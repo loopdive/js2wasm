@@ -17,6 +17,7 @@ import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.j
 import type { CodegenContext, FunctionContext } from "./context/types.js";
 import { emitFuncRefAsClosure } from "./closures.js";
 import { emitLazyProtoGet, findExternInfoForMember } from "./expressions/extern.js";
+import { emitThrowTypeError, resolveDeclaringClassForPrivateName } from "./expressions/helpers.js";
 import { patchStructNewForAddedField } from "./expressions/late-imports.js";
 import { addUnionImports, resolveWasmType } from "./index.js";
 import { stringConstantExternrefInstrs } from "./native-strings.js";
@@ -902,6 +903,84 @@ export function compilePropertyAccess(
 
   const objType = ctx.checker.getTypeAtLocation(expr.expression);
   const propName = ts.isPrivateIdentifier(expr.name) ? "__priv_" + expr.name.text.slice(1) : expr.name.text;
+
+  // #1365 — Private-name read with spec-compliant brand check.
+  //
+  // Per ES2022 §15.7 (PrivateFieldGet / PrivateBrandCheck): when reading
+  // `obj.#x`, if `obj` lacks the brand of the class that declared `#x`,
+  // throw a TypeError. Today the generic property-access path falls
+  // through to alternate-struct lookup (which can read `__priv_x` from a
+  // DIFFERENT class with the same field-name layout) or to `__extern_get`
+  // (which silently returns undefined). Both violate the brand-tied
+  // semantics of private names.
+  //
+  // Implementation: when the property name is a PrivateIdentifier, resolve
+  // the lexically-declaring class via parent-chain walk. Compile the
+  // receiver, ref.test it against the declaring class's struct, and on
+  // failure throw a real TypeError instance (so `assert.throws(TypeError,
+  // ...)` passes). On success, ref.cast + struct.get the field.
+  //
+  // Skips the brand check for:
+  //   - `super.#x` — handled by the super branch below; super already
+  //     guarantees the right brand structurally.
+  //   - PrivateIdentifier accesses inside the class body where
+  //     `expr.expression.kind === ThisKeyword` AND the local `this` is
+  //     known to be the class struct ref — the legacy struct.get is
+  //     correct in that case (TS guarantees the brand, no runtime check
+  //     needed). The brand check fires only when the receiver type may
+  //     differ from the declaring class.
+  if (ts.isPrivateIdentifier(expr.name) && expr.expression.kind !== ts.SyntaxKind.SuperKeyword) {
+    const declared = resolveDeclaringClassForPrivateName(ctx, expr.name);
+    if (declared) {
+      const fieldIdx = ctx.structFields.get(declared.className)!.findIndex((f) => f.name === declared.fieldName);
+      if (fieldIdx >= 0) {
+        const fieldType = ctx.structFields.get(declared.className)![fieldIdx]!.type;
+        // Compile the receiver. Branch by what we got back — class refs
+        // emit ref.test directly; externref needs any.convert_extern first.
+        const objResult = compileExpression(ctx, fctx, expr.expression);
+        // Save the receiver value so we can emit ref.test, then optionally
+        // ref.cast against the brand. Use anyref as the saved type so we
+        // can hold class-refs and externrefs uniformly.
+        const tmpAny = allocTempLocal(fctx, { kind: "anyref" });
+        if (objResult?.kind === "externref") {
+          fctx.body.push({ op: "any.convert_extern" } as Instr);
+        }
+        fctx.body.push({ op: "local.set", index: tmpAny });
+        // Brand check: ref.test against the declaring class's struct.
+        fctx.body.push({ op: "local.get", index: tmpAny });
+        fctx.body.push({ op: "ref.test", typeIdx: declared.structTypeIdx } as Instr);
+        // result-type block: on success, return the field value; on
+        // failure, throw TypeError (which doesn't return).
+        const successInstrs: Instr[] = [
+          { op: "local.get", index: tmpAny } as Instr,
+          { op: "ref.cast", typeIdx: declared.structTypeIdx } as Instr,
+          { op: "struct.get", typeIdx: declared.structTypeIdx, fieldIdx } as Instr,
+        ];
+        // Capture failure-path instrs by emitting into a saved body buffer.
+        const savedBody = fctx.body;
+        fctx.body = [];
+        const message = `Cannot read private member #${expr.name.text.slice(1)} from an object whose class did not declare it`;
+        emitThrowTypeError(ctx, fctx, message);
+        const failureInstrs = fctx.body;
+        fctx.body = savedBody;
+        // Wrap in `if` returning fieldType. The `else` (failure) branch
+        // ends with `throw`, which is unreachable per Wasm typing, so the
+        // block's result type is satisfied by the `then` arm only.
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "val", type: fieldType },
+          then: successInstrs,
+          else: failureInstrs,
+        } as Instr);
+        releaseTempLocal(fctx, tmpAny);
+        return fieldType;
+      }
+    }
+    // Resolver failure (no enclosing class declares this private name).
+    // Fall through to the generic path; it will throw via the existing
+    // alternate / __extern_get fallbacks. This shouldn't happen for
+    // well-formed source code.
+  }
 
   // Handle super.prop — access parent class property/getter on current `this`
   if (expr.expression.kind === ts.SyntaxKind.SuperKeyword) {
