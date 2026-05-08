@@ -188,8 +188,6 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | #1320 | Runtime bridge: Array.from(externref) / Iterator.from(externref) doesn't preserve own [Symbol.iterator] on plain JS objects (4 test262 fails) | medium | ready |
 | #1321 | Number.prototype formatting methods (toString/toFixed/toPrecision/toExponential) rely on JS host unnecessarily | medium | ready |
 | #1323 | Iterator protocol bridging: implement $IteratorResult struct in pure Wasm, eliminate host bridge | medium | ready |
-| #1324 | JSON.stringify and JSON.parse: implement in pure Wasm, eliminate JS host dependency | medium | ready |
-| #1325 | instanceof against built-in types: compile-time type-tag registry eliminates JS host for common cases | medium | ready |
 | #1326 | Async standalone: implement microtask queue + CPS scheduler in Wasm for Promise/async without JS host | low | ready |
 | #1327 | Landing page: per-feature test pass counts + feature report page + playground deep-link | high | ready |
 | #1328 | RegExp host-mode: Symbol.match / matchAll protocol spec compliance (101 fails) | medium | ready |
@@ -216,6 +214,7 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | #1350 | spec gap: ArrayBuffer resizable + TypedArray detached-buffer guards (100 + 39 test262 fails) | medium | ready |
 | #1351 | spec gap: ArrayBuffer resizable + TypedArray detached-buffer guards (100 + 39 test262 fails) | medium | ready |
 | #1352 | spec gap: Set methods (union/intersection/etc.) accept any set-like argument (101 test262 fails) | medium | ready |
+| #1353 | JSON.stringify (objects/arrays) + JSON.parse: architect spec for Wasm shape-walking and recursive-descent parser | medium | ready |
 
 ### In Progress
 
@@ -223,6 +222,7 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 |---|---|---|---|
 | #1315 | import.defer / import.source missing early error detection — 157 negative tests false-pass | high | in-progress |
 | #1322 | Math.random() has no standalone fallback — requires JS host import in WASI/standalone mode | low | in-progress |
+| #1325 | instanceof against built-in types: compile-time type-tag registry eliminates JS host for common cases | medium | in-progress |
 
 ### Done
 
@@ -252,6 +252,7 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | #1313 | await is a passthrough — does not unwrap Promise from async-call expressions | high | done |
 | #1316 | illegal cast error: add expected type and actual value context (142 opaque runtime failures) | medium | done |
 | #1317 | null dereference error: add expression / variable context (573 opaque runtime failures) | medium | done |
+| #1324 | JSON.stringify and JSON.parse: implement in pure Wasm, eliminate JS host dependency | medium | done |
 | #1334 | ECMAScript spec compliance audit: section-by-section review, gap issues, HTML report | high | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->

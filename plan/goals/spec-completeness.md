@@ -144,7 +144,6 @@ pass rate goes from "good" to "excellent."
 | **1350** | spec gap: ArrayBuffer resizable + TypedArray detached-buffer guards (100 + 39 test262 fails) | 50 | ready | medium |
 | **1351** | spec gap: ArrayBuffer resizable + TypedArray detached-buffer guards (100 + 39 test262 fails) | 50 | ready | medium |
 | **1352** | spec gap: Set methods (union/intersection/etc.) accept any set-like argument (101 test262 fails) | 50 | ready | medium |
-| **1353** | spec backlog: §29 Memory Model implementation (multi-thread Wasm) | backlog | backlog | low |
 | **1354** | spec backlog: SharedArrayBuffer + Atomics (full implementation, requires multi-thread Wasm) | backlog | backlog | low |
 | **1355** | spec backlog: Proxy implementation beyond JS-host fallback (235 test262 fails) | backlog | backlog | low |
 | **1356** | spec backlog: ShadowRealm implementation (61 test262 fails, requires per-realm parser) | backlog | backlog | low |
@@ -163,7 +162,7 @@ pass rate goes from "good" to "excellent."
 | **1369** | spec gap: String.prototype.{split,replace,replaceAll,match,matchAll} — limit, @@split/@@replace/@@match protocol (~150 fails) | 51 | ready | medium |
 | **1377** | spec gap: Array.prototype.{push,pop,shift,unshift,fill,copyWithin,reverse} — mutation on array-like + length writes (~80 fails) | 51 | ready | medium |
 | **1378** | spec gap: try/catch/finally — error type fidelity, finally completion override, dstr-binding (~85 fails) | 51 | ready | medium |
-| **1379** | spec gap: prefix/postfix ++/-- on null/undefined/string operands — ToNumeric coercion (~40 fails) | 51 | ready | medium |
+| **1379** | spec gap: prefix/postfix ++/-- on null/undefined/string operands — ToNumeric coercion (~40 fails) | 51 | in-progress | medium |
 | **1380** | spec gap: equality (==, !=, ===, !==) — Symbol/BigInt coercion + ReferenceError propagation (~55 fails) | 51 | ready | medium |
 | **1381** | spec gap: String.prototype.{substring,slice,indexOf,search,charAt,charCodeAt,codePointAt,at,includes,startsWith,endsWith,trim,concat} edge cases (~128 fails) | 51 | ready | medium |
 
