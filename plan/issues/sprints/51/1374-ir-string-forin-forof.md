@@ -2,7 +2,7 @@
 id: 1374
 sprint: 51
 title: "IR: string for-of and for-in through IR (removes legacy fallback for string iteration)"
-status: ready
+status: in-progress
 created: 2026-05-08
 priority: medium
 feasibility: medium
