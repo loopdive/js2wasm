@@ -2742,14 +2742,14 @@ assert._isSameValue = isSameValue;
             const isObjWasm = _isWasmStruct(obj);
             const sDescs = isObjWasm ? _getSidecarDescs(obj) : null;
             for (const key of keys) {
-              const rawDesc = getField(descsObj, key);
+              const rawDesc = getField(descsObj, key as string);
               const desc = _toPropertyDescriptorValidate(rawDesc, getField);
               if (isObjWasm) {
-                const nKey = _normalizeDescKey(key);
-                const existingVal2 = _sidecarGet(obj, key);
+                const nKey = _normalizeDescKey(key as string);
+                const existingVal2 = _sidecarGet(obj, key as string);
                 const newFlags = _validatePropertyDescriptor(sDescs!, nKey, desc, existingVal2);
                 sDescs!.set(nKey, newFlags);
-                if (desc.value !== undefined) _sidecarSet(obj, key, desc.value);
+                if (desc.value !== undefined) _sidecarSet(obj, key as string, desc.value);
               } else {
                 Object.defineProperty(obj, key, desc);
               }
@@ -2768,9 +2768,9 @@ assert._isSameValue = isSameValue;
                 const keys = getKeys(descsObj);
                 const validated: { key: string; desc: PropertyDescriptor }[] = [];
                 for (const key of keys) {
-                  const rawDesc = getField(descsObj, key);
+                  const rawDesc = getField(descsObj, key as string);
                   const desc = _toPropertyDescriptorValidate(rawDesc, getField);
-                  validated.push({ key, desc });
+                  validated.push({ key: key as string, desc });
                 }
                 for (const { key, desc } of validated) {
                   const nKey = _normalizeDescKey(key);
@@ -2787,10 +2787,10 @@ assert._isSameValue = isSameValue;
               // Non-TypeError — apply via sidecar
               const keys = getKeys(descsObj);
               for (const key of keys) {
-                const rawDesc = getField(descsObj, key);
+                const rawDesc = getField(descsObj, key as string);
                 if (rawDesc && typeof rawDesc === "object") {
                   const val = getField(rawDesc, "value");
-                  if (val !== undefined) _sidecarSet(obj, key, val);
+                  if (val !== undefined) _sidecarSet(obj, key as string, val);
                 }
               }
             }
