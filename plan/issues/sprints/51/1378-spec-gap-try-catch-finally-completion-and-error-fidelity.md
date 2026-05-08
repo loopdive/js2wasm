@@ -2,7 +2,7 @@
 id: 1378
 sprint: 51
 title: "spec gap: try/catch/finally — error type fidelity, finally completion override, dstr-binding (~85 fails)"
-status: ready
+status: in-progress
 created: 2026-05-08
 priority: medium
 feasibility: medium
@@ -138,3 +138,48 @@ destructuring emitter on the bound name.
 
 +60 passes; cleaner foundation for #1347 (for-of IteratorClose) and async error
 handling.
+
+## Implementation Notes — sub-issue C only (2026-05-08)
+
+This PR addresses **only sub-issue C — catch destructuring iterator semantics**.
+The remaining sub-issues (finally completion override, error type fidelity)
+are tracked but not addressed here.
+
+### Root cause (catch destructure)
+
+`compileExternrefCatchDestructure` in `src/codegen/statements/exceptions.ts`
+emitted property access (`__extern_get(exn, idx)`) for `catch ([x, y, ...])`
+patterns. Per spec §13.3.3.6 IteratorBindingInitialization, array destructure
+must invoke `GetIterator(value)` which calls `value[Symbol.iterator]()` —
+property access silently misses `Symbol.iterator` and any throws from it.
+
+### Fix
+
+For `catch ([elements])`, emit `__array_from_iter(exn)` once, store the
+materialised array in a fresh local, and read elements from the materialised
+array via `__extern_get`. `__array_from_iter` (already used by parameter
+destructure) walks the iterator protocol and propagates any throws from
+`Symbol.iterator()` / `.next()` so spec-compliant tests like
+`statements/try/dstr/ary-init-iter-get-err.js` see the inner Test262Error.
+
+Empty-pattern `catch ([])` short-circuits with no materialisation per
+§13.3.3.6 (no IteratorBindingInitialization steps).
+
+## Test Results
+
+- `tests/issue-1378.test.ts` — 4/4 pass
+- `test/language/statements/try/dstr/ary-init-iter-get-err.js` — fail → pass
+- No regressions on `try-catch-throw`, `try-catch-finally-extended`,
+  `null-destructuring`, `global-index-shift-trycatch` test suites.
+
+## Out of scope (filed as follow-ups)
+
+- Finally completion override: `try { return 1 } finally { return 2 }` should
+  return 2. Requires `try_table`-level lowering changes in
+  `compileTryStatement` to track and conditionally override try-block
+  completion based on finally completion type.
+- Error type fidelity: `catch (e) { e instanceof Test262Error }` requires
+  prototype-chain preservation when constructing user-defined error classes.
+  Likely shares machinery with #1366 (subclass prototype chain).
+- `completion-values-fn-finally-normal.js` null_deref: needs separate
+  investigation of the `assert_throws` host shim.
