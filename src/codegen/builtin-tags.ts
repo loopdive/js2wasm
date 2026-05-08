@@ -134,10 +134,34 @@ export function getBuiltinParent(name: string): BuiltinTypeName | undefined {
  * is represented as externref (NOT a WasmGC struct), and the host returns a
  * real JS object with the right internal slots.
  *
- * Scope for #1366a. Array/Map/Set/Promise will follow in #1366b via a
- * generic `__construct_subclass` host import.
+ * Scope:
+ *   - #1366a: Error family (Error, TypeError, RangeError, …).
+ *   - #1366b: container builtins (Array, Map, Set, WeakMap, WeakSet, Promise,
+ *     RegExp, ArrayBuffer). These all route through the same single-arg
+ *     `__new_<Name>(arg) -> externref` host import; the runtime's
+ *     `extern_class new` resolver (`runtime.ts:1604`) constructs the real
+ *     built-in via `new globalThis[Name](...)` after stripping trailing nulls.
+ *
+ * Limitations (deferred to #1366c/d):
+ *   - `instanceof Sub` for non-Error subclasses: the host instance's
+ *     `[[Prototype]]` is the parent's, not Sub's, so `subInst instanceof Sub`
+ *     resolves via the static reasoning path (`expressions.ts:714`) rather
+ *     than runtime prototype-chain walking.
+ *   - `Symbol.species` is honoured by the host's spec-conforming method
+ *     impls automatically (since the instance IS a real Array/Map/etc.), but
+ *     methods that return "a new instance of the same kind" return the
+ *     parent type, not Sub.
+ *   - Default constructor `class Sub extends Array {}` does not forward
+ *     `new Sub(5)`'s `5` argument to `super(5)` (Sub has 0 declared params,
+ *     so callers truncate args to match). Explicit `constructor(x){super(x)}`
+ *     is the supported pattern.
+ *   - Multi-arg `super(a, b)` only passes the first arg today (the existing
+ *     #1366a `compileSuperCall` builtin branch is single-arg). DataView's
+ *     3-arg and RegExp's 2-arg forms thus don't fully work; deferred to a
+ *     follow-up that pre-scans super arities.
  */
 export const BUILTIN_PARENTS_HOST_CONSTRUCTIBLE: ReadonlySet<BuiltinTypeName> = new Set<BuiltinTypeName>([
+  // #1366a — Error family
   "Error",
   "TypeError",
   "RangeError",
@@ -146,12 +170,21 @@ export const BUILTIN_PARENTS_HOST_CONSTRUCTIBLE: ReadonlySet<BuiltinTypeName> = 
   "EvalError",
   "ReferenceError",
   "AggregateError",
+  // #1366b — container / wrapper builtins
+  "Array",
+  "Map",
+  "Set",
+  "WeakMap",
+  "WeakSet",
+  "Promise",
+  "RegExp",
+  "ArrayBuffer",
 ]);
 
 /**
  * Returns true if `name` is a built-in JS constructor that can act as a
- * parent for a host-constructible subclass (#1366a). The subclass instance
- * is externref-backed and `super(...)` lowers to `__new_<Name>(...)`.
+ * parent for a host-constructible subclass (#1366a/#1366b). The subclass
+ * instance is externref-backed and `super(...)` lowers to `__new_<Name>(...)`.
  */
 export function isHostConstructibleBuiltin(name: string): boolean {
   return isBuiltinTypeName(name) && BUILTIN_PARENTS_HOST_CONSTRUCTIBLE.has(name as BuiltinTypeName);
