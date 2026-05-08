@@ -60,6 +60,10 @@ const UNINTENDED: ReadonlySet<IrFallbackReason> = new Set([
   // unintended so future slices that retire these buckets (Phase E for
   // inheritance, accessors slice, etc.) are gated on a baseline drop.
   "class-method",
+  // #1372 — binding-pattern params with shapes wider than slice 8a
+  // (rest, defaults, nested patterns). Tracked as unintended so a
+  // follow-up slice retiring the wider patterns is gated on a baseline drop.
+  "destructuring-param-complex",
 ]);
 
 /** Reasons that are expected until their corresponding slices land. */
