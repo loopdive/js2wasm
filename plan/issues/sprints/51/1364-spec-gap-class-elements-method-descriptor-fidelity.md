@@ -2,7 +2,7 @@
 id: 1364
 sprint: 51
 title: "spec gap: class elements — method/field descriptor enumerable/configurable/writable (~700 fails)"
-status: in-progress
+status: ready
 created: 2026-05-08
 priority: high
 feasibility: medium
