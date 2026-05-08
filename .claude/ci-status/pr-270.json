@@ -1,0 +1,19 @@
+{
+  "pr": 270,
+  "conclusion": "success",
+  "head_branch": "issue-1379-unary-incdec-tonumeric",
+  "head_sha": "9a5c3b77b000d4b717e0b379be0253d249a09413",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25537668251",
+  "timestamp": "2026-05-08T05:15:46Z",
+  "pass": 26791,
+  "fail": 14106,
+  "compile_error": 844,
+  "snapshot_delta": 10,
+  "net_per_test": 50,
+  "regressions": 41,
+  "regressions_real": 3,
+  "regressions_wasm_change": 3,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 38,
+  "improvements": 53
+}
