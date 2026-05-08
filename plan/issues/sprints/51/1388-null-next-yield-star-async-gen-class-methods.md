@@ -90,3 +90,76 @@ class-method-specific code path.
 ## Estimated yield
 
 ~250–300 net (most of the 316 share the same class-method `yield*` path).
+
+## Findings (2026-05-08)
+
+The error message was misleading. The failure is not in `yield*` iterator
+construction — it's in **method extraction**. The failing pattern looks like:
+
+```js
+class C { static async *gen() { ... } }
+const gen = C.gen;        // ← detached
+const iter = gen();       // ← gen was null externref → call returned null
+iter.next(false);         // ← null.next throws
+```
+
+`compilePropertyAccess` returned `ref.null.extern` for `C.staticMethod` and
+fell through to the generic externref path for `C.prototype.method`. With
+`gen` bound to a null externref, calling it through the closure-callable
+dispatch (`calls.ts:5380`) cast null → `ref null structType`, which the
+guarded ref.cast happily accepted as the closure ref. The trampoline then
+saw a null closure and silently returned null. So `gen()` produced null
+without throwing, and the failure showed up at the *next* line as
+`null.next`.
+
+The same `yield*` machinery already works for the standalone-function
+async-generator path (only ~10 standalone fails) — the runtime helper
+`__gen_yield_star` is fine. It's the method-extraction step that broke.
+
+## Fix (PR #TBD)
+
+Three changes in `src/codegen/property-access.ts`:
+
+1. `ClassName.staticMethod` (line ~1185): replaced `ref.null.extern`
+   placeholder with `emitFuncRefAsClosure(ctx, fctx, fullName, funcIdx)`
+   followed by `extern.convert_any` so the closure-callable dispatch can
+   ref.cast back and `call_ref` through the trampoline.
+
+2. `ClassName.prototype.method` (new handler around line ~1226): added a
+   parallel branch for instance methods accessed via prototype, using
+   `emitObjectMethodAsClosure` (which constructs a trampoline that drops
+   the closure-self and supplies a sentinel for the method's `this`
+   parameter — same shape as the existing object-literal method path).
+
+3. `ClassName['method']` element access (line ~2519): mirrored the same
+   fix on the element-access path for consistency.
+
+Class-instance methods accessed bare (without prototype) still return
+`ref.null.extern` — that pattern is unusual and not exercised by the
+failing tests.
+
+## Test Results (sweep over the 316 null-next files)
+
+| metric | before fix | after fix |
+|--------|-----------:|----------:|
+| pass   | 0          | 232       |
+| fail   | 316        | 84        |
+
+**Net +232** — exceeds the ≥200 acceptance criterion.
+
+The remaining 84 fails are different patterns (e.g. calling
+`AsyncGeneratorFunction(...)` or `GeneratorFunction(...)` directly,
+`Iterator.prototype.*` exhaustion-helpers) that share only the surface
+error string but not the root cause.
+
+Acceptance-criterion tests:
+
+- ✅ `language/expressions/class/async-gen-method-static/yield-spread-arr-single.js`
+- ✅ `language/expressions/class/async-gen-method-static/yield-star-getiter-async-returns-number-throw.js`
+- ✅ Net improvement ≥ 200 (actual: +232)
+- ✅ No regression in standalone async generator tests (10 pre-existing
+  equivalence failures match `main` exactly — unrelated to this PR)
+
+Regression test added: `tests/equivalence/issue-1388.test.ts` (7 cases
+covering static / class-expression / prototype / arg-passing / async-
+generator-iteration / typeof-function paths).
