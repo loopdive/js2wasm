@@ -321,20 +321,21 @@ export function compileNestedFunctionDeclaration(
     if (savedFunc) ctx.funcStack.push(savedFunc);
     ctx.currentFunc = liftedFctx;
 
-    // (#1312) Pre-register funcMap before body compile so self-references
-    // inside the body (e.g. `function f() { return f; }` returning itself)
-    // resolve to the correct funcRefIdx via identifiers.ts:478. Same pattern
-    // as the with-captures branch below.
-    const reservedFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
-    const reservedEntry = {
-      name: funcName,
-      typeIdx: funcTypeIdx,
-      locals: [] as Array<{ name: string; type: ValType }>,
-      body: [] as Instr[],
-      exported: false,
-    };
-    ctx.mod.functions.push(reservedEntry);
-    ctx.funcMap.set(funcName, reservedFuncIdx);
+    // (#1312) Pre-registration is intentionally NOT applied in this
+    // no-captures branch. The first PR-#257 attempt pre-registered
+    // here too, which regressed 38 `built-ins/Function/15.3.5.4_2-*gs.js`
+    // tests (Function.caller / Function.arguments). Those tests rely
+    // on a top-level helper like `function gNonStrict() { return
+    // gNonStrict.caller; }` whose pre-#1312 codegen left the self-
+    // reference as `ref.null.extern` (graceful fallback). The fallback
+    // accidentally satisfied `assert.throws(TypeError, ...)` because
+    // `null.caller` throws TypeError. Pre-registering broke the
+    // accidental TypeError path. Keeping the late funcMap registration
+    // here preserves those passes until #1383 implements a proper
+    // strict-mode `Function.caller`/`arguments` TypeError. The actual
+    // recursive-self-reference cases #1312 targets (e.g. middleware
+    // `next` capturing outer `i`) all have captures and are handled
+    // in the has-captures branch below.
 
     // Emit default-value initialization for parameters with initializers
     emitDefaultParamInit(ctx, liftedFctx, stmt, paramTypes, 0);
@@ -423,9 +424,19 @@ export function compileNestedFunctionDeclaration(
     if (savedFunc) ctx.parentBodiesStack.pop();
     ctx.currentFunc = savedFunc;
 
-    // (#1312) Fill in the body/locals of the slot we reserved above.
-    reservedEntry.locals = liftedFctx.locals;
-    reservedEntry.body = liftedFctx.body;
+    // (#1312) No-captures branch keeps late funcMap registration (the
+    // pre-#1312 behaviour). Pre-registering here regressed 38
+    // Function.caller/arguments tests; see comment at the start of this
+    // branch for the full rationale.
+    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.mod.functions.push({
+      name: funcName,
+      typeIdx: funcTypeIdx,
+      locals: liftedFctx.locals,
+      body: liftedFctx.body,
+      exported: false,
+    });
+    ctx.funcMap.set(funcName, funcIdx);
   } else {
     // Has captures — lift with captures as leading parameters, use direct call
     // For mutable captures, use ref cell types so writes propagate back
