@@ -1,0 +1,22 @@
+{
+  "pr": 323,
+  "conclusion": "success",
+  "head_branch": "issue-1326-async-microtask",
+  "head_sha": "e8d71f3c6e3c856f02a3820f6a37979364f7923e",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25578804165",
+  "timestamp": "2026-05-08T21:29:32Z",
+  "pass": 27716,
+  "fail": 14194,
+  "compile_error": 1166,
+  "snapshot_delta": -6,
+  "net_per_test": 40,
+  "regressions": 45,
+  "regressions_real": 8,
+  "regressions_wasm_change": 8,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 37,
+  "improvements": 48,
+  "baseline_sha": "e8d71f3c6e3c856f02a3820f6a37979364f7923e",
+  "baseline_staleness_commits": 6,
+  "baseline_stale": false
+}
