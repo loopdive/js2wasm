@@ -257,6 +257,9 @@ if (hasDashboardBundle) {
 // issues-graph.html + graph-data.json are in public/ → included via Vite build
 copyDirectoryIfExists(join(ROOT, "benchmarks", "suites"), join(PAGES_DIST, "benchmarks", "suites"));
 
+// spec-compliance audit data — fetched by benchmarks/spec-compliance.html at /spec-compliance/summary.json
+copyDirectoryIfExists(join(ROOT, "spec-compliance"), join(PAGES_DIST, "spec-compliance"));
+
 // Add the benchmark data files fetched by the public report pages. Public pages
 // should read from the already-curated public summaries, not from the full
 // internal benchmark results directory.

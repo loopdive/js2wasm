@@ -240,7 +240,7 @@ class T262Donut extends HTMLElement {
         :host {
           display: block;
           max-width: 100%;
-          overflow-x: clip;
+          overflow: clip;
           --_pass: var(--t262-pass, #3fb950);
           --_fail: var(--t262-fail, #f85149);
           --_ce: var(--t262-ce, #d29922);
@@ -254,7 +254,8 @@ class T262Donut extends HTMLElement {
         .gauge-orbit {
           position: relative;
           width: min(100%, 380px);
-          height: 320px;
+          height: 360px;
+          padding-top: 20px;
           margin: 0 auto;
           overflow: visible;
         }

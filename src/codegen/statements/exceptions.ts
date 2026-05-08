@@ -113,7 +113,18 @@ function compileExternrefCatchDestructure(
       fctx.body.push({ op: "local.set", index: localIdx });
     }
   } else if (ts.isArrayBindingPattern(pattern)) {
-    // Array destructuring: use __extern_get(obj, box(index))
+    // Array destructuring follows the iterator protocol per
+    // §13.3.3.6 IteratorBindingInitialization: GetIterator(value) is called
+    // first, and any throw from `value[Symbol.iterator]()` (or the iterator's
+    // .next()) propagates out of the destructuring. Property-access on the
+    // raw value would silently miss those throws and bind `undefined` instead
+    // (#1378 — `catch ([x]) {}` on a thrown iterable that throws from
+    // `Symbol.iterator`).
+    //
+    // Empty pattern `[]` is a no-op per spec — skip materialization entirely
+    // (matches the param-destructure short-circuit at #1158/#1159).
+    if (pattern.elements.length === 0) return;
+
     addUnionImports(ctx);
     let getIdx = ensureLateImport(
       ctx,
@@ -121,8 +132,24 @@ function compileExternrefCatchDestructure(
       [{ kind: "externref" }, { kind: "externref" }],
       [{ kind: "externref" }],
     );
+    let fromIterIdx = ensureLateImport(ctx, "__array_from_iter", [{ kind: "externref" }], [{ kind: "externref" }]);
     flushLateImportShifts(ctx, fctx);
     const boxIdx = ctx.funcMap.get("__box_number");
+
+    // Materialize the thrown value into an iterated array via
+    // __array_from_iter — this invokes the iterator protocol and propagates
+    // any throws from Symbol.iterator() / .next().
+    const matLocal = allocLocal(fctx, `__catch_iter_${fctx.locals.length}`, { kind: "externref" });
+    fromIterIdx = ctx.funcMap.get("__array_from_iter") ?? fromIterIdx;
+    if (fromIterIdx !== undefined) {
+      fctx.body.push({ op: "local.get", index: exnLocalIdx });
+      fctx.body.push({ op: "call", funcIdx: fromIterIdx });
+      fctx.body.push({ op: "local.set", index: matLocal });
+    } else {
+      // Fallback: use the raw exception directly (no iterator protocol).
+      fctx.body.push({ op: "local.get", index: exnLocalIdx });
+      fctx.body.push({ op: "local.set", index: matLocal });
+    }
 
     let idx = 0;
     for (const element of pattern.elements) {
@@ -148,8 +175,11 @@ function compileExternrefCatchDestructure(
 
       getIdx = ctx.funcMap.get("__extern_get")!;
 
-      // __extern_get(exnLocal, box(index)) -> externref
-      fctx.body.push({ op: "local.get", index: exnLocalIdx });
+      // __extern_get(matLocal, box(index)) -> externref. The matLocal holds
+      // the iterator-materialized array, so indexed access reads spec-correct
+      // values (with no extra side effects beyond GetIterator's already-run
+      // protocol calls).
+      fctx.body.push({ op: "local.get", index: matLocal });
       fctx.body.push({ op: "f64.const", value: idx });
       if (boxIdx !== undefined) {
         fctx.body.push({ op: "call", funcIdx: boxIdx });

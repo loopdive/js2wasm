@@ -64,3 +64,47 @@ Two parallel tracks:
 | #1382 | Wasm closures not JS-callable from host imports | high | ready |
 
 <!-- GENERATED_ISSUE_TABLES_END -->
+
+<!-- GENERATED_ISSUE_TABLES_START -->
+## Issue Tables
+
+_Generated from issue files. Update issue `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
+
+### Ready
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1358 | spec gap: Array.prototype.{filter,map,every,some,forEach,reduce} on array-like (.call) receivers — ~452 assertion_fail | high | ready |
+| #1359 | spec gap: Array.prototype.{splice,slice,concat,toSpliced,toReversed} — @@species, sparse handling, IsConcatSpreadable (~150 fails) | high | ready |
+| #1360 | spec gap: Array.prototype.{indexOf,lastIndexOf,includes} — SameValueZero, sparse, fromIndex coercion (~210 fails) | high | ready |
+| #1361 | spec gap: Array.prototype.sort — comparator validation, stability, ToString fallback (~46 fails) | medium | ready |
+| #1362 | spec gap: Object.defineProperties — apply full descriptor map (332 fails) | high | ready |
+| #1364 | spec gap: class elements — method/field descriptor enumerable/configurable/writable (~700 fails) | high | ready |
+| #1365 | spec gap: class private fields, methods, accessors and brand checks (~97 fails in elements/private-*) | medium | ready |
+| #1366 | spec gap: class subclass + subclass-builtins prototype chain (~154 fails) | medium | ready |
+| #1367 | spec gap: Iterator.prototype helpers — get-next-once, non-constructible, return-on-throw (~244 fails) | high | ready |
+| #1368 | spec gap: Promise.{all,allSettled,any,race} — resolver-element semantics, ctor type-check (~109 fails) | medium | ready |
+| #1370 | IR: claim class methods and constructors (largest legacy bypass) | high | ready |
+| #1371 | IR: expand external-call whitelist to stop rejecting host imports and Math.* | high | ready |
+| #1372 | IR: support destructuring params (removes param-shape-rejected bypass) | high | ready |
+| #1373 | IR: claim async functions (async/await through IR path) | medium | ready |
+| #1374 | IR: string for-of and for-in through IR (removes legacy fallback for string iteration) | medium | ready |
+| #1375 | IR: full optional-chain support (?. and ?.[]) without resolver fallback | medium | ready |
+| #1377 | spec gap: Array.prototype.{push,pop,shift,unshift,fill,copyWithin,reverse} — mutation on array-like + length writes (~80 fails) | medium | ready |
+| #1380 | spec gap: equality (==, !=, ===, !==) — Symbol/BigInt coercion + ReferenceError propagation (~55 fails) | medium | ready |
+| #1381 | spec gap: String.prototype.{substring,slice,indexOf,search,charAt,charCodeAt,codePointAt,at,includes,startsWith,endsWith,trim,concat} edge cases (~128 fails) | medium | ready |
+| #1384 | CE: static async method with PrivateName — 'not enough arguments on the stack' (249 tests) | high | ready |
+| #1385 | HANG: Temporal/Duration/from/argument-non-string.js — infinite runtime loop | medium | ready |
+| #1386 | HANG: Promise/race/invoke-then.js — compilation or runtime infinite loop | medium | ready |
+
+### In Progress
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1363 | spec gap: class dstr — 'Cannot destructure null/undefined' in method default-binding (~700 runtime_errors) | high | in-progress |
+| #1369 | spec gap: String.prototype.{split,replace,replaceAll,match,matchAll} — limit, @@split/@@replace/@@match protocol (~150 fails) | medium | in-progress |
+| #1376 | IR: fallback telemetry gate — CI fails when unintended legacy bypasses exceed threshold | high | in-progress |
+| #1378 | spec gap: try/catch/finally — error type fidelity, finally completion override, dstr-binding (~85 fails) | medium | in-progress |
+| #1379 | spec gap: prefix/postfix ++/-- on null/undefined/string operands — ToNumeric coercion (~40 fails) | medium | in-progress |
+
+<!-- GENERATED_ISSUE_TABLES_END -->

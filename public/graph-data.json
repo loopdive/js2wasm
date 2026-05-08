@@ -18292,8 +18292,8 @@
       "id": "1324",
       "title": "JSON.stringify and JSON.parse: implement in pure Wasm, eliminate JS host dependency",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "50",
       "depends_on": [],
       "files": [],
@@ -18305,7 +18305,7 @@
       "title": "instanceof against built-in types: compile-time type-tag registry eliminates JS host for common cases",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "50",
       "depends_on": [],
       "files": [],
@@ -18437,7 +18437,7 @@
       "title": "spec gap: Object.assign drops getters / Symbol keys (27 of 38 test262 fails)",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "50",
       "depends_on": [],
       "files": [],
@@ -18638,15 +18638,15 @@
     },
     {
       "id": "1353",
-      "title": "spec backlog: §29 Memory Model implementation (multi-thread Wasm)",
-      "priority": "low",
-      "status": "backlog",
-      "raw_status": "backlog",
-      "sprint": "backlog",
+      "title": "JSON.stringify (objects/arrays) + JSON.parse: architect spec for Wasm shape-walking and recursive-descent parser",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
       "depends_on": [],
       "files": [],
-      "goal": "spec-completeness",
-      "cluster": "spec-completeness"
+      "goal": "standalone-mode",
+      "cluster": "standalone-mode"
     },
     {
       "id": "1354",
@@ -18761,7 +18761,7 @@
       "title": "spec gap: class dstr — 'Cannot destructure null/undefined' in method default-binding (~700 runtime_errors)",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -18833,7 +18833,7 @@
       "title": "spec gap: String.prototype.{split,replace,replaceAll,match,matchAll} — limit, @@split/@@replace/@@match protocol (~150 fails)",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -18917,7 +18917,7 @@
       "title": "IR: fallback telemetry gate — CI fails when unintended legacy bypasses exceed threshold",
       "priority": "high",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -18941,7 +18941,7 @@
       "title": "spec gap: try/catch/finally — error type fidelity, finally completion override, dstr-binding (~85 fails)",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -18953,7 +18953,7 @@
       "title": "spec gap: prefix/postfix ++/-- on null/undefined/string operands — ToNumeric coercion (~40 fails)",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -18975,6 +18975,42 @@
     {
       "id": "1381",
       "title": "spec gap: String.prototype.{substring,slice,indexOf,search,charAt,charCodeAt,codePointAt,at,includes,startsWith,endsWith,trim,concat} edge cases (~128 fails)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1384",
+      "title": "CE: static async method with PrivateName — 'not enough arguments on the stack' (249 tests)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1385",
+      "title": "HANG: Temporal/Duration/from/argument-non-string.js — infinite runtime loop",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1386",
+      "title": "HANG: Promise/race/invoke-then.js — compilation or runtime infinite loop",
       "priority": "medium",
       "status": "ready",
       "raw_status": "ready",
@@ -21265,7 +21301,6 @@
         "1350",
         "1351",
         "1352",
-        "1353",
         "1354",
         "1355",
         "1356",
@@ -21286,7 +21321,10 @@
         "1378",
         "1379",
         "1380",
-        "1381"
+        "1381",
+        "1384",
+        "1385",
+        "1386"
       ]
     },
     {
@@ -21349,7 +21387,8 @@
         "1324",
         "1325",
         "1326",
-        "1335"
+        "1335",
+        "1353"
       ],
       "track": "parallel — does not block conformance goals."
     },
@@ -26188,10 +26227,6 @@
     },
     {
       "goal": "spec-completeness",
-      "issue": "1353"
-    },
-    {
-      "goal": "spec-completeness",
       "issue": "1354"
     },
     {
@@ -26273,6 +26308,18 @@
     {
       "goal": "spec-completeness",
       "issue": "1381"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1384"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1385"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1386"
     },
     {
       "goal": "standalone-mode",
@@ -26477,6 +26524,10 @@
     {
       "goal": "standalone-mode",
       "issue": "1335"
+    },
+    {
+      "goal": "standalone-mode",
+      "issue": "1353"
     },
     {
       "goal": "symbol-protocol",
@@ -30710,10 +30761,6 @@
     },
     {
       "goal": "async-model",
-      "issue": "1353"
-    },
-    {
-      "goal": "async-model",
       "issue": "1354"
     },
     {
@@ -30795,6 +30842,18 @@
     {
       "goal": "async-model",
       "issue": "1381"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1384"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1385"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1386"
     },
     {
       "goal": "symbol-protocol",
@@ -31294,10 +31353,6 @@
     },
     {
       "goal": "symbol-protocol",
-      "issue": "1353"
-    },
-    {
-      "goal": "symbol-protocol",
       "issue": "1354"
     },
     {
@@ -31379,6 +31434,18 @@
     {
       "goal": "symbol-protocol",
       "issue": "1381"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1384"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1385"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1386"
     },
     {
       "goal": "builtin-methods",
@@ -31878,10 +31945,6 @@
     },
     {
       "goal": "builtin-methods",
-      "issue": "1353"
-    },
-    {
-      "goal": "builtin-methods",
       "issue": "1354"
     },
     {
@@ -31963,6 +32026,18 @@
     {
       "goal": "builtin-methods",
       "issue": "1381"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1384"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1385"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1386"
     },
     {
       "goal": "property-model",
@@ -32462,10 +32537,6 @@
     },
     {
       "goal": "property-model",
-      "issue": "1353"
-    },
-    {
-      "goal": "property-model",
       "issue": "1354"
     },
     {
@@ -32547,6 +32618,18 @@
     {
       "goal": "property-model",
       "issue": "1381"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1384"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1385"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1386"
     },
     {
       "goal": "iterator-protocol",
@@ -32753,6 +32836,10 @@
       "issue": "1335"
     },
     {
+      "goal": "iterator-protocol",
+      "issue": "1353"
+    },
+    {
       "goal": "generator-model",
       "issue": "34"
     },
@@ -32955,6 +33042,10 @@
     {
       "goal": "generator-model",
       "issue": "1335"
+    },
+    {
+      "goal": "generator-model",
+      "issue": "1353"
     },
     {
       "goal": "iterator-protocol",

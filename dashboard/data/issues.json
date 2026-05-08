@@ -41,16 +41,6 @@
       "sprint": "backlog"
     },
     {
-      "id": "1353",
-      "title": "spec backlog: §29 Memory Model implementation (multi-thread Wasm)",
-      "priority": "low",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "backlog",
-      "sprint": "backlog"
-    },
-    {
       "id": "1266",
       "title": "compiler flag --no-eval-scope-write: TypeError instead of shadow scope deopt",
       "priority": "medium",
@@ -223,6 +213,36 @@
   ],
   "ready": [
     {
+      "id": "1386",
+      "title": "HANG: Promise/race/invoke-then.js — compilation or runtime infinite loop",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "51"
+    },
+    {
+      "id": "1385",
+      "title": "HANG: Temporal/Duration/from/argument-non-string.js — infinite runtime loop",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "51"
+    },
+    {
+      "id": "1384",
+      "title": "CE: static async method with PrivateName — 'not enough arguments on the stack' (249 tests)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "51"
+    },
+    {
       "id": "1381",
       "title": "spec gap: String.prototype.{substring,slice,indexOf,search,charAt,charCodeAt,codePointAt,at,includes,startsWith,endsWith,trim,concat} edge cases (~128 fails)",
       "priority": "medium",
@@ -243,42 +263,12 @@
       "sprint": "51"
     },
     {
-      "id": "1379",
-      "title": "spec gap: prefix/postfix ++/-- on null/undefined/string operands — ToNumeric coercion (~40 fails)",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "51"
-    },
-    {
-      "id": "1378",
-      "title": "spec gap: try/catch/finally — error type fidelity, finally completion override, dstr-binding (~85 fails)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "51"
-    },
-    {
       "id": "1377",
       "title": "spec gap: Array.prototype.{push,pop,shift,unshift,fill,copyWithin,reverse} — mutation on array-like + length writes (~80 fails)",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "51"
-    },
-    {
-      "id": "1376",
-      "title": "IR: fallback telemetry gate — CI fails when unintended legacy bypasses exceed threshold",
-      "priority": "high",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "ir-full-coverage",
       "status": "ready",
       "sprint": "51"
     },
@@ -343,16 +333,6 @@
       "sprint": "51"
     },
     {
-      "id": "1369",
-      "title": "spec gap: String.prototype.{split,replace,replaceAll,match,matchAll} — limit, @@split/@@replace/@@match protocol (~150 fails)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "51"
-    },
-    {
       "id": "1368",
       "title": "spec gap: Promise.{all,allSettled,any,race} — resolver-element semantics, ctor type-check (~109 fails)",
       "priority": "medium",
@@ -395,16 +375,6 @@
     {
       "id": "1364",
       "title": "spec gap: class elements — method/field descriptor enumerable/configurable/writable (~700 fails)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "51"
-    },
-    {
-      "id": "1363",
-      "title": "spec gap: class dstr — 'Cannot destructure null/undefined' in method default-binding (~700 runtime_errors)",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
@@ -461,6 +431,16 @@
       "goal": "spec-completeness",
       "status": "ready",
       "sprint": "51"
+    },
+    {
+      "id": "1353",
+      "title": "JSON.stringify (objects/arrays) + JSON.parse: architect spec for Wasm shape-walking and recursive-descent parser",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "standalone-mode",
+      "status": "ready",
+      "sprint": "50"
     },
     {
       "id": "1352",
@@ -623,16 +603,6 @@
       "sprint": "50"
     },
     {
-      "id": "1336",
-      "title": "spec gap: Object.assign drops getters / Symbol keys (27 of 38 test262 fails)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "50"
-    },
-    {
       "id": "1335",
       "title": "Number.prototype formatting in pure Wasm: integer toString(radix), then Ryu for floats (standalone)",
       "priority": "medium",
@@ -717,26 +687,6 @@
       "title": "Async standalone: implement microtask queue + CPS scheduler in Wasm for Promise/async without JS host",
       "priority": "low",
       "feasibility": "hard",
-      "depends_on": [],
-      "goal": "standalone-mode",
-      "status": "ready",
-      "sprint": "50"
-    },
-    {
-      "id": "1325",
-      "title": "instanceof against built-in types: compile-time type-tag registry eliminates JS host for common cases",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "standalone-mode",
-      "status": "ready",
-      "sprint": "50"
-    },
-    {
-      "id": "1324",
-      "title": "JSON.stringify and JSON.parse: implement in pure Wasm, eliminate JS host dependency",
-      "priority": "medium",
-      "feasibility": "medium",
       "depends_on": [],
       "goal": "standalone-mode",
       "status": "ready",
@@ -2048,6 +1998,76 @@
   ],
   "inprogress": [
     {
+      "id": "1379",
+      "title": "spec gap: prefix/postfix ++/-- on null/undefined/string operands — ToNumeric coercion (~40 fails)",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "in-progress",
+      "sprint": "51"
+    },
+    {
+      "id": "1378",
+      "title": "spec gap: try/catch/finally — error type fidelity, finally completion override, dstr-binding (~85 fails)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "in-progress",
+      "sprint": "51"
+    },
+    {
+      "id": "1376",
+      "title": "IR: fallback telemetry gate — CI fails when unintended legacy bypasses exceed threshold",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "ir-full-coverage",
+      "status": "in-progress",
+      "sprint": "51"
+    },
+    {
+      "id": "1369",
+      "title": "spec gap: String.prototype.{split,replace,replaceAll,match,matchAll} — limit, @@split/@@replace/@@match protocol (~150 fails)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "in-progress",
+      "sprint": "51"
+    },
+    {
+      "id": "1363",
+      "title": "spec gap: class dstr — 'Cannot destructure null/undefined' in method default-binding (~700 runtime_errors)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "in-progress",
+      "sprint": "51"
+    },
+    {
+      "id": "1336",
+      "title": "spec gap: Object.assign drops getters / Symbol keys (27 of 38 test262 fails)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "in-progress",
+      "sprint": "50"
+    },
+    {
+      "id": "1325",
+      "title": "instanceof against built-in types: compile-time type-tag registry eliminates JS host for common cases",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "standalone-mode",
+      "status": "in-progress",
+      "sprint": "50"
+    },
+    {
       "id": "1322",
       "title": "Math.random() has no standalone fallback — requires JS host import in WASI/standalone mode",
       "priority": "low",
@@ -2097,6 +2117,16 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "npm-library-support",
+      "status": "done",
+      "sprint": "50"
+    },
+    {
+      "id": "1324",
+      "title": "JSON.stringify and JSON.parse: implement in pure Wasm, eliminate JS host dependency",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "standalone-mode",
       "status": "done",
       "sprint": "50"
     },

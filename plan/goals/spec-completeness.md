@@ -127,7 +127,7 @@ pass rate goes from "good" to "excellent."
 | **1331** | RegExp host-mode: Symbol.split protocol spec compliance (123 fails) | 50 | ready | medium |
 | **1332** | RegExp host-mode: prototype method edge cases (exec, test, flag accessors, RegExpStringIterator) | 50 | ready | low |
 | **1333** | RegExp host-mode: Pre-ES6 (S15.10) tests + annexB legacy accessors | 50 | ready | low |
-| **1336** | spec gap: Object.assign drops getters / Symbol keys (27 of 38 test262 fails) | 50 | ready | medium |
+| **1336** | spec gap: Object.assign drops getters / Symbol keys (27 of 38 test262 fails) | 50 | in-progress | medium |
 | **1337** | spec gap: Function.prototype.bind/toString + Function/internals (175 + 7 test262 fails) | 50 | ready | medium |
 | **1338** | spec gap: Array.from / Array.of constructor semantics (39 test262 fails, wasm_compile dominant) | 50 | ready | medium |
 | **1339** | spec gap: AggregateError + SuppressedError errors-iterable + cause coercion (37 test262 fails) | 50 | ready | medium |
@@ -144,7 +144,6 @@ pass rate goes from "good" to "excellent."
 | **1350** | spec gap: ArrayBuffer resizable + TypedArray detached-buffer guards (100 + 39 test262 fails) | 50 | ready | medium |
 | **1351** | spec gap: ArrayBuffer resizable + TypedArray detached-buffer guards (100 + 39 test262 fails) | 50 | ready | medium |
 | **1352** | spec gap: Set methods (union/intersection/etc.) accept any set-like argument (101 test262 fails) | 50 | ready | medium |
-| **1353** | spec backlog: §29 Memory Model implementation (multi-thread Wasm) | backlog | backlog | low |
 | **1354** | spec backlog: SharedArrayBuffer + Atomics (full implementation, requires multi-thread Wasm) | backlog | backlog | low |
 | **1355** | spec backlog: Proxy implementation beyond JS-host fallback (235 test262 fails) | backlog | backlog | low |
 | **1356** | spec backlog: ShadowRealm implementation (61 test262 fails, requires per-realm parser) | backlog | backlog | low |
@@ -154,18 +153,21 @@ pass rate goes from "good" to "excellent."
 | **1360** | spec gap: Array.prototype.{indexOf,lastIndexOf,includes} — SameValueZero, sparse, fromIndex coercion (~210 fails) | 51 | ready | high |
 | **1361** | spec gap: Array.prototype.sort — comparator validation, stability, ToString fallback (~46 fails) | 51 | ready | medium |
 | **1362** | spec gap: Object.defineProperties — apply full descriptor map (332 fails) | 51 | ready | high |
-| **1363** | spec gap: class dstr — 'Cannot destructure null/undefined' in method default-binding (~700 runtime_errors) | 51 | ready | high |
+| **1363** | spec gap: class dstr — 'Cannot destructure null/undefined' in method default-binding (~700 runtime_errors) | 51 | in-progress | high |
 | **1364** | spec gap: class elements — method/field descriptor enumerable/configurable/writable (~700 fails) | 51 | ready | high |
 | **1365** | spec gap: class private fields, methods, accessors and brand checks (~97 fails in elements/private-*) | 51 | ready | medium |
 | **1366** | spec gap: class subclass + subclass-builtins prototype chain (~154 fails) | 51 | ready | medium |
 | **1367** | spec gap: Iterator.prototype helpers — get-next-once, non-constructible, return-on-throw (~244 fails) | 51 | ready | high |
 | **1368** | spec gap: Promise.{all,allSettled,any,race} — resolver-element semantics, ctor type-check (~109 fails) | 51 | ready | medium |
-| **1369** | spec gap: String.prototype.{split,replace,replaceAll,match,matchAll} — limit, @@split/@@replace/@@match protocol (~150 fails) | 51 | ready | medium |
+| **1369** | spec gap: String.prototype.{split,replace,replaceAll,match,matchAll} — limit, @@split/@@replace/@@match protocol (~150 fails) | 51 | in-progress | medium |
 | **1377** | spec gap: Array.prototype.{push,pop,shift,unshift,fill,copyWithin,reverse} — mutation on array-like + length writes (~80 fails) | 51 | ready | medium |
-| **1378** | spec gap: try/catch/finally — error type fidelity, finally completion override, dstr-binding (~85 fails) | 51 | ready | medium |
-| **1379** | spec gap: prefix/postfix ++/-- on null/undefined/string operands — ToNumeric coercion (~40 fails) | 51 | ready | medium |
+| **1378** | spec gap: try/catch/finally — error type fidelity, finally completion override, dstr-binding (~85 fails) | 51 | in-progress | medium |
+| **1379** | spec gap: prefix/postfix ++/-- on null/undefined/string operands — ToNumeric coercion (~40 fails) | 51 | in-progress | medium |
 | **1380** | spec gap: equality (==, !=, ===, !==) — Symbol/BigInt coercion + ReferenceError propagation (~55 fails) | 51 | ready | medium |
 | **1381** | spec gap: String.prototype.{substring,slice,indexOf,search,charAt,charCodeAt,codePointAt,at,includes,startsWith,endsWith,trim,concat} edge cases (~128 fails) | 51 | ready | medium |
+| **1384** | CE: static async method with PrivateName — 'not enough arguments on the stack' (249 tests) | 51 | ready | high |
+| **1385** | HANG: Temporal/Duration/from/argument-non-string.js — infinite runtime loop | 51 | ready | medium |
+| **1386** | HANG: Promise/race/invoke-then.js — compilation or runtime infinite loop | 51 | ready | medium |
 
 <!-- AUTOGENERATED:GOAL-ISSUES-END -->
 

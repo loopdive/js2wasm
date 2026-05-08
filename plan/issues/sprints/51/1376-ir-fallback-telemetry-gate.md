@@ -2,7 +2,7 @@
 id: 1376
 sprint: 51
 title: "IR: fallback telemetry gate — CI fails when unintended legacy bypasses exceed threshold"
-status: ready
+status: in-progress
 created: 2026-05-08
 priority: high
 feasibility: easy
