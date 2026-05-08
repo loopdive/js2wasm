@@ -2623,17 +2623,33 @@ assert._isSameValue = isSameValue;
           if (obj == null || (typeof obj !== "object" && typeof obj !== "function")) {
             throw new TypeError("Object.defineProperties called on non-object");
           }
-          if (descsObj == null) return obj;
-          // Helper to get keys from plain or opaque objects
-          const getKeys = (o: any): string[] => {
+          // #1362 — §20.1.2.3 step 2: `props = ToObject(Properties)` throws
+          // TypeError on null/undefined. Previously the runtime silently
+          // returned obj for null/undefined props, masking
+          // `Object.defineProperties(o, undefined)` test262 negative tests.
+          if (descsObj == null) {
+            throw new TypeError("Object.defineProperties: Properties argument cannot be null or undefined");
+          }
+          // Helper to get keys from plain or opaque objects.
+          // #1362 — include Symbol keys per §20.1.2.3 step 3 (uses
+          // [[OwnPropertyKeys]] which spans both string and Symbol keys);
+          // previously only string keys were enumerated, dropping any
+          // Symbol-keyed descriptor entries silently.
+          const getKeys = (o: any): (string | symbol)[] => {
             if (_isWasmStruct(o)) {
               const exps = callbackState?.getExports();
-              const fieldNames = _getStructFieldNames(o, exps) ?? [];
+              const fieldNames: (string | symbol)[] = _getStructFieldNames(o, exps) ?? [];
               const sc = _wasmStructProps.get(o);
-              if (sc) for (const k of Object.keys(sc)) if (!fieldNames.includes(k)) fieldNames.push(k);
+              if (sc) {
+                for (const k of Object.keys(sc)) if (!fieldNames.includes(k)) fieldNames.push(k);
+                for (const k of Object.getOwnPropertySymbols(sc)) fieldNames.push(k);
+              }
+              const accMap = _wasmStructAccessors.get(o);
+              if (accMap) for (const k of accMap.keys()) if (!fieldNames.includes(k)) fieldNames.push(k);
               return fieldNames;
             }
-            return Object.keys(o);
+            // Reflect.ownKeys spans string + symbol keys per spec.
+            return Reflect.ownKeys(o);
           };
           // Helper to get a field value from plain or opaque object
           const getField = (o: any, field: string): any => {
