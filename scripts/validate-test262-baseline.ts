@@ -175,6 +175,18 @@ async function main(): Promise<void> {
     for (const [obj, key, desc] of _savedGlobals) {
       if (desc) Object.defineProperty(obj, key, desc);
     }
+    // Remove any numeric-index getter/accessor properties that a test may have
+    // installed on Array.prototype in-process (e.g. Object.defineProperty(
+    // Array.prototype, "1", {get: fn})). These survive test isolation and cause
+    // "Cannot set property N of [object Array] which has only a getter" on the
+    // next array index-write inside the validator itself.
+    for (const key of Object.getOwnPropertyNames(Array.prototype)) {
+      if (/^\d+$/.test(key)) {
+        try {
+          delete (Array.prototype as Record<string, unknown>)[key];
+        } catch {}
+      }
+    }
   }
 
   for (let i = 0; i < sample.length; i++) {
