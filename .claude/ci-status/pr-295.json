@@ -1,0 +1,19 @@
+{
+  "pr": 295,
+  "conclusion": "cancelled",
+  "head_branch": "issue-1370-ir-phase-b",
+  "head_sha": "50bf18203f069da952316a1610ce64e71d5394d9",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25551541259",
+  "timestamp": "2026-05-08T10:56:01Z",
+  "pass": null,
+  "fail": null,
+  "compile_error": null,
+  "snapshot_delta": null,
+  "net_per_test": null,
+  "regressions": null,
+  "regressions_real": null,
+  "regressions_wasm_change": null,
+  "wasm_identical_noise": null,
+  "compile_timeouts": null,
+  "improvements": null
+}
