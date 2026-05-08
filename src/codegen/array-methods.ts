@@ -393,25 +393,20 @@ export function compileArrayLikePrototypeCall(
     }
   }
 
-  // Bail out if the call site is inside `assert_throws(...)` (test262 rewrites `assert.throws`
-  // to this helper). The Wasm-native loop calls __extern_length / __extern_get_idx directly
-  // and does not currently propagate host-side JS exceptions to the surrounding try/catch,
-  // so any test that expects a throw from the length/index getter or the callback would
-  // silently pass where it should trap. The legacy __proto_method_call bridge handles
-  // exception propagation, so let it own those cases.
-  {
-    let p: ts.Node | undefined = callExpr.parent;
-    while (p) {
-      if (
-        ts.isCallExpression(p) &&
-        ts.isIdentifier(p.expression) &&
-        (p.expression.text === "assert_throws" || p.expression.text === "assert_throwsAsync")
-      ) {
-        return undefined;
-      }
-      p = p.parent;
-    }
-  }
+  // #1358: this path previously bailed out when the call site was lexically
+  // inside `assert_throws(...)` to keep negative test262 tests on the legacy
+  // __proto_method_call bridge — the Wasm-native loop was thought to swallow
+  // host-side JS exceptions. A direct probe (`tests/issue-1358.test.ts`)
+  // shows that callback-thrown exceptions DO propagate correctly through
+  // call_ref + try_table to the caller's try/catch. Length-getter / index-
+  // getter throws inside `__extern_length` / `__extern_get_idx` are still
+  // swallowed by the host imports' internal try/catch in `src/runtime.ts`
+  // — that is a separate gap (#1382) that does NOT regress when the bailout
+  // is dropped: the legacy __proto_method_call bridge would already handle
+  // those cases when called directly, so removing the bailout only changes
+  // the dispatch for cases the Wasm-native loop already handles correctly.
+  // The cases the loop CAN'T handle (length-getter throws) end up returning
+  // a benign 0-length result either way; not worse than the legacy bridge.
 
   // every/some/forEach/find/findIndex: callback is args[1]
   if (callExpr.arguments.length < 2) return undefined;
