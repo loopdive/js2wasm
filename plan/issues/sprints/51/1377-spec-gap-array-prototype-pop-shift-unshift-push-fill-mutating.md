@@ -2,7 +2,7 @@
 id: 1377
 sprint: 51
 title: "spec gap: Array.prototype.{push,pop,shift,unshift,fill,copyWithin,reverse} — mutation on array-like + length writes (~80 fails)"
-status: in-progress
+status: done
 created: 2026-05-08
 priority: medium
 feasibility: medium
