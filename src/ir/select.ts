@@ -73,6 +73,11 @@ export type IrFallbackReason =
   | "return-type-not-resolvable"
   | "param-type-not-resolvable"
   | "param-shape-rejected" // optional/rest/initializer/non-identifier/duplicate
+  // #1372 — binding-pattern param shape too complex for slice 8a destructuring
+  // (rest, defaults, nested patterns, computed keys). Distinguished from
+  // `param-shape-rejected` so the param-shape bucket continues to track only
+  // optional/rest/initializer/duplicate cases.
+  | "destructuring-param-complex"
   | "body-shape-rejected"
   | "external-call" // calls a non-local identifier (parseInt, etc.)
   | "call-graph-closure" // local caller/callee not claimed
@@ -458,6 +463,26 @@ function whyNotIrClaimable(
   if (isMethod) scope.add("this");
   for (let i = 0; i < fn.parameters.length; i++) {
     const p = fn.parameters[i]!;
+    // #1372 — binding-pattern params: `function f({ x, y }: Point): …` /
+    // `function f([a, b]: number[]): …`. Selector accepts when the pattern
+    // is identifier-leaf + no-default + no-rest + no-nested (the slice 8a
+    // shape, reused via `isPhase1BindingPattern`). Wider patterns fall
+    // through with `destructuring-param-complex` so the legacy lowerer's
+    // wider destructure machinery handles them.
+    if (ts.isObjectBindingPattern(p.name) || ts.isArrayBindingPattern(p.name)) {
+      if (p.questionToken) return "param-shape-rejected";
+      if (p.dotDotDotToken) return "param-shape-rejected";
+      if (p.initializer) return "param-shape-rejected";
+      if (!isPhase1BindingPattern(p.name, scope)) return "destructuring-param-complex";
+
+      const mapped = entry?.params[i];
+      const paramResolved = resolveParamType(p, mapped);
+      if (paramResolved === null) return "param-type-not-resolvable";
+
+      collectPatternNames(p.name, scope);
+      continue;
+    }
+
     if (!ts.isIdentifier(p.name)) return "param-shape-rejected";
     if (p.questionToken) return "param-shape-rejected";
     if (p.dotDotDotToken) return "param-shape-rejected";

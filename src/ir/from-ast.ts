@@ -255,11 +255,22 @@ export function lowerFunctionAstToIr(
     : isVoidReturn
       ? null
       : resolveIrType(fn.type, options.returnTypeOverride ?? undefined, `return type of ${name}`);
+  // #1372 — binding-pattern params: synthesize a stable internal name
+  // (`__pattern_param_<idx>`) so the IR `addParam` machinery has a regular
+  // identifier to bind, then emit destructuring reads (object.get / vec.get
+  // / class.get) into the function body as a preamble. Identifier params
+  // pass through unchanged.
   const params: { name: string; type: IrType }[] = fn.parameters.map((p, idx) => {
-    if (!ts.isIdentifier(p.name)) {
-      throw new Error(`ir/from-ast: destructuring params not supported in Phase 1 (${name})`);
-    }
     const override = options.paramTypeOverrides?.[idx];
+    if (ts.isObjectBindingPattern(p.name) || ts.isArrayBindingPattern(p.name)) {
+      return {
+        name: `__pattern_param_${idx}`,
+        type: resolveIrType(p.type, override, `pattern param #${idx} of ${name}`),
+      };
+    }
+    if (!ts.isIdentifier(p.name)) {
+      throw new Error(`ir/from-ast: unsupported param shape in Phase 1 (${name})`);
+    }
     return {
       name: p.name.text,
       type: resolveIrType(p.type, override, `param ${p.name.text} of ${name}`),
@@ -282,8 +293,19 @@ export function lowerFunctionAstToIr(
     const selfV = builder.addParam("__self", options.selfParam.type);
     scope.set("this", { kind: "local", value: selfV, type: options.selfParam.type });
   }
-  for (const p of params) {
+  // #1372 — track binding-pattern params + their SSA values for the post-
+  // openBlock destructure preamble.
+  const pendingDestructures: { pattern: ts.BindingPattern; value: IrValueId }[] = [];
+  for (let i = 0; i < params.length; i++) {
+    const p = params[i]!;
+    const astParam = fn.parameters[i]!;
     const v = builder.addParam(p.name, p.type);
+    if (ts.isObjectBindingPattern(astParam.name) || ts.isArrayBindingPattern(astParam.name)) {
+      // Don't bind the synthesized __pattern_param_N name in user-visible
+      // scope — leaf names will be bound below by lowerBindingPattern.
+      pendingDestructures.push({ pattern: astParam.name, value: v });
+      continue;
+    }
     scope.set(p.name, { kind: "local", value: v, type: p.type });
   }
 
@@ -330,6 +352,15 @@ export function lowerFunctionAstToIr(
     generatorBufferSlot,
     checker: options.checker,
   };
+  // #1372 — emit destructuring preamble for binding-pattern params. Each
+  // leaf becomes a `local` ScopeBinding via `lowerBindingPattern`; the
+  // user-body code then sees the leaf identifiers as regular locals.
+  // Emitted AFTER cx is built (lowerObjectPattern/lowerArrayPattern need
+  // `cx.scope`/`cx.builder`) but BEFORE `lowerStatementList(stmts, cx)`
+  // so the body sees the leaves in scope from statement #0.
+  for (const { pattern, value } of pendingDestructures) {
+    lowerBindingPattern(pattern, value, cx);
+  }
   lowerStatementList(stmts, cx);
 
   return { main: builder.finish(), lifted };
@@ -914,9 +945,12 @@ function lowerBindingPattern(pattern: ts.BindingPattern, source: IrValueId, cx: 
  */
 function lowerObjectPattern(pattern: ts.ObjectBindingPattern, source: IrValueId, cx: LowerCtx): void {
   const sourceType = cx.builder.typeOf(source);
-  if (sourceType.kind !== "object") {
+  // #1372 — destructuring a class instance ({ x, y }: Vec2) is identical at
+  // the IR level to destructuring an object literal: each leaf reads one
+  // named field. The only difference is the emit op (class.get vs object.get).
+  if (sourceType.kind !== "object" && sourceType.kind !== "class") {
     throw new Error(
-      `ir/from-ast: object destructuring source must be IrType.object (got ${describeIrType(sourceType)}) in ${cx.funcName}`,
+      `ir/from-ast: object destructuring source must be IrType.object or IrType.class (got ${describeIrType(sourceType)}) in ${cx.funcName}`,
     );
   }
   for (const elem of pattern.elements) {
@@ -955,7 +989,10 @@ function lowerObjectPattern(pattern: ts.ObjectBindingPattern, source: IrValueId,
         `ir/from-ast: object pattern reads unknown field "${propName}" (shape: ${describeIrType(sourceType)}) in ${cx.funcName}`,
       );
     }
-    const v = cx.builder.emitObjectGet(source, propName, field.type);
+    const v =
+      sourceType.kind === "class"
+        ? cx.builder.emitClassGet(source, propName, field.type)
+        : cx.builder.emitObjectGet(source, propName, field.type);
     cx.scope.set(localName, { kind: "local", value: v, type: field.type });
   }
 }

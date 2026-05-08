@@ -3,6 +3,7 @@ id: 1372
 sprint: 51
 title: "IR: support destructuring params (removes param-shape-rejected bypass)"
 status: in-progress
+worktree: /workspace/.claude/worktrees/issue-1372-ir-destructuring-params
 created: 2026-05-08
 priority: high
 feasibility: medium
@@ -93,3 +94,60 @@ from-ast resolver can then field-access.
 - `src/ir/select.ts` — relax binding-pattern param check
 - `src/ir/from-ast.ts` — destructure-param preamble emission
 - `src/ir/types.ts` or `src/ir/propagate.ts` — aggregate type resolution for params
+
+## Resolution
+
+### Implementation
+
+**`src/ir/select.ts`** — added a binding-pattern arm to the param loop in
+`whyNotIrClaimable`. When `p.name` is `ObjectBindingPattern` /
+`ArrayBindingPattern`, the selector reuses the existing `isPhase1BindingPattern`
+shape gate (identifier-leaf, no rest, no defaults, no nesting) and
+`collectPatternNames` to thread leaves into scope. The new
+`"destructuring-param-complex"` reason replaces `"param-shape-rejected"` for
+patterns wider than slice 8a — kept distinct so the param-shape bucket
+continues to count only optional/rest/initializer/duplicate cases.
+
+**`src/ir/from-ast.ts`** — `lowerFunctionAstToIr` now synthesizes a
+`__pattern_param_<idx>` SSA param for each binding-pattern AST param,
+collects `(pattern, value)` pairs, and after `cx` is built emits the
+destructure preamble via the existing `lowerBindingPattern` /
+`lowerObjectPattern` / `lowerArrayPattern` helpers — same pipeline that
+already handled `const { x, y } = obj` for var-decls, just on a param
+SSA value rather than an initializer SSA value.
+
+**`src/ir/from-ast.ts`** — extended `lowerObjectPattern` to accept
+`IrType.class` sources (in addition to `IrType.object`), emitting
+`emitClassGet` per leaf instead of `emitObjectGet`. Class shapes from
+`buildIrClassShapes` already strip the `__tag` prefix and expose user
+fields by name, so the leaf lookup is identical.
+
+**`scripts/check-ir-fallbacks.ts`** — registered
+`destructuring-param-complex` in the `UNINTENDED` set so a follow-up slice
+that retires wider patterns is gated on a baseline drop. Current baseline
+is unchanged — the playground/examples corpus has no functions with
+complex param patterns.
+
+### Test Results
+
+`tests/issue-1372-ir-destructuring-params.test.ts` — 10 cases, all pass:
+
+- AC#1 — `dot({ x, y }: Vec2, { x: bx, y: by }: Vec2)` is IR-claimed; the
+  emitted `$dot` body contains `struct.get` ops (verified via WAT
+  inspection), not the legacy uninitialised-locals dispatch. Runtime
+  result: `dot((2,3), (4,5)) = 23` ✓.
+- AC#2 — `head([first, second]: number[])` is IR-claimed in isolation
+  (when called from a Phase-1-incompatible caller it drops via
+  call-graph-closure, which is unrelated). Runtime result `30` ✓.
+- AC#3a–d — nested object pattern, default value, rest pattern, nested
+  array pattern all fall back as `"destructuring-param-complex"`
+  (NOT `"param-shape-rejected"`).
+- Identifier-only params still claim with no fallback reason.
+- Optional `b?: number` still produces `"param-shape-rejected"` (kept
+  distinct from the new bucket).
+- Renaming `{ a: x, b: y }` works; runtime result `4` ✓.
+- Inline object-type param `{ x, y }: { x: number; y: number }` claims
+  and runs (`process({x:3, y:4}) = 10`) ✓.
+
+`pnpm run check:ir-fallbacks` — green, no baseline change.
+`npm test -- tests/ir/` — 39/39 pass (no IR-pipeline regressions).
