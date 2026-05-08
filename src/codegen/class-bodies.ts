@@ -4,6 +4,55 @@
  *
  * Extracted from codegen/index.ts (#1013).
  */
+
+/**
+ * #1366a — host-import-backed parent classes that have no Wasm struct
+ * registration. When a user class `extends` one of these, we need extra
+ * wiring (auto-add a `message` field, populate it on `super(msg)`,
+ * statically resolve `instance instanceof <ParentName>` to true).
+ *
+ * AggregateError takes (errors, message) — its super-call argument layout
+ * differs but the static instanceof story is identical, so we still
+ * register it here and only special-case the message-write in
+ * `compileSuperCall` if needed.
+ */
+const BUILTIN_ERROR_PARENTS: ReadonlySet<string> = new Set([
+  "Error",
+  "TypeError",
+  "RangeError",
+  "ReferenceError",
+  "SyntaxError",
+  "URIError",
+  "EvalError",
+  "AggregateError",
+]);
+
+/** Resolve a class name to its closest builtin-error ancestor, walking
+ *  the user-class chain (`A extends B extends C extends Error` → "Error"
+ *  for all of A/B/C). Returns undefined when no chain reaches a builtin
+ *  error parent. */
+export function resolveBuiltinErrorAncestor(ctx: CodegenContext, className: string): string | undefined {
+  // Direct builtin-error parent recorded at class declaration time.
+  const direct = ctx.builtinErrorParentMap.get(className);
+  if (direct) return direct;
+  // Walk classParentMap to find a chained builtin-error ancestor.
+  let cur = ctx.classParentMap.get(className);
+  const seen = new Set<string>();
+  while (cur && !seen.has(cur)) {
+    seen.add(cur);
+    const ancestor = ctx.builtinErrorParentMap.get(cur);
+    if (ancestor) return ancestor;
+    cur = ctx.classParentMap.get(cur);
+  }
+  return undefined;
+}
+
+/** Public read-only view of {@link BUILTIN_ERROR_PARENTS} for callers
+ *  that need to test whether an identifier name refers to a builtin
+ *  error constructor. */
+export function isBuiltinErrorName(name: string): boolean {
+  return BUILTIN_ERROR_PARENTS.has(name);
+}
 import { ts } from "../ts-api.js";
 import { isVoidType, unwrapPromiseType } from "../checker/type-mapper.js";
 import type { FieldDef, Instr, StructTypeDef, ValType } from "../ir/types.js";
@@ -90,6 +139,14 @@ export function collectClassDeclaration(
           parentFields = ctx.structFields.get(parentClassName) ?? [];
           // Record parent-child relationship
           ctx.classParentMap.set(className, parentClassName);
+          // #1366a — when extending a builtin Error type, the parent has no
+          // Wasm struct registration so `parentStructTypeIdx` stays undefined.
+          // Record the relationship in `builtinErrorParentMap` so
+          // `compileSuperCall` can auto-`this.message = msg` and
+          // `compileInstanceOf` can statically resolve `sub instanceof Error`.
+          if (BUILTIN_ERROR_PARENTS.has(parentClassName)) {
+            ctx.builtinErrorParentMap.set(className, parentClassName);
+          }
           // Mark parent struct as non-final so it can be extended
           if (parentStructTypeIdx !== undefined) {
             const parentTypeDef = ctx.mod.types[parentStructTypeIdx] as StructTypeDef;
@@ -161,6 +218,18 @@ export function collectClassDeclaration(
         const fieldType = resolveWasmType(ctx, fieldTsType);
         ownFields.push({ name: fieldName, type: fieldType, mutable: true });
       }
+    }
+  }
+
+  // #1366a — when extending a builtin Error, auto-add a `message: externref`
+  // field if the user didn't already declare one (or assign `this.message =
+  // …` in the constructor). `compileSuperCall` populates it from `super(msg)`,
+  // so subsequent `instance.message` accesses go through the standard
+  // `this.field` struct.get path.
+  if (parentClassName && BUILTIN_ERROR_PARENTS.has(parentClassName)) {
+    const hasMessage = ownFields.some((f) => f.name === "message") || parentFields.some((f) => f.name === "message");
+    if (!hasMessage) {
+      ownFields.push({ name: "message", type: { kind: "externref" }, mutable: true });
     }
   }
 
@@ -1458,6 +1527,27 @@ export function compileSuperCall(
 
   const parentFields = ctx.structFields.get(parentClassName) ?? [];
   const structTypeIdx = ctx.structMap.get(childClassName)!;
+
+  // #1366a — `class Sub extends Error/TypeError/…` has no parent struct
+  // fields. The IR class auto-adds `message: externref`; populate it here
+  // from the first super(...) argument so `sub.message` reads the right
+  // value via the standard `this.field` struct.get path.
+  // AggregateError takes (errors, message), so its message is at index 1;
+  // every other builtin error's message is at index 0.
+  if (BUILTIN_ERROR_PARENTS.has(parentClassName) && parentFields.length === 0) {
+    const childFields = ctx.structFields.get(childClassName) ?? [];
+    const messageFieldIdx = childFields.findIndex((f) => f.name === "message");
+    if (messageFieldIdx >= 0 && callExpr.arguments.length > 0) {
+      const messageArgIdx = parentClassName === "AggregateError" ? 1 : 0;
+      const msgArg = callExpr.arguments[messageArgIdx];
+      if (msgArg && !ts.isSpreadElement(msgArg)) {
+        fctx.body.push({ op: "local.get", index: selfLocal });
+        compileExpression(ctx, fctx, msgArg, { kind: "externref" });
+        fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx: messageFieldIdx });
+      }
+    }
+    return;
+  }
 
   // Evaluate super(args) and assign to parent fields on the child struct.
   // Skip __tag (immutable, already set by struct.new) and map arguments to

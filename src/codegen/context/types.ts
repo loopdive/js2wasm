@@ -431,6 +431,17 @@ export interface CodegenContext {
   >;
   /** Map from child className → parent className (for local class inheritance) */
   classParentMap: Map<string, string>;
+  /**
+   * #1366a — for classes that `extends Error` (or any of the builtin error
+   * types: TypeError, RangeError, ReferenceError, SyntaxError, URIError,
+   * EvalError, AggregateError), the built-in is not a registered struct
+   * type, so `classParentMap` doesn't capture the relationship. This map
+   * stores the immediate builtin-error parent name keyed by child class.
+   * Used by `compileSuperCall` (auto-`this.message = msg`) and
+   * `compileInstanceOf` (`sub instanceof Error` static-true) to keep the
+   * spec-correct subclass-of-Error semantics.
+   */
+  builtinErrorParentMap: Map<string, string>;
   /** Counter for assigning unique class tags (for instanceof support) */
   classTagCounter: number;
   /** Map from class name → unique tag value (for instanceof support) */

@@ -22,6 +22,7 @@ import { emitTdzCheck } from "../statements.js";
 import { ensureLateImport, flushLateImportShifts, shiftLateImportIndices } from "./late-imports.js";
 import { emitStringBuilderRead, getBuilderInfo } from "../string-builder.js";
 import { isBuiltinSubtype, isBuiltinTypeName } from "../builtin-tags.js";
+import { resolveBuiltinErrorAncestor } from "../class-bodies.js";
 
 export function emitLocalTdzCheck(ctx: CodegenContext, fctx: FunctionContext, name: string, flagIdx: number): void {
   const throwRefErrIdx = ensureLateImport(ctx, "__throw_reference_error", [{ kind: "externref" }], []);
@@ -622,6 +623,18 @@ function tryStaticInstanceOf(ctx: CodegenContext, expr: ts.BinaryExpression, cto
   const lhsSymbolName = leftTsType.getSymbol()?.name;
   if (lhsSymbolName !== undefined) {
     if (ctx.classTagMap.has(lhsSymbolName)) {
+      // #1366a — `class MyError extends Error` (or any builtin error subclass)
+      // IS an instance of its builtin error ancestor and of `Error` (every
+      // NativeError ⊂ Error). Resolve to `true` for these chains; fall
+      // through to `false` for any other user class × builtin combination
+      // (which holds: e.g. `class Foo {} ; new Foo() instanceof Map === false`).
+      const ancestor = resolveBuiltinErrorAncestor(ctx, lhsSymbolName);
+      if (ancestor) {
+        if (ctorName === ancestor || ctorName === "Error") return true;
+        // Any other builtin (Array, Map, …) is statically false for
+        // an extends-Error chain.
+        return false;
+      }
       return false;
     }
     // 2. LHS is itself a built-in (or matches the constructor's instance-type

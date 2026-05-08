@@ -76,6 +76,7 @@ export function createCodegenContext(
     moduleInitStatements: [],
     nestedFuncCaptures: new Map(),
     classParentMap: new Map(),
+    builtinErrorParentMap: new Map(),
     classTagCounter: 0,
     classTagMap: new Map(),
     classExprNameMap: new Map(),
