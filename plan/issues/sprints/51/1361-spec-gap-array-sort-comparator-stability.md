@@ -2,7 +2,7 @@
 id: 1361
 sprint: 51
 title: "spec gap: Array.prototype.sort — comparator validation, stability, ToString fallback (~46 fails)"
-status: in-progress
+status: done
 created: 2026-05-08
 priority: medium
 feasibility: medium

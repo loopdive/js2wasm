@@ -43,6 +43,7 @@
 - [feedback_tasklist_sync_unreliable.md](feedback_tasklist_sync_unreliable.md) — TaskList sync per-agent is unreliable; when devs report mismatched task IDs, fall back to SendMessage as authoritative dispatch
 - [feedback_sendmessage_discipline.md](feedback_sendmessage_discipline.md) — SendMessage = blockers/decisions/completions only; status/idle/ack → TaskUpdate or silence
 - [feedback_dev_silence_protocol.md](feedback_dev_silence_protocol.md) — No idle_notification messages ever; devs silent during CI-wait; TL keeps queue full, devs escalate only
+- [feedback_idle_notification_silence.md](feedback_idle_notification_silence.md) — Don't respond to idle notifications unless CI landed or work to assign; silence breaks the ping loop
 
 ### Dispatch
 - [feedback_dispatch_status.md](feedback_dispatch_status.md) — Update issue status to in-progress when dispatching an agent

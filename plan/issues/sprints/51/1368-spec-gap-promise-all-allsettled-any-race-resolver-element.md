@@ -2,7 +2,7 @@
 id: 1368
 sprint: 51
 title: "spec gap: Promise.{all,allSettled,any,race} — resolver-element semantics, ctor type-check (~109 fails)"
-status: ready
+status: done
 created: 2026-05-08
 priority: medium
 feasibility: medium

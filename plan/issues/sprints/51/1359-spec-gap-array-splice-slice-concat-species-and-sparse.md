@@ -2,7 +2,7 @@
 id: 1359
 sprint: 51
 title: "spec gap: Array.prototype.{splice,slice,concat,toSpliced,toReversed} — @@species, sparse handling, IsConcatSpreadable (~150 fails)"
-status: in-progress
+status: done
 created: 2026-05-08
 priority: high
 feasibility: medium

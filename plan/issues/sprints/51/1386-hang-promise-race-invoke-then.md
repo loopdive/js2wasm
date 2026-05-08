@@ -2,7 +2,7 @@
 id: 1386
 sprint: 51
 title: "HANG: Promise/race/invoke-then.js — compilation or runtime infinite loop"
-status: ready
+status: done
 created: 2026-05-08
 priority: medium
 feasibility: medium

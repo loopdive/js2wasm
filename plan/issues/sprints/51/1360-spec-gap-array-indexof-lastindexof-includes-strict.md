@@ -2,7 +2,7 @@
 id: 1360
 sprint: 51
 title: "spec gap: Array.prototype.{indexOf,lastIndexOf,includes} — SameValueZero, sparse, fromIndex coercion (~210 fails)"
-status: in-progress
+status: done
 created: 2026-05-08
 priority: high
 feasibility: easy

@@ -2,7 +2,7 @@
 id: 1363
 sprint: 51
 title: "spec gap: class dstr — 'Cannot destructure null/undefined' in method default-binding (~700 runtime_errors)"
-status: in-progress
+status: done
 created: 2026-05-08
 priority: high
 feasibility: medium

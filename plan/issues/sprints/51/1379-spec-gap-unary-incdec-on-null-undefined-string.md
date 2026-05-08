@@ -2,7 +2,7 @@
 id: 1379
 sprint: 51
 title: "spec gap: prefix/postfix ++/-- on null/undefined/string operands — ToNumeric coercion (~40 fails)"
-status: in-progress
+status: done
 created: 2026-05-08
 priority: medium
 feasibility: easy

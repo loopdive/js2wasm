@@ -2,7 +2,7 @@
 id: 1358
 sprint: 51
 title: "spec gap: Array.prototype.{filter,map,every,some,forEach,reduce} on array-like (.call) receivers — ~452 assertion_fail"
-status: in-progress
+status: done
 created: 2026-05-08
 updated: 2026-05-08
 priority: high

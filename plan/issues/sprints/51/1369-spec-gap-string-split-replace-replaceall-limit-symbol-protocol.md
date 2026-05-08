@@ -2,7 +2,7 @@
 id: 1369
 sprint: 51
 title: "spec gap: String.prototype.{split,replace,replaceAll,match,matchAll} — limit, @@split/@@replace/@@match protocol (~150 fails)"
-status: in-progress
+status: done
 created: 2026-05-08
 priority: medium
 feasibility: medium
