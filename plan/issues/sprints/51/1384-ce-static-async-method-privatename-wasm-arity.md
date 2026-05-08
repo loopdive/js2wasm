@@ -2,7 +2,7 @@
 id: 1384
 sprint: 51
 title: "CE: static async method with PrivateName — 'not enough arguments on the stack' (249 tests)"
-status: in-progress
+status: done
 created: 2026-05-08
 priority: high
 feasibility: medium

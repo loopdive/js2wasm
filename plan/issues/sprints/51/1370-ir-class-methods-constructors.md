@@ -2,7 +2,7 @@
 id: 1370
 sprint: 51
 title: "IR: claim class methods and constructors (largest legacy bypass)"
-status: review
+status: done
 created: 2026-05-08
 priority: high
 feasibility: hard
