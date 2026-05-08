@@ -2,9 +2,9 @@
 id: 1325
 sprint: 50
 title: "instanceof against built-in types: compile-time type-tag registry eliminates JS host for common cases"
-status: ready
+status: in-progress
 created: 2026-05-07
-updated: 2026-05-07
+updated: 2026-05-08
 priority: medium
 feasibility: medium
 reasoning_effort: medium
@@ -62,3 +62,60 @@ For user-defined classes and prototype-manipulated objects, the existing JS fall
 - `src/ir/lower.ts` — tag at construction sites, emit tag-test at instanceof sites
 - `src/runtime.ts` — keep JS fallback for externref values only
 - `tests/issue-1325.test.ts`
+
+## Phase 1 implementation (2026-05-08)
+
+Phase 1 lays the groundwork by adding the registry and the static-elimination
+fast paths. It does not yet write tags into WasmGC structs (Phase 2).
+
+### What landed
+
+- `src/codegen/builtin-tags.ts` — new module with:
+  - `BUILTIN_TYPE_TAGS` — reserved negative-integer tag values for Array,
+    Function, Object, Error and the *Error subclasses, Map, Set, WeakMap,
+    WeakSet, Date, RegExp, Promise, ArrayBuffer, SharedArrayBuffer, DataView.
+    Negative so they can never collide with user class tags (which start at 0
+    via `ctx.classTagCounter`).
+  - `isBuiltinTypeName`, `getBuiltinParent`, `isBuiltinSubtype` — registry
+    lookup helpers, including the *Error → Error parent chain.
+
+- `src/codegen/expressions/identifiers.ts` — `compileHostInstanceOf` now
+  attempts a `tryStaticInstanceOf` short-circuit before falling through to
+  the `__instanceof` host import:
+  - LHS TS symbol resolves to a known **user class** + RHS is a built-in
+    → emit `i32.const 0` (a struct can never be a JS built-in).
+  - LHS TS symbol resolves to a built-in `Child` and RHS is `Parent` →
+    emit `i32.const 1` if `isBuiltinSubtype(Child, Parent)`, else `false`.
+  - LHS TS type is `number` / `boolean` → emit `false` (primitives are
+    never `instanceof` of an object constructor).
+  - Fallback to the existing host-import path otherwise.
+- Stack-level fast path also added: when LHS compiled value is `i32` /
+  `f64`, drop and emit `i32.const 0` (saves boxing + a host call).
+
+### Tests (`tests/issue-1325.test.ts`, 13 cases)
+
+Registry unit tests:
+- All built-in names recognised
+- Tag values are negative
+- *Error → Error parent chain encoded
+- `isBuiltinSubtype` hierarchy reasoning + unknown-name guards
+
+End-to-end behavioural tests:
+- `123 instanceof Array` → `false` (numeric primitive LHS)
+- `(userClassInstance) instanceof Array` → `false`
+- `(userClassInstance) instanceof Error` → `false`
+- User-class hierarchy `instanceof` regression check (Dog/Animal)
+- `new TypeError() instanceof Error` → `true`
+- `[] instanceof Array` → `true` (host-fallback regression)
+- `{} instanceof Array` → `false` (host-fallback regression)
+
+### Out of scope for Phase 1 (deferred to a follow-up)
+
+- Tagging WasmGC wrapper structs at construction time. This requires either
+  switching to WasmGC structs for Error/Array/Map (a large refactor), or
+  introducing a `$ThrownException` wrapper struct for the throw/catch path
+  so `catch (e) { e instanceof TypeError }` works without a JS host.
+- Integration with the IR `__tag` field in `src/ir/lower.ts` /
+  `src/ir/nodes.ts`. The Phase-1 registry is consumed by the codegen
+  short-circuit only; IR-level wiring will follow once a tagged-struct
+  representation lands.
