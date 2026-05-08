@@ -127,3 +127,32 @@ export function getBuiltinParent(name: string): BuiltinTypeName | undefined {
   if (!isBuiltinTypeName(name)) return undefined;
   return BUILTIN_PARENT[name];
 }
+
+/**
+ * Built-in constructors for which we emit subclass support via the existing
+ * `__new_<Name>(args...) -> externref` host imports. The subclass instance
+ * is represented as externref (NOT a WasmGC struct), and the host returns a
+ * real JS object with the right internal slots.
+ *
+ * Scope for #1366a. Array/Map/Set/Promise will follow in #1366b via a
+ * generic `__construct_subclass` host import.
+ */
+export const BUILTIN_PARENTS_HOST_CONSTRUCTIBLE: ReadonlySet<BuiltinTypeName> = new Set<BuiltinTypeName>([
+  "Error",
+  "TypeError",
+  "RangeError",
+  "SyntaxError",
+  "URIError",
+  "EvalError",
+  "ReferenceError",
+  "AggregateError",
+]);
+
+/**
+ * Returns true if `name` is a built-in JS constructor that can act as a
+ * parent for a host-constructible subclass (#1366a). The subclass instance
+ * is externref-backed and `super(...)` lowers to `__new_<Name>(...)`.
+ */
+export function isHostConstructibleBuiltin(name: string): boolean {
+  return isBuiltinTypeName(name) && BUILTIN_PARENTS_HOST_CONSTRUCTIBLE.has(name as BuiltinTypeName);
+}
