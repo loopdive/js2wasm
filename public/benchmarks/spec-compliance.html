@@ -431,7 +431,8 @@
             wrap.appendChild(label);
             covTd.appendChild(wrap);
           } else {
-            covTd.innerHTML = '<span class="muted">—</span>';
+            covTd.innerHTML =
+              '<span class="muted" title="Covered indirectly — no direct test262 category mapping">indirect</span>';
           }
           tr.appendChild(covTd);
 
@@ -440,9 +441,16 @@
           if (s.issues && s.issues.length) {
             const wrap = document.createElement("div");
             wrap.className = "issues";
-            for (const id of s.issues) {
+            for (let i = 0; i < s.issues.length; i++) {
+              const id = s.issues[i];
+              const filePath = s.issue_files && s.issue_files[i];
               const il = document.createElement("a");
-              il.href = "https://github.com/loopdive/js2wasm/issues/" + id;
+              if (filePath) {
+                il.href = "https://github.com/loopdive/js2wasm/blob/main/" + filePath;
+              } else {
+                il.href = "https://github.com/loopdive/js2wasm/blob/main/plan/issues";
+              }
+              il.title = "plan issue #" + id;
               il.textContent = "#" + id;
               wrap.appendChild(il);
             }
