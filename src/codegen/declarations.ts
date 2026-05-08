@@ -963,8 +963,15 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
   // Instance methods (.then/.catch/.finally) are NOT pre-registered because
   // adding their func types here shifts struct type indices, breaking
   // non-Promise code in the same module (#855 regression fix).
+  //
+  // (#1326 Phase 1B) In standalone (WASI) mode, skip pre-registration of
+  // `Promise_resolve` / `Promise_reject` — these are unsatisfiable host
+  // imports there; the codegen call site emits Wasm-native `struct.new
+  // $Promise` instead. Other Promise methods (all/race/allSettled/any)
+  // are still host-routed in 1B; Phase 3 will add native combinators.
   for (const method of state.promiseNeeded) {
     if (method === "then" || method === "catch" || method === "finally") continue;
+    if (ctx.wasi && (method === "resolve" || method === "reject")) continue;
     const importName = `Promise_${method}`;
     if (!ctx.funcMap.has(importName)) {
       const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);

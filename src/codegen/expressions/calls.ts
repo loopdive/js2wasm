@@ -15,6 +15,11 @@ import {
 import type { Instr, ValType } from "../../ir/types.js";
 import { compileArrayMethodCall, compileArrayPrototypeCall, resolveArrayInfo } from "../array-methods.js";
 import {
+  emitStandalonePromiseReject,
+  emitStandalonePromiseResolve,
+  isStandalonePromiseActive,
+} from "../async-scheduler.js";
+import {
   collectReferencedIdentifiers,
   collectWrittenIdentifiers,
   compileArrowFunction,
@@ -3067,6 +3072,39 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         propAccess.name.text === "reject")
     ) {
       const methodName = propAccess.name.text;
+      // (#1326 Phase 1B) Standalone-mode `Promise.resolve(v)` /
+      // `Promise.reject(r)` — emit Wasm-native `$Promise` struct.new
+      // instead of calling the JS-host `Promise_resolve_import` /
+      // `Promise_reject_import` (which are unsatisfiable in WASI).
+      // The aggregator methods (`all` / `race` / `allSettled` / `any`)
+      // remain on the host path until Phase 3 implements native
+      // combinators.
+      if ((methodName === "resolve" || methodName === "reject") && isStandalonePromiseActive(ctx)) {
+        // Compile the value/reason argument FIRST into a side buffer so
+        // we can pass it to the helper as `valueInstrs` — the helper
+        // controls the final Wasm op order (state | value | null |
+        // struct.new | extern.convert_any).
+        const argInstrs: Instr[] = [];
+        const savedBody = fctx.body;
+        fctx.body = argInstrs;
+        try {
+          if (expr.arguments.length >= 1) {
+            compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "externref" });
+          } else {
+            // `Promise.resolve()` with no args — value is undefined; map
+            // to `ref.null.extern` (matches the host-import behaviour).
+            fctx.body.push({ op: "ref.null.extern" });
+          }
+        } finally {
+          fctx.body = savedBody;
+        }
+        if (methodName === "resolve") {
+          emitStandalonePromiseResolve(ctx, fctx, argInstrs);
+        } else {
+          emitStandalonePromiseReject(ctx, fctx, argInstrs);
+        }
+        return { kind: "externref" };
+      }
       const importName = `Promise_${methodName}`;
       let funcIdx =
         ctx.funcMap.get(importName) ??

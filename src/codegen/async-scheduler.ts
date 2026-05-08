@@ -149,33 +149,49 @@ export function emitDrainMicrotasks(_ctx: CodegenContext, _fctx: FunctionContext
 }
 
 /**
- * #1326 Phase 1B stub — emit standalone-mode `Promise.resolve(value)`
- * as `struct.new $Promise (i32.const 1) (value) (ref.null extern)`.
- * Phase 1A throws.
+ * #1326 Phase 1B — emit standalone-mode `Promise.resolve(value)` as a
+ * Wasm-native `$Promise` GC struct construction. The caller has
+ * already pushed `value` (as externref) onto the Wasm stack via
+ * `valueInstrs`; this helper appends:
+ *   - i32.const 1                  (state = FULFILLED)
+ *   - <valueInstrs>                (value = caller's pushed externref)
+ *   - ref.null extern              (callbacks placeholder — Phase 1A
+ *                                   has callbacks: externref; Phase 1C
+ *                                   will upgrade to (ref null $vec_funcref))
+ *   - struct.new $Promise          (consumes 3 stack values)
+ *   - extern.convert_any           (lift (ref $Promise) → externref so
+ *                                   downstream consumers that treat the
+ *                                   Promise opaquely as externref keep
+ *                                   working unchanged)
+ *
+ * The return is on the Wasm stack as `externref`. Internal helpers
+ * (`Promise.then`, `Promise.all`, etc.) `ref.cast` it back to
+ * `(ref $Promise)` to read the state/value/callbacks fields.
  */
-export function emitStandalonePromiseResolve(
-  _ctx: CodegenContext,
-  _fctx: FunctionContext,
-  _valueInstrs: Instr[],
-): void {
-  throw new Error(
-    "#1326 Phase 1B: emitStandalonePromiseResolve not yet implemented — see issue file's Implementation Plan",
-  );
+export function emitStandalonePromiseResolve(ctx: CodegenContext, fctx: FunctionContext, valueInstrs: Instr[]): void {
+  const promiseTypeIdx = getOrRegisterPromiseType(ctx);
+  // Stack effect: → externref ($Promise wrapped in extern)
+  fctx.body.push({ op: "i32.const", value: PROMISE_STATE_FULFILLED });
+  for (const instr of valueInstrs) fctx.body.push(instr);
+  fctx.body.push({ op: "ref.null.extern" });
+  fctx.body.push({ op: "struct.new", typeIdx: promiseTypeIdx });
+  fctx.body.push({ op: "extern.convert_any" });
 }
 
 /**
- * #1326 Phase 1B stub — emit standalone-mode `Promise.reject(reason)`
- * as `struct.new $Promise (i32.const 2) (reason) (ref.null extern)`.
- * Phase 1A throws.
+ * #1326 Phase 1B — emit standalone-mode `Promise.reject(reason)` as a
+ * Wasm-native `$Promise` GC struct construction. Symmetric to
+ * `emitStandalonePromiseResolve` but with `state = REJECTED`. The
+ * Promise is created in the rejected state with the reason as its
+ * value; downstream `.then(...)` chains will route to onRejected.
  */
-export function emitStandalonePromiseReject(
-  _ctx: CodegenContext,
-  _fctx: FunctionContext,
-  _reasonInstrs: Instr[],
-): void {
-  throw new Error(
-    "#1326 Phase 1B: emitStandalonePromiseReject not yet implemented — see issue file's Implementation Plan",
-  );
+export function emitStandalonePromiseReject(ctx: CodegenContext, fctx: FunctionContext, reasonInstrs: Instr[]): void {
+  const promiseTypeIdx = getOrRegisterPromiseType(ctx);
+  fctx.body.push({ op: "i32.const", value: PROMISE_STATE_REJECTED });
+  for (const instr of reasonInstrs) fctx.body.push(instr);
+  fctx.body.push({ op: "ref.null.extern" });
+  fctx.body.push({ op: "struct.new", typeIdx: promiseTypeIdx });
+  fctx.body.push({ op: "extern.convert_any" });
 }
 
 /**
@@ -205,8 +221,12 @@ export function emitStandalonePromiseThen(
  * opt-in flag; Phase 1B+ adds the proper context field gate. Keeping
  * this as a stub means existing JS-host paths are guaranteed unchanged.
  */
-export function isStandalonePromiseActive(_ctx: CodegenContext): boolean {
-  // Phase 1A: always false. Phase 1B+ wires `ctx.target === "wasi"` or
-  // an explicit `ctx.standalonePromise === true` flag.
-  return false;
+export function isStandalonePromiseActive(ctx: CodegenContext): boolean {
+  // Phase 1B: auto-enable in WASI target mode (`ctx.wasi === true`)
+  // because the JS-host `env::Promise_*` imports are unsatisfiable
+  // there. Non-WASI compilation keeps the JS-host path unchanged so
+  // the existing test262 baseline + browser playground remain bit-
+  // identical. Future sub-slices may expose an explicit opt-in
+  // `ctx.standalonePromise` flag for non-WASI standalone use cases.
+  return ctx.wasi === true;
 }

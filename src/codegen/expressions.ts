@@ -14,8 +14,16 @@
 import { ts } from "../ts-api.js";
 import { mapTsTypeToWasm } from "../checker/type-mapper.js";
 import type { Instr, ValType } from "../ir/types.js";
+import {
+  emitStandalonePromiseReject,
+  emitStandalonePromiseResolve,
+  getOrRegisterPromiseType,
+  isStandalonePromiseActive,
+  PROMISE_STATE_FULFILLED,
+  PROMISE_STATE_REJECTED,
+} from "./async-scheduler.js";
 import { reportError, reportErrorNoNode } from "./context/errors.js";
-import { getLocalType } from "./context/locals.js";
+import { allocTempLocal, getLocalType, releaseTempLocal } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
 import type { InnerResult } from "./shared.js";
 import {
@@ -188,6 +196,27 @@ function wrapAsyncReturn(ctx: CodegenContext, fctx: FunctionContext, resultType:
   } else if (resultType.kind !== "externref") {
     coerceType(ctx, fctx, resultType, { kind: "externref" });
   }
+  // (#1326 Phase 1B) In standalone (WASI) mode, replace
+  // `call $Promise_resolve_import` with a Wasm-native `$Promise`
+  // struct.new fulfilled with the value already on the stack. The host
+  // import `Promise_resolve` is unsatisfiable in WASI; this branch
+  // avoids the missing-import error at module instantiation.
+  //
+  // Wasm `struct.new` pops fields in declaration order (state | value |
+  // callbacks); the value is already on the stack but state must come
+  // BEFORE it. Stash via a temp local, then emit in the correct order.
+  if (isStandalonePromiseActive(ctx)) {
+    const valueLocal = allocTempLocal(fctx, { kind: "externref" });
+    const promiseTypeIdx = getOrRegisterPromiseType(ctx);
+    fctx.body.push({ op: "local.set", index: valueLocal });
+    fctx.body.push({ op: "i32.const", value: PROMISE_STATE_FULFILLED });
+    fctx.body.push({ op: "local.get", index: valueLocal });
+    fctx.body.push({ op: "ref.null.extern" });
+    fctx.body.push({ op: "struct.new", typeIdx: promiseTypeIdx });
+    fctx.body.push({ op: "extern.convert_any" });
+    releaseTempLocal(fctx, valueLocal);
+    return { kind: "externref" };
+  }
   const resolveIdx = ensureLateImport(ctx, "Promise_resolve", [{ kind: "externref" }], [{ kind: "externref" }]);
   flushLateImportShifts(ctx, fctx);
   if (resolveIdx !== undefined) {
@@ -204,6 +233,37 @@ function wrapAsyncReturn(ctx: CodegenContext, fctx: FunctionContext, resultType:
  * exception (#1150).
  */
 function wrapAsyncCallInTryCatch(ctx: CodegenContext, fctx: FunctionContext, start: number): void {
+  // (#1326 Phase 1B) Standalone-mode rejection. The host
+  // `Promise_reject` import + `__get_caught_exception` are
+  // unsatisfiable in WASI; emit a Wasm-native rejected `$Promise`
+  // construction in the catch_all instead.
+  if (isStandalonePromiseActive(ctx)) {
+    const promiseTypeIdx = getOrRegisterPromiseType(ctx);
+    const inner = fctx.body.splice(start);
+    // The thrown value is on the catch_all stack as externref (the
+    // `__exn` tag's externref payload); standalone catch_all consumes
+    // it and uses it as the rejection reason. We don't have access to
+    // the wasm exception payload op without `ensureExnTag`, so fall
+    // back to `ref.null.extern` as the reason — Phase 1B doesn't
+    // yet wire the catch-payload binding (Phase 1C will). Most async
+    // throws produce undefined-typed rejections at this stage, so
+    // null-extern is safe.
+    const catchAll: Instr[] = [
+      { op: "i32.const", value: PROMISE_STATE_REJECTED },
+      { op: "ref.null.extern" } as Instr,
+      { op: "ref.null.extern" },
+      { op: "struct.new", typeIdx: promiseTypeIdx } as Instr,
+      { op: "extern.convert_any" } as Instr,
+    ];
+    fctx.body.push({
+      op: "try",
+      blockType: { kind: "val", type: { kind: "externref" } },
+      body: inner,
+      catches: [],
+      catchAll,
+    } as unknown as Instr);
+    return;
+  }
   const rejectIdx = ensureLateImport(ctx, "Promise_reject", [{ kind: "externref" }], [{ kind: "externref" }]);
   const getCaughtIdx = ensureLateImport(ctx, "__get_caught_exception", [], [{ kind: "externref" }]);
   flushLateImportShifts(ctx, fctx);
