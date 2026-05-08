@@ -197,7 +197,6 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | #1332 | RegExp host-mode: prototype method edge cases (exec, test, flag accessors, RegExpStringIterator) | low | ready |
 | #1333 | RegExp host-mode: Pre-ES6 (S15.10) tests + annexB legacy accessors | low | ready |
 | #1335 | Number.prototype formatting in pure Wasm: integer toString(radix), then Ryu for floats (standalone) | medium | ready |
-| #1336 | spec gap: Object.assign drops getters / Symbol keys (27 of 38 test262 fails) | medium | ready |
 | #1337 | spec gap: Function.prototype.bind/toString + Function/internals (175 + 7 test262 fails) | medium | ready |
 | #1338 | spec gap: Array.from / Array.of constructor semantics (39 test262 fails, wasm_compile dominant) | medium | ready |
 | #1339 | spec gap: AggregateError + SuppressedError errors-iterable + cause coercion (37 test262 fails) | medium | ready |
@@ -223,6 +222,7 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | #1315 | import.defer / import.source missing early error detection — 157 negative tests false-pass | high | in-progress |
 | #1322 | Math.random() has no standalone fallback — requires JS host import in WASI/standalone mode | low | in-progress |
 | #1325 | instanceof against built-in types: compile-time type-tag registry eliminates JS host for common cases | medium | in-progress |
+| #1336 | spec gap: Object.assign drops getters / Symbol keys (27 of 38 test262 fails) | medium | in-progress |
 
 ### Done
 

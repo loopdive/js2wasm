@@ -213,6 +213,36 @@
   ],
   "ready": [
     {
+      "id": "1386",
+      "title": "HANG: Promise/race/invoke-then.js — compilation or runtime infinite loop",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "51"
+    },
+    {
+      "id": "1385",
+      "title": "HANG: Temporal/Duration/from/argument-non-string.js — infinite runtime loop",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "51"
+    },
+    {
+      "id": "1384",
+      "title": "CE: static async method with PrivateName — 'not enough arguments on the stack' (249 tests)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "51"
+    },
+    {
       "id": "1381",
       "title": "spec gap: String.prototype.{substring,slice,indexOf,search,charAt,charCodeAt,codePointAt,at,includes,startsWith,endsWith,trim,concat} edge cases (~128 fails)",
       "priority": "medium",
@@ -233,32 +263,12 @@
       "sprint": "51"
     },
     {
-      "id": "1378",
-      "title": "spec gap: try/catch/finally — error type fidelity, finally completion override, dstr-binding (~85 fails)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "51"
-    },
-    {
       "id": "1377",
       "title": "spec gap: Array.prototype.{push,pop,shift,unshift,fill,copyWithin,reverse} — mutation on array-like + length writes (~80 fails)",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "51"
-    },
-    {
-      "id": "1376",
-      "title": "IR: fallback telemetry gate — CI fails when unintended legacy bypasses exceed threshold",
-      "priority": "high",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "ir-full-coverage",
       "status": "ready",
       "sprint": "51"
     },
@@ -323,16 +333,6 @@
       "sprint": "51"
     },
     {
-      "id": "1369",
-      "title": "spec gap: String.prototype.{split,replace,replaceAll,match,matchAll} — limit, @@split/@@replace/@@match protocol (~150 fails)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "51"
-    },
-    {
       "id": "1368",
       "title": "spec gap: Promise.{all,allSettled,any,race} — resolver-element semantics, ctor type-check (~109 fails)",
       "priority": "medium",
@@ -375,16 +375,6 @@
     {
       "id": "1364",
       "title": "spec gap: class elements — method/field descriptor enumerable/configurable/writable (~700 fails)",
-      "priority": "high",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "51"
-    },
-    {
-      "id": "1363",
-      "title": "spec gap: class dstr — 'Cannot destructure null/undefined' in method default-binding (~700 runtime_errors)",
       "priority": "high",
       "feasibility": "medium",
       "depends_on": [],
@@ -605,16 +595,6 @@
     {
       "id": "1337",
       "title": "spec gap: Function.prototype.bind/toString + Function/internals (175 + 7 test262 fails)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "50"
-    },
-    {
-      "id": "1336",
-      "title": "spec gap: Object.assign drops getters / Symbol keys (27 of 38 test262 fails)",
       "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
@@ -2026,6 +2006,56 @@
       "goal": "spec-completeness",
       "status": "in-progress",
       "sprint": "51"
+    },
+    {
+      "id": "1378",
+      "title": "spec gap: try/catch/finally — error type fidelity, finally completion override, dstr-binding (~85 fails)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "in-progress",
+      "sprint": "51"
+    },
+    {
+      "id": "1376",
+      "title": "IR: fallback telemetry gate — CI fails when unintended legacy bypasses exceed threshold",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "ir-full-coverage",
+      "status": "in-progress",
+      "sprint": "51"
+    },
+    {
+      "id": "1369",
+      "title": "spec gap: String.prototype.{split,replace,replaceAll,match,matchAll} — limit, @@split/@@replace/@@match protocol (~150 fails)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "in-progress",
+      "sprint": "51"
+    },
+    {
+      "id": "1363",
+      "title": "spec gap: class dstr — 'Cannot destructure null/undefined' in method default-binding (~700 runtime_errors)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "in-progress",
+      "sprint": "51"
+    },
+    {
+      "id": "1336",
+      "title": "spec gap: Object.assign drops getters / Symbol keys (27 of 38 test262 fails)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "in-progress",
+      "sprint": "50"
     },
     {
       "id": "1325",
