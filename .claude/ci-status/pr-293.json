@@ -1,0 +1,19 @@
+{
+  "pr": 293,
+  "conclusion": "success",
+  "head_branch": "issue-1370-ir-class-methods",
+  "head_sha": "0031337c1ba1a6a43cbd9484e03bed47dd4dd1ce",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25550125806",
+  "timestamp": "2026-05-08T10:35:09Z",
+  "pass": 27209,
+  "fail": 14605,
+  "compile_error": 1262,
+  "snapshot_delta": -4,
+  "net_per_test": 43,
+  "regressions": 49,
+  "regressions_real": 7,
+  "regressions_wasm_change": 7,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 42,
+  "improvements": 50
+}
