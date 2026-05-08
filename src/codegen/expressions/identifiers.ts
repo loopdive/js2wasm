@@ -500,15 +500,32 @@ function compileIdentifier(ctx: CodegenContext, fctx: FunctionContext, id: ts.Id
   }
 
   // Check if this is a truly undeclared variable (no TS symbol).
-  // Accessing an undeclared variable should throw ReferenceError per JS strict mode.
+  // Accessing an undeclared variable should throw ReferenceError per JS strict mode
+  // (spec §13.10.1 / §13.11.4 — operand evaluation precedes ToPrimitive in `==`).
   // However, known globals (Symbol, Object, Reflect, etc.) have TS symbols from
   // lib.d.ts and should use the fallback default instead.
   const sym = ctx.checker.getSymbolAtLocation(id);
   if (!sym) {
-    // Truly undeclared variable — throw ReferenceError at runtime
-    const tagIdx = ensureExnTag(ctx);
-    fctx.body.push({ op: "ref.null.extern" } as Instr);
-    fctx.body.push({ op: "throw", tagIdx } as unknown as Instr);
+    // Truly undeclared variable — throw a proper ReferenceError instance
+    // via the `__throw_reference_error` host import. The previous emission
+    // was a raw `throw ref.null.extern`, which surfaced to JS as `null` so
+    // `e instanceof ReferenceError` was false (#1380, S11.9.1_A2.1_T3).
+    const throwRefErrIdx = ensureLateImport(ctx, "__throw_reference_error", [{ kind: "externref" }], []);
+    flushLateImportShifts(ctx, fctx);
+    if (throwRefErrIdx !== undefined) {
+      const msg = `${name} is not defined`;
+      addStringConstantGlobal(ctx, msg);
+      const strIdx = ctx.stringGlobalMap.get(msg)!;
+      fctx.body.push({ op: "global.get", index: strIdx } as Instr);
+      fctx.body.push({ op: "call", funcIdx: throwRefErrIdx } as Instr);
+      fctx.body.push({ op: "unreachable" } as unknown as Instr);
+    } else {
+      // Standalone/WASI mode without `__throw_reference_error`: fall back to
+      // the raw exception-tag throw (no JS host to construct a ReferenceError).
+      const tagIdx = ensureExnTag(ctx);
+      fctx.body.push({ op: "ref.null.extern" } as Instr);
+      fctx.body.push({ op: "throw", tagIdx } as unknown as Instr);
+    }
     return { kind: "externref" };
   }
 
