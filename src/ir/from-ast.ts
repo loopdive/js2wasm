@@ -114,6 +114,32 @@ export interface IrFromAstResolver {
 export interface AstToIrOptions {
   readonly exported?: boolean;
   /**
+   * #1370 Phase B: explicit name for the lowered function. Required for
+   * MethodDeclaration (where `.name` is `PropertyName`, not Identifier)
+   * and ConstructorDeclaration (which has no name node at all). For
+   * top-level FunctionDeclaration this can be omitted; the caller's
+   * `fn.name.text` is used as a fallback.
+   */
+  readonly funcName?: string;
+  /**
+   * #1370 Phase B: when set, the lowered function gets an implicit
+   * `__self` parameter as its FIRST parameter, and `this` is bound in
+   * the body's scope to that parameter's SSA value. Pass when lowering
+   * an instance method — the legacy `class-bodies.ts` pre-allocates
+   * instance method signatures as `[(ref $structTypeIdx), ...userParams]`
+   * (see `class-bodies.ts:301`); the IR-lowered body must mirror that
+   * layout exactly so existing legacy callers' `call $methodFuncIdx`
+   * ops route to the correct typeIdx.
+   *
+   * The `IrType` should be `{ kind: "class"; shape }` so `this.field`
+   * accesses resolve via `class.get` / `class.set` against the shape's
+   * field list.
+   *
+   * Static methods don't get a `selfParam`; constructors don't either —
+   * Phase C synthesises `struct.new + __self` inside the body.
+   */
+  readonly selfParam?: { readonly type: IrType };
+  /**
    * If present, overrides the IR types for the function's own parameters.
    * Indexed by parameter position. Used when the AST lacks explicit TS
    * type annotations and the Phase-2 propagation pass has inferred types.
@@ -179,15 +205,36 @@ export interface LoweredFunctionResult {
   readonly lifted: readonly IrFunction[];
 }
 
-export function lowerFunctionAstToIr(fn: ts.FunctionDeclaration, options: AstToIrOptions = {}): LoweredFunctionResult {
-  if (!fn.name) {
-    throw new Error("ir/from-ast: function declaration without a name");
+export function lowerFunctionAstToIr(
+  fn: ts.FunctionDeclaration | ts.MethodDeclaration | ts.ConstructorDeclaration,
+  options: AstToIrOptions = {},
+): LoweredFunctionResult {
+  // #1370 Phase B: name resolution.
+  //
+  // FunctionDeclaration: prefer `fn.name.text`, fall back to options.funcName.
+  // MethodDeclaration: use options.funcName (its `.name` is PropertyName).
+  // ConstructorDeclaration: use options.funcName (no `.name` node).
+  const astName = ts.isFunctionDeclaration(fn) ? fn.name?.text : undefined;
+  const name = options.funcName ?? astName;
+  if (!name) {
+    throw new Error("ir/from-ast: function declaration without a name (and no options.funcName supplied)");
   }
   if (!fn.body) {
-    throw new Error(`ir/from-ast: function ${fn.name.text} has no body`);
+    throw new Error(`ir/from-ast: function ${name} has no body`);
   }
 
-  const name = fn.name.text;
+  // #1370 Phase B: ConstructorDeclaration has no `asteriskToken` field,
+  // and a method/function may have one. Type-narrow before access.
+  const isGenerator = (ts.isFunctionDeclaration(fn) || ts.isMethodDeclaration(fn)) && !!fn.asteriskToken;
+
+  // ConstructorDeclaration has no `.type` field (return type is implicit
+  // — the constructed instance). Phase B doesn't lower constructor bodies
+  // (Phase C handles `struct.new + __self`); the integration loop should
+  // skip ConstructorDeclaration. Defensive guard here in case it slips
+  // through.
+  if (ts.isConstructorDeclaration(fn)) {
+    throw new Error(`ir/from-ast: constructor body lowering is Phase C, not B (${name})`);
+  }
 
   // Slice 7a (#1169f): `function*` produces a Generator-like externref
   // regardless of the source-level return type annotation
@@ -199,7 +246,6 @@ export function lowerFunctionAstToIr(fn: ts.FunctionDeclaration, options: AstToI
   // `fn.type?.kind === VoidKeyword` indicates a void-returning function.
   // The IR builder is constructed with `[]` results; lowerTail accepts
   // bare `return;` / fall-through tails.
-  const isGenerator = !!fn.asteriskToken;
   const isVoidReturn =
     !isGenerator &&
     (options.returnTypeOverride === null ||
@@ -226,6 +272,16 @@ export function lowerFunctionAstToIr(fn: ts.FunctionDeclaration, options: AstToI
   // Single scope map for both params and let/const locals. Phase 1 forbids
   // shadowing (enforced by the selector) so there is no nesting to track.
   const scope = new Map<string, ScopeBinding>();
+  // #1370 Phase B: synthetic `__self` for instance methods. Must be added
+  // FIRST so its SSA index matches the legacy `local 0` slot the
+  // pre-allocated typeIdx expects (see `class-bodies.ts:301`). `this` is
+  // bound in scope to this SSA value; subsequent `this.field` /
+  // `this.method()` accesses route through the existing class.get /
+  // class.set / class.method lowerings (slice 4 #1169d).
+  if (options.selfParam) {
+    const selfV = builder.addParam("__self", options.selfParam.type);
+    scope.set("this", { kind: "local", value: selfV, type: options.selfParam.type });
+  }
   for (const p of params) {
     const v = builder.addParam(p.name, p.type);
     scope.set(p.name, { kind: "local", value: v, type: p.type });
@@ -665,7 +721,9 @@ interface LowerCtx {
  * We DON'T descend into nested function-likes — their writes are local
  * to their own scope and don't influence the outer's slot decisions.
  */
-function collectMutatedLetNames(fn: ts.FunctionDeclaration): Set<string> {
+function collectMutatedLetNames(
+  fn: ts.FunctionDeclaration | ts.MethodDeclaration | ts.ConstructorDeclaration,
+): Set<string> {
   const writes = new Set<string>();
   if (!fn.body) return writes;
   return collectMutatedLetNamesFromBlock(fn.body);
@@ -1077,6 +1135,21 @@ function lowerExpr(expr: ts.Expression, cx: LowerCtx, hint: IrType): IrValueId {
   // closure.
   if (ts.isArrayLiteralExpression(expr)) {
     throw new Error(`ir/from-ast: ArrayLiteralExpression not in slice 12 (${cx.funcName})`);
+  }
+  // #1370 Phase B: `this` reference inside an instance method body.
+  // The integration loop binds `this` in scope to the synthetic
+  // `__self` parameter's SSA value before lowering the body. Outside
+  // of class-method bodies the keyword never enters scope, so this
+  // branch only fires for IR-claimed instance methods.
+  if (expr.kind === ts.SyntaxKind.ThisKeyword) {
+    const p = cx.scope.get("this");
+    if (!p) {
+      throw new Error(`ir/from-ast: 'this' reference outside an instance method body (${cx.funcName})`);
+    }
+    if (p.kind !== "local") {
+      throw new Error(`ir/from-ast: unexpected 'this' binding kind ${p.kind} in ${cx.funcName}`);
+    }
+    return p.value;
   }
   if (ts.isIdentifier(expr)) {
     const p = cx.scope.get(expr.text);

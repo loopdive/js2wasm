@@ -595,3 +595,311 @@ This requires either:
 - Run `tests/classes.test.ts` — expect the env failures unchanged from Phase A.
 - IR fallback baseline: should DROP for `class-method` bucket as Phase B claims
   more methods. Run `pnpm run check:ir-fallbacks -- --update` and commit.
+
+---
+
+## Phase B — Implementation Notes (2026-05-08, senior-dev-1370)
+
+PR: https://github.com/loopdive/js2wasm/pull/295
+
+Phase B wires the IR integration loop for class **instance methods**.
+Static methods and constructors are deferred (see scope notes below).
+
+### What landed
+
+1. **`lowerFunctionAstToIr` widened** (`src/ir/from-ast.ts`):
+   - Param type: `FunctionDeclaration | MethodDeclaration | ConstructorDeclaration`.
+   - New `options.funcName` for caller-supplied names (MethodDeclaration's
+     `.name` is `PropertyName`, not Identifier; ConstructorDeclaration has
+     no name node).
+   - New `options.selfParam: { type: IrType }` injects a synthetic `__self`
+     first param. Mirrors `class-bodies.ts:301`'s `[(ref $structTypeIdx),
+     ...userParams]` layout exactly so legacy callers' `call` ops still
+     match the typeIdx after the patch.
+   - Binds `this` in the body's scope to the `__self` SSA value. Existing
+     slice-4 `class.get` / `class.set` / `class.method` lowerings handle
+     `this.field` / `this.method()` via the `IrType.class` shape carried
+     on the binding.
+   - `lowerExpr` accepts `ts.SyntaxKind.ThisKeyword` and returns the
+     `this` SSA value from scope.
+   - `collectMutatedLetNames` widened to the same union.
+   - ConstructorDeclaration is rejected at the lowerer with a clean
+     error (Phase C work).
+
+2. **Class-member walk in `compileIrPathFunctions`** (`src/ir/integration.ts`):
+   - New parallel loop after the FunctionDeclaration loop. Walks
+     `sourceFile.statements` for `ClassDeclaration`, filters to
+     non-static `MethodDeclaration` whose synthetic name is in
+     `selected.classMembers`. Looks up `classShapes.get(className)`,
+     builds the `IrType.class` self-param, calls `lowerFunctionAstToIr`.
+   - Skip branches: classes with `extends` (defensive — selector already
+     rejects), missing class shape, static modifier, abstract modifier,
+     computed/private member name.
+   - `BuiltFn` gains `classMember?: boolean` flag. Threaded through
+     hygiene/inline/mono pipeline stages.
+
+3. **Funcidx allocation skip** (`src/ir/integration.ts`):
+   - Class members already have a funcIdx pre-allocated by
+     `class-bodies.ts`. The new `if (entry.classMember) continue;`
+     prevents the integration's clone-allocation step from registering
+     a duplicate slot.
+
+4. **Signature parity guard** (`src/ir/integration.ts`):
+   - Before patching the slot, compares `wasmFunc.typeIdx` (IR-lowered)
+     to `existing.typeIdx` (legacy pre-allocated). On mismatch:
+     - Don't patch — legacy body stays in place.
+     - Emit a `severity: warning` diagnostic: `"class-method typeIdx
+       parity mismatch: IR=N, legacy=M — keeping legacy body"`.
+   - Top-level FunctionDeclarations DON'T need this guard — their
+     pre-allocated body was empty and no legacy callers depend on the
+     slot's prior typeIdx.
+
+5. **Early-return short-circuit relaxed** (`src/ir/integration.ts:93`):
+   - Old: `if (selected.funcs.size === 0) return EMPTY;`
+   - New: `if (selected.funcs.size === 0 && (!selected.classMembers || selected.classMembers.size === 0)) return EMPTY;`
+   - A source file with only a class (no top-level functions) can now
+     reach the class-member walk.
+
+6. **`safeSelection` threads `classMembers`** (`src/codegen/index.ts:854`):
+   - The class-method override map isn't built (class methods are typed
+     via the class shape, not TypeMap propagation). Pass the
+     `classMembers` set through unchanged.
+
+### Phase B verification
+
+- `.tmp/probe-1370-phaseB.mts` — `class Calc { add(a,b); mul(a,b); }` →
+  `run()` returns 25 in both legacy and IR. Values match.
+- `.tmp/probe-1370-phaseB-trace.mts` — confirms `Calc_add` body is the
+  IR-lowered shape (`local.get 1`, `local.get 2`, `f64.add`, `return`)
+  and not the legacy `$name`-prefixed form.
+- `.tmp/probe-1370-phaseB-this-method.mts` — `class Counter { next();
+  nextNext() }` with `this.next()` cross-method call → both methods
+  IR-compiled, returns 7.
+
+Test results:
+- Class equivalence tests (6 files): 22/22 pass (incl.
+  `ir-slice4-classes.test.ts` exercising slice-4 class instance use
+  patterns from outer functions).
+- IR test suite (14 files): 327/327 pass.
+- TypeScript clean.
+- IR fallback budget gate: no regression.
+
+### Out of scope (Phase B deferred)
+
+- **Static methods** — funcMap key shape is the same
+  (`${className}_${methodName}`) but no `self` injection. Could be a
+  small follow-up — just skip the `selfParam` option when
+  `hasStaticModifier(member)`. The selector already claims them in
+  Phase A.
+- **Constructors** — Phase C builds the `struct.new $ClassName` allocation
+  + `__self` SSA binding + `return $self` epilogue. Phase B's lowerer
+  rejects ConstructorDeclaration with a clear error.
+- **Inheritance / `super`** — Phase E. Phase A's selector already
+  rejects classes with `extends`.
+
+### Risk notes
+
+- The signature parity guard will surface as a warning in CI if any
+  test triggers a mismatch. Watch the Phase B PR's test262 output for
+  `class-method typeIdx parity mismatch` warnings — they indicate
+  classes whose methods can't be claimed safely yet (likely f64-vs-i32
+  resolution differences). If the guard fires for many cases, the
+  `IrClassShape` projection in `buildIrClassShapes` (`src/codegen/index.ts:480`)
+  may need to align more closely with `resolveWasmType`'s output.
+
+---
+
+## Phase C Notes (from constructor reading, 2026-05-08)
+
+These findings are from reading the legacy constructor-body compilation
+ahead of Phase C implementation. **The architect spec referenced a
+`compileConstructorBody` function — that doesn't exist as a separate
+function; constructor body compilation is INLINE in `compileClassBodies`
+(`src/codegen/class-bodies.ts:658-951`).** The next agent should not
+search for `compileConstructorBody`.
+
+### Legacy constructor body recipe
+
+Lines below refer to `src/codegen/class-bodies.ts`:
+
+1. **Allocate `__self` local** (line 731-734):
+   ```ts
+   const selfLocal = allocLocal(fctx, "__self", { kind: "ref", typeIdx: structTypeIdx });
+   ```
+2. **Push default values for ALL fields including `__tag`** (line 737-758):
+   - `__tag` → `ctx.classTagMap.get(className) ?? 0` (instanceof discrimination value)
+   - f64 → `f64.const 0`, i32 → `i32.const 0`
+   - ref → `ref.null typeIdx`, ref_null → `ref.null typeIdx`
+   - externref → `ref.null.extern`, eqref → `ref.null.eq`, i64 → `i64.const 0n`
+   - Fallback for anything else: `i32.const 0`
+3. **`struct.new $structTypeIdx`** (line 759).
+4. **`local.set $__self`** (line 760).
+5. **Bind `this` → `__self` in localMap** (line 765):
+   `fctx.localMap.set("this", selfLocal);`
+6. **Optional param defaults** (line 772-846) — null/zero/NaN sentinel
+   checks. **OUT OF PHASE C SCOPE** — Phase A's selector already rejects
+   params with initializers, so this complexity isn't needed in the IR
+   lowerer until a separate slice loosens the selector.
+7. **PropertyDeclaration initializers** (line 914-926) — for each
+   `field: type = expr` (no `static`):
+   ```
+   local.get $__self
+   <compile init expr>
+   struct.set $structTypeIdx fieldIdx
+   ```
+   Field index is from `legacyFields.findIndex` — note `__tag` is at
+   index 0, user fields at 1+.
+8. **Constructor body statements** (line 928-941) — compile each via
+   `compileStatement`. `this.field = expr` is already handled by the
+   assignment compilation looking up `this` in `localMap` (which
+   resolves to `selfLocal`). `super(...)` calls get special handling
+   (line 932-938) — **OUT OF PHASE C SCOPE** (Phase E for inheritance).
+9. **Tail return** (line 944): `local.get $__self` as the final instr.
+   Function signature has return type `(ref $structTypeIdx)`, so the
+   bare `local.get` is the return value.
+
+### Critical detail — `__tag` field
+
+- `__tag` is at field **index 0** in `legacyFields`. User fields start
+  at index 1 (or higher with parent chains, but Phase C doesn't handle
+  inheritance).
+- `ctx.classTagMap.get(className)` returns the unique tag value used
+  by `instanceof` to discriminate this class from others.
+- The IR's `IrClassShape.fields` strips `__tag` (`buildIrClassShapes:524`
+  in `src/codegen/index.ts`), but `ClassRegistry.resolve` in
+  `integration.ts:1387-1390` builds `fieldIdxByName` from `legacyFields`
+  WHICH INCLUDES `__tag`. Therefore `class.set <userFieldName>` in IR
+  already maps to the post-`__tag` index correctly — no Phase C work
+  needed there.
+- **Phase C's `class.new` IR lowering MUST push `__tag`'s value** when
+  allocating. Either:
+  - Extend `IrClassLowering` (in `integration.ts:1394`) with a new
+    `tagValue` accessor that returns `ctx.classTagMap.get(className)`,
+    OR
+  - Have the lowerer reach into the resolver to get the class's tag
+    value via a new resolver method.
+
+### Field initialization order (subtle correctness issue)
+
+Legacy emits in this exact order:
+1. Zero-fill all fields via `struct.new` (line 737-760)
+2. PropertyDeclaration initializers (line 914-926)
+3. Constructor body statements (line 928-941)
+
+Phase C must match. Otherwise:
+```ts
+class C {
+  x: number = 1;
+  constructor() {
+    this.x = this.x + 10;  // legacy result: 11. wrong order: 10.
+  }
+}
+```
+The PropertyDeclaration initializer must run BEFORE the constructor
+body so the body sees the initialized value.
+
+### `this` MUST be a slot, not an SSA local
+
+Constructor bodies may contain branches that conditionally write to
+`this` (and the IR's slice 4+ supports `if`/`else`):
+```ts
+constructor(flag: boolean) {
+  if (flag) {
+    this.x = 1;
+  } else {
+    this.x = 2;
+  }
+}
+```
+
+In SSA form, the two branches produce different values. If `this` is
+bound as a `local` (kind: "local") with a fixed SSA value, the writes
+on each arm wouldn't merge correctly. **Bind `this` as a `slot`
+binding** (kind: "slot") so cross-branch writes propagate via
+`slot.write` / `slot.read` — the existing pattern for mutated lets.
+The Phase B `selfParam` injection used `kind: "local"`; Phase C needs
+to differentiate constructor-mode and use `kind: "slot"` instead.
+
+For Phase B (instance methods), `this` is read-only inside the body
+(callers can't reassign `this`), so `kind: "local"` is fine. Phase C's
+constructor binding must be `kind: "slot"` because user code can
+freely mutate `this.field` across branches AND the post-`class.new`
+default fields fill the slot before any user code runs.
+
+Wait — `slot` is for mutated identifier writes (`x = expr`). For
+`this.field = expr` writes, the `this` SSA value itself doesn't
+change; only its struct fields do (via `class.set`). So `this` can
+be a `local` kind even in constructors — only the `struct.set` to the
+field changes state.
+
+**REVISED**: Either kind should work for `this` in a constructor. Use
+`local` (matches Phase B) for consistency unless a use case surfaces
+that requires slot semantics (e.g. `if (cond) { this = makeOther(); }`,
+which is JS-illegal — `this` is read-only).
+
+The slot vs. local question matters more for the ALLOCATION pattern:
+the `class.new` result must be stored somewhere stable so subsequent
+`class.set` ops can reference it. A `local` SSA binding is fine: the
+SSA value is the struct ref, and `class.set selfV "x" expr` doesn't
+change `selfV` (only the struct it references).
+
+### Phase C — recommended implementation approach
+
+**Approach 1: new IR primitive `IrInstr.classNew { className }`**:
+
+1. Add a new node-kind in `src/ir/nodes.ts`:
+   - `class.new { className }` → produces `IrType.class { shape }`.
+2. Lower it in the resolver (`src/ir/integration.ts`):
+   - Look up `IrClassLowering` via `ClassRegistry.resolve`.
+   - Get `tagValue` (new accessor on `IrClassLowering`).
+   - For each field in `legacyFields` (indexed 0..n):
+     - Push the appropriate zero / tag value (mirror lines 740-757).
+   - Emit `struct.new $structTypeIdx`.
+   - Result is `(ref $structTypeIdx)`; coerce to `IrType.class` at the
+     IR level.
+3. Add a `constructorOf?: { className: string }` option to
+   `lowerFunctionAstToIr`:
+   - When set, emit `class.new` at body entry; bind `this` (kind:
+     local) to the result.
+   - Walk class.members for non-static `PropertyDeclaration`s with an
+     initializer; emit `class.set this fieldName <init>` for each.
+   - Lower constructor body statements via the existing slice-4 path
+     (`this.field = expr` and `this.method()` already work).
+   - Tail: emit `return this` automatically (since constructors don't
+     write an explicit return).
+4. The function's `returnType` should be `IrType.class { shape }`.
+5. Integration loop in `compileIrPathFunctions`:
+   - Detect `ConstructorDeclaration` in the class-member walk.
+   - Pass `constructorOf: { className }` instead of `selfParam`.
+   - Same parity check before slot patch — Phase C-emitted typeIdx
+     must equal legacy `${className}_new_type` typeIdx.
+
+**Approach 2: reuse lowerNewExpression** — REJECTED. The existing
+`lowerNewExpression` lowers `new ClassName(args)` as a CALL to the
+legacy ctor func; Phase C is lowering the BODY of that ctor. Different
+problem.
+
+### Risk for Phase C
+
+1. **Typeidx parity** — same as Phase B. The constructor's legacy
+   typeIdx is `${className}_new_type` from `class-bodies.ts:251`
+   (params from typed source + return `(ref $structTypeIdx)`). The IR
+   must match exactly; the parity guard from Phase B catches the rest.
+2. **Field count drift** — `legacyFields.length` is the source of truth
+   for `struct.new`. If the IR's `class.new` pushes fewer values, Wasm
+   validation rejects the module. Test with classes that have fields
+   spanning all the legacy default-value cases (f64, i32, ref, ref_null,
+   externref, eqref).
+3. **PropertyDeclaration order** — emit before body statements (legacy
+   line 914 runs before line 928).
+4. **Default param handling** — Phase A selector rejects params with
+   `initializer`, so Phase C doesn't need lines 772-846. Defensive
+   check: assert `member.parameters.every(p => !p.initializer)` before
+   accepting.
+5. **Inheritance** — Phase A selector rejects classes with `extends`,
+   so the parent-chain field initializers (line 851-912) and `super(...)`
+   handling (line 932-938) are out of Phase C scope. Phase E.
+6. **Mutable `this` invariant** — JS makes `this` read-only inside a
+   constructor (you can't reassign `this`, only mutate its fields).
+   Bind as `kind: "local"` mirroring Phase B; document this in the
+   commit so the next slice doesn't re-bikeshed.
