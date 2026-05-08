@@ -163,3 +163,80 @@ Acceptance-criterion tests:
 Regression test added: `tests/equivalence/issue-1388.test.ts` (7 cases
 covering static / class-expression / prototype / arg-passing / async-
 generator-iteration / typeof-function paths).
+
+## Senior Dev Investigation Notes (2026-05-08, PR #305 follow-up)
+
+**Hypothesis under investigation:** Tech-lead suggested ~143 net regressions
+remained after the partial revert (commit 883032e64), attributed to
+`emitFuncRefAsClosure` having an index-shifting side-effect via
+`addUnionImports` that corrupts already-emitted function bodies.
+
+**Finding:** The hypothesis is incorrect. Tracing `emitFuncRefAsClosure`
+in `src/codegen/closures.ts:2712`:
+
+1. The no-captures branch (lines 2914–2946) calls
+   `getOrCreateFuncRefWrapperTypes`, which only pushes to
+   `ctx.mod.types[]` and `addFuncType` (also types-only). **Type
+   additions do not shift function indices.**
+2. The trampoline is appended to `ctx.mod.functions` at the next
+   available `funcIdx = ctx.numImportFuncs + ctx.mod.functions.length`.
+   **Appending at the end shifts no existing function index.**
+3. `emitFuncRefAsClosure` does NOT call `addUnionImports` or
+   `ensureLateImport`. There is no path through it that adds imports.
+4. If `addUnionImports` is invoked later in compilation, its shift loop
+   (`src/codegen/index.ts:4693-4742`) walks every function in
+   `ctx.mod.functions` (including freshly-added trampolines) and every
+   live FunctionContext body in `ctx.liveBodies`, `ctx.parentBodiesStack`,
+   `ctx.funcStack`, `ctx.currentFunc.savedBodies`, plus `ctx.mod.elements`,
+   `ctx.mod.declaredFuncRefs`, and `ctx.mod.startFuncIdx`. The shift is
+   complete; no body — including the trampoline body just created — is
+   missed.
+
+**Conclusion:** The static-method-handler path in `compilePropertyAccess`
+(lines 1191–1203) is structurally safe. Approach A (pre-registering the
+wrapper struct at class-compilation time) would not change observable
+behavior because the wrapper types are already cache-keyed by signature
+in `ctx.funcRefWrapperCache`; the same struct type is reused on every
+access of any static method with a matching signature.
+
+**Re-analysis of the "143 regressions" attribution:**
+
+CI status snapshots show the post-PR-294 chain as:
+
+| PR  | head_branch                          | pass    | net  |
+|-----|--------------------------------------|---------|------|
+| 294 | issue-1388-null-next-yield-star      | 27,036  | -140 |
+| 295 | issue-1370-ir-phase-b                | 27,210  | +174 |
+| 296 | issue-1389-var-fn-redecl             | 27,221  |  +11 |
+| 297 | issue-1390-import-defer-skip         | 27,216  |   -5 |
+| 298 | issue-1384-async-arity               | 27,312  |  +96 |
+| 299 | issue-1377-array-mutation-spec       | 27,070  | -242 |
+| 300 | issue-1371-ir-extern-whitelist       | 27,070  |    0 |
+| 301 | issue-1372-ir-destructuring-params   | 27,068  |   -2 |
+
+The dominant negative event is **PR #299**, which dropped pass count
+from 27,312 → 27,070 (−242). PR #294's own −140 was already largely
+recovered by subsequent improvement PRs. The "−143 versus
+pre-#294 baseline (27,211)" the tech-lead cited is dominated by PR #299,
+not by the residual static-method-handler effect.
+
+The async-generator/destructuring failure cluster cited
+(`language/expressions/async-generator/dstr/dflt-ary-ptrn-*`) inspects
+top-level `async function*([…] = […])` patterns with no class involvement
+at all. These are destructuring-default-value spec compliance failures
+and do not exercise the static-method-extraction path that PR #294
+modified. They should not be attributable to property-access.ts.
+
+**Action taken:** Keep the branch's existing partial revert (commit
+883032e64) as the right balance: +232 static-method wins preserved, 478
+prototype-method-identity regressions recovered. Cherry-picked tech-lead
+typecheck fix `db2ee79ad` so PR #305 CI quality gate passes (the fix is
+unrelated to #1388 but was blocking CI on every open PR). No further
+changes to property-access.ts are warranted by the actual regression
+data.
+
+Slice 2 (deferred) — the prototype-method-extraction win is still
+recoverable once method-closure caching lands. That would let
+`C.prototype.m` return the same closure ref on every access, preserving
+`c.m === C.prototype.m`. Tracked via `.todo` cases in the regression
+test. Out of scope for this PR.
