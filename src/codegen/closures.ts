@@ -1571,6 +1571,14 @@ export function compileArrowAsClosure(
     isGenerator,
   };
 
+  // (#1384) Track liftedFctx.body in liveBodies BEFORE any emission so
+  // addUnionImports / shiftLateImportIndices can shift any `call funcIdx`
+  // instructions that get emitted during the captures-extraction prologue
+  // (lines 1589-1635) and the TDZ-flag-extraction prologue (lines 1648-1660),
+  // BOTH of which run BEFORE the savedFunc swap below that would otherwise
+  // expose liftedFctx.body via ctx.currentFunc / funcStack to the shifter.
+  ctx.liveBodies.add(liftedFctx.body);
+
   for (let i = 0; i < liftedFctx.params.length; i++) {
     liftedFctx.localMap.set(liftedFctx.params[i]!.name, i);
   }
@@ -2120,6 +2128,9 @@ export function compileArrowAsClosure(
     body: liftedFctx.body,
     exported: false,
   });
+  // (#1384) liftedFctx.body is now reachable via ctx.mod.functions[].body —
+  // remove from liveBodies to keep it tight (the regular walker dedupes anyway).
+  ctx.liveBodies.delete(liftedFctx.body);
   ctx.funcMap.set(closureName, liftedFuncIdx);
 
   // 7. At the creation site, emit struct.new with funcref + captured values
@@ -2379,6 +2390,13 @@ export function compileArrowAsCallback(
     enclosingClassName: fctx.enclosingClassName ?? resolveEnclosingClassName(fctx),
   };
 
+  // (#1384) Track cbFctx.body in liveBodies BEFORE any emission so addUnionImports
+  // / shiftLateImportIndices can shift any `call funcIdx` instructions that get
+  // emitted into it during the captures-extraction (step 4) and param-coercion
+  // (step 4b) phases — both run BEFORE the savedFunc swap at step 5 that would
+  // otherwise expose cbFctx via ctx.currentFunc / funcStack to the shifter.
+  ctx.liveBodies.add(cbFctx.body);
+
   // Register params as locals (param 0 = __captures, [1 = __this if needsThis], then arrow params)
   for (let i = 0; i < cbFctx.params.length; i++) {
     cbFctx.localMap.set(cbFctx.params[i]!.name, i);
@@ -2529,6 +2547,11 @@ export function compileArrowAsCallback(
     body: cbFctx.body,
     exported: true,
   });
+  // (#1384) cbFctx.body is now reachable via ctx.mod.functions[].body — the
+  // regular shifter walker covers it from here on. Remove from liveBodies to
+  // avoid double-traversal (the walker dedupes via its `shifted` set anyway,
+  // but keeping liveBodies tight is cheaper).
+  ctx.liveBodies.delete(cbFctx.body);
   ctx.funcMap.set(cbName, cbFuncIdx);
   ctx.mod.exports.push({
     name: cbName,

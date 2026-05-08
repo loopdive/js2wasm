@@ -115,6 +115,7 @@ export function createCodegenContext(
     inlinableFunctions: new Map(),
     symbolCounterGlobalIdx: -1,
     parentBodiesStack: [],
+    liveBodies: new Set(),
     anonStructHash: new Map(),
     funcTypeCache: new Map(),
     pendingLateImportShift: null,

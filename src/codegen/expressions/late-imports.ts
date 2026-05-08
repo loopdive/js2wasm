@@ -56,6 +56,20 @@ export function shiftLateImportIndices(
   for (const sb of fctx.savedBodies) {
     shiftInstrs(sb);
   }
+  // (#1384) Walk ctx.currentFunc.body too. When fctx ≠ ctx.currentFunc — which
+  // happens during compileArrowAsCallback's param-coercion phase (closures.ts
+  // line 2470) where fctx=cbFctx but ctx.currentFunc=outer-fctx — the outer
+  // function's body would otherwise be missed (it's not yet reachable via
+  // funcStack because the savedFunc swap hasn't happened, and `func.body =
+  // fctx.body` in compileFunctionBody only runs AFTER compilation completes,
+  // so ctx.mod.functions[outer].body is still the empty initial array). The
+  // `shifted` Set dedupes when fctx === ctx.currentFunc.
+  if (ctx.currentFunc) {
+    shiftInstrs(ctx.currentFunc.body);
+    for (const sb of ctx.currentFunc.savedBodies) {
+      shiftInstrs(sb);
+    }
+  }
   for (const parentFctx of ctx.funcStack) {
     shiftInstrs(parentFctx.body);
     for (const sb of parentFctx.savedBodies) {
@@ -64,6 +78,13 @@ export function shiftLateImportIndices(
   }
   for (const pb of ctx.parentBodiesStack) {
     shiftInstrs(pb);
+  }
+  // (#1384) Walk all live (allocated but not yet attached to mod.functions)
+  // FunctionContext bodies — covers cbFctx.body / liftedFctx.body during
+  // their captures-extraction + param-coercion setup phases, BEFORE the
+  // savedFunc swap puts them on funcStack/parentBodiesStack.
+  for (const lb of ctx.liveBodies) {
+    shiftInstrs(lb);
   }
   if (ctx.pendingInitBody) {
     shiftInstrs(ctx.pendingInitBody);
