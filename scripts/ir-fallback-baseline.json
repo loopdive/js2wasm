@@ -1,0 +1,9 @@
+{
+  "generated": "2026-05-08",
+  "unintended": {
+    "body-shape-rejected": 22,
+    "param-type-not-resolvable": 1,
+    "call-graph-closure": 6
+  },
+  "deferred": {}
+}

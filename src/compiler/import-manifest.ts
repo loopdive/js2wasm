@@ -124,6 +124,10 @@ function classifyImport(name: string, mod: WasmModule): ImportIntent {
   // Used for `any`-typed loose equality where null == undefined must be true. (#1134)
   if (name === "__host_loose_eq") return { type: "host_loose_eq" };
 
+  // SameValueZero comparison (§7.2.11) — like === except NaN equals NaN.
+  // Used by Array.prototype.includes on array-like receivers (#1360).
+  if (name === "__same_value_zero") return { type: "same_value_zero" };
+
   // Node builtin modules (#1044)
   if (name.startsWith("__node_")) return { type: "node_builtin", moduleName: name.slice(7) };
 

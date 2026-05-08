@@ -754,6 +754,60 @@ function compileExpressionInner(ctx: CodegenContext, fctx: FunctionContext, expr
       if (!rhsResult) {
         return compileHostInstanceOf(ctx, fctx, expr);
       }
+      // (#1366a) Externref-backed subclasses (extends Error / TypeError / ...)
+      // have instances that are real JS Error objects whose host-side
+      // [[Prototype]] is the BUILTIN parent (Error.prototype), not
+      // MyError.prototype. So `e instanceof MyError` cannot be answered by a
+      // host `__instanceof(value, "MyError")` call (globalThis.MyError does
+      // not exist). We resolve it statically using the TS type of LHS:
+      //
+      //   - LHS type ≡ MyError or a registered subclass → constant `true`
+      //   - LHS type ≡ unrelated user class → constant `false`
+      //   - otherwise (any / externref / parent builtin) → fall back to host
+      //     `__instanceof` against the BUILTIN parent name. (`e instanceof
+      //     MyError` where e is `any` is unanswerable here; we
+      //     conservatively return false to match host semantics.)
+      //
+      // The WasmGC struct-tag path is wrong for these instances anyway
+      // (any.convert_extern + ref.cast to a struct type fails), so we never
+      // dispatch to compileInstanceOf for an externref-backed RHS.
+      if (ctx.classExternrefBackedSet.has(rhsResult)) {
+        const lhsTsType = ctx.checker.getTypeAtLocation(expr.left);
+        const lhsName = lhsTsType.getSymbol()?.name;
+        let staticAnswer: boolean | undefined;
+        if (lhsName !== undefined) {
+          if (lhsName === rhsResult) {
+            staticAnswer = true;
+          } else if (ctx.classTagMap.has(lhsName)) {
+            // LHS is a known user class. Walk its parent chain — true iff the
+            // RHS class is an ancestor of the LHS class.
+            let cur: string | undefined = lhsName;
+            const guard = new Set<string>();
+            while (cur && !guard.has(cur)) {
+              guard.add(cur);
+              if (cur === rhsResult) {
+                staticAnswer = true;
+                break;
+              }
+              cur = ctx.classParentMap.get(cur);
+            }
+            if (staticAnswer === undefined) staticAnswer = false;
+          }
+        }
+        if (staticAnswer !== undefined) {
+          // Compile LHS for side effects, drop, push constant.
+          const leftType = compileExpression(ctx, fctx, expr.left);
+          if (leftType) fctx.body.push({ op: "drop" });
+          fctx.body.push({ op: "i32.const", value: staticAnswer ? 1 : 0 });
+          return { kind: "i32" };
+        }
+        // Could not decide statically — return false (host-side
+        // __instanceof against MyError name would return 0 anyway).
+        const leftType = compileExpression(ctx, fctx, expr.left);
+        if (leftType) fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "i32.const", value: 0 });
+        return { kind: "i32" };
+      }
     }
     return compileBinaryExpression(ctx, fctx, expr);
   }

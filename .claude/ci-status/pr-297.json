@@ -1,0 +1,19 @@
+{
+  "pr": 297,
+  "conclusion": "success",
+  "head_branch": "issue-1390-import-defer-skip",
+  "head_sha": "3b8c8eedf6454774766c5438fb8b60a26747ce50",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25551775133",
+  "timestamp": "2026-05-08T11:21:42Z",
+  "pass": 27216,
+  "fail": 14596,
+  "compile_error": 1262,
+  "snapshot_delta": -4,
+  "net_per_test": -13,
+  "regressions": 99,
+  "regressions_real": 57,
+  "regressions_wasm_change": 57,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 42,
+  "improvements": 44
+}

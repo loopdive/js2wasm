@@ -1,0 +1,22 @@
+{
+  "pr": 310,
+  "conclusion": "success",
+  "head_branch": "issue-1364-class-element-descriptors",
+  "head_sha": "1eaf9edfc13bb1593cefeaa2f7bf3f0053086d31",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25572688556",
+  "timestamp": "2026-05-08T18:43:44Z",
+  "pass": 27656,
+  "fail": 14266,
+  "compile_error": 1151,
+  "snapshot_delta": 4,
+  "net_per_test": 34,
+  "regressions": 54,
+  "regressions_real": 14,
+  "regressions_wasm_change": 14,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 40,
+  "improvements": 48,
+  "baseline_sha": "1eaf9edfc13bb1593cefeaa2f7bf3f0053086d31",
+  "baseline_staleness_commits": 7,
+  "baseline_stale": false
+}

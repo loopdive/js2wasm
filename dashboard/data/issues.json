@@ -1,6 +1,56 @@
 {
   "backlog": [
     {
+      "id": "1383",
+      "title": "narrower typeof-gated strict-equality fix (follow-up to closed PR #272 / #1380)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "backlog",
+      "sprint": ""
+    },
+    {
+      "id": "1357",
+      "title": "spec backlog: AbstractModuleSource constructor (Stage 3 import-source proposal, 8 test262 fails)",
+      "priority": "low",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "backlog",
+      "sprint": "backlog"
+    },
+    {
+      "id": "1356",
+      "title": "spec backlog: ShadowRealm implementation (61 test262 fails, requires per-realm parser)",
+      "priority": "low",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "backlog",
+      "sprint": "backlog"
+    },
+    {
+      "id": "1355",
+      "title": "spec backlog: Proxy implementation beyond JS-host fallback (235 test262 fails)",
+      "priority": "low",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "backlog",
+      "sprint": "backlog"
+    },
+    {
+      "id": "1354",
+      "title": "spec backlog: SharedArrayBuffer + Atomics (full implementation, requires multi-thread Wasm)",
+      "priority": "low",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "backlog",
+      "sprint": "backlog"
+    },
+    {
       "id": "1266",
       "title": "compiler flag --no-eval-scope-write: TypeError instead of shadow scope deopt",
       "priority": "medium",
@@ -173,6 +223,226 @@
   ],
   "ready": [
     {
+      "id": "1392",
+      "title": "IR: null-safe access primitives — ref.is_null IrUnop + value-producing if/else IR node",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "ir-full-coverage",
+      "status": "ready",
+      "sprint": "51"
+    },
+    {
+      "id": "1387",
+      "title": "feat: implement `with` statement — architect exploration of dynamic-scope compilation strategies",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "51"
+    },
+    {
+      "id": "1382",
+      "title": "structural: Wasm closures not JS-callable from host imports — bridge gap",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "ir-full-coverage",
+      "status": "ready",
+      "sprint": "51"
+    },
+    {
+      "id": "1375",
+      "title": "IR: full optional-chain support (?. and ?.[]) without resolver fallback",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ir-full-coverage",
+      "status": "ready",
+      "sprint": "51"
+    },
+    {
+      "id": "1373",
+      "title": "IR: claim async functions (async/await through IR path)",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "ir-full-coverage",
+      "status": "ready",
+      "sprint": "51"
+    },
+    {
+      "id": "1366",
+      "title": "spec gap: class subclass + subclass-builtins prototype chain (~154 fails)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "51"
+    },
+    {
+      "id": "1353",
+      "title": "JSON.stringify (objects/arrays) + JSON.parse: architect spec for Wasm shape-walking and recursive-descent parser",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "standalone-mode",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1352",
+      "title": "spec gap: Set methods (union/intersection/etc.) accept any set-like argument (101 test262 fails)",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1351",
+      "title": "spec gap: ArrayBuffer resizable + TypedArray detached-buffer guards (100 + 39 test262 fails)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1350",
+      "title": "spec gap: ArrayBuffer resizable + TypedArray detached-buffer guards (100 + 39 test262 fails)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1349",
+      "title": "spec gap: BigInt typed-path eager f64 assumptions (47 test262 fails, 4 illegal_cast + 13 runtime)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1347",
+      "title": "spec gap: for-of doesn't IteratorClose on body throw (portion of 389 fails)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1346",
+      "title": "spec gap: Reflect.* invariant checks mirror internal-method bugs (83 test262 fails)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1345",
+      "title": "spec gap: Generator/AsyncIterator prototype receiver TypeErrors + return/throw (52 + 12 test262 fails)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1344",
+      "title": "spec gap: Date.prototype string formatters and parsers (174 of 485 test262 fails)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1343",
+      "title": "spec gap: Boolean wrapper + Symbol coercion TypeErrors (24 + 45 test262 fails)",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1341",
+      "title": "spec gap: Iterator.prototype helpers wasm_compile errors (89 of 245 fails)",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1340",
+      "title": "spec gap: AggregateError + SuppressedError errors-iterable + cause coercion (37 test262 fails)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1339",
+      "title": "spec gap: AggregateError + SuppressedError errors-iterable + cause coercion (37 test262 fails)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1338",
+      "title": "spec gap: Array.from / Array.of constructor semantics (39 test262 fails, wasm_compile dominant)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1337",
+      "title": "spec gap: Function.prototype.bind/toString + Function/internals (175 + 7 test262 fails)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
+      "id": "1335",
+      "title": "Number.prototype formatting in pure Wasm: integer toString(radix), then Ryu for floats (standalone)",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "standalone-mode",
+      "status": "ready",
+      "sprint": "50"
+    },
+    {
       "id": "1333",
       "title": "RegExp host-mode: Pre-ES6 (S15.10) tests + annexB legacy accessors",
       "priority": "low",
@@ -253,39 +523,9 @@
       "sprint": "50"
     },
     {
-      "id": "1325",
-      "title": "instanceof against built-in types: compile-time type-tag registry eliminates JS host for common cases",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "standalone-mode",
-      "status": "ready",
-      "sprint": "50"
-    },
-    {
-      "id": "1324",
-      "title": "JSON.stringify and JSON.parse: implement in pure Wasm, eliminate JS host dependency",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "standalone-mode",
-      "status": "ready",
-      "sprint": "50"
-    },
-    {
       "id": "1323",
       "title": "Iterator protocol bridging: implement $IteratorResult struct in pure Wasm, eliminate host bridge",
       "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "standalone-mode",
-      "status": "ready",
-      "sprint": "50"
-    },
-    {
-      "id": "1322",
-      "title": "Math.random() has no standalone fallback — requires JS host import in WASI/standalone mode",
-      "priority": "low",
       "feasibility": "easy",
       "depends_on": [],
       "goal": "standalone-mode",
@@ -299,7 +539,7 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "standalone-mode",
-      "status": "ready",
+      "status": "partial",
       "sprint": "50"
     },
     {
@@ -343,30 +583,10 @@
       "sprint": "50"
     },
     {
-      "id": "1313",
-      "title": "await is a passthrough — does not unwrap Promise from async-call expressions",
-      "priority": "high",
-      "feasibility": "hard",
-      "depends_on": [],
-      "goal": "npm-library-support",
-      "status": "ready",
-      "sprint": "50"
-    },
-    {
       "id": "1312",
       "title": "Async recursive function (next() compose pattern) — Unhandled rejection",
       "priority": "medium",
       "feasibility": "hard",
-      "depends_on": [],
-      "goal": "npm-library-support",
-      "status": "ready",
-      "sprint": "50"
-    },
-    {
-      "id": "1311",
-      "title": "Map<string, AsyncHandler> dispatch null_deref in App.dispatch path",
-      "priority": "medium",
-      "feasibility": "medium",
       "depends_on": [],
       "goal": "npm-library-support",
       "status": "ready",
@@ -1598,6 +1818,86 @@
   ],
   "inprogress": [
     {
+      "id": "1381",
+      "title": "spec gap: String.prototype.{substring,slice,indexOf,search,charAt,charCodeAt,codePointAt,at,includes,startsWith,endsWith,trim,concat} edge cases (~128 fails)",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "in-progress",
+      "sprint": "51"
+    },
+    {
+      "id": "1378",
+      "title": "spec gap: try/catch/finally — error type fidelity, finally completion override, dstr-binding (~85 fails)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "in-progress",
+      "sprint": "51"
+    },
+    {
+      "id": "1364",
+      "title": "spec gap: class elements — method/field descriptor enumerable/configurable/writable (~700 fails)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "in-progress",
+      "sprint": "51"
+    },
+    {
+      "id": "1348",
+      "title": "spec gap: for-of doesn't IteratorClose on body throw (portion of 389 fails)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "in-progress",
+      "sprint": "50"
+    },
+    {
+      "id": "1342",
+      "title": "spec gap: JSON.stringify replacer/toJSON/property-list (49 of 66 test262 fails)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "in-progress",
+      "sprint": "50"
+    },
+    {
+      "id": "1336",
+      "title": "spec gap: Object.assign drops getters / Symbol keys (27 of 38 test262 fails)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "in-progress",
+      "sprint": "50"
+    },
+    {
+      "id": "1325",
+      "title": "instanceof against built-in types: compile-time type-tag registry eliminates JS host for common cases",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "standalone-mode",
+      "status": "in-progress",
+      "sprint": "50"
+    },
+    {
+      "id": "1322",
+      "title": "Math.random() has no standalone fallback — requires JS host import in WASI/standalone mode",
+      "priority": "low",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "standalone-mode",
+      "status": "in-progress",
+      "sprint": "50"
+    },
+    {
       "id": "1315",
       "title": "import.defer / import.source missing early error detection — 157 negative tests false-pass",
       "priority": "high",
@@ -1631,6 +1931,296 @@
   "review": [],
   "done": [
     {
+      "id": "1393",
+      "title": "infra: content-hash CI cache + GitHub Merge Queue — eliminate baseline drift and redundant re-runs",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ci-reliability",
+      "status": "done",
+      "sprint": "51"
+    },
+    {
+      "id": "1391",
+      "title": "infra: CI feed baseline staleness detection — warn when baseline_sha diverges from current main",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "reliability",
+      "status": "done",
+      "sprint": "51"
+    },
+    {
+      "id": "1390",
+      "title": "fix: import-defer proposal tests fail as CE (no test export) when TEST262_INCLUDE_PROPOSALS=1",
+      "priority": "low",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "51"
+    },
+    {
+      "id": "1389",
+      "title": "fix: false CE — var + function-declaration same name at top-level scope",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "51"
+    },
+    {
+      "id": "1388",
+      "title": "runtime: null.next — yield* / async-generator iterator construction returns null in class methods (316 fails)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "51"
+    },
+    {
+      "id": "1386",
+      "title": "HANG: Promise/race/invoke-then.js — compilation or runtime infinite loop",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "51"
+    },
+    {
+      "id": "1385",
+      "title": "HANG: Temporal/Duration/from/argument-non-string.js — infinite runtime loop",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "51"
+    },
+    {
+      "id": "1384",
+      "title": "CE: static async method with PrivateName — 'not enough arguments on the stack' (249 tests)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "51"
+    },
+    {
+      "id": "1380",
+      "title": "spec gap: equality (==, !=, ===, !==) — Symbol/BigInt coercion + ReferenceError propagation (~55 fails)",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "51"
+    },
+    {
+      "id": "1379",
+      "title": "spec gap: prefix/postfix ++/-- on null/undefined/string operands — ToNumeric coercion (~40 fails)",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "51"
+    },
+    {
+      "id": "1377",
+      "title": "spec gap: Array.prototype.{push,pop,shift,unshift,fill,copyWithin,reverse} — mutation on array-like + length writes (~80 fails)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "51"
+    },
+    {
+      "id": "1376",
+      "title": "IR: fallback telemetry gate — CI fails when unintended legacy bypasses exceed threshold",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "ir-full-coverage",
+      "status": "done",
+      "sprint": "51"
+    },
+    {
+      "id": "1374",
+      "title": "IR: string for-of and for-in through IR (removes legacy fallback for string iteration)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ir-full-coverage",
+      "status": "done",
+      "sprint": "51"
+    },
+    {
+      "id": "1372",
+      "title": "IR: support destructuring params (removes param-shape-rejected bypass)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ir-full-coverage",
+      "status": "done",
+      "sprint": "51"
+    },
+    {
+      "id": "1371",
+      "title": "IR: expand external-call whitelist to stop rejecting host imports and Math.*",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "ir-full-coverage",
+      "status": "done",
+      "sprint": "51"
+    },
+    {
+      "id": "1370",
+      "title": "IR: claim class methods and constructors (largest legacy bypass)",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "ir-full-coverage",
+      "status": "done",
+      "sprint": "51"
+    },
+    {
+      "id": "1369",
+      "title": "spec gap: String.prototype.{split,replace,replaceAll,match,matchAll} — limit, @@split/@@replace/@@match protocol (~150 fails)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "51"
+    },
+    {
+      "id": "1368",
+      "title": "spec gap: Promise.{all,allSettled,any,race} — resolver-element semantics, ctor type-check (~109 fails)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "51"
+    },
+    {
+      "id": "1367",
+      "title": "spec gap: Iterator.prototype helpers — get-next-once, non-constructible, return-on-throw (~244 fails)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "51"
+    },
+    {
+      "id": "1366a",
+      "title": "spec gap: class extends Error/TypeError/RangeError — builtin subclassing via existing host imports (+40-60 passes)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "51"
+    },
+    {
+      "id": "1365",
+      "title": "spec gap: class private fields, methods, accessors and brand checks (~97 fails in elements/private-*)",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "51"
+    },
+    {
+      "id": "1363",
+      "title": "spec gap: class dstr — 'Cannot destructure null/undefined' in method default-binding (~700 runtime_errors)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "51"
+    },
+    {
+      "id": "1362",
+      "title": "spec gap: Object.defineProperties — apply full descriptor map (332 fails)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "51"
+    },
+    {
+      "id": "1361",
+      "title": "spec gap: Array.prototype.sort — comparator validation, stability, ToString fallback (~46 fails)",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "51"
+    },
+    {
+      "id": "1360",
+      "title": "spec gap: Array.prototype.{indexOf,lastIndexOf,includes} — SameValueZero, sparse, fromIndex coercion (~210 fails)",
+      "priority": "high",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "51"
+    },
+    {
+      "id": "1359",
+      "title": "spec gap: Array.prototype.{splice,slice,concat,toSpliced,toReversed} — @@species, sparse handling, IsConcatSpreadable (~150 fails)",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "51"
+    },
+    {
+      "id": "1358",
+      "title": "spec gap: Array.prototype.{filter,map,every,some,forEach,reduce} on array-like (.call) receivers — ~452 assertion_fail",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "51"
+    },
+    {
+      "id": "1334",
+      "title": "ECMAScript spec compliance audit: section-by-section review, gap issues, HTML report",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "done",
+      "sprint": "50"
+    },
+    {
+      "id": "1324",
+      "title": "JSON.stringify and JSON.parse: implement in pure Wasm, eliminate JS host dependency",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "standalone-mode",
+      "status": "done",
+      "sprint": "50"
+    },
+    {
       "id": "1317",
       "title": "null dereference error: add expression / variable context (573 opaque runtime failures)",
       "priority": "medium",
@@ -1647,6 +2237,26 @@
       "feasibility": "easy",
       "depends_on": [],
       "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "50"
+    },
+    {
+      "id": "1313",
+      "title": "await is a passthrough — does not unwrap Promise from async-call expressions",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "npm-library-support",
+      "status": "done",
+      "sprint": "50"
+    },
+    {
+      "id": "1311",
+      "title": "Map<string, AsyncHandler> dispatch null_deref in App.dispatch path",
+      "priority": "medium",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "npm-library-support",
       "status": "done",
       "sprint": "50"
     },

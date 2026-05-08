@@ -97,3 +97,58 @@ point in the cleanup path.
 - `test262/test/language/statements/for-of/iterator-close-throw-error.js`
 - `test262/test/language/statements/for-of/iterator-close-via-break.js`
 - `test262/test/language/statements/for-await-of/iterator-close-throw-error.js`
+
+## Implementation (dev-a)
+
+Surveyed the existing for-of pipeline and the failing tests. Findings:
+
+- The throw-path try/catch_all + the break/continue/return finallyStack
+  cleanup are ALREADY in `compileForOfIterator` (#851). Simple
+  `iterator-close-via-throw.js`, `iterator-close-via-break.js`,
+  `iterator-close-via-continue.js` already pass.
+- The 389 fails are heterogeneous: most are destructuring edge cases
+  (`dstr/...`), harness wrapping issues (return-from-IIFE inside for-of),
+  or downstream Object.create / Function.bind gaps — not the simple
+  IteratorClose flow.
+- ONE clear close-protocol gap: the runtime's `__iterator_return`
+  swallowed the case where `iterator.return` was non-null but
+  non-callable (e.g. `return: 1`). Per ES §7.4.6 IteratorClose +
+  §7.3.11 GetMethod step 4, that should throw TypeError.
+
+Two-part fix in this PR:
+1. **Runtime** (`src/runtime.ts`) — `__iterator_return` now throws
+   `TypeError("Iterator return method is not callable")` when `iter.return`
+   is non-null and non-callable. Functions and WasmGC closures continue
+   to be invoked; null/undefined remain a no-op (GetMethod step 3).
+2. **Compiler** (`src/codegen/statements/loops.ts`) — the throw-path
+   `catchAll` wraps its `__iterator_return` call in a nested
+   try/catch_all so any error from IteratorClose is dropped before
+   `rethrow 0` re-raises the ORIGINAL exception. Per spec §7.4.6
+   step 6, when the outer completion is throw, IteratorClose's error
+   is suppressed. The break/continue/return paths (via `finallyStack`
+   cloned body) call `__iterator_return` directly, so any TypeError
+   from a non-callable `return` propagates to the caller (step 7).
+
+The architect's edge-case note "If `.return()` itself throws → re-raise
+the new error" matches **break/continue/return** semantics. For
+**throw** the spec is the opposite — original error wins. The fix
+applies that distinction correctly.
+
+Full fix for the 389-fail wave will require separate issues for the
+destructuring edge cases, harness wrapping, and downstream gaps.
+
+## Test Results
+
+`tests/issue-1347.test.ts` — 5 tests, all pass:
+
+- close-by-throw with non-callable return → original throw wins
+- close-by-break with non-callable return → TypeError propagates
+- regression: callable return called once on break
+- regression: missing return method is a no-op
+- regression: throw-path with callable return that throws → original wins
+
+Existing iterator/close suites pass: `issue-851.test.ts` (5 tests),
+`issue-859.test.ts` (8 tests). Pre-existing failures in
+`for-of-array-destructuring.test.ts` and `for-of-generator.test.ts`
+are unrelated module-resolution errors (missing `./helpers.js`),
+not regressions from this fix.

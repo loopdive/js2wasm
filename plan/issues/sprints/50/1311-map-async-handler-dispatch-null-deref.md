@@ -2,9 +2,9 @@
 id: 1311
 sprint: 50
 title: "Map<string, AsyncHandler> dispatch null_deref in App.dispatch path"
-status: needs-architect-spec
+status: done
 created: 2026-05-07
-updated: 2026-05-07
+updated: 2026-05-08
 priority: medium
 feasibility: medium
 reasoning_effort: high
@@ -12,7 +12,9 @@ task_type: bug
 area: codegen, runtime, async
 language_feature: async, classes, map
 goal: npm-library-support
-related: [1309, 1306, 1298]
+related: [1309, 1306, 1298, 1300, 1314]
+resolved_by_pr: 264
+resolved_sha: 325d1ef16
 ---
 # #1311 — Map<string, AsyncHandler> dispatch null_deref
 
@@ -154,17 +156,46 @@ Likely culprits to inspect (in order):
    are added to `fctx.localMap` and whether their wasm types match free
    function parameters.
 
-### Why this isn't a quick fix
+## Resolution (PR #264, senior-dev-2, 2026-05-08)
 
-The task issue file estimates `feasibility: medium, reasoning_effort:
-high` and lists 4 investigation steps. After 90 minutes of bisect /
-code reading I can localize the failing pattern but not the exact
-codegen line responsible. The fix likely requires either an architect
-spec describing the param-forwarding contract or pairing with the
-senior-dev who landed the #1314 closure-stack-underflow fix (similar
-class-method codegen surface area).
+**Root cause located and fixed in `src/codegen/closures.ts::isHostCallbackArgument`.**
 
-Suspending this task back to the queue. Test cases in
-`.tmp/bisect{,2,3,4,5}.mts` of the issue-1311-map-async-handler-dispatch
-worktree document the reproducer minimally. Re-dispatch with architect
-spec OR to senior-dev who has the codegen context.
+The bug was at the *construction* site of the arrow argument, not the
+dispatch site. When an arrow `() => ...` is passed as an argument to a
+PropertyAccessExpression callee (`app.set(...)`), `isHostCallbackArgument`
+defaulted to `return true` — routing through `compileArrowAsCallback`
+(`__make_callback` host import). For class methods that subsequently
+store the param in a struct field, the dispatch site (which expects a
+WasmGC `__fn_wrap_N_struct`) ran `ref.test (ref __fn_wrap_*)` on the
+host-wrapped externref, fell through to `ref.null`, and null-derefed at
+the next `struct.get` / `return_call_ref`.
+
+Free functions and direct literal assignments worked because their call
+paths already routed to `compileArrowAsClosure` (the GC-struct path).
+
+**Fix**: extended `isHostCallbackArgument` to detect when a
+PropertyAccessExpression callee resolves to a user-defined class method
+in `funcMap`. The receiver's static type symbol (and `getBaseTypes()`
+for inherited methods) → `${ClassName}_${methodName}` lookup. When a
+match is found with `funcIdx >= numImportFuncs`, the function returns
+`false` and the arrow is compiled as a closure-struct. Built-in receivers
+(Array, Map, Promise, Set) miss the lookup and continue through the
+host-callback path — preserving `arr.map(fn)`, `m.forEach(fn)`,
+`p.then(fn)`, etc.
+
+**Tests**: `tests/issue-1311.test.ts` — 5 cases all pass:
+- minimal: class-method param forwarding then invoke
+- inherited class method (base-type walk)
+- Map<string, sync handler> via class method
+- Hono Map<string, async handler> reproducer
+- mixed sync + async handlers
+
+**CI** (PR #264): `conclusion: success`, `net_per_test: +37`,
+`regressions_real: 7`, `improvements: 44`. Self-merged 2026-05-08.
+
+The dev-1298 hypothesis ("the assignment-to-field path inside the class
+method loses identity") was close but slightly off-target — the fix
+was at the call-site decision in `isHostCallbackArgument`, not in
+`assignment.ts` or `compileClassMethod`. The class-method body's
+`this.h = handler` assignment was already correct; the bug was that the
+*caller* shipped the wrong shape to that body.

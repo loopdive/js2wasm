@@ -40,6 +40,7 @@ import { ts, forEachChild } from "../ts-api.js";
 import { evaluateConstantCondition } from "../codegen/statements/control-flow.js";
 import { IrFunctionBuilder } from "./builder.js";
 import type { IrLowerResolver, IrVecLowering } from "./lower.js";
+import { mathUnaryToIrOp } from "./select.js";
 import {
   asVal,
   closureSignatureEquals,
@@ -109,10 +110,50 @@ export interface IrFromAstResolver {
    * `undefined` if no such class is registered.
    */
   getExternClassInfo?(className: string): IrExternClassMeta | undefined;
+  /**
+   * #1375 narrow slice — TS-narrowing fast-path for optional chaining.
+   * Returns `true` when the TypeScript type of `expr` is provably non-null
+   * (i.e. `getNonNullableType(t) === t`). Used by `lowerPropertyAccess`
+   * to skip the `?.`-on-nullable-receiver throw when TS has already
+   * narrowed away null/undefined — the IR's `isIrTypeNullable` is more
+   * conservative (treats `extern` as always nullable), so this gate
+   * recovers a small set of well-typed `m?.x` cases where `m: Map<...>`
+   * (no `| undefined`) is genuinely non-null at TS level.
+   *
+   * When unimplemented or returns `undefined`, `lowerPropertyAccess`
+   * keeps the existing throw → legacy fallback.
+   */
+  isExpressionTsNonNullable?(expr: ts.Expression): boolean | undefined;
 }
 
 export interface AstToIrOptions {
   readonly exported?: boolean;
+  /**
+   * #1370 Phase B: explicit name for the lowered function. Required for
+   * MethodDeclaration (where `.name` is `PropertyName`, not Identifier)
+   * and ConstructorDeclaration (which has no name node at all). For
+   * top-level FunctionDeclaration this can be omitted; the caller's
+   * `fn.name.text` is used as a fallback.
+   */
+  readonly funcName?: string;
+  /**
+   * #1370 Phase B: when set, the lowered function gets an implicit
+   * `__self` parameter as its FIRST parameter, and `this` is bound in
+   * the body's scope to that parameter's SSA value. Pass when lowering
+   * an instance method — the legacy `class-bodies.ts` pre-allocates
+   * instance method signatures as `[(ref $structTypeIdx), ...userParams]`
+   * (see `class-bodies.ts:301`); the IR-lowered body must mirror that
+   * layout exactly so existing legacy callers' `call $methodFuncIdx`
+   * ops route to the correct typeIdx.
+   *
+   * The `IrType` should be `{ kind: "class"; shape }` so `this.field`
+   * accesses resolve via `class.get` / `class.set` against the shape's
+   * field list.
+   *
+   * Static methods don't get a `selfParam`; constructors don't either —
+   * Phase C synthesises `struct.new + __self` inside the body.
+   */
+  readonly selfParam?: { readonly type: IrType };
   /**
    * If present, overrides the IR types for the function's own parameters.
    * Indexed by parameter position. Used when the AST lacks explicit TS
@@ -179,15 +220,36 @@ export interface LoweredFunctionResult {
   readonly lifted: readonly IrFunction[];
 }
 
-export function lowerFunctionAstToIr(fn: ts.FunctionDeclaration, options: AstToIrOptions = {}): LoweredFunctionResult {
-  if (!fn.name) {
-    throw new Error("ir/from-ast: function declaration without a name");
+export function lowerFunctionAstToIr(
+  fn: ts.FunctionDeclaration | ts.MethodDeclaration | ts.ConstructorDeclaration,
+  options: AstToIrOptions = {},
+): LoweredFunctionResult {
+  // #1370 Phase B: name resolution.
+  //
+  // FunctionDeclaration: prefer `fn.name.text`, fall back to options.funcName.
+  // MethodDeclaration: use options.funcName (its `.name` is PropertyName).
+  // ConstructorDeclaration: use options.funcName (no `.name` node).
+  const astName = ts.isFunctionDeclaration(fn) ? fn.name?.text : undefined;
+  const name = options.funcName ?? astName;
+  if (!name) {
+    throw new Error("ir/from-ast: function declaration without a name (and no options.funcName supplied)");
   }
   if (!fn.body) {
-    throw new Error(`ir/from-ast: function ${fn.name.text} has no body`);
+    throw new Error(`ir/from-ast: function ${name} has no body`);
   }
 
-  const name = fn.name.text;
+  // #1370 Phase B: ConstructorDeclaration has no `asteriskToken` field,
+  // and a method/function may have one. Type-narrow before access.
+  const isGenerator = (ts.isFunctionDeclaration(fn) || ts.isMethodDeclaration(fn)) && !!fn.asteriskToken;
+
+  // ConstructorDeclaration has no `.type` field (return type is implicit
+  // — the constructed instance). Phase B doesn't lower constructor bodies
+  // (Phase C handles `struct.new + __self`); the integration loop should
+  // skip ConstructorDeclaration. Defensive guard here in case it slips
+  // through.
+  if (ts.isConstructorDeclaration(fn)) {
+    throw new Error(`ir/from-ast: constructor body lowering is Phase C, not B (${name})`);
+  }
 
   // Slice 7a (#1169f): `function*` produces a Generator-like externref
   // regardless of the source-level return type annotation
@@ -199,7 +261,6 @@ export function lowerFunctionAstToIr(fn: ts.FunctionDeclaration, options: AstToI
   // `fn.type?.kind === VoidKeyword` indicates a void-returning function.
   // The IR builder is constructed with `[]` results; lowerTail accepts
   // bare `return;` / fall-through tails.
-  const isGenerator = !!fn.asteriskToken;
   const isVoidReturn =
     !isGenerator &&
     (options.returnTypeOverride === null ||
@@ -209,11 +270,22 @@ export function lowerFunctionAstToIr(fn: ts.FunctionDeclaration, options: AstToI
     : isVoidReturn
       ? null
       : resolveIrType(fn.type, options.returnTypeOverride ?? undefined, `return type of ${name}`);
+  // #1372 — binding-pattern params: synthesize a stable internal name
+  // (`__pattern_param_<idx>`) so the IR `addParam` machinery has a regular
+  // identifier to bind, then emit destructuring reads (object.get / vec.get
+  // / class.get) into the function body as a preamble. Identifier params
+  // pass through unchanged.
   const params: { name: string; type: IrType }[] = fn.parameters.map((p, idx) => {
-    if (!ts.isIdentifier(p.name)) {
-      throw new Error(`ir/from-ast: destructuring params not supported in Phase 1 (${name})`);
-    }
     const override = options.paramTypeOverrides?.[idx];
+    if (ts.isObjectBindingPattern(p.name) || ts.isArrayBindingPattern(p.name)) {
+      return {
+        name: `__pattern_param_${idx}`,
+        type: resolveIrType(p.type, override, `pattern param #${idx} of ${name}`),
+      };
+    }
+    if (!ts.isIdentifier(p.name)) {
+      throw new Error(`ir/from-ast: unsupported param shape in Phase 1 (${name})`);
+    }
     return {
       name: p.name.text,
       type: resolveIrType(p.type, override, `param ${p.name.text} of ${name}`),
@@ -226,8 +298,29 @@ export function lowerFunctionAstToIr(fn: ts.FunctionDeclaration, options: AstToI
   // Single scope map for both params and let/const locals. Phase 1 forbids
   // shadowing (enforced by the selector) so there is no nesting to track.
   const scope = new Map<string, ScopeBinding>();
-  for (const p of params) {
+  // #1370 Phase B: synthetic `__self` for instance methods. Must be added
+  // FIRST so its SSA index matches the legacy `local 0` slot the
+  // pre-allocated typeIdx expects (see `class-bodies.ts:301`). `this` is
+  // bound in scope to this SSA value; subsequent `this.field` /
+  // `this.method()` accesses route through the existing class.get /
+  // class.set / class.method lowerings (slice 4 #1169d).
+  if (options.selfParam) {
+    const selfV = builder.addParam("__self", options.selfParam.type);
+    scope.set("this", { kind: "local", value: selfV, type: options.selfParam.type });
+  }
+  // #1372 — track binding-pattern params + their SSA values for the post-
+  // openBlock destructure preamble.
+  const pendingDestructures: { pattern: ts.BindingPattern; value: IrValueId }[] = [];
+  for (let i = 0; i < params.length; i++) {
+    const p = params[i]!;
+    const astParam = fn.parameters[i]!;
     const v = builder.addParam(p.name, p.type);
+    if (ts.isObjectBindingPattern(astParam.name) || ts.isArrayBindingPattern(astParam.name)) {
+      // Don't bind the synthesized __pattern_param_N name in user-visible
+      // scope — leaf names will be bound below by lowerBindingPattern.
+      pendingDestructures.push({ pattern: astParam.name, value: v });
+      continue;
+    }
     scope.set(p.name, { kind: "local", value: v, type: p.type });
   }
 
@@ -274,6 +367,15 @@ export function lowerFunctionAstToIr(fn: ts.FunctionDeclaration, options: AstToI
     generatorBufferSlot,
     checker: options.checker,
   };
+  // #1372 — emit destructuring preamble for binding-pattern params. Each
+  // leaf becomes a `local` ScopeBinding via `lowerBindingPattern`; the
+  // user-body code then sees the leaf identifiers as regular locals.
+  // Emitted AFTER cx is built (lowerObjectPattern/lowerArrayPattern need
+  // `cx.scope`/`cx.builder`) but BEFORE `lowerStatementList(stmts, cx)`
+  // so the body sees the leaves in scope from statement #0.
+  for (const { pattern, value } of pendingDestructures) {
+    lowerBindingPattern(pattern, value, cx);
+  }
   lowerStatementList(stmts, cx);
 
   return { main: builder.finish(), lifted };
@@ -665,7 +767,9 @@ interface LowerCtx {
  * We DON'T descend into nested function-likes — their writes are local
  * to their own scope and don't influence the outer's slot decisions.
  */
-function collectMutatedLetNames(fn: ts.FunctionDeclaration): Set<string> {
+function collectMutatedLetNames(
+  fn: ts.FunctionDeclaration | ts.MethodDeclaration | ts.ConstructorDeclaration,
+): Set<string> {
   const writes = new Set<string>();
   if (!fn.body) return writes;
   return collectMutatedLetNamesFromBlock(fn.body);
@@ -856,9 +960,12 @@ function lowerBindingPattern(pattern: ts.BindingPattern, source: IrValueId, cx: 
  */
 function lowerObjectPattern(pattern: ts.ObjectBindingPattern, source: IrValueId, cx: LowerCtx): void {
   const sourceType = cx.builder.typeOf(source);
-  if (sourceType.kind !== "object") {
+  // #1372 — destructuring a class instance ({ x, y }: Vec2) is identical at
+  // the IR level to destructuring an object literal: each leaf reads one
+  // named field. The only difference is the emit op (class.get vs object.get).
+  if (sourceType.kind !== "object" && sourceType.kind !== "class") {
     throw new Error(
-      `ir/from-ast: object destructuring source must be IrType.object (got ${describeIrType(sourceType)}) in ${cx.funcName}`,
+      `ir/from-ast: object destructuring source must be IrType.object or IrType.class (got ${describeIrType(sourceType)}) in ${cx.funcName}`,
     );
   }
   for (const elem of pattern.elements) {
@@ -897,7 +1004,10 @@ function lowerObjectPattern(pattern: ts.ObjectBindingPattern, source: IrValueId,
         `ir/from-ast: object pattern reads unknown field "${propName}" (shape: ${describeIrType(sourceType)}) in ${cx.funcName}`,
       );
     }
-    const v = cx.builder.emitObjectGet(source, propName, field.type);
+    const v =
+      sourceType.kind === "class"
+        ? cx.builder.emitClassGet(source, propName, field.type)
+        : cx.builder.emitObjectGet(source, propName, field.type);
     cx.scope.set(localName, { kind: "local", value: v, type: field.type });
   }
 }
@@ -1077,6 +1187,21 @@ function lowerExpr(expr: ts.Expression, cx: LowerCtx, hint: IrType): IrValueId {
   // closure.
   if (ts.isArrayLiteralExpression(expr)) {
     throw new Error(`ir/from-ast: ArrayLiteralExpression not in slice 12 (${cx.funcName})`);
+  }
+  // #1370 Phase B: `this` reference inside an instance method body.
+  // The integration loop binds `this` in scope to the synthetic
+  // `__self` parameter's SSA value before lowering the body. Outside
+  // of class-method bodies the keyword never enters scope, so this
+  // branch only fires for IR-claimed instance methods.
+  if (expr.kind === ts.SyntaxKind.ThisKeyword) {
+    const p = cx.scope.get("this");
+    if (!p) {
+      throw new Error(`ir/from-ast: 'this' reference outside an instance method body (${cx.funcName})`);
+    }
+    if (p.kind !== "local") {
+      throw new Error(`ir/from-ast: unexpected 'this' binding kind ${p.kind} in ${cx.funcName}`);
+    }
+    return p.value;
   }
   if (ts.isIdentifier(expr)) {
     const p = cx.scope.get(expr.text);
@@ -1338,8 +1463,21 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, cx: LowerCtx): I
   // externref) the IR has no short-circuit primitive yet — throw so the
   // function falls back to legacy, where `compileOptionalPropertyAccess`
   // already emits the null-guarded `if/else` block.
+  //
+  // #1375 narrow slice — before throwing, consult the TS-narrowing
+  // fast-path. Some receivers' IrType is conservatively flagged as
+  // nullable (notably `extern`, which is `externref` at the Wasm level
+  // and could carry null at the JS host) but TypeScript's type narrowing
+  // proves them non-null in the calling context (e.g. `m: Map<string,
+  // number>` with no `| undefined`). When TS proves non-null, treat the
+  // `?.` as a redundant safety syntax and fall through to the regular
+  // `.` access path — exactly mirroring the non-null IrType case above.
   if (expr.questionDotToken && isIrTypeNullable(recvType)) {
-    throw new Error(`ir/from-ast: optional chaining (?.) on nullable receiver not in slice 11 (${cx.funcName})`);
+    const tsNonNull = cx.resolver?.isExpressionTsNonNullable?.(expr.expression) === true;
+    if (!tsNonNull) {
+      throw new Error(`ir/from-ast: optional chaining (?.) on nullable receiver not in slice 11 (${cx.funcName})`);
+    }
+    // Fall through: TS-proven non-null → lower as ordinary `.prop` access.
   }
 
   if (recvType.kind === "string") {
@@ -1971,6 +2109,31 @@ function lowerMethodCall(expr: ts.CallExpression, cx: LowerCtx): IrValueId {
     throw new Error(`ir/from-ast: malformed method call in ${cx.funcName}`);
   }
   const methodName = expr.expression.name.text;
+
+  // (#1371) Math.<whitelisted>(arg) — pure-Wasm f64 unary op. Recognise
+  // the shape BEFORE lowering the receiver, because `Math` is a host
+  // global with no IR type binding (lowerExpr on `Math` would throw
+  // "unknown identifier"). The selector's `isPhase1Expr` already
+  // rejected anything not in `IR_MATH_UNARY_WHITELIST` — but check
+  // again here as a hard guard so an unsupported method on `Math`
+  // produces the same clean "not in slice" error we use elsewhere
+  // (avoiding a confusing "unknown identifier 'Math'" from the
+  // receiver lower path below).
+  if (ts.isIdentifier(expr.expression.expression) && expr.expression.expression.text === "Math") {
+    const irOp = mathUnaryToIrOp(methodName);
+    if (irOp !== null && expr.arguments.length === 1) {
+      const arg = lowerExpr(expr.arguments[0]!, cx, irVal({ kind: "f64" }));
+      const argType = cx.builder.typeOf(arg);
+      if (argType.kind !== "val" || argType.val.kind !== "f64") {
+        throw new Error(
+          `ir/from-ast: Math.${methodName} arg must be f64, got ${describeIrType(argType)} (${cx.funcName})`,
+        );
+      }
+      return cx.builder.emitUnary(irOp, arg, irVal({ kind: "f64" }));
+    }
+    throw new Error(`ir/from-ast: Math.${methodName} not in IR whitelist (${cx.funcName})`);
+  }
+
   const recv = lowerExpr(expr.expression.expression, cx, irVal({ kind: "f64" }));
   const recvType = cx.builder.typeOf(recv);
 

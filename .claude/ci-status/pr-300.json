@@ -1,0 +1,19 @@
+{
+  "pr": 300,
+  "conclusion": "success",
+  "head_branch": "issue-1371-ir-extern-whitelist",
+  "head_sha": "52b11a9f20c2872b3fda9a809882a24b9142db98",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25558343028",
+  "timestamp": "2026-05-08T13:49:22Z",
+  "pass": 27070,
+  "fail": 14854,
+  "compile_error": 1149,
+  "snapshot_delta": -150,
+  "net_per_test": 47,
+  "regressions": 55,
+  "regressions_real": 8,
+  "regressions_wasm_change": 8,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 47,
+  "improvements": 55
+}

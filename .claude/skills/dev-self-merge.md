@@ -45,7 +45,31 @@ If `test262_skipped: true` in the JSON, this was a test-only / docs-only PR
 
 Extract: `head_sha`, `net_per_test`, `regressions`, `regressions_real`,
 `regressions_wasm_change`, `wasm_identical_noise`, `compile_timeouts`,
-`improvements`, `run_url`.
+`improvements`, `run_url`, `baseline_stale`, `baseline_staleness_commits`.
+
+### Step 1a — baseline staleness short-circuit (#1391)
+
+If `baseline_stale: true` is set on the feed, the regression count is
+contaminated by drift on main (tests that flipped between when the baseline
+was last refreshed and the PR's CI run). Continuing through the criteria
+below would falsely block PRs whose actual same-run-main diff is clean.
+
+```bash
+stale=$(jq -r '.baseline_stale // false' .claude/ci-status/pr-<N>.json)
+if [ "$stale" = "true" ]; then
+  drift=$(jq -r '.baseline_staleness_commits // 0' .claude/ci-status/pr-<N>.json)
+  echo "ESCALATE — baseline is stale ($drift commits behind main HEAD)."
+  exit 1
+fi
+```
+
+Output (when triggered):
+
+> **ESCALATE — baseline is stale (N commits behind main HEAD). The CI feed's regression counts are inflated by drift, not by this PR. Tech lead should sanity-check by diffing branch-merged vs main-merged artifacts from the same CI run before merging.**
+
+Skip the rest of the algorithm. Do not merge. The tech lead may override after
+confirming via artifact comparison; the staleness threshold (50 commits) is
+conservative and most PRs will not be flagged.
 
 `regressions_wasm_change` (added by #1222) = regressions where the
 compiled Wasm binary differs between base and PR (excluding

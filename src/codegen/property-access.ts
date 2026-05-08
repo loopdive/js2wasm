@@ -15,7 +15,9 @@ import { popBody } from "./context/bodies.js";
 import { reportError, reportErrorNoNode } from "./context/errors.js";
 import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
+import { emitFuncRefAsClosure } from "./closures.js";
 import { emitLazyProtoGet, findExternInfoForMember } from "./expressions/extern.js";
+import { emitThrowTypeError, resolveDeclaringClassForPrivateName } from "./expressions/helpers.js";
 import { patchStructNewForAddedField } from "./expressions/late-imports.js";
 import { addUnionImports, resolveWasmType } from "./index.js";
 import { stringConstantExternrefInstrs } from "./native-strings.js";
@@ -902,6 +904,84 @@ export function compilePropertyAccess(
   const objType = ctx.checker.getTypeAtLocation(expr.expression);
   const propName = ts.isPrivateIdentifier(expr.name) ? "__priv_" + expr.name.text.slice(1) : expr.name.text;
 
+  // #1365 — Private-name read with spec-compliant brand check.
+  //
+  // Per ES2022 §15.7 (PrivateFieldGet / PrivateBrandCheck): when reading
+  // `obj.#x`, if `obj` lacks the brand of the class that declared `#x`,
+  // throw a TypeError. Today the generic property-access path falls
+  // through to alternate-struct lookup (which can read `__priv_x` from a
+  // DIFFERENT class with the same field-name layout) or to `__extern_get`
+  // (which silently returns undefined). Both violate the brand-tied
+  // semantics of private names.
+  //
+  // Implementation: when the property name is a PrivateIdentifier, resolve
+  // the lexically-declaring class via parent-chain walk. Compile the
+  // receiver, ref.test it against the declaring class's struct, and on
+  // failure throw a real TypeError instance (so `assert.throws(TypeError,
+  // ...)` passes). On success, ref.cast + struct.get the field.
+  //
+  // Skips the brand check for:
+  //   - `super.#x` — handled by the super branch below; super already
+  //     guarantees the right brand structurally.
+  //   - PrivateIdentifier accesses inside the class body where
+  //     `expr.expression.kind === ThisKeyword` AND the local `this` is
+  //     known to be the class struct ref — the legacy struct.get is
+  //     correct in that case (TS guarantees the brand, no runtime check
+  //     needed). The brand check fires only when the receiver type may
+  //     differ from the declaring class.
+  if (ts.isPrivateIdentifier(expr.name) && expr.expression.kind !== ts.SyntaxKind.SuperKeyword) {
+    const declared = resolveDeclaringClassForPrivateName(ctx, expr.name);
+    if (declared) {
+      const fieldIdx = ctx.structFields.get(declared.className)!.findIndex((f) => f.name === declared.fieldName);
+      if (fieldIdx >= 0) {
+        const fieldType = ctx.structFields.get(declared.className)![fieldIdx]!.type;
+        // Compile the receiver. Branch by what we got back — class refs
+        // emit ref.test directly; externref needs any.convert_extern first.
+        const objResult = compileExpression(ctx, fctx, expr.expression);
+        // Save the receiver value so we can emit ref.test, then optionally
+        // ref.cast against the brand. Use anyref as the saved type so we
+        // can hold class-refs and externrefs uniformly.
+        const tmpAny = allocTempLocal(fctx, { kind: "anyref" });
+        if (objResult?.kind === "externref") {
+          fctx.body.push({ op: "any.convert_extern" } as Instr);
+        }
+        fctx.body.push({ op: "local.set", index: tmpAny });
+        // Brand check: ref.test against the declaring class's struct.
+        fctx.body.push({ op: "local.get", index: tmpAny });
+        fctx.body.push({ op: "ref.test", typeIdx: declared.structTypeIdx } as Instr);
+        // result-type block: on success, return the field value; on
+        // failure, throw TypeError (which doesn't return).
+        const successInstrs: Instr[] = [
+          { op: "local.get", index: tmpAny } as Instr,
+          { op: "ref.cast", typeIdx: declared.structTypeIdx } as Instr,
+          { op: "struct.get", typeIdx: declared.structTypeIdx, fieldIdx } as Instr,
+        ];
+        // Capture failure-path instrs by emitting into a saved body buffer.
+        const savedBody = fctx.body;
+        fctx.body = [];
+        const message = `Cannot read private member #${expr.name.text.slice(1)} from an object whose class did not declare it`;
+        emitThrowTypeError(ctx, fctx, message);
+        const failureInstrs = fctx.body;
+        fctx.body = savedBody;
+        // Wrap in `if` returning fieldType. The `else` (failure) branch
+        // ends with `throw`, which is unreachable per Wasm typing, so the
+        // block's result type is satisfied by the `then` arm only.
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "val", type: fieldType },
+          then: successInstrs,
+          else: failureInstrs,
+        } as Instr);
+        releaseTempLocal(fctx, tmpAny);
+        return fieldType;
+      }
+    }
+    // Resolver failure (no enclosing class declares this private name).
+    // Fall through to the generic path; it will throw via the existing
+    // alternate / __extern_get fallbacks. This shouldn't happen for
+    // well-formed source code.
+  }
+
   // Handle super.prop — access parent class property/getter on current `this`
   if (expr.expression.kind === ts.SyntaxKind.SuperKeyword) {
     return compileSuperPropertyAccess(ctx, fctx, expr, propName);
@@ -1174,15 +1254,35 @@ export function compilePropertyAccess(
         fctx.body.push({ op: "ref.null.extern" });
         return { kind: "externref" };
       }
-      // ClassName.staticMethod — return function reference as externref (#820)
-      // This handles the case where a static method is accessed as a value
-      // (e.g., `var ref = C.method`) rather than called directly.
-      // Note: funcref is NOT a subtype of anyref in the Wasm GC type system,
-      // so we cannot use extern.convert_any to convert ref.func to externref.
-      // Instead, we return null externref as a placeholder — the method reference
-      // is not callable through externref dispatch, but this prevents null deref
-      // traps from the generic property access fallthrough path.
-      if (ctx.staticMethodSet.has(fullName) || ctx.classMethodSet.has(fullName)) {
+      // ClassName.staticMethod — return a callable closure-struct externref.
+      //
+      // (#1388) Previously emitted `ref.null.extern` because funcref isn't a
+      // subtype of anyref. Now we wrap the static method in a closure struct
+      // (struct.new with a funcref field) via `emitFuncRefAsClosure`, then
+      // convert the struct ref to externref with `extern.convert_any`.
+      //
+      // The call site (calls.ts:5380) sees a callable variable, casts the
+      // externref back to the matching closure struct type, and dispatches
+      // via `call_ref` through a trampoline. This makes the detached pattern
+      // `const gen = C.staticMethod; gen()` actually invoke the method,
+      // unblocking 273 test262 cases for class async-generator yield-star
+      // tests that follow this exact extraction pattern.
+      if (ctx.staticMethodSet.has(fullName)) {
+        const funcIdx = ctx.funcMap.get(fullName);
+        if (funcIdx !== undefined) {
+          const closureRef = emitFuncRefAsClosure(ctx, fctx, fullName, funcIdx);
+          if (closureRef) {
+            fctx.body.push({ op: "extern.convert_any" });
+            return { kind: "externref" };
+          }
+          // Fallback if closure construction fails for any reason
+          fctx.body.push({ op: "ref.null.extern" });
+          return { kind: "externref" };
+        }
+      }
+      // Instance method accessed as `ClassName.method` (without prototype) —
+      // unusual; keep the legacy null placeholder to preserve existing behavior.
+      if (ctx.classMethodSet.has(fullName)) {
         const funcIdx = ctx.funcMap.get(fullName);
         if (funcIdx !== undefined) {
           fctx.body.push({ op: "ref.null.extern" });
@@ -1201,6 +1301,16 @@ export function compilePropertyAccess(
       }
     }
   }
+
+  // (#1388 regression fix) The earlier `ClassName.prototype.<method>` handler
+  // emitted a freshly-allocated closure struct on every access, which broke
+  // method identity: `c.m === C.prototype.m` failed (each side returned a
+  // different closure ref). 478 tests under `language/{expressions,statements}/
+  // class/elements/*` exercise this exact assertion via `verifyProperty` and
+  // turned pass→fail after the original PR landed. The handler is intentionally
+  // omitted here until method-closure caching is implemented (slice 2). Until
+  // then, `C.prototype.<method>` falls through to the legacy generic externref
+  // path, restoring the previous null-externref behaviour and the 478 wins.
 
   // Handle Math.<method>.length — static function arity
   if (
@@ -2458,8 +2568,23 @@ export function compileElementAccess(
           const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
           return globalDef?.type ?? { kind: "f64" };
         }
-        // Check static method — return externref placeholder
-        if (ctx.staticMethodSet.has(fullName) || ctx.classMethodSet.has(fullName)) {
+        // (#1388) Static method via element access: `ClassName['method']`.
+        // Mirror the property-access path — emit a callable closure-struct
+        // externref instead of the legacy `ref.null.extern` so that
+        // `const f = C['method']; f()` actually invokes the method.
+        if (ctx.staticMethodSet.has(fullName)) {
+          const funcIdx = ctx.funcMap.get(fullName);
+          if (funcIdx !== undefined) {
+            const closureRef = emitFuncRefAsClosure(ctx, fctx, fullName, funcIdx);
+            if (closureRef) {
+              fctx.body.push({ op: "extern.convert_any" });
+              return { kind: "externref" };
+            }
+            fctx.body.push({ op: "ref.null.extern" });
+            return { kind: "externref" };
+          }
+        }
+        if (ctx.classMethodSet.has(fullName)) {
           const funcIdx = ctx.funcMap.get(fullName);
           if (funcIdx !== undefined) {
             fctx.body.push({ op: "ref.null.extern" });

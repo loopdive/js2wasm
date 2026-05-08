@@ -254,6 +254,11 @@ export function unifiedVisitNode(ctx: CodegenContext, state: UnifiedCollectorSta
     }
     if (isNumberType(receiverType) && methodName === "toString") {
       state.primitiveNeeded.add("number_toString");
+      // #1321: toString(radix) needs a 2-arg host import so the radix is
+      // actually used. The 1-arg `number_toString` only handles default base 10.
+      if (node.arguments.length > 0) {
+        state.primitiveNeeded.add("number_toString_radix");
+      }
     }
     if (isNumberType(receiverType) && methodName === "toFixed") {
       state.primitiveNeeded.add("number_toFixed");
@@ -803,6 +808,13 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
     const t = addFuncType(ctx, [{ kind: "f64" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "number_toString", { kind: "func", typeIdx: t });
   }
+  // #1321: 2-arg `number_toString_radix(value, radix)` for `toString(radix)` calls.
+  // Without this, the codegen validates the radix range but then calls 1-arg
+  // `number_toString(value)`, silently producing decimal output for any radix.
+  if (state.primitiveNeeded.has("number_toString_radix")) {
+    const t = addFuncType(ctx, [{ kind: "f64" }, { kind: "f64" }], [{ kind: "externref" }]);
+    addImport(ctx, "env", "number_toString_radix", { kind: "func", typeIdx: t });
+  }
   if (state.primitiveNeeded.has("number_toFixed")) {
     const t = addFuncType(ctx, [{ kind: "f64" }, { kind: "f64" }], [{ kind: "externref" }]);
     addImport(ctx, "env", "number_toFixed", { kind: "func", typeIdx: t });
@@ -906,8 +918,17 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
   // ── collectMathImports finalize ──
   for (const method of state.mathNeeded) {
     if (method === "random") {
-      const typeIdx = addFuncType(ctx, [], [{ kind: "f64" }]);
-      addImport(ctx, "env", `Math_${method}`, { kind: "func", typeIdx });
+      // #1322: in WASI/standalone mode, emit a Wasm `Math_random` that calls
+      // WASI `random_get(ptr, 8)` for entropy. The `random_get` import was
+      // already registered EARLY by registerWasiImports (before any defined
+      // functions) so adding it here doesn't shift indices of helpers like
+      // `__str_copy_tree`.
+      if (ctx.wasi) {
+        ctx.pendingMathMethods.add(method);
+      } else {
+        const typeIdx = addFuncType(ctx, [], [{ kind: "f64" }]);
+        addImport(ctx, "env", `Math_${method}`, { kind: "func", typeIdx });
+      }
     } else {
       ctx.pendingMathMethods.add(method);
     }
@@ -969,12 +990,19 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
   // imports there; the codegen call site emits Wasm-native `struct.new
   // $Promise` instead. Other Promise methods (all/race/allSettled/any)
   // are still host-routed in 1B; Phase 3 will add native combinators.
+  //
+  // (#1368) Aggregators (all/race/allSettled/any) take (thisArg, iterable) so
+  // the codegen can pass through `Promise.all.call(C, …)` thisArg semantics
+  // and the runtime can default to globalThis.Promise when wasm passes null.
+  // Resolve/reject keep their original 1-arg signature.
   for (const method of state.promiseNeeded) {
     if (method === "then" || method === "catch" || method === "finally") continue;
     if (ctx.wasi && (method === "resolve" || method === "reject")) continue;
     const importName = `Promise_${method}`;
     if (!ctx.funcMap.has(importName)) {
-      const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
+      const isAggregator = method === "all" || method === "race" || method === "allSettled" || method === "any";
+      const params: ValType[] = isAggregator ? [{ kind: "externref" }, { kind: "externref" }] : [{ kind: "externref" }];
+      const typeIdx = addFuncType(ctx, params, [{ kind: "externref" }]);
       addImport(ctx, "env", importName, { kind: "func", typeIdx });
     }
   }

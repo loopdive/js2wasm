@@ -1000,9 +1000,51 @@ export function isHostCallbackArgument(node: ts.Node, ctx: CodegenContext): bool
         // Fall through to host-callback path on any checker error
       }
     }
-    // For method calls (property access), check if the method is known array HOF
-    // (filter, map, etc.) — those have dedicated inline compilation and ARE handled
-    // as closure calls. For other property accesses, treat as host callback.
+    // For method calls (property access), check if the method is on a
+    // user-defined class. User-defined methods receive the closure as the
+    // GC-struct shape (`__fn_wrap_N_struct`) and may store it for later
+    // dispatch (e.g. `app.routes.set(path, handler)`). Routing through
+    // `__make_callback` here produces a JS-wrapped externref that fails the
+    // dispatch-site `ref.cast` and null-derefs at `struct.get`. (#1311)
+    if (ts.isPropertyAccessExpression(parent.expression)) {
+      const propAccess = parent.expression;
+      const methodName = propAccess.name.text;
+      try {
+        const receiverType = ctx.checker.getTypeAtLocation(propAccess.expression);
+        // Search the receiver type's symbol chain for a class name that
+        // matches a user-defined method `${ClassName}_${methodName}`. We
+        // check both the receiver's own symbol (instance methods) and the
+        // type itself (handles `(typeof Foo).method` for statics).
+        const candidates = new Set<string>();
+        const recSym = receiverType.getSymbol?.();
+        const recName = recSym?.getName?.();
+        if (recName) candidates.add(recName);
+        // Walk base types so inherited user-defined methods are detected
+        const baseTypes = receiverType.getBaseTypes?.();
+        if (baseTypes) {
+          for (const bt of baseTypes) {
+            const bs = bt.getSymbol?.()?.getName?.();
+            if (bs) candidates.add(bs);
+          }
+        }
+        for (const className of candidates) {
+          const fullName = `${className}_${methodName}`;
+          const funcIdx = ctx.funcMap.get(fullName);
+          if (funcIdx !== undefined && funcIdx >= ctx.numImportFuncs) {
+            // User-defined method on a user-defined class — closure path
+            return false;
+          }
+        }
+        // Note: we deliberately don't fall back to a "param has call sig"
+        // heuristic for non-user-defined methods — host array HOFs
+        // (forEach, map, filter, etc.) have dedicated inline compilation
+        // and other host method callbacks (Promise.then, etc.) need a
+        // JS-callable externref via __make_callback. Only user-defined
+        // methods on user-defined classes get the closure path here.
+      } catch {
+        // Fall through to host-callback path on any checker error
+      }
+    }
     return true;
   }
   // NewExpression: `new Promise(executor)`, `new Map(comparator)`, etc.
@@ -1528,6 +1570,14 @@ export function compileArrowAsClosure(
     enclosingClassName: fctx.enclosingClassName ?? resolveEnclosingClassName(fctx),
     isGenerator,
   };
+
+  // (#1384) Track liftedFctx.body in liveBodies BEFORE any emission so
+  // addUnionImports / shiftLateImportIndices can shift any `call funcIdx`
+  // instructions that get emitted during the captures-extraction prologue
+  // (lines 1589-1635) and the TDZ-flag-extraction prologue (lines 1648-1660),
+  // BOTH of which run BEFORE the savedFunc swap below that would otherwise
+  // expose liftedFctx.body via ctx.currentFunc / funcStack to the shifter.
+  ctx.liveBodies.add(liftedFctx.body);
 
   for (let i = 0; i < liftedFctx.params.length; i++) {
     liftedFctx.localMap.set(liftedFctx.params[i]!.name, i);
@@ -2078,6 +2128,9 @@ export function compileArrowAsClosure(
     body: liftedFctx.body,
     exported: false,
   });
+  // (#1384) liftedFctx.body is now reachable via ctx.mod.functions[].body —
+  // remove from liveBodies to keep it tight (the regular walker dedupes anyway).
+  ctx.liveBodies.delete(liftedFctx.body);
   ctx.funcMap.set(closureName, liftedFuncIdx);
 
   // 7. At the creation site, emit struct.new with funcref + captured values
@@ -2337,6 +2390,13 @@ export function compileArrowAsCallback(
     enclosingClassName: fctx.enclosingClassName ?? resolveEnclosingClassName(fctx),
   };
 
+  // (#1384) Track cbFctx.body in liveBodies BEFORE any emission so addUnionImports
+  // / shiftLateImportIndices can shift any `call funcIdx` instructions that get
+  // emitted into it during the captures-extraction (step 4) and param-coercion
+  // (step 4b) phases — both run BEFORE the savedFunc swap at step 5 that would
+  // otherwise expose cbFctx via ctx.currentFunc / funcStack to the shifter.
+  ctx.liveBodies.add(cbFctx.body);
+
   // Register params as locals (param 0 = __captures, [1 = __this if needsThis], then arrow params)
   for (let i = 0; i < cbFctx.params.length; i++) {
     cbFctx.localMap.set(cbFctx.params[i]!.name, i);
@@ -2487,6 +2547,11 @@ export function compileArrowAsCallback(
     body: cbFctx.body,
     exported: true,
   });
+  // (#1384) cbFctx.body is now reachable via ctx.mod.functions[].body — the
+  // regular shifter walker covers it from here on. Remove from liveBodies to
+  // avoid double-traversal (the walker dedupes via its `shifted` set anyway,
+  // but keeping liveBodies tight is cheaper).
+  ctx.liveBodies.delete(cbFctx.body);
   ctx.funcMap.set(cbName, cbFuncIdx);
   ctx.mod.exports.push({
     name: cbName,
@@ -2755,7 +2820,22 @@ export function emitFuncRefAsClosure(
 
     // Emit: struct.new with fields: func, cap0, cap1, ..., __tdz_*..., ...
     fctx.body.push({ op: "ref.func", funcIdx: trampolineFuncIdx });
-    for (const cap of nestedCaptures) {
+    // (#1312) Self-reference inside the lifted body of `funcName` itself —
+    // e.g. `function next() { return call(next); }`. The captures are
+    // already in scope as the leading params [0..numCaptures-1] of the
+    // lifted fn (mutable captures arrive as boxed ref cells, immutable as
+    // raw values). We re-push them by param index instead of trying to
+    // dereference `cap.outerLocalIdx`, which points into a different
+    // (outer) scope and yields garbage / null when reused inside the
+    // current lifted body.
+    const isSelfRef = fctx.name === funcName;
+    for (let i = 0; i < nestedCaptures.length; i++) {
+      const cap = nestedCaptures[i]!;
+      if (isSelfRef) {
+        // Captures arrive at param index `i` in the lifted fn (#1312).
+        fctx.body.push({ op: "local.get", index: i });
+        continue;
+      }
       if (cap.mutable && cap.valType) {
         const refCellTypeIdx = getOrRegisterRefCellType(ctx, cap.valType);
         if (fctx.boxedCaptures?.has(cap.name)) {
@@ -2786,7 +2866,15 @@ export function emitFuncRefAsClosure(
     // or cross-fctx transitive) push `i32.const 1` (treat as initialized) —
     // matches pre-#1205 behavior where the lifted body had no flag check.
     if (numTdzFlags > 0) {
-      for (const cap of tdzFlaggedNested) {
+      for (let ti = 0; ti < tdzFlaggedNested.length; ti++) {
+        const cap = tdzFlaggedNested[ti]!;
+        if (isSelfRef) {
+          // (#1312) Self-reference inside the lifted body — the TDZ-flag
+          // boxed refs arrive as params at index `numCaptures + ti` (after
+          // all value captures). Re-push from there.
+          fctx.body.push({ op: "local.get", index: numCaptures + ti });
+          continue;
+        }
         const existingBox = fctx.boxedTdzFlags?.get(cap.name);
         if (existingBox) {
           fctx.body.push({ op: "local.get", index: existingBox.localIdx });

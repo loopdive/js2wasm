@@ -1,0 +1,19 @@
+{
+  "pr": 291,
+  "conclusion": "success",
+  "head_branch": "issue-1385-temporal-duration-hang",
+  "head_sha": "3d1d5560c78a1c6bbbd790981e3fbfae8d81b0f7",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25545480862",
+  "timestamp": "2026-05-08T08:51:25Z",
+  "pass": 27201,
+  "fail": 14605,
+  "compile_error": 1262,
+  "snapshot_delta": -10,
+  "net_per_test": 36,
+  "regressions": 63,
+  "regressions_real": 13,
+  "regressions_wasm_change": 13,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 50,
+  "improvements": 49
+}

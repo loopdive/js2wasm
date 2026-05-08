@@ -2542,12 +2542,63 @@ export function compilePropertyIntrospection(
     const hasInTs = tsProps.has(staticKey);
     const has = hasInStruct || hasInTs;
 
+    // (#1334) If `Object.defineProperty` has been called on this variable
+    // for any property — or `delete` could have removed a struct field via
+    // the runtime tombstone (any time the struct shape includes the queried
+    // key) — the compile-time answer can disagree with the runtime state.
+    // Route through the runtime helper so the tombstone (`__delete_property`
+    // path) and any sidecar accessor entries are consulted.
+    //
+    // The signal we use is `ctx.definedPropertyFlags`: it's populated only
+    // when `Object.defineProperty` is statically observed, so we only pay
+    // the runtime call cost on objects that have actually been mutated.
+    // Anonymous receivers (e.g. `({}).hasOwnProperty(...)`) skip this path.
+    const recvVarName = ts.isIdentifier(propAccess.expression) ? propAccess.expression.text : undefined;
+    let needsRuntime = false;
+    if (recvVarName) {
+      // Cheap pre-check: if any defineProperty entry exists for this var,
+      // the runtime tombstone / descriptor map could differ from the static
+      // shape answer. Bail to the runtime path.
+      for (const k of ctx.definedPropertyFlags.keys()) {
+        if (k.startsWith(`${recvVarName}:`)) {
+          needsRuntime = true;
+          break;
+        }
+      }
+    }
+
+    if (needsRuntime && (receiverWasm.kind === "ref" || receiverWasm.kind === "ref_null")) {
+      // Coerce the struct receiver to externref and dispatch to the runtime
+      // helper. Mirrors the externref branch above (line 2393).
+      const importName = isPropertyIsEnumerable ? "__propertyIsEnumerable" : "__hasOwnProperty";
+      const hopIdx = ensureLateImport(
+        ctx,
+        importName,
+        [{ kind: "externref" }, { kind: "externref" }],
+        [{ kind: "i32" }],
+      );
+      flushLateImportShifts(ctx, fctx);
+      if (hopIdx !== undefined) {
+        const recvType = compileExpression(ctx, fctx, propAccess.expression);
+        if (recvType && (recvType.kind === "ref" || recvType.kind === "ref_null")) {
+          fctx.body.push({ op: "extern.convert_any" } as Instr);
+        } else if (recvType && recvType.kind !== "externref") {
+          coerceType(ctx, fctx, recvType, { kind: "externref" });
+        }
+        const argType = compileExpression(ctx, fctx, arg);
+        if (argType && argType.kind !== "externref") {
+          coerceType(ctx, fctx, argType, { kind: "externref" });
+        }
+        fctx.body.push({ op: "call", funcIdx: hopIdx });
+        return { kind: "i32" };
+      }
+    }
+
     // For propertyIsEnumerable, also check definedPropertyFlags for updated enumerability.
     // definedPropertyFlags is keyed as "varName:propName" and is the authoritative source
     // for compile-time flag updates from Object.defineProperty calls.
     let result = has ? 1 : 0;
     if (isPropertyIsEnumerable && has) {
-      const recvVarName = ts.isIdentifier(propAccess.expression) ? propAccess.expression.text : undefined;
       if (recvVarName) {
         const key = `${recvVarName}:${staticKey}`;
         const flags = ctx.definedPropertyFlags.get(key);

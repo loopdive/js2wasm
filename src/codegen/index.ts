@@ -851,8 +851,15 @@ export function generateModule(
       // Only request IR compilation for functions we successfully built
       // overrides for (the selector may have claimed more, but if we
       // couldn't map types safely we leave them to legacy).
+      //
+      // #1370 Phase B: thread `classMembers` through to the integration
+      // loop. Class methods don't go through `overrideMap` (they're
+      // typed via the class shape, not the TypeMap-derived overrides);
+      // the integration's class-member walk consults `classShapes`
+      // directly. Pass the set unmodified.
       const safeSelection = {
         funcs: new Set<string>([...selection.funcs].filter((n) => overrideMap.has(n))),
+        classMembers: selection.classMembers,
       };
       const report = compileIrPathFunctions(ctx, ast.sourceFile, safeSelection, overrideMap, classShapes);
       // Slice 12 (#1169o) — IR-path failures are NOT compile errors. The
@@ -2754,6 +2761,7 @@ function registerWasiImports(ctx: CodegenContext, sourceFile: ts.SourceFile): vo
   // Check if source uses console.log/warn/error, process.exit, or node:fs functions
   let needsFdWrite = false;
   let needsProcExit = false;
+  let needsRandomGet = false;
 
   // ctx.wasiNodeFsFuncs is populated from the original source before import preprocessing
   // (see detectNodeFsImports in compiler.ts)
@@ -2775,6 +2783,14 @@ function registerWasiImports(ctx: CodegenContext, sourceFile: ts.SourceFile): vo
         propAccess.name.text === "exit"
       ) {
         needsProcExit = true;
+      }
+      // #1322: Math.random() in WASI mode uses random_get for entropy
+      if (
+        ts.isIdentifier(propAccess.expression) &&
+        propAccess.expression.text === "Math" &&
+        propAccess.name.text === "random"
+      ) {
+        needsRandomGet = true;
       }
     }
     forEachChild(node, visit);
@@ -2801,6 +2817,15 @@ function registerWasiImports(ctx: CodegenContext, sourceFile: ts.SourceFile): vo
     const procExitType = addFuncType(ctx, [{ kind: "i32" }], [], "$wasi_proc_exit");
     addImport(ctx, "wasi_snapshot_preview1", "proc_exit", { kind: "func", typeIdx: procExitType });
     ctx.wasiProcExitIdx = ctx.funcMap.get("proc_exit")!;
+  }
+
+  // #1322: random_get(buf_ptr: i32, buf_len: i32) -> errno (i32)
+  // Used by `Math_random` (emitted in math-helpers.ts:emitInlineMathFunctions).
+  // Registered HERE — before any defined helpers — so the late-import shift
+  // bug (CLAUDE.md "addUnionImports" note) doesn't break `__str_*` indices.
+  if (needsRandomGet) {
+    const randomGetType = addFuncType(ctx, [{ kind: "i32" }, { kind: "i32" }], [{ kind: "i32" }], "$wasi_random_get");
+    addImport(ctx, "wasi_snapshot_preview1", "random_get", { kind: "func", typeIdx: randomGetType });
   }
 
   // path_open(fd: i32, dirflags: i32, path: i32, path_len: i32, oflags: i32,
@@ -3359,6 +3384,12 @@ export function addStringImports(ctx: CodegenContext): void {
     for (const pb of ctx.parentBodiesStack) {
       shiftFuncIndices(pb);
     }
+    // (#1384) Walk all live (allocated but not yet attached to mod.functions)
+    // FunctionContext bodies — covers cbFctx.body / liftedFctx.body during
+    // their captures-extraction + param-coercion setup phases.
+    for (const lb of ctx.liveBodies) {
+      shiftFuncIndices(lb);
+    }
     for (const elem of ctx.mod.elements) {
       if (elem.funcIndices) {
         for (let i = 0; i < elem.funcIndices.length; i++) {
@@ -3719,9 +3750,15 @@ function collectMathImports(ctx: CodegenContext, sourceFile: ts.SourceFile): voi
 
   for (const method of needed) {
     if (method === "random") {
-      // Math.random requires entropy — must remain a host import
-      const typeIdx = addFuncType(ctx, [], [{ kind: "f64" }]);
-      addImport(ctx, "env", `Math_${method}`, { kind: "func", typeIdx });
+      // #1322: in WASI/standalone mode, route random through WASI random_get
+      // (the import is registered early by registerWasiImports). In JS-host
+      // mode keep the host import.
+      if (ctx.wasi) {
+        ctx.pendingMathMethods.add(method);
+      } else {
+        const typeIdx = addFuncType(ctx, [], [{ kind: "f64" }]);
+        addImport(ctx, "env", `Math_${method}`, { kind: "func", typeIdx });
+      }
     } else {
       // All other math methods get pure Wasm implementations
       ctx.pendingMathMethods.add(method);
@@ -4040,7 +4077,32 @@ function collectPromiseImports(ctx: CodegenContext, sourceFile: ts.SourceFile): 
       node.expression.expression.text === "Promise"
     ) {
       const method = node.expression.name.text;
-      if (method === "all" || method === "race" || method === "resolve" || method === "reject") {
+      // (#1368) include allSettled/any so they get pre-registered with the 2-arg
+      // aggregator signature alongside all/race.
+      if (
+        method === "all" ||
+        method === "race" ||
+        method === "allSettled" ||
+        method === "any" ||
+        method === "resolve" ||
+        method === "reject"
+      ) {
+        needed.add(method);
+      }
+    }
+    // (#1368) Detect `Promise.METHOD.call(...)` patterns so their imports get
+    // registered (otherwise the late path would see the existing-but-wrong-arity
+    // pre-registration that was implicit before this fix).
+    if (
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      node.expression.name.text === "call" &&
+      ts.isPropertyAccessExpression(node.expression.expression) &&
+      ts.isIdentifier(node.expression.expression.expression) &&
+      node.expression.expression.expression.text === "Promise"
+    ) {
+      const method = node.expression.expression.name.text;
+      if (method === "all" || method === "race" || method === "allSettled" || method === "any") {
         needed.add(method);
       }
     }
@@ -4084,7 +4146,11 @@ function collectPromiseImports(ctx: CodegenContext, sourceFile: ts.SourceFile): 
   for (const method of needed) {
     const importName = `Promise_${method}`;
     if (!ctx.funcMap.has(importName)) {
-      const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
+      // (#1368) Aggregators (all/race/allSettled/any) take (thisArg, iterable);
+      // resolve/reject keep their original 1-arg signature.
+      const isAggregator = method === "all" || method === "race" || method === "allSettled" || method === "any";
+      const params: ValType[] = isAggregator ? [{ kind: "externref" }, { kind: "externref" }] : [{ kind: "externref" }];
+      const typeIdx = addFuncType(ctx, params, [{ kind: "externref" }]);
       addImport(ctx, "env", importName, { kind: "func", typeIdx });
     }
   }
@@ -4643,6 +4709,13 @@ export function addUnionImports(ctx: CodegenContext): void {
     }
     for (const pb of ctx.parentBodiesStack) {
       shiftFuncIndices(pb);
+    }
+    // (#1384) Walk all live (allocated but not yet attached to mod.functions)
+    // FunctionContext bodies — covers cbFctx.body / liftedFctx.body during
+    // their captures-extraction + param-coercion setup phases, BEFORE the
+    // savedFunc swap puts them on funcStack/parentBodiesStack.
+    for (const lb of ctx.liveBodies) {
+      shiftFuncIndices(lb);
     }
     if (ctx.pendingInitBody) {
       shiftFuncIndices(ctx.pendingInitBody);
@@ -5446,6 +5519,14 @@ export function resolveWasmType(ctx: CodegenContext, tsType: ts.Type, _depth = 0
     }
     // Check named structs (interfaces, type aliases)
     if (name && name !== "__type" && name !== "__object" && ctx.structMap.has(name)) {
+      // (#1366a) Externref-backed user classes (e.g. `class Sub extends Error`)
+      // have their instance live as a real JS object; the registered struct
+      // type exists for tag/registry bookkeeping only. Wasm-typed values for
+      // these types must be externref so callers see what `<className>_new`
+      // actually returns.
+      if (ctx.classExternrefBackedSet.has(name)) {
+        return { kind: "externref" };
+      }
       return { kind: "ref", typeIdx: ctx.structMap.get(name)! };
     }
     // Check anonymous type registry

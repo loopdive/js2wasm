@@ -18135,8 +18135,8 @@
       "id": "1311",
       "title": "Map<string, AsyncHandler> dispatch null_deref in App.dispatch path",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "50",
       "depends_on": [],
       "files": [],
@@ -18159,8 +18159,8 @@
       "id": "1313",
       "title": "await is a passthrough — does not unwrap Promise from async-call expressions",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "50",
       "depends_on": [],
       "files": [],
@@ -18269,7 +18269,7 @@
       "title": "Math.random() has no standalone fallback — requires JS host import in WASI/standalone mode",
       "priority": "low",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "50",
       "depends_on": [],
       "files": [],
@@ -18292,8 +18292,8 @@
       "id": "1324",
       "title": "JSON.stringify and JSON.parse: implement in pure Wasm, eliminate JS host dependency",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "50",
       "depends_on": [],
       "files": [],
@@ -18305,7 +18305,7 @@
       "title": "instanceof against built-in types: compile-time type-tag registry eliminates JS host for common cases",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "50",
       "depends_on": [],
       "files": [],
@@ -18407,6 +18407,741 @@
       "files": [],
       "goal": "spec-completeness",
       "cluster": "spec-completeness"
+    },
+    {
+      "id": "1334",
+      "title": "ECMAScript spec compliance audit: section-by-section review, gap issues, HTML report",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "npm-library-support",
+      "cluster": "npm-library-support"
+    },
+    {
+      "id": "1335",
+      "title": "Number.prototype formatting in pure Wasm: integer toString(radix), then Ryu for floats (standalone)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "standalone-mode",
+      "cluster": "standalone-mode"
+    },
+    {
+      "id": "1336",
+      "title": "spec gap: Object.assign drops getters / Symbol keys (27 of 38 test262 fails)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1337",
+      "title": "spec gap: Function.prototype.bind/toString + Function/internals (175 + 7 test262 fails)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1338",
+      "title": "spec gap: Array.from / Array.of constructor semantics (39 test262 fails, wasm_compile dominant)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1339",
+      "title": "spec gap: AggregateError + SuppressedError errors-iterable + cause coercion (37 test262 fails)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1340",
+      "title": "spec gap: AggregateError + SuppressedError errors-iterable + cause coercion (37 test262 fails)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1341",
+      "title": "spec gap: Iterator.prototype helpers wasm_compile errors (89 of 245 fails)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1342",
+      "title": "spec gap: JSON.stringify replacer/toJSON/property-list (49 of 66 test262 fails)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1343",
+      "title": "spec gap: Boolean wrapper + Symbol coercion TypeErrors (24 + 45 test262 fails)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1344",
+      "title": "spec gap: Date.prototype string formatters and parsers (174 of 485 test262 fails)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1345",
+      "title": "spec gap: Generator/AsyncIterator prototype receiver TypeErrors + return/throw (52 + 12 test262 fails)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1346",
+      "title": "spec gap: Reflect.* invariant checks mirror internal-method bugs (83 test262 fails)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1347",
+      "title": "spec gap: for-of doesn't IteratorClose on body throw (portion of 389 fails)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1348",
+      "title": "spec gap: for-of doesn't IteratorClose on body throw (portion of 389 fails)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1349",
+      "title": "spec gap: BigInt typed-path eager f64 assumptions (47 test262 fails, 4 illegal_cast + 13 runtime)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1350",
+      "title": "spec gap: ArrayBuffer resizable + TypedArray detached-buffer guards (100 + 39 test262 fails)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1351",
+      "title": "spec gap: ArrayBuffer resizable + TypedArray detached-buffer guards (100 + 39 test262 fails)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1352",
+      "title": "spec gap: Set methods (union/intersection/etc.) accept any set-like argument (101 test262 fails)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1353",
+      "title": "JSON.stringify (objects/arrays) + JSON.parse: architect spec for Wasm shape-walking and recursive-descent parser",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "50",
+      "depends_on": [],
+      "files": [],
+      "goal": "standalone-mode",
+      "cluster": "standalone-mode"
+    },
+    {
+      "id": "1354",
+      "title": "spec backlog: SharedArrayBuffer + Atomics (full implementation, requires multi-thread Wasm)",
+      "priority": "low",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "backlog",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1355",
+      "title": "spec backlog: Proxy implementation beyond JS-host fallback (235 test262 fails)",
+      "priority": "low",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "backlog",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1356",
+      "title": "spec backlog: ShadowRealm implementation (61 test262 fails, requires per-realm parser)",
+      "priority": "low",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "backlog",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1357",
+      "title": "spec backlog: AbstractModuleSource constructor (Stage 3 import-source proposal, 8 test262 fails)",
+      "priority": "low",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "backlog",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1358",
+      "title": "spec gap: Array.prototype.{filter,map,every,some,forEach,reduce} on array-like (.call) receivers — ~452 assertion_fail",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1359",
+      "title": "spec gap: Array.prototype.{splice,slice,concat,toSpliced,toReversed} — @@species, sparse handling, IsConcatSpreadable (~150 fails)",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1360",
+      "title": "spec gap: Array.prototype.{indexOf,lastIndexOf,includes} — SameValueZero, sparse, fromIndex coercion (~210 fails)",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1361",
+      "title": "spec gap: Array.prototype.sort — comparator validation, stability, ToString fallback (~46 fails)",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1362",
+      "title": "spec gap: Object.defineProperties — apply full descriptor map (332 fails)",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1363",
+      "title": "spec gap: class dstr — 'Cannot destructure null/undefined' in method default-binding (~700 runtime_errors)",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1364",
+      "title": "spec gap: class elements — method/field descriptor enumerable/configurable/writable (~700 fails)",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1365",
+      "title": "spec gap: class private fields, methods, accessors and brand checks (~97 fails in elements/private-*)",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1366",
+      "title": "spec gap: class subclass + subclass-builtins prototype chain (~154 fails)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1366a",
+      "title": "spec gap: class extends Error/TypeError/RangeError — builtin subclassing via existing host imports (+40-60 passes)",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1367",
+      "title": "spec gap: Iterator.prototype helpers — get-next-once, non-constructible, return-on-throw (~244 fails)",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1368",
+      "title": "spec gap: Promise.{all,allSettled,any,race} — resolver-element semantics, ctor type-check (~109 fails)",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1369",
+      "title": "spec gap: String.prototype.{split,replace,replaceAll,match,matchAll} — limit, @@split/@@replace/@@match protocol (~150 fails)",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1370",
+      "title": "IR: claim class methods and constructors (largest legacy bypass)",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "ir-full-coverage",
+      "cluster": "ir-full-coverage"
+    },
+    {
+      "id": "1371",
+      "title": "IR: expand external-call whitelist to stop rejecting host imports and Math.*",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "ir-full-coverage",
+      "cluster": "ir-full-coverage"
+    },
+    {
+      "id": "1372",
+      "title": "IR: support destructuring params (removes param-shape-rejected bypass)",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "ir-full-coverage",
+      "cluster": "ir-full-coverage"
+    },
+    {
+      "id": "1373",
+      "title": "IR: claim async functions (async/await through IR path)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "ir-full-coverage",
+      "cluster": "ir-full-coverage"
+    },
+    {
+      "id": "1374",
+      "title": "IR: string for-of and for-in through IR (removes legacy fallback for string iteration)",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "ir-full-coverage",
+      "cluster": "ir-full-coverage"
+    },
+    {
+      "id": "1375",
+      "title": "IR: full optional-chain support (?. and ?.[]) without resolver fallback",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "ir-full-coverage",
+      "cluster": "ir-full-coverage"
+    },
+    {
+      "id": "1376",
+      "title": "IR: fallback telemetry gate — CI fails when unintended legacy bypasses exceed threshold",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "ir-full-coverage",
+      "cluster": "ir-full-coverage"
+    },
+    {
+      "id": "1377",
+      "title": "spec gap: Array.prototype.{push,pop,shift,unshift,fill,copyWithin,reverse} — mutation on array-like + length writes (~80 fails)",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1378",
+      "title": "spec gap: try/catch/finally — error type fidelity, finally completion override, dstr-binding (~85 fails)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1379",
+      "title": "spec gap: prefix/postfix ++/-- on null/undefined/string operands — ToNumeric coercion (~40 fails)",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1380",
+      "title": "spec gap: equality (==, !=, ===, !==) — Symbol/BigInt coercion + ReferenceError propagation (~55 fails)",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1381",
+      "title": "spec gap: String.prototype.{substring,slice,indexOf,search,charAt,charCodeAt,codePointAt,at,includes,startsWith,endsWith,trim,concat} edge cases (~128 fails)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "in-progress",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1382",
+      "title": "structural: Wasm closures not JS-callable from host imports — bridge gap",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "ir-full-coverage",
+      "cluster": "ir-full-coverage"
+    },
+    {
+      "id": "1383",
+      "title": "narrower typeof-gated strict-equality fix (follow-up to closed PR #272 / #1380)",
+      "priority": "medium",
+      "status": "backlog",
+      "raw_status": "backlog",
+      "sprint": "",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1384",
+      "title": "CE: static async method with PrivateName — 'not enough arguments on the stack' (249 tests)",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1385",
+      "title": "HANG: Temporal/Duration/from/argument-non-string.js — infinite runtime loop",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1386",
+      "title": "HANG: Promise/race/invoke-then.js — compilation or runtime infinite loop",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness",
+      "compiler_errors": 6
+    },
+    {
+      "id": "1387",
+      "title": "feat: implement `with` statement — architect exploration of dynamic-scope compilation strategies",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness",
+      "compiler_errors": 294
+    },
+    {
+      "id": "1388",
+      "title": "runtime: null.next — yield* / async-generator iterator construction returns null in class methods (316 fails)",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1389",
+      "title": "fix: false CE — var + function-declaration same name at top-level scope",
+      "priority": "medium",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1390",
+      "title": "fix: import-defer proposal tests fail as CE (no test export) when TEST262_INCLUDE_PROPOSALS=1",
+      "priority": "low",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness",
+      "compiler_errors": 31
+    },
+    {
+      "id": "1391",
+      "title": "infra: CI feed baseline staleness detection — warn when baseline_sha diverges from current main",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "reliability",
+      "cluster": "reliability"
+    },
+    {
+      "id": "1392",
+      "title": "IR: null-safe access primitives — ref.is_null IrUnop + value-producing if/else IR node",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "ir-full-coverage",
+      "cluster": "ir-full-coverage"
+    },
+    {
+      "id": "1393",
+      "title": "infra: content-hash CI cache + GitHub Merge Queue — eliminate baseline drift and redundant re-runs",
+      "priority": "high",
+      "status": "done",
+      "raw_status": "done",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "ci-reliability",
+      "cluster": "ci-reliability"
     }
   ],
   "links": [
@@ -20356,7 +21091,8 @@
         "1311",
         "1312",
         "1313",
-        "1327"
+        "1327",
+        "1334"
       ],
       "track": "supporting track"
     },
@@ -20670,7 +21406,54 @@
         "1330",
         "1331",
         "1332",
-        "1333"
+        "1333",
+        "1336",
+        "1337",
+        "1338",
+        "1339",
+        "1340",
+        "1341",
+        "1342",
+        "1343",
+        "1344",
+        "1345",
+        "1346",
+        "1347",
+        "1348",
+        "1349",
+        "1350",
+        "1351",
+        "1352",
+        "1354",
+        "1355",
+        "1356",
+        "1357",
+        "1358",
+        "1359",
+        "1360",
+        "1361",
+        "1362",
+        "1363",
+        "1364",
+        "1365",
+        "1366",
+        "1366a",
+        "1367",
+        "1368",
+        "1369",
+        "1377",
+        "1378",
+        "1379",
+        "1380",
+        "1381",
+        "1383",
+        "1384",
+        "1385",
+        "1386",
+        "1387",
+        "1388",
+        "1389",
+        "1390"
       ]
     },
     {
@@ -20732,7 +21515,9 @@
         "1323",
         "1324",
         "1325",
-        "1326"
+        "1326",
+        "1335",
+        "1353"
       ],
       "track": "parallel — does not block conformance goals."
     },
@@ -24482,6 +25267,10 @@
       "issue": "1327"
     },
     {
+      "goal": "npm-library-support",
+      "issue": "1334"
+    },
+    {
       "goal": "observability",
       "issue": "880"
     },
@@ -25498,6 +26287,194 @@
       "issue": "1333"
     },
     {
+      "goal": "spec-completeness",
+      "issue": "1336"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1337"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1338"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1339"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1340"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1341"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1342"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1343"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1344"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1345"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1346"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1347"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1348"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1349"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1350"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1351"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1352"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1354"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1355"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1356"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1357"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1358"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1359"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1360"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1361"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1362"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1363"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1364"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1365"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1366"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1366a"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1367"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1368"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1369"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1377"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1378"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1379"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1380"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1381"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1383"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1384"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1385"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1386"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1387"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1388"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1389"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1390"
+    },
+    {
       "goal": "standalone-mode",
       "issue": "34"
     },
@@ -25696,6 +26673,14 @@
     {
       "goal": "standalone-mode",
       "issue": "1326"
+    },
+    {
+      "goal": "standalone-mode",
+      "issue": "1335"
+    },
+    {
+      "goal": "standalone-mode",
+      "issue": "1353"
     },
     {
       "goal": "symbol-protocol",
@@ -28572,6 +29557,10 @@
       "issue": "1327"
     },
     {
+      "goal": "core-semantics",
+      "issue": "1334"
+    },
+    {
       "goal": "platform",
       "issue": "111"
     },
@@ -28846,6 +29835,10 @@
     {
       "goal": "platform",
       "issue": "1327"
+    },
+    {
+      "goal": "platform",
+      "issue": "1334"
     },
     {
       "goal": "core-semantics",
@@ -29852,6 +30845,194 @@
       "issue": "1333"
     },
     {
+      "goal": "async-model",
+      "issue": "1336"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1337"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1338"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1339"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1340"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1341"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1342"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1343"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1344"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1345"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1346"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1347"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1348"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1349"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1350"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1351"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1352"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1354"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1355"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1356"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1357"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1358"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1359"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1360"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1361"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1362"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1363"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1364"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1365"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1366"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1366a"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1367"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1368"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1369"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1377"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1378"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1379"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1380"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1381"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1383"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1384"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1385"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1386"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1387"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1388"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1389"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1390"
+    },
+    {
       "goal": "symbol-protocol",
       "issue": "10"
     },
@@ -30280,6 +31461,194 @@
       "issue": "1333"
     },
     {
+      "goal": "symbol-protocol",
+      "issue": "1336"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1337"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1338"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1339"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1340"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1341"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1342"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1343"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1344"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1345"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1346"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1347"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1348"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1349"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1350"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1351"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1352"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1354"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1355"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1356"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1357"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1358"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1359"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1360"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1361"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1362"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1363"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1364"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1365"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1366"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1366a"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1367"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1368"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1369"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1377"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1378"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1379"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1380"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1381"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1383"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1384"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1385"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1386"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1387"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1388"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1389"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1390"
+    },
+    {
       "goal": "builtin-methods",
       "issue": "10"
     },
@@ -30708,6 +32077,194 @@
       "issue": "1333"
     },
     {
+      "goal": "builtin-methods",
+      "issue": "1336"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1337"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1338"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1339"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1340"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1341"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1342"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1343"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1344"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1345"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1346"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1347"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1348"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1349"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1350"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1351"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1352"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1354"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1355"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1356"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1357"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1358"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1359"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1360"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1361"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1362"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1363"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1364"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1365"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1366"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1366a"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1367"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1368"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1369"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1377"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1378"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1379"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1380"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1381"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1383"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1384"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1385"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1386"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1387"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1388"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1389"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1390"
+    },
+    {
       "goal": "property-model",
       "issue": "10"
     },
@@ -31134,6 +32691,194 @@
     {
       "goal": "property-model",
       "issue": "1333"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1336"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1337"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1338"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1339"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1340"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1341"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1342"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1343"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1344"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1345"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1346"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1347"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1348"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1349"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1350"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1351"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1352"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1354"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1355"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1356"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1357"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1358"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1359"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1360"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1361"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1362"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1363"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1364"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1365"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1366"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1366a"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1367"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1368"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1369"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1377"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1378"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1379"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1380"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1381"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1383"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1384"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1385"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1386"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1387"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1388"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1389"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1390"
     },
     {
       "goal": "iterator-protocol",
@@ -31336,6 +33081,14 @@
       "issue": "1326"
     },
     {
+      "goal": "iterator-protocol",
+      "issue": "1335"
+    },
+    {
+      "goal": "iterator-protocol",
+      "issue": "1353"
+    },
+    {
       "goal": "generator-model",
       "issue": "34"
     },
@@ -31534,6 +33287,14 @@
     {
       "goal": "generator-model",
       "issue": "1326"
+    },
+    {
+      "goal": "generator-model",
+      "issue": "1335"
+    },
+    {
+      "goal": "generator-model",
+      "issue": "1353"
     },
     {
       "goal": "iterator-protocol",

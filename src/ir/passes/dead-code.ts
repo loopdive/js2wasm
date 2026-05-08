@@ -274,6 +274,29 @@ function collectInstrUses(instr: IrInstr): readonly IrValueId[] {
       return [instr.rand];
     case "select":
       return [instr.condition, instr.whenTrue, instr.whenFalse];
+    case "if": {
+      // (#1392) Walk both arm buffers so DCE pins any outer SSA value
+      // referenced inside. Mirrors the `try` / `forof.*` handling.
+      const result: IrValueId[] = [instr.cond, instr.thenValue, instr.elseValue];
+      const walk = (instrs: readonly IrInstr[]): void => {
+        for (const sub of instrs) {
+          for (const u of collectInstrUses(sub)) result.push(u);
+          if (sub.kind === "forof.vec" || sub.kind === "forof.iter" || sub.kind === "forof.string") walk(sub.body);
+          if (sub.kind === "try") {
+            walk(sub.body);
+            if (sub.catchClause) walk(sub.catchClause.body);
+            if (sub.finallyBody) walk(sub.finallyBody);
+          }
+          if (sub.kind === "if") {
+            walk(sub.then);
+            walk(sub.else);
+          }
+        }
+      };
+      walk(instr.then);
+      walk(instr.else);
+      return result;
+    }
     case "raw.wasm":
       return [];
     case "box":
@@ -332,6 +355,12 @@ function collectInstrUses(instr: IrInstr): readonly IrValueId[] {
         for (const sub of instrs) {
           for (const u of collectInstrUses(sub)) result.push(u);
           if (sub.kind === "forof.vec" || sub.kind === "forof.iter" || sub.kind === "forof.string") walk(sub.body);
+          // (#1392) `if` arms may contain references to outer SSA values
+          // — recurse so DCE pins them. Same rationale as `try` recursion.
+          if (sub.kind === "if") {
+            walk(sub.then);
+            walk(sub.else);
+          }
         }
       };
       walk(instr.body);
@@ -356,6 +385,12 @@ function collectInstrUses(instr: IrInstr): readonly IrValueId[] {
         for (const sub of instrs) {
           for (const u of collectInstrUses(sub)) result.push(u);
           if (sub.kind === "forof.vec" || sub.kind === "forof.iter" || sub.kind === "forof.string") walk(sub.body);
+          // (#1392) `if` arms may contain references to outer SSA values
+          // — recurse so DCE pins them. Same rationale as `try` recursion.
+          if (sub.kind === "if") {
+            walk(sub.then);
+            walk(sub.else);
+          }
         }
       };
       walk(instr.body);
@@ -368,6 +403,12 @@ function collectInstrUses(instr: IrInstr): readonly IrValueId[] {
         for (const sub of instrs) {
           for (const u of collectInstrUses(sub)) result.push(u);
           if (sub.kind === "forof.vec" || sub.kind === "forof.iter" || sub.kind === "forof.string") walk(sub.body);
+          // (#1392) `if` arms may contain references to outer SSA values
+          // — recurse so DCE pins them. Same rationale as `try` recursion.
+          if (sub.kind === "if") {
+            walk(sub.then);
+            walk(sub.else);
+          }
         }
       };
       walk(instr.body);
@@ -396,6 +437,11 @@ function collectInstrUses(instr: IrInstr): readonly IrValueId[] {
             walk(sub.body);
             if (sub.catchClause) walk(sub.catchClause.body);
             if (sub.finallyBody) walk(sub.finallyBody);
+          }
+          // (#1392) recurse into nested if arms for the same reason.
+          if (sub.kind === "if") {
+            walk(sub.then);
+            walk(sub.else);
           }
         }
       };

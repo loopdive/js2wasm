@@ -623,6 +623,20 @@ function collectUses(instr: IrInstr): readonly IrValueId[] {
       return [instr.rand];
     case "select":
       return [instr.condition, instr.whenTrue, instr.whenFalse];
+    case "if": {
+      // (#1392) Surface cond + carrier values plus uses inside the arms.
+      // Arm-buffer instrs may reference outer SSA values; the
+      // monomorphize pass needs to see them for use-counting.
+      const out: IrValueId[] = [instr.cond, instr.thenValue, instr.elseValue];
+      const walk = (instrs: readonly IrInstr[]): void => {
+        for (const sub of instrs) {
+          for (const u of collectUses(sub)) out.push(u);
+        }
+      };
+      walk(instr.then);
+      walk(instr.else);
+      return out;
+    }
     case "box":
     case "unbox":
     case "tag.test":

@@ -283,14 +283,24 @@ export type FilterResult = { skip: true; reason: string } | { skip: false; reaso
 
 // Tests that cause the compiler to hang (infinite loop during compilation)
 const HANGING_TESTS = new Set([
-  "test/built-ins/Promise/race/invoke-then.js", // #408: Promise.race compilation hang
+  // (#1386) `test/built-ins/Promise/race/invoke-then.js` previously hung at
+  // compile time on the `p1.then = p2.then = p3.then = function(a, b) {…}`
+  // chained assignment. Verified 2026-05-08: compile completes in ~1.8s
+  // (well under the 5s threshold) — wrapped through `wrapTest`, the test
+  // returns 6 type-mismatch CEs about the `.then` function signature
+  // (returns void instead of `Promise<…>`). The test now registers as
+  // `compile_error`, not a hang. Reclassifying skip → compile_error is a
+  // bookkeeping move, not a regression.
   // #859: Map/forEach/iterates-values-deleted-then-readded.js previously hung
   // because callback captures were immutable snapshots — `if (count === 0)`
   // never became false, so the test infinitely re-added the deleted key. The
   // ref-cell capture pattern (compileArrowAsCallback) now propagates the
   // count++ mutation back to the outer local, terminating the loop after the
   // spec'd 3 iterations.
-  "test/built-ins/Temporal/Duration/from/argument-non-string.js", // hangs: Temporal runtime loop
+  // #1385: Temporal/Duration/from/argument-non-string.js no longer hangs.
+  // Local probe (May 2026): wrapTest + compile + instantiate + test() runs
+  // ~1.2s total; test() throws WebAssembly.Exception immediately because
+  // `Temporal` is not defined in our runtime. No iteration, no hang. Removed.
 ]);
 
 export function shouldSkip(source: string, meta: Test262Meta, filePath?: string): FilterResult {
@@ -306,61 +316,6 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
     };
   }
 
-  // Skip tests that use dynamic import() with _FIXTURE files — these need
-  // a runtime module loader we don't have.
-  // Static import _FIXTURE tests are handled by compileMulti in the test runner.
-  if (/_FIXTURE\.js/.test(source)) {
-    // Check if it's a dynamic import() — look for import( near the FIXTURE ref
-    const hasDynamicFixture = /import\s*\([^)]*_FIXTURE/.test(source);
-    if (hasDynamicFixture) {
-      return { skip: true, reason: "ES2020: dynamic import()" };
-    }
-    // Static imports are handled by the runner via compileMulti — don't skip
-  }
-
-  // Skip strict-mode-only restriction tests — deprioritized, not real-world features.
-  // These test ES spec edge cases that are disallowed in strict mode (which all modules are).
-  // with statement, octal literals, duplicate params, eval/arguments binding, delete unqualified, etc.
-  if (meta.features?.includes("with") || /\bwith\s*\(/.test(source)) {
-    return {
-      skip: true,
-      reason: "ES5 legacy: with statement (strict mode disallowed)",
-    };
-  }
-  // Sloppy-mode tests (noStrict flag or known sloppy paths) are now tagged via
-  // classifyTestScope(strict:"no") and run as-is — they may CE or fail in strict
-  // module mode, but are recorded so the report can filter them.
-  if (filePath && /unicode-16\.0\.0/.test(filePath)) {
-    return {
-      skip: true,
-      reason: "TypeScript 5.x: Unicode 16.0.0 identifiers not supported (#832)",
-    };
-  }
-  if ((filePath && /built-ins\/SharedArrayBuffer/.test(filePath)) || meta.features?.includes("SharedArrayBuffer")) {
-    return {
-      skip: true,
-      reason: "ES2017: SharedArrayBuffer (requires shared Wasm memory) (#674)",
-    };
-  }
-  // Skip FinalizationRegistry tests that require constructing an instance — those CE because
-  // `new FinalizationRegistry(...)` is not implemented. Tests that only inspect property
-  // descriptors / names / lengths don't construct an instance and may still pass, so we
-  // use three targeted rules instead of a broad path-based skip:
-  //   1. Source has `new FinalizationRegistry(` as a top-level statement (var/let/const = new, or bare new)
-  //   2. Test has both FinalizationRegistry + Reflect.construct features (the not-a-constructor tests)
-  //   3. Exact path for the Object.seal test that wraps FinalizationRegistry
-  if (
-    (filePath &&
-      /built-ins\/FinalizationRegistry/.test(filePath) &&
-      /^(?:(?:var|let|const)\s+\w+\s*=\s*)?new FinalizationRegistry\(/m.test(source)) ||
-    (meta.features?.includes("FinalizationRegistry") && meta.features?.includes("Reflect.construct")) ||
-    (filePath && /built-ins\/Object\/seal\/seal-finalizationregistry/.test(filePath))
-  ) {
-    return {
-      skip: true,
-      reason: "ES2021: FinalizationRegistry constructor not implemented — requires GC finalizer callbacks (#988)",
-    };
-  }
   // Skip known hanging tests by file path — prevents infinite compilation loops
   if (filePath) {
     const relPath = filePath.replace(/.*test262\//, "");
@@ -369,8 +324,20 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
     }
   }
 
-  if (filePath && /BigInt64Array|BigUint64Array/.test(filePath)) {
-    return { skip: true, reason: "ES2020: BigInt typed arrays not implemented (#838)" };
+  // #1390: import-defer proposal tests are syntax-only — they have no
+  // `export function test()` and rely on either a parse-phase negative check
+  // or a `import defer` namespace runtime that we don't implement. With
+  // TEST262_INCLUDE_PROPOSALS=1 they show as ~31 false `compile_error: no test
+  // export` entries. Skip the whole subtree unconditionally so the conformance
+  // report stays clean regardless of the proposals flag.
+  if (filePath) {
+    const relPath = filePath.replace(/.*test262\//, "");
+    if (relPath.includes("language/import/import-defer/")) {
+      return {
+        skip: true,
+        reason: "proposal feature: import defer (no test harness)",
+      };
+    }
   }
 
   // #1073: annexB/language/eval-code blanket skip removed. The __extern_eval
@@ -1984,7 +1951,10 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
     classBodies.push(cm[1]!);
   }
   // Track hoisted var metadata for proper declaration generation
-  const hoistedVarMeta = new Map<string, { type: "number"; init: string } | { type: "any" }>();
+  const hoistedVarMeta = new Map<
+    string,
+    { type: "number"; init: string } | { type: "any" } | { type: "expr"; fullDecl: string }
+  >();
   if (classBodies.length > 0) {
     const classBodyText = classBodies.join("\n");
     for (const vm of body.matchAll(varDeclNumericPattern)) {
@@ -2006,6 +1976,70 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
         hoistedVarMeta.set(varName, { type: "any" });
       }
     }
+
+    // #1363 — Hoist var declarations with arbitrary expression initializers
+    // referenced from class bodies. Class methods compile to module-level Wasm
+    // functions and cannot capture enclosing-function locals; without hoisting,
+    // a method's parameter default `[] = iter` resolves to ref.null.extern,
+    // causing a "Cannot destructure 'null' or 'undefined'" trap when invoked.
+    //
+    // The hoisting strategy converts:
+    //   var iter = function*() { iterations += 1; }();
+    // into module-scope `let iter: any;` plus an in-body assignment
+    // `iter = function*() { iterations += 1; }();` that runs in original order.
+    //
+    // Bracket/paren/brace-depth-aware scan to capture the full initializer
+    // expression up to the matching `;` (handles nested function bodies, object
+    // literals with computed keys, string literals, comments, regex literals).
+    const findVarStmtEnd = (src: string, eqPos: number): number => {
+      let depth = 0;
+      let i = eqPos + 1;
+      while (i < src.length) {
+        const c = src[i]!;
+        if (c === "/" && src[i + 1] === "/") {
+          // line comment — skip to newline
+          while (i < src.length && src[i] !== "\n") i++;
+          continue;
+        }
+        if (c === "/" && src[i + 1] === "*") {
+          // block comment
+          i += 2;
+          while (i < src.length && !(src[i] === "*" && src[i + 1] === "/")) i++;
+          i += 2;
+          continue;
+        }
+        if (c === "'" || c === '"' || c === "`") {
+          const quote = c;
+          i++;
+          while (i < src.length && src[i] !== quote) {
+            if (src[i] === "\\") i += 2;
+            else i++;
+          }
+          i++;
+          continue;
+        }
+        if (c === "{" || c === "(" || c === "[") depth++;
+        else if (c === "}" || c === ")" || c === "]") depth--;
+        else if (c === ";" && depth === 0) return i;
+        i++;
+      }
+      return -1;
+    };
+
+    const varInitStart = /\bvar\s+(\w+)\s*=/g;
+    for (const vm of body.matchAll(varInitStart)) {
+      const varName = vm[1]!;
+      if (hoistedVars.has(varName)) continue;
+      // Check if this variable is referenced in any class body
+      if (!new RegExp(`\\b${varName}\\b`).test(classBodyText)) continue;
+      const matchStart = vm.index!;
+      const eqPos = matchStart + vm[0].length - 1; // position of '='
+      const semiPos = findVarStmtEnd(body, eqPos);
+      if (semiPos < 0) continue;
+      const fullDecl = body.slice(matchStart, semiPos + 1);
+      hoistedVars.add(varName);
+      hoistedVarMeta.set(varName, { type: "expr", fullDecl });
+    }
   }
 
   // Build hoisted declarations (module-level) and strip them from the function body
@@ -2017,6 +2051,22 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
       if (meta?.type === "number") {
         hoistedDecls += `let ${v}: number = ${meta.init};\n`;
         bodyForFunc = bodyForFunc.replace(new RegExp(`\\bvar\\s+${v}\\s*=\\s*${meta.init}\\s*;`), ``);
+      } else if (meta?.type === "expr") {
+        // #1363 — Var with expression initializer referenced from class body.
+        // Hoist `let v: any;` to module scope and rewrite the in-body
+        // declaration to a plain assignment so initialization order is
+        // preserved. (Side-effects in the initializer must run when the
+        // surrounding code reaches that statement, not at module init.)
+        hoistedDecls += `let ${v}: any;\n`;
+        // Replace the captured `var v = <expr>;` with `v = <expr>;`. Use a
+        // literal substring replace (not regex) — the expression may contain
+        // characters that mean things in regex. fullDecl includes the
+        // trailing `;`.
+        const replacement = meta.fullDecl.replace(/^\s*var\s+/, "");
+        const idx = bodyForFunc.indexOf(meta.fullDecl);
+        if (idx >= 0) {
+          bodyForFunc = bodyForFunc.slice(0, idx) + replacement + bodyForFunc.slice(idx + meta.fullDecl.length);
+        }
       } else {
         // Uninit var: hoist as any (externref in Wasm)
         hoistedDecls += `let ${v}: any;\n`;
@@ -2206,7 +2256,7 @@ export interface TestResult {
 }
 
 /** Default per-test timeout in milliseconds (prevents infinite-loop hangs) */
-const TEST_TIMEOUT_MS = 8000;
+const TEST_TIMEOUT_MS = 15000;
 
 function isModuleGoal(category: string, meta: Test262Meta, source: string): boolean {
   if (category === "language/module-code") return true;

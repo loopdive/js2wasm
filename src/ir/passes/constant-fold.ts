@@ -100,6 +100,13 @@ export function constantFold(fn: IrFunction): IrFunction {
 function tryFoldInstr(instr: IrInstr, constDefs: ReadonlyMap<IrValueId, IrConst>): IrInstr {
   if (instr.kind === "binary") return tryFoldBinary(instr, constDefs);
   if (instr.kind === "unary") return tryFoldUnary(instr, constDefs);
+  // (#1392) `if` is value-producing but its arms are sequences of IR
+  // instrs, not constants. We DON'T fold the arms themselves here (the
+  // arm buffers hold their own instrs that constant-fold can be re-run
+  // on as a follow-up pass). However, when the cond is a known const,
+  // we COULD collapse to one branch — left as a future optimization.
+  // Leaving the if-instr unmodified preserves correctness; we miss the
+  // dead-arm DCE opportunity but the lowerer still emits valid Wasm.
   return instr;
 }
 
@@ -249,6 +256,14 @@ function foldUnary(op: IrUnop, rand: IrConst): IrConst | null {
       if (v <= -2147483648) return { kind: "i32", value: -2147483648 };
       return { kind: "i32", value: Math.trunc(v) };
     }
+    // (#1392) `ref.is_null` is non-foldable — we don't track ref-typed
+    // constants in the IrConst lattice, so we can't statically decide
+    // whether a Wasm reference is null at compile time. The runtime
+    // Wasm `ref.is_null` instruction handles this dynamically.
+    case "ref.is_null":
+      return null;
+    default:
+      return null;
   }
 }
 

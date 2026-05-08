@@ -43,6 +43,22 @@ IDLE=$((NOW - LAST_ACT))
 MSG=$(printf '%s' "$INPUT" | jq -r '.message' 2>/dev/null | head -c 140)
 [ -z "$MSG" ] && exit 0
 
+# Suppress idle/available agent notifications — these are never actionable.
+# Matches: "idle", "is idle", "available", "waiting for CI", "CI-wait", etc.
+if printf '%s' "$MSG" | grep -qiE '(idle_notification|is idle|idleReason|waiting for ci|ci.wait|ci still|ci queued|still (pending|queued)|no action)'; then
+  exit 0
+fi
+
+# Suppress all agent chatter when a ci-pending sentinel exists.
+# Tech lead sets this with: touch ~/.claude/ci-pending
+# Clear it with: rm -f ~/.claude/ci-pending
+if [ -f "$STATE_DIR/ci-pending" ]; then
+  # Still fire for important events: merges, errors, blockers, completions.
+  if ! printf '%s' "$MSG" | grep -qiE '(merged|error|blocked|failed|CE:|complete|done|escalate|regression)'; then
+    exit 0
+  fi
+fi
+
 send_now() {
   curl -s --max-time 5 -H "Title: $NTFY_TITLE" -d "$MSG" "$NTFY_URL" >/dev/null 2>&1 || true
   date +%s > "$LAST_NOTIFY_FILE"

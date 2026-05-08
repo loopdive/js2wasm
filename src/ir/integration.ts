@@ -90,7 +90,10 @@ export function compileIrPathFunctions(
   classShapes?: ReadonlyMap<string, IrClassShape>,
 ): IrIntegrationReport {
   const selected = selection ?? planIrCompilation(sourceFile, { experimentalIR: true });
-  if (selected.funcs.size === 0) {
+  // #1370 Phase B: don't short-circuit when only class members are claimed —
+  // a source file may declare a class with IR-eligible methods but no
+  // top-level FunctionDeclarations.
+  if (selected.funcs.size === 0 && (!selected.classMembers || selected.classMembers.size === 0)) {
     return { compiled: [], errors: [] };
   }
 
@@ -152,6 +155,18 @@ export function compileIrPathFunctions(
      * (mirrors the monomorphize-clone path).
      */
     readonly synthesized?: boolean;
+    /**
+     * #1370 Phase B: marks instance class methods. The legacy
+     * `class-bodies.ts` already pre-allocated a typeIdx + signature for
+     * the slot; before patching the body, the Phase 3 loop verifies the
+     * IR-lowered typeIdx matches the existing one. On mismatch it skips
+     * the patch — the legacy body stays in place, callers' `call $...`
+     * ops keep working, and a warning is logged so the divergence is
+     * visible. This guard is unnecessary for top-level FunctionDeclarations
+     * where the slot's pre-allocated typeIdx is whatever the integration
+     * lowerer chose (no legacy callers depending on it).
+     */
+    readonly classMember?: boolean;
   }
   const built: BuiltFn[] = [];
   for (const stmt of sourceFile.statements) {
@@ -198,6 +213,106 @@ export function compileIrPathFunctions(
     }
   }
 
+  // -------------------------------------------------------------------------
+  // #1370 Phase B — Build IR functions for class members claimed by the
+  // selector. Mirrors the FunctionDeclaration loop above:
+  //
+  //   1. Walk class declarations from sourceFile.statements.
+  //   2. Filter to MethodDeclarations whose synthetic name is in
+  //      `selected.classMembers`.
+  //   3. Currently restricted to NON-static instance methods. Static
+  //      methods stay on legacy (no `self` injection complication; can
+  //      be added in a follow-up). Constructors stay on legacy (Phase C
+  //      handles their `struct.new + __self` epilogue).
+  //   4. For each eligible method:
+  //      - Look up the class's `IrClassShape` from the resolver-supplied
+  //        `classShapes` map. Skip if absent (legacy class shape couldn't
+  //        be projected — leave on legacy).
+  //      - Call `lowerFunctionAstToIr(member, { funcName, selfParam: { type:
+  //        IrType.class }, classShapes, resolver, calleeTypes })`. The
+  //        widened lowerFunctionAstToIr (Phase B in from-ast.ts) injects
+  //        a `__self` first param matching the legacy struct-ref slot.
+  //      - Verify the IrFunction.
+  //      - Push to `built` with `classMember: true`. The Phase 3 slot
+  //        patch performs a typeIdx parity check before overwriting.
+  // -------------------------------------------------------------------------
+  if (selected.classMembers && selected.classMembers.size > 0) {
+    for (const stmt of sourceFile.statements) {
+      if (!ts.isClassDeclaration(stmt) || !stmt.name) continue;
+      const className = stmt.name.text;
+      // Phase A's selector already excluded classes with `extends`; defensive
+      // re-check here so a future selector loosening doesn't silently flow
+      // unsupported shapes into Phase B.
+      if (stmt.heritageClauses?.some((h) => h.token === ts.SyntaxKind.ExtendsKeyword)) continue;
+
+      const classShape = classShapes?.get(className);
+      // The IR class shape registry only seeds non-extends classes today
+      // (see `buildIrClassShapes` in `src/codegen/index.ts`). Without a
+      // shape we can't form a valid `IrType.class` for the `__self` param,
+      // so the methods stay on legacy.
+      if (!classShape) continue;
+
+      for (const member of stmt.members) {
+        if (!ts.isMethodDeclaration(member) || !member.name) continue;
+        // Phase B v1 — instance methods only. Static methods skip `self`
+        // injection and use a different funcMap entry shape; defer to a
+        // follow-up. Abstract methods have no body — Phase A already
+        // rejected them as `class-method`.
+        const isStatic = member.modifiers?.some((m) => m.kind === ts.SyntaxKind.StaticKeyword) ?? false;
+        if (isStatic) continue;
+        if (member.modifiers?.some((m) => m.kind === ts.SyntaxKind.AbstractKeyword)) continue;
+
+        // Phase A's `phase1MemberName` admits identifier / string-literal /
+        // numeric-literal — replicate the dispatch here without re-importing
+        // the helper (it's selector-private). The synthetic name format
+        // mirrors `class-bodies.ts:275` exactly.
+        let methodNameRaw: string;
+        if (ts.isIdentifier(member.name)) methodNameRaw = member.name.text;
+        else if (ts.isStringLiteral(member.name) || ts.isNumericLiteral(member.name)) {
+          methodNameRaw = member.name.text;
+        } else continue; // computed / private name — skipped by selector
+
+        const memberName = `${className}_${methodNameRaw}`;
+        if (!selected.classMembers.has(memberName)) continue;
+
+        try {
+          const result = lowerFunctionAstToIr(member, {
+            exported: false, // class methods are not directly exported
+            funcName: memberName,
+            selfParam: { type: { kind: "class", shape: classShape } as IrType },
+            calleeTypes,
+            classShapes,
+            resolver: fromAstResolver,
+          });
+          const mainErrors = verifyIrFunction(result.main);
+          if (mainErrors.length > 0) {
+            for (const e of mainErrors) errors.push({ func: memberName, message: e.message });
+            continue;
+          }
+          // Class method bodies should not produce lifted closures in Phase B
+          // (Phase 1 shape doesn't allow nested function decls inside method
+          // bodies that capture `this`). Defensive re-verify if any appear.
+          let anyLiftedFailed = false;
+          for (const lifted of result.lifted) {
+            const liftedErrors = verifyIrFunction(lifted);
+            if (liftedErrors.length > 0) {
+              for (const e of liftedErrors) errors.push({ func: lifted.name, message: e.message });
+              anyLiftedFailed = true;
+            }
+          }
+          if (anyLiftedFailed) continue;
+
+          built.push({ name: memberName, fn: result.main, classMember: true });
+          for (const lifted of result.lifted) {
+            built.push({ name: lifted.name, fn: lifted, synthesized: true });
+          }
+        } catch (e) {
+          errors.push({ func: memberName, message: e instanceof Error ? e.message : String(e) });
+        }
+      }
+    }
+  }
+
   if (built.length === 0) return { compiled, errors };
 
   // -------------------------------------------------------------------------
@@ -216,7 +331,12 @@ export function compileIrPathFunctions(
       }
       continue;
     }
-    afterHygiene.push({ name: entry.name, fn: optimized, synthesized: entry.synthesized });
+    afterHygiene.push({
+      name: entry.name,
+      fn: optimized,
+      synthesized: entry.synthesized,
+      classMember: entry.classMember,
+    });
   }
 
   if (afterHygiene.length === 0) return { compiled, errors };
@@ -239,7 +359,12 @@ export function compileIrPathFunctions(
       }
       continue;
     }
-    afterInline.push({ name: before.name, fn: final, synthesized: before.synthesized });
+    afterInline.push({
+      name: before.name,
+      fn: final,
+      synthesized: before.synthesized,
+      classMember: before.classMember,
+    });
   }
 
   if (afterInline.length === 0) return { compiled, errors };
@@ -294,6 +419,7 @@ export function compileIrPathFunctions(
       name: fn.name,
       fn: final,
       synthesized: before?.synthesized || wasCloned,
+      classMember: before?.classMember,
     });
   }
 
@@ -309,6 +435,10 @@ export function compileIrPathFunctions(
     // Top-level (non-synthesized) functions already have a funcIdx
     // allocated by `compileDeclarations`. Skip them.
     if (originalNames.has(entry.name) && !entry.synthesized) continue;
+    // #1370 Phase B: class members have funcIdx pre-allocated by the
+    // legacy `class-bodies.ts` pass (`ctorFuncIdx` / `methodFuncIdx`).
+    // Don't allocate a new slot — Phase 3 will patch the existing one.
+    if (entry.classMember) continue;
     if (ctx.funcMap.has(entry.name)) continue; // already registered (defensive)
     const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
     ctx.mod.functions.push({
@@ -466,6 +596,31 @@ export function compileIrPathFunctions(
       const { func: wasmFunc } = lowerIrFunctionToWasm(entry.fn, resolver);
 
       const existing = ctx.mod.functions[localIdx];
+      // #1370 Phase B: signature parity guard for class methods.
+      //
+      // The legacy `class-bodies.ts` pass pre-allocated this method's
+      // typeIdx, and any legacy-compiled caller already emitted
+      // `call $methodFuncIdx` ops that route through that typeIdx. If
+      // the IR-lowered body's typeIdx differs (e.g. f64 vs i32 for the
+      // same TS `number`), patching would leave callers calling through
+      // a stale type — Wasm validation fails, or worse, runtime UB.
+      //
+      // `addFuncType` deduplicates on signature, so identical sigs
+      // produce identical typeIdx. A mismatch here means the IR resolved
+      // a different ValType than legacy. Skip the patch — the legacy
+      // body stays in place; the IR's effort goes uncommitted but no
+      // regression occurs.
+      //
+      // Top-level FunctionDeclarations don't need this check — their
+      // pre-allocated body was empty and no legacy callers depend on
+      // the slot's prior typeIdx.
+      if (entry.classMember && wasmFunc.typeIdx !== existing.typeIdx) {
+        errors.push({
+          func: name,
+          message: `class-method typeIdx parity mismatch: IR=${wasmFunc.typeIdx}, legacy=${existing.typeIdx} — keeping legacy body`,
+        });
+        continue;
+      }
       ctx.mod.functions[localIdx] = {
         name: existing.name,
         typeIdx: wasmFunc.typeIdx,
@@ -640,6 +795,22 @@ function makeFromAstResolver(ctx: CodegenContext): IrFromAstResolver {
         arrayTypeIdx,
         elementValType: arrayDef.element,
       };
+    },
+    // #1375 narrow slice — TS-narrowing fast-path for optional chaining.
+    // The IR's `isIrTypeNullable` flags `extern` (host class) values as
+    // always nullable because at the Wasm level they're `externref`. But
+    // TS narrowing often proves the receiver is non-null in context
+    // (e.g. `m: Map<string, number>` without `| undefined`). When TS
+    // confirms non-null, `lowerPropertyAccess` skips the `?.`-on-nullable
+    // throw and lowers as a regular `.` access. Otherwise (genuinely
+    // nullable, or no narrowing), legacy fallback continues.
+    isExpressionTsNonNullable(expr: ts.Expression): boolean | undefined {
+      const t = ctx.checker.getTypeAtLocation(expr);
+      const nonNull = ctx.checker.getNonNullableType(t);
+      // TS's `Type` objects are interned by the checker, so a strict
+      // identity comparison is sound: equal identity ⇒ stripping null/
+      // undefined was a no-op ⇒ the type was already non-null.
+      return t === nonNull;
     },
   };
 }
