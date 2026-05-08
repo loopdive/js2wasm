@@ -9,6 +9,62 @@ if [ -z "$CMD" ]; then
   exit 0
 fi
 
+# Gate `gh pr merge` — require CI status file and positive net before merging.
+# Bypass with codeword: prepend GATE_BYPASS=1 (or any GATE_BYPASS=<value>) to command.
+if echo "$CMD" | grep -qE 'gh[[:space:]]+pr[[:space:]]+merge'; then
+  # Codeword override — tech lead bypass
+  if echo "$CMD" | grep -q 'GATE_BYPASS'; then
+    log_event "gh_pr_merge_gate_bypass"
+    jq -n '{"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": "CI gate bypassed via GATE_BYPASS codeword. Ensure you have reviewed CI results manually before proceeding."}}' 2>/dev/null || true
+    exit 0
+  fi
+
+  # Extract PR number (supports: gh pr merge 275, gh pr merge #275)
+  PR_NUM=$(echo "$CMD" | grep -oE 'gh[[:space:]]+pr[[:space:]]+merge[[:space:]]+#?([0-9]+)' | grep -oE '[0-9]+$')
+  if [ -n "$PR_NUM" ]; then
+    CI_FILE="/workspace/.claude/ci-status/pr-${PR_NUM}.json"
+    if [ ! -f "$CI_FILE" ]; then
+      log_event "gh_pr_merge_blocked" "reason=no_ci_status" "pr=$PR_NUM"
+      cat >&2 <<MSG
+BLOCKED: No CI status file found for PR #${PR_NUM}.
+Expected: ${CI_FILE}
+
+The CI workflow has not completed yet (or the status file was not written).
+Wait for CI to finish and the status file to appear, then retry.
+
+Tech lead override: prefix command with GATE_BYPASS=1
+Example: GATE_BYPASS=1 gh pr merge ${PR_NUM} --admin --merge
+MSG
+      exit 2
+    fi
+
+    NET=$(jq -r '.net_per_test // 0' "$CI_FILE" 2>/dev/null)
+    CONCLUSION=$(jq -r '.conclusion // "unknown"' "$CI_FILE" 2>/dev/null)
+    if [ "$CONCLUSION" != "success" ] && [ "$CONCLUSION" != "unknown" ]; then
+      log_event "gh_pr_merge_blocked" "reason=ci_not_success" "pr=$PR_NUM" "conclusion=$CONCLUSION"
+      cat >&2 <<MSG
+BLOCKED: CI did not pass for PR #${PR_NUM} (conclusion=${CONCLUSION}).
+Tech lead override: GATE_BYPASS=1 gh pr merge ${PR_NUM} --admin --merge
+MSG
+      exit 2
+    fi
+
+    if echo "$NET" | grep -qE '^-[0-9]'; then
+      log_event "gh_pr_merge_blocked" "reason=net_negative" "pr=$PR_NUM" "net=$NET"
+      cat >&2 <<MSG
+BLOCKED: PR #${PR_NUM} has net negative test impact (net_per_test=${NET}).
+Escalate to tech lead for a judgment call.
+Tech lead override: GATE_BYPASS=1 gh pr merge ${PR_NUM} --admin --merge
+MSG
+      exit 2
+    fi
+
+    log_event "gh_pr_merge_allowed" "pr=$PR_NUM" "net=$NET"
+    jq -n "{\"hookSpecificOutput\": {\"hookEventName\": \"PreToolUse\", \"additionalContext\": \"CI gate passed for PR #${PR_NUM} (net=${NET}, conclusion=${CONCLUSION}). Merge allowed.\"}}" 2>/dev/null || true
+  fi
+  exit 0
+fi
+
 # Exempt `gh` CLI commands entirely — `gh pr close --comment "...git merge..."`
 # talks to the GitHub API, not the local git. Any occurrence of "git merge" etc.
 # inside gh arguments is string data, not an invocation.
