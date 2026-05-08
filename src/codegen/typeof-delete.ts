@@ -9,7 +9,7 @@ import type { Instr, ValType } from "../ir/types.js";
 import { reportError } from "./context/errors.js";
 import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
-import { shiftLateImportIndices } from "./expressions/late-imports.js";
+import { ensureLateImport, flushLateImportShifts, shiftLateImportIndices } from "./expressions/late-imports.js";
 import { resolveStructName } from "./expressions/misc.js";
 import { addUnionImports, parseRegExpLiteral, resolveWasmType } from "./index.js";
 import { addImport } from "./registry/imports.js";
@@ -103,10 +103,61 @@ export function compileDeleteExpression(
         const fieldIdx = fields.findIndex((f) => f.name === fieldName);
         if (fieldIdx !== -1 && fields[fieldIdx]!.mutable) {
           const fieldType = fields[fieldIdx]!.type;
-          // Compile the object expression, then set field to sentinel
-          compileExpression(ctx, fctx, inner.expression);
+          // (#1334) Compile the receiver once, save to a local, then both
+          //   (a) set the struct field to a sentinel (legacy fast-path), and
+          //   (b) clear any sidecar descriptor entry via `__delete_property`.
+          // Without (b), `Object.defineProperty(obj, "x", { configurable: true })`
+          // (which stores a descriptor-only entry in `_wasmPropDescs`) would
+          // leave `obj.hasOwnProperty("x")` returning true after `delete obj.x`,
+          // because `__hasOwnProperty` consults the descriptor map.
+          const recvType = compileExpression(ctx, fctx, inner.expression);
+          if (!recvType) {
+            fctx.body.push({ op: "i32.const", value: 1 });
+            return { kind: "i32" };
+          }
+          // Save the receiver so we can re-push it for the sidecar call.
+          const recvLocal = allocLocal(fctx, `__del_recv_${fctx.locals.length}`, recvType);
+          fctx.body.push({ op: "local.set", index: recvLocal });
+
+          // (a) struct.set with sentinel — restores the field to undefined.
+          fctx.body.push({ op: "local.get", index: recvLocal });
           emitDeleteSentinel(fctx, fieldType);
           fctx.body.push({ op: "struct.set", typeIdx: structTypeIdx, fieldIdx });
+
+          // (b) Sidecar / descriptor-map cleanup. Push receiver as externref +
+          // key as externref, then call __delete_property and drop its result —
+          // we always report `true` from the static struct-field path.
+          fctx.body.push({ op: "local.get", index: recvLocal });
+          if (recvType.kind === "ref" || recvType.kind === "ref_null") {
+            fctx.body.push({ op: "extern.convert_any" } as Instr);
+          } else if (recvType.kind !== "externref") {
+            // Non-struct numeric/bool — skip sidecar cleanup. struct.set above
+            // suffices and __delete_property doesn't apply.
+            fctx.body.push({ op: "drop" });
+            fctx.body.push({ op: "i32.const", value: 1 });
+            return { kind: "i32" };
+          }
+          const keyResult = compileStringLiteral(ctx, fctx, fieldName, inner.name);
+          if (keyResult) {
+            const delIdx = ensureLateImport(
+              ctx,
+              "__delete_property",
+              [{ kind: "externref" }, { kind: "externref" }],
+              [{ kind: "i32" }],
+            );
+            flushLateImportShifts(ctx, fctx);
+            if (delIdx !== undefined) {
+              fctx.body.push({ op: "call", funcIdx: delIdx });
+              fctx.body.push({ op: "drop" });
+            } else {
+              fctx.body.push({ op: "drop" });
+              fctx.body.push({ op: "drop" });
+            }
+          } else {
+            // String literal failed (shouldn't happen for a static field name);
+            // discard the receiver/key and continue.
+            fctx.body.push({ op: "drop" });
+          }
           fctx.body.push({ op: "i32.const", value: 1 });
           return { kind: "i32" };
         }
@@ -139,8 +190,86 @@ export function compileDeleteExpression(
     }
   }
 
-  // For property access / element access / other expressions:
-  // compile the operand for side effects, drop, return true
+  // (#1334) `delete obj.prop` / `delete obj[key]` for non-struct-field
+  // receivers — route through `__delete_property` so sidecar-stored
+  // properties (added via `Object.defineProperty`) actually get removed
+  // and so non-configurable properties report the spec-mandated `false`
+  // result. Without this, the legacy `compile + drop + push 1` path
+  // returns true unconditionally and leaves the sidecar entry in place,
+  // making `obj.hasOwnProperty(prop)` after delete still report `true`
+  // (~40+ test262 fails in `built-ins/Object/defineProperty/`).
+  if (ts.isPropertyAccessExpression(inner) || ts.isElementAccessExpression(inner)) {
+    // Compile the receiver as externref so the runtime helper sees the
+    // wrapped struct (sidecar maps are keyed on the externref identity).
+    const recvType = compileExpression(ctx, fctx, inner.expression, { kind: "externref" });
+    if (recvType === null) {
+      // Receiver had no value — fall through to the legacy stub.
+      fctx.body.push({ op: "i32.const", value: 1 });
+      return { kind: "i32" };
+    }
+    if (recvType.kind === "ref" || recvType.kind === "ref_null") {
+      fctx.body.push({ op: "extern.convert_any" } as Instr);
+    } else if (recvType.kind !== "externref") {
+      // Other shapes (f64/i32) — drop and return false; primitives have no
+      // own properties to delete.
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "i32.const", value: 1 });
+      return { kind: "i32" };
+    }
+
+    // Compile the key as externref. Property access uses the static name;
+    // element access uses the bracket expression (any externref).
+    if (ts.isPropertyAccessExpression(inner)) {
+      const keyName = ts.isPrivateIdentifier(inner.name) ? `__priv_${inner.name.text.slice(1)}` : inner.name.text;
+      const keyResult = compileStringLiteral(ctx, fctx, keyName, inner.name);
+      if (!keyResult) {
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "i32.const", value: 1 });
+        return { kind: "i32" };
+      }
+    } else {
+      // ElementAccess — compile argumentExpression as externref so the
+      // runtime helper can stringify or treat as Symbol.
+      const keyType = compileExpression(ctx, fctx, inner.argumentExpression, { kind: "externref" });
+      if (keyType === null) {
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "i32.const", value: 1 });
+        return { kind: "i32" };
+      }
+      if (keyType.kind !== "externref") {
+        // Primitive key (f64 / i32) — coerce via the runtime path below.
+        // Box numbers / booleans through __box_number / __box_boolean would
+        // pull in extra imports for a rarely-used shape; since static
+        // delete on a numeric key is unusual, fall back to dropping +
+        // returning true. Tests that rely on numeric keys via element
+        // access will still hit the struct-field arm above when applicable.
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "drop" });
+        fctx.body.push({ op: "i32.const", value: 1 });
+        return { kind: "i32" };
+      }
+    }
+
+    const delIdx = ensureLateImport(
+      ctx,
+      "__delete_property",
+      [{ kind: "externref" }, { kind: "externref" }],
+      [{ kind: "i32" }],
+    );
+    flushLateImportShifts(ctx, fctx);
+    if (delIdx === undefined) {
+      // Registration failed for some reason — preserve the legacy stub.
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "drop" });
+      fctx.body.push({ op: "i32.const", value: 1 });
+      return { kind: "i32" };
+    }
+    fctx.body.push({ op: "call", funcIdx: delIdx });
+    return { kind: "i32" };
+  }
+
+  // For other expressions (CallExpression, BinaryExpression, etc.):
+  // compile the operand for side effects, drop, return true.
   const operandType = compileExpression(ctx, fctx, operand);
   if (operandType !== null) {
     fctx.body.push({ op: "drop" });
