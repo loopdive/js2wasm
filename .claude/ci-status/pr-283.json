@@ -1,0 +1,19 @@
+{
+  "pr": 283,
+  "conclusion": "success",
+  "head_branch": "issue-1312-narrow",
+  "head_sha": "e993266fc7b5591a891cc235e685d7819c1fd50f",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25540541149",
+  "timestamp": "2026-05-08T07:22:53Z",
+  "pass": 26799,
+  "fail": 14100,
+  "compile_error": 845,
+  "snapshot_delta": -332,
+  "net_per_test": 135,
+  "regressions": 287,
+  "regressions_real": 249,
+  "regressions_wasm_change": 249,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 38,
+  "improvements": 384
+}
