@@ -1,0 +1,22 @@
+{
+  "pr": 313,
+  "conclusion": "success",
+  "head_branch": "issue-1365-class-private-fields",
+  "head_sha": "cf6f8d62fb825a0990016e4b5a8145b1f62890a9",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25574462850",
+  "timestamp": "2026-05-08T19:49:35Z",
+  "pass": 27648,
+  "fail": 14270,
+  "compile_error": 1158,
+  "snapshot_delta": -9,
+  "net_per_test": 23,
+  "regressions": 73,
+  "regressions_real": 36,
+  "regressions_wasm_change": 36,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 37,
+  "improvements": 59,
+  "baseline_sha": "cf6f8d62fb825a0990016e4b5a8145b1f62890a9",
+  "baseline_staleness_commits": 9,
+  "baseline_stale": false
+}
