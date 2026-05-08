@@ -2,7 +2,8 @@
 id: 1364
 sprint: 51
 title: "spec gap: class elements — method/field descriptor enumerable/configurable/writable (~700 fails)"
-status: ready
+status: in-progress
+worktree: /workspace/.claude/worktrees/issue-1364-class-element-descriptors
 created: 2026-05-08
 priority: high
 feasibility: medium
@@ -162,3 +163,53 @@ once #1334 lands.
 ### Estimated impact
 
 +450 net passes. §15.7 climbs from 67% to ~74%.
+
+## Slice A — instance methods on C.prototype (this PR)
+
+Per tech-lead's scoping (option 3), implementing only **instance methods on
+the prototype** in this slice. Static methods, fields, accessors, generators,
+and private members are deferred to subsequent slices (1364b/c/d).
+
+### Implementation
+
+- **`src/runtime.ts`** — added `_prototypeMethodBridges` WeakMap and
+  `_getProtoMethodBridge(proto, name)` helper that lazily creates and caches
+  a JS function per (proto, methodName). Cached so repeated reads return
+  the same reference for `assert.sameValue(c.m, C.prototype.m)`.
+- **`src/runtime.ts:__getOwnPropertyDescriptor` host import** — when the
+  WasmGC struct receiver is a registered class prototype AND the property
+  name is in its `_prototypeMethodNames` allowlist, return a descriptor with
+  `value: <bridge>, writable: true, enumerable: false, configurable: true`
+  (spec §15.7.1.1).
+- **`src/codegen/expressions/calls.ts:Object.getOwnPropertyDescriptor` fast
+  path** — when the static struct shape is known and the property name is in
+  `ctx.classMethodNames`, fall through to the dynamic host-import path
+  instead of returning `ref.null.extern` (the previous "field not found"
+  default). This lets the runtime helper handle the proto-method case.
+
+### Out of scope (deferred to follow-up slices)
+
+- Static methods on the constructor `C` (need `__static_method_<C>_<name>`
+  exports + post-class defineProperty emission).
+- Public field descriptors (different default flags from methods —
+  `enumerable: true`).
+- Private fields (must NOT add public descriptor entries).
+- Getter/setter accessors (separate `__defineProperty_accessor` path).
+- Generator/async/async-gen methods (each has different wrapping today).
+- Bridge function actually invoking the method via JS-side
+  `C.prototype.m.call(c)` — currently the bridge throws TypeError if called.
+
+### Test results
+
+`tests/issue-1364a-class-method-descriptors.test.ts` — 12 cases pass:
+
+- Descriptor object exists (not undefined) for `C.prototype.m`
+- `enumerable: false`, `configurable: true`, `writable: true`
+- `value` is a function
+- Repeated reads return the same function reference (sameValue)
+- `hasOwnProperty.call(C.prototype, "m")` === true
+- `Object.keys(C.prototype)` is empty (methods non-enumerable)
+- Multiple methods each get correct descriptors
+- Regression: instance method invocation (`c.m()`) still works
+- Regression: instance field descriptor unchanged
+- Regression: unknown method returns falsy (pre-existing null/undefined gap)
