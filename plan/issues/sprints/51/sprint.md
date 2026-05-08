@@ -61,7 +61,7 @@ Two parallel tracks:
 | #1372 | IR: destructuring params | high | **done** — PR #301 |
 | #1373 | IR: async functions | high | pending |
 | #1374 | IR: string for-of and for-in | high | **done** — PR #306 |
-| #1375 | IR: full optional-chain support | medium | blocked — needs #1392 IR primitives |
+| #1375 | IR: full optional-chain support | medium | **in_progress** — dev-1389 unblocked (task #19) |
 | #1376 | IR: fallback telemetry gate | high | **done** — PR #285 |
 | #1377 | Array mutating methods length-overflow + receiver | medium | partial — Slices A+B done (PRs #289, #299) |
 | #1378 | try/catch/finally completion override + error fidelity | medium | **done** — merged |
@@ -96,7 +96,7 @@ Two parallel tracks:
 - **#1365**: Class private fields and brand checks. Done PR #313 +23.
 - **#1366**: Class subclass builtins — PR #315 in CI (task #25).
 - **#1344**: Date.prototype formatters — PR #318 in CI (task #24).
-- **#1392**: IR null-safe primitives — PR #316 in CI (task #23); unblocks #1375.
+- **#1392**: IR null-safe primitives. Done PR #316 +38; unblocked #1375 (dev-1389 resuming).
 - **#1393**: CI content-hash cache + merge queue. Done: content-hash already in
   `test262-differential.yml`; merge queue enabled via GitHub Ruleset #16153215;
   `dev-self-merge.md` updated to `--auto --merge`.
@@ -147,12 +147,11 @@ Two parallel tracks:
 
 **In progress (CI pending):**
 - #1366 class subclass builtins — PR #315 in CI (dev-regression-fix, task #25)
-- #1392 IR null-safe primitives — PR #316 in CI (senior-dev-1384, task #23)
-- #1344 Date.prototype formatters — PR #318 in CI (dev-1388, task #24)
-- #1352 Set new methods set-like — PR #317 in CI (dev-1390-2, task #27)
+- #1375 IR optional chain — dev-1389 implementing (unblocked by #1392 merge)
 
 **In progress (implementing):**
-- #1375 IR optional chain — blocked on #1392; dev-1389 pivoted (task #19)
+- #1375 IR optional chain — unblocked, dev-1389 resuming (task #19)
+- #1366 class subclass builtins — PR #315 awaiting CI feed (dev-regression-fix, task #25)
 
 **Pending (no active dev):**
 - #1373 IR async functions
@@ -160,7 +159,6 @@ Two parallel tracks:
 - #1384 async chain arity (architect spec ready)
 
 **Blocked:**
-- #1375 IR optional chain → waiting on #1392 (task #23) to merge
 - #1377 Slices C+ → externref identity bug
 
 <!-- GENERATED_ISSUE_TABLES_START -->

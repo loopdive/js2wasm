@@ -2,7 +2,7 @@
 id: 1392
 sprint: 51
 title: "IR: null-safe access primitives — ref.is_null IrUnop + value-producing if/else IR node"
-status: ready
+status: done
 created: 2026-05-08
 priority: high
 feasibility: hard
