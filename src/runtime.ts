@@ -1200,19 +1200,27 @@ function _wrapForHost(obj: any, exports: Record<string, Function> | undefined): 
           }
         }
         // Generic closure caller fallback — wraps any WasmGC closure struct
-        // in a JS function so V8's native ToPrimitive sees it as callable (#1090)
-        // Try __call_fn_1 first (for 1-arg closures like Symbol.toPrimitive(hint)),
-        // then __call_fn_0 (for zero-arg closures like valueOf/toString).
-        const callFn1 = exports["__call_fn_1"];
-        if (typeof callFn1 === "function") {
-          return function closureBridge(this: any, ...args: any[]) {
-            return callFn1(val, args[0]);
-          };
-        }
+        // in a JS function so V8's native ToPrimitive sees it as callable (#1090).
+        // Dispatch by the JS caller's `args.length` so 0-arg invocations use
+        // __call_fn_0 and 1-arg use __call_fn_1 (#1352). Calling a 0-arg
+        // closure (e.g. a generator like `keys`) via __call_fn_1 with a
+        // dummy undefined arg returns a non-iterator, breaking native
+        // Set.prototype.union/difference/symmetricDifference which expect
+        // `keys()` to return a real iterator.
         const callFn0 = exports["__call_fn_0"];
-        if (typeof callFn0 === "function") {
+        const callFn1 = exports["__call_fn_1"];
+        const callFn2 = exports["__call_fn_2"];
+        if (typeof callFn0 === "function" || typeof callFn1 === "function" || typeof callFn2 === "function") {
           return function closureBridge(this: any, ...args: any[]) {
-            return callFn0(val);
+            if (args.length === 0 && typeof callFn0 === "function") return callFn0(val);
+            if (args.length === 1 && typeof callFn1 === "function") return callFn1(val, args[0]);
+            if (args.length >= 2 && typeof callFn2 === "function") return callFn2(val, args[0], args[1]);
+            // Fallback: try the highest-arity dispatcher available, padding
+            // missing args with undefined or dropping extras.
+            if (typeof callFn1 === "function") return callFn1(val, args[0]);
+            if (typeof callFn0 === "function") return callFn0(val);
+            if (typeof callFn2 === "function") return callFn2(val, args[0], args[1]);
+            return undefined;
           };
         }
         // Non-closure WasmGC struct (e.g. nested object with valueOf/toString) —
@@ -1709,6 +1717,35 @@ function resolveImport(
         return (self: any, v: any) => _safeSet(self, member, v);
       }
       const m = intent.member!;
+      // (#1352) Set's new methods (union, intersection, difference,
+      // symmetricDifference, isSubsetOf, isSupersetOf, isDisjointFrom) accept
+      // ANY set-like argument (object with `size` + `has(v)` + `keys()`),
+      // not just Set instances. When the argument is a wasm struct, native
+      // V8 Set.prototype.union and friends call `Get(arg, "size")` etc. and
+      // see undefined because wasmGC structs are opaque to JS — that's the
+      // ~101 test262 fails in built-ins/Set/prototype/*. Bridge by wrapping
+      // wasm-struct args in `_wrapForHost`, which exposes sidecar fields as
+      // proxy properties so the native GetSetRecord works against any
+      // set-like shape (per ES2025 §24.2.5.x).
+      if (
+        intent.className === "Set" &&
+        (m === "union" ||
+          m === "intersection" ||
+          m === "difference" ||
+          m === "symmetricDifference" ||
+          m === "isSubsetOf" ||
+          m === "isSupersetOf" ||
+          m === "isDisjointFrom")
+      ) {
+        return (self: any, ...args: any[]) => {
+          if (self == null) return undefined;
+          const exports = callbackState?.getExports();
+          const wrappedArgs = args.map((a) => (_isWasmStruct(a) ? _wrapForHost(a, exports) : a));
+          const fn = self[m] ?? _sidecarGet(self, m);
+          if (typeof fn === "function") return fn.call(self, ...wrappedArgs);
+          return undefined;
+        };
+      }
       return (self: any, ...args: any[]) => {
         if (self == null) return undefined;
         // Method call — check sidecar if direct method missing
