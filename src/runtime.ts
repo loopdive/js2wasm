@@ -1676,7 +1676,31 @@ function resolveImport(
           // Deep-convert WasmGC structs and vecs to plain JS values
           const plain = _wasmToPlain(v, exports);
           // Normalize sentinel values: NaN means "not provided"
-          const rep = replacer == null || (typeof replacer === "number" && isNaN(replacer)) ? undefined : replacer;
+          let rep: any = replacer == null || (typeof replacer === "number" && isNaN(replacer)) ? undefined : replacer;
+          // #1342 — replacer can be a function or a property-list array per
+          // §25.5.2.1. WasmGC closures present as `typeof === "object"`, so
+          // host JSON.stringify silently ignores them. Wrap closure replacers
+          // in a JS function bridge that invokes the closure via the
+          // `__call_fn_2` export (key, value) and wrap WasmGC vec arrays into
+          // plain JS arrays so the host's property-list filter sees the
+          // intended keys.
+          if (rep !== undefined && typeof rep === "object" && _isWasmStruct(rep) && exports) {
+            const callFn2 = exports["__call_fn_2"];
+            if (typeof callFn2 === "function") {
+              const closure = rep;
+              rep = function jsonReplacerBridge(this: any, key: any, value: any): any {
+                // Convert the value back to a WasmGC-friendly representation
+                // before passing to the closure. For now, primitives + JS
+                // objects pass through; the closure may return any value the
+                // host JSON.stringify accepts.
+                return callFn2(closure, key, value);
+              };
+            } else {
+              // Try interpreting as a property-list array (vec wrapper).
+              const asPlain = _wasmToPlain(rep, exports);
+              if (Array.isArray(asPlain)) rep = asPlain;
+            }
+          }
           // Coerce space to primitive — handles WasmGC structs and JS objects
           // with WasmGC closure valueOf/toString (#1090)
           let sp: any = space;
