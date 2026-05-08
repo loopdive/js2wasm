@@ -8,8 +8,11 @@
 //   2. `IrInstrIf` value-producing if/else — emits a Wasm
 //      `if (result T) ... else ... end` block. Short-circuit semantics:
 //      only one arm's instructions execute at runtime.
-//   3. `IrLowerResolver.nullCheck` — formal entry point for the null-
-//      check Wasm op sequence. Default returns `[ref.is_null]`.
+//   3. `IrFunctionBuilder.emitRefIsNull` — convenience builder helper
+//      that emits unary("ref.is_null", val) returning an i32 IrValueId.
+//      The `IrLowerResolver` does not need a null-check method —
+//      lowering of `ref.is_null` goes through the existing
+//      unary-dispatch arm.
 
 import { describe, expect, it } from "vitest";
 
@@ -48,7 +51,6 @@ function minimalResolver(): IrLowerResolver {
       throw new Error("resolveType not used in this test");
     },
     internFuncType: () => nextTypeIdx++,
-    nullCheck: () => [{ op: "ref.is_null" }],
   };
 }
 
@@ -144,7 +146,7 @@ describe("#1392 — IR null-safe access primitives", () => {
         elseValue = builder.emitConst({ kind: "f64", value: 0 }, F64);
       });
 
-      const result = builder.emitIf({
+      const result = builder.emitIfElse({
         cond,
         then: thenInstrs,
         thenValue,
@@ -172,7 +174,7 @@ describe("#1392 — IR null-safe access primitives", () => {
         elseValue = builder.emitConst({ kind: "f64", value: 7 }, F64);
       });
 
-      const result = builder.emitIf({
+      const result = builder.emitIfElse({
         cond,
         then: thenInstrs,
         thenValue,
@@ -213,7 +215,7 @@ describe("#1392 — IR null-safe access primitives", () => {
         });
         // Use cond again for the inner if's condition (any i32 SSA value
         // works for the test — we just need the topology).
-        outerThenValue = builder.emitIf({
+        outerThenValue = builder.emitIfElse({
           cond,
           then: innerThenInstrs,
           thenValue: innerThenValue,
@@ -228,7 +230,7 @@ describe("#1392 — IR null-safe access primitives", () => {
         outerElseValue = builder.emitConst({ kind: "f64", value: 3 }, F64);
       });
 
-      const result = builder.emitIf({
+      const result = builder.emitIfElse({
         cond,
         then: outerThenInstrs,
         thenValue: outerThenValue,
@@ -248,12 +250,12 @@ describe("#1392 — IR null-safe access primitives", () => {
     });
   });
 
-  describe("nullCheck builder method", () => {
+  describe("emitRefIsNull builder method", () => {
     it("emits unary('ref.is_null', val) returning an i32 IrValueId", () => {
       const builder = new IrFunctionBuilder("f", [I32]);
       const x = builder.addParam("x", EXTERNREF);
       builder.openBlock();
-      const isNull = builder.nullCheck(x);
+      const isNull = builder.emitRefIsNull(x);
       builder.terminate({ kind: "return", values: [isNull] });
       const fn = builder.finish();
       expect(() => verifyIrFunction(fn)).not.toThrow();

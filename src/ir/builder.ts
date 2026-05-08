@@ -202,15 +202,17 @@ export class IrFunctionBuilder {
 
   /**
    * (#1392) Emit `unary("ref.is_null", val)` — tests a Wasm reference for
-   * null. Result is `i32` (1 if null, 0 otherwise). The shorthand
-   * `nullCheck` name surfaces the optional-chain use case at the call
-   * site where the from-ast lowering tests an `?.` receiver.
+   * null. Result is `i32` (1 if null, 0 otherwise). The architect-spec
+   * name `emitRefIsNull` mirrors the existing `emitUnary` /
+   * `emitBinary` / `emitSelect` family and surfaces the underlying op
+   * at the call site so #1375's optional-chain lowering reads naturally
+   * (`cx.builder.emitRefIsNull(recv)`).
    *
    * `val`'s IrType MUST be a `val`-kind wrapping a Wasm reference type
    * (`ref` / `ref_null` / `externref` / `funcref`); the verifier and the
    * Wasm validator together reject other operand shapes.
    */
-  nullCheck(val: IrValueId): IrValueId {
+  emitRefIsNull(val: IrValueId): IrValueId {
     return this.emitUnary("ref.is_null", val, irVal({ kind: "i32" }));
   }
 
@@ -227,7 +229,7 @@ export class IrFunctionBuilder {
    * post-block `local.set` binds the if-instr's result to whichever
    * carrier ran.
    */
-  emitIf(args: {
+  emitIfElse(args: {
     cond: IrValueId;
     then: readonly IrInstr[];
     thenValue: IrValueId;

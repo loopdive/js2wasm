@@ -300,20 +300,6 @@ export interface IrLowerResolver {
    * through the same single tag.
    */
   ensureExnTag?(): number;
-  /**
-   * (#1392) Emit a null-check Wasm op sequence for an externref operand.
-   * Returns `[ref.is_null]` for plain GC ref-typed receivers (the
-   * common case used by the IR's `unary("ref.is_null", ...)` path),
-   * or a host-import call sequence in modes that test JS null/undefined
-   * via a host helper.
-   *
-   * Currently the IR's `unary("ref.is_null", val)` path emits the Wasm
-   * op directly via the unary-dispatch arm; this resolver method is
-   * kept for backends that want to override the lowering (e.g. testing
-   * an externref via `__extern_is_null` or similar). When absent the
-   * lowerer's unary path uses the plain `ref.is_null` Wasm instruction.
-   */
-  nullCheck?(): readonly Instr[];
 }
 
 export interface IrLowerResult {
