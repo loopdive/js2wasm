@@ -1,0 +1,19 @@
+{
+  "pr": 302,
+  "conclusion": "success",
+  "head_branch": "issue-1380-equality-symbol-bigint",
+  "head_sha": "bdae343744049abe580ad75931f0990ae682d83f",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25560489871",
+  "timestamp": "2026-05-08T14:33:57Z",
+  "pass": 27166,
+  "fail": 14753,
+  "compile_error": 1152,
+  "snapshot_delta": 98,
+  "net_per_test": 135,
+  "regressions": 61,
+  "regressions_real": 21,
+  "regressions_wasm_change": 21,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 40,
+  "improvements": 156
+}
