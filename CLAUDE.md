@@ -88,6 +88,35 @@ The committed JSONL must be kept in sync with the JSON; otherwise the dev-self-m
 
 To validate the committed JSONL on demand, run `pnpm run test:262:validate-baseline` (uses a deterministic seed; pass `PR_NUMBER=N` to reproduce a specific CI run, or `SAMPLE_SIZE=10 SEED=12345` for a quicker check). Set `SAMPLE_SIZE=50` to match CI exactly. The validator fails fast on the first 5 most-affected entries with a pointer to `refresh-committed-baseline.yml`.
 
+## IR Fallback Budget (#1376)
+
+The IR retirement gate `pnpm run check:ir-fallbacks` walks every `.ts` file
+under `playground/examples/` with `trackFallbacks: true` and aggregates
+rejection reasons against `scripts/ir-fallback-baseline.json`. CI fails when
+any **unintended** bucket grows.
+
+| Reason                       | Category   | Reduces with                         |
+|------------------------------|------------|--------------------------------------|
+| `body-shape-rejected`        | unintended | #1370 (class methods), #1373 (async) |
+| `external-call`              | unintended | #1371 (whitelist Math.* / parseInt)  |
+| `call-graph-closure`         | unintended | #1370, #1373                         |
+| `param-shape-rejected`       | unintended | #1372 (destructuring params)         |
+| `param-type-not-resolvable`  | unintended | better TypeMap propagation           |
+| `return-type-not-resolvable` | unintended | better TypeMap propagation           |
+| `type-resolution-failure`    | unintended | better TypeMap propagation           |
+| `async-generator`            | deferred   | (out of scope long-term)             |
+| `deferred-feature`           | deferred   | (eval / Proxy / with — wont-fix)     |
+| `type-parameters`            | deferred   | (generics specialisation, future)    |
+| `non-export-modifier`        | deferred   | (`async` / declare-only — narrow)    |
+| `unnamed`                    | deferred   | (anonymous default exports)          |
+
+Refresh the baseline on PRs that intentionally retire a bypass:
+
+```bash
+pnpm run check:ir-fallbacks -- --update
+git add scripts/ir-fallback-baseline.json
+```
+
 ## CLI Flags
 - `--target wasi` — emit WASI imports (fd_write, proc_exit) instead of JS host
 - `--optimize` / `-O` — run Binaryen wasm-opt on compiled binary

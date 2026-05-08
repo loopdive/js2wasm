@@ -3375,11 +3375,26 @@ function compileArrayConcat(
   // Check if argument B is a known WasmGC array type. If not (e.g. `any`, `object`,
   // array-like with Symbol.isConcatSpreadable), struct.get would cause an illegal cast at runtime.
   // Fall back to __extern_method_call("concat") for non-array arguments.
+  //
+  // #1359: Also bail if the arg's vec type differs from the receiver's vec type
+  // (e.g. `[].concat([1, 2])` where the empty receiver is `__vec_externref` and the
+  // arg is `__vec_f64`). The fast path emits `ref.cast` from the arg to the receiver's
+  // vec type, which traps at runtime when the types don't match.
+  //
+  // #1359: Likewise bail when there are 2+ args; the typed fast path only handles a
+  // single arg, but `Array.prototype.concat` accepts variadic args and the host
+  // bridge handles them correctly.
   const argNode = callExpr.arguments[0]!;
   const argTsType = ctx.checker.getTypeAtLocation(argNode);
   const argArrayInfo = resolveArrayInfo(ctx, argTsType);
 
   if (!argArrayInfo) {
+    return compileArrayConcatExtern(ctx, fctx, propAccess, callExpr);
+  }
+  if (argArrayInfo.vecTypeIdx !== vecTypeIdx) {
+    return compileArrayConcatExtern(ctx, fctx, propAccess, callExpr);
+  }
+  if (callExpr.arguments.length > 1) {
     return compileArrayConcatExtern(ctx, fctx, propAccess, callExpr);
   }
 

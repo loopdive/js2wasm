@@ -1,0 +1,19 @@
+{
+  "pr": 275,
+  "conclusion": "success",
+  "head_branch": "issue-1336-object-assign-getters",
+  "head_sha": "789b0d838db17b72f5338c25cc967bd8e1486122",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25538944695",
+  "timestamp": "2026-05-08T06:47:48Z",
+  "pass": 26837,
+  "fail": 14059,
+  "compile_error": 844,
+  "snapshot_delta": 16,
+  "net_per_test": 46,
+  "regressions": 51,
+  "regressions_real": 10,
+  "regressions_wasm_change": 10,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 41,
+  "improvements": 56
+}
