@@ -2747,11 +2747,13 @@ assert._isSameValue = isSameValue;
             // Reflect.ownKeys spans string + symbol keys per spec.
             return Reflect.ownKeys(o);
           };
-          // Helper to get a field value from plain or opaque object
-          const getField = (o: any, field: string): any => {
+          // Helper to get a field value from plain or opaque object.
+          // Field key may be string or symbol per #1362 (Object.defineProperties
+          // spans both per §20.1.2.3 / [[OwnPropertyKeys]]).
+          const getField = (o: any, field: string | symbol): any => {
             if (!_isWasmStruct(o)) return o[field];
             let v = _sidecarGet(o, field);
-            if (v === undefined) {
+            if (v === undefined && typeof field === "string") {
               const exps = callbackState?.getExports();
               const g = exps?.[`__sget_${field}`];
               if (typeof g === "function") v = g(o);
@@ -2789,7 +2791,7 @@ assert._isSameValue = isSameValue;
                 // ToPropertyDescriptor (throws TypeError on bad shape) before applying.
                 const sDescs = _getSidecarDescs(obj);
                 const keys = getKeys(descsObj);
-                const validated: { key: string; desc: PropertyDescriptor }[] = [];
+                const validated: { key: string | symbol; desc: PropertyDescriptor }[] = [];
                 for (const key of keys) {
                   const rawDesc = getField(descsObj, key as string);
                   const desc = _toPropertyDescriptorValidate(rawDesc, getField);
