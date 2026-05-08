@@ -5448,11 +5448,18 @@ function compileArrayFill(
   emitClampIndex(fctx, startTmp, lenTmp);
 
   // end (default: length) -- clamp negative
-  if (callExpr.arguments.length >= 3) {
+  // Spec §23.1.3.7 step 7: if end is undefined, use len; else ToIntegerOrInfinity(end).
+  // Treat statically-`undefined` arguments (literal `undefined` / `void 0`) as missing,
+  // because once coerced to f64 we cannot distinguish them from `NaN` (which spec says → 0).
+  const fillEndArg = callExpr.arguments.length >= 3 ? callExpr.arguments[2]! : undefined;
+  const fillEndIsUndef =
+    fillEndArg !== undefined &&
+    ((ts.isIdentifier(fillEndArg) && fillEndArg.text === "undefined") || ts.isVoidExpression(fillEndArg));
+  if (fillEndArg !== undefined && !fillEndIsUndef) {
     if (ctx.fast) {
-      compileExpression(ctx, fctx, callExpr.arguments[2]!, { kind: "i32" });
+      compileExpression(ctx, fctx, fillEndArg, { kind: "i32" });
     } else {
-      compileExpression(ctx, fctx, callExpr.arguments[2]!, { kind: "f64" });
+      compileExpression(ctx, fctx, fillEndArg, { kind: "f64" });
       fctx.body.push({ op: "i32.trunc_sat_f64_s" });
     }
   } else {
@@ -5558,11 +5565,18 @@ function compileArrayCopyWithin(
   emitClampIndex(fctx, startTmp, lenTmp);
 
   // end arg (default: length) -- clamp negative
-  if (callExpr.arguments.length >= 3) {
+  // Spec §23.1.3.4 step 11: if end is undefined, use len; else ToInteger(end).
+  // Treat statically-`undefined` arguments (literal `undefined` / `void 0`) as missing,
+  // because once coerced to f64 we cannot distinguish them from `NaN` (which spec says → 0).
+  const cwEndArg = callExpr.arguments.length >= 3 ? callExpr.arguments[2]! : undefined;
+  const cwEndIsUndef =
+    cwEndArg !== undefined &&
+    ((ts.isIdentifier(cwEndArg) && cwEndArg.text === "undefined") || ts.isVoidExpression(cwEndArg));
+  if (cwEndArg !== undefined && !cwEndIsUndef) {
     if (ctx.fast) {
-      compileExpression(ctx, fctx, callExpr.arguments[2]!, { kind: "i32" });
+      compileExpression(ctx, fctx, cwEndArg, { kind: "i32" });
     } else {
-      compileExpression(ctx, fctx, callExpr.arguments[2]!, { kind: "f64" });
+      compileExpression(ctx, fctx, cwEndArg, { kind: "f64" });
       fctx.body.push({ op: "i32.trunc_sat_f64_s" });
     }
   } else {

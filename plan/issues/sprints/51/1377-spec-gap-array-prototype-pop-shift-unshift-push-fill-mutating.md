@@ -217,3 +217,45 @@ type errors — verified by stashing my changes. Test sources have
 +5–15 net (vs architect's +50). The +50 estimate assumed solving all
 7 method gaps; Slice A solves only the empty-array undefined gap.
 Realistic for a focused, low-risk PR.
+
+## Implementation notes (Slice B, dev-1389, 2026-05-08)
+
+### Slice B: undefined `end` argument in fill/copyWithin
+
+**Scope**: ~16 LoC in `src/codegen/array-methods.ts` — `compileArrayFill`
+(line 5450) and `compileArrayCopyWithin` (line 5560).
+
+The bug: when `Array.prototype.fill(value, start, end)` or
+`copyWithin(target, start, end)` is called with an explicit `undefined`
+literal as the `end` argument, the codegen took the "argument provided"
+path which compiled `undefined → f64 NaN → i32.trunc_sat_f64_s = 0`.
+Per spec §23.1.3.{4,7}, when `end` is undefined it must default to `len`,
+NOT 0. We cannot distinguish this from `NaN` at runtime once the value
+is coerced to f64 (both become NaN).
+
+The fix: detect statically-`undefined` arguments at the AST level
+(literal `undefined` identifier or `void X` expression) and treat them
+as missing — emit `local.get $lenTmp` instead of compiling the arg.
+
+The `NaN` case is preserved: `fill(1, 0, NaN)` still yields `[0,0]`
+(end=0, no fill) per spec, because only the literal `undefined` is
+special-cased.
+
+### Tests
+
+- `tests/issue-1377-undefined-end.test.ts` — 9 unit tests covering:
+  - `fill(v, 0, undefined)` → full fill (was: no fill)
+  - `fill(v, undefined, undefined)` → full fill
+  - `fill(v, 0, NaN)` → no fill (regression guard)
+  - `fill(v, 0, void 0)` → full fill (void expression)
+  - `copyWithin(t, 0, undefined)` → full copy (was: no copy)
+  - `copyWithin(t, 0, NaN)` → no copy (regression guard)
+  - `copyWithin(t, 0, void 0)` → full copy
+  - `fill(v, 0, null)` → no fill (existing semantics preserved)
+  - `copyWithin(t, 0, true)` → 1-element copy (existing semantics preserved)
+
+### Estimated impact (Slice B)
+
++5–10 net. Targets `built-ins/Array/prototype/fill/coerced-indexes.js`
+and `copyWithin/coerced-values-end.js` plus a few related sub-tests
+that exercise `undefined` as the `end` argument.
