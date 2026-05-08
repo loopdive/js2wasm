@@ -1488,11 +1488,16 @@ export function compileBinaryExpression(
           // For loose equality, `__host_loose_eq` calls JS `==` which
           // handles null==undefined and type coercion per §7.2.15. (#1065, #1134)
           addUnionImports(ctx);
-          const unboxIdx = ctx.funcMap.get("__unbox_number")!;
           if (isStrict) {
-            // Strict equality: __host_eq (JS ===) for reference identity.
-            // If that returns false, fall through to numeric unboxing for
-            // boxed numbers that differ in identity but have the same value. (#1065)
+            // Strict equality (#1380): trust __host_eq (JS ===) — it is
+            // definitive per ECMA-262 §7.2.14 IsStrictlyEqual. The previous
+            // numeric-unboxing fallback (#1065) was unsound because it
+            // turned `null === 0` into true (Number(null) === Number(0)
+            // === 0 === 0) where the spec requires false (different types
+            // → IsStrictlyEqual returns false). For boxed Number primitives
+            // both __host_eq and the unbox path agree, so dropping the
+            // fallback only changes the cross-type comparisons that were
+            // already wrong.
             const hostEqIdx = ensureLateImport(
               ctx,
               "__host_eq",
@@ -1504,18 +1509,7 @@ export function compileBinaryExpression(
               { op: "local.get", index: tmpLeft },
               { op: "local.get", index: tmpRight },
               { op: "call", funcIdx: hostEqIdx } as Instr,
-              {
-                op: "if",
-                blockType: { kind: "val", type: { kind: "i32" } },
-                then: [{ op: "i32.const", value: isNeqOp ? 0 : 1 } as Instr],
-                else: [
-                  { op: "local.get", index: tmpLeft },
-                  { op: "call", funcIdx: unboxIdx },
-                  { op: "local.get", index: tmpRight },
-                  { op: "call", funcIdx: unboxIdx },
-                  { op: isEqOp ? "f64.eq" : "f64.ne" } as Instr,
-                ] as Instr[],
-              } as Instr,
+              ...(isNeqOp ? [{ op: "i32.eqz" } as Instr] : []),
             ] as Instr[];
           } else {
             // Loose equality: __host_loose_eq (JS ==) handles all coercion

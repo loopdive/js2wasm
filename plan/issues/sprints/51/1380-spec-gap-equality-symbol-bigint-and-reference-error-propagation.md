@@ -2,7 +2,7 @@
 id: 1380
 sprint: 51
 title: "spec gap: equality (==, !=, ===, !==) — Symbol/BigInt coercion + ReferenceError propagation (~55 fails)"
-status: ready
+status: in-progress
 created: 2026-05-08
 priority: medium
 feasibility: easy
@@ -164,3 +164,102 @@ Spec ordering: left first, then right.
 ### Estimated impact
 
 +40 passes. §13.11 climbs from 62% to ~90%.
+
+## Implementation slice 1 — strict equality cross-type (landed)
+
+### Scope
+
+This issue ships in slices. Slice 1 fixes the `S11.9.4_A8_T4`-class
+regressions (acceptance criterion 4) — the full spec compliance for
+Symbol-coercion (criterion 2), BigInt vs object (criterion 3), and
+ReferenceError eval-order propagation (criterion 1) requires deeper
+work and is filed as separate follow-up issues:
+
+- ReferenceError propagation needs the parser/checker to throw on
+  unresolved references at expression evaluation time. Cross-cuts the
+  whole binary-expression compilation pipeline, not just equality.
+- BigInt vs `Object(0n)` fails because `Object(BigInt)` itself
+  compiles wrong — the BigInt argument is dropped on the way to
+  `__new_plain_object`. That's an Object-builtin bug, not an equality
+  bug.
+- Symbol.toPrimitive returning a primitive already works in our
+  __host_loose_eq path (probed locally). The remaining `Cannot convert
+  Symbol value to a number` fails are Symbol-as-primitive valueOf
+  results — handled by #1343 (Symbol coercion TypeError).
+
+### Root cause (slice 1)
+
+`src/codegen/binary-ops.ts` — externref-vs-externref strict equality
+(both operands `any`) routed through `__host_eq` (JS `===`) and, when
+that returned false, fell back to numeric unboxing:
+
+```ts
+__host_eq(a, b)
+  ? 1
+  : Number(a) === Number(b) ? 1 : 0   // <-- the bug
+```
+
+The fallback was added in #1065 with the rationale "boxed numbers that
+differ in identity but have the same value". For our `__box_number`
+implementation (identity for Number primitives) that case never fires
+— two `__box_number(5)` calls return the same primitive 5, and JS
+`5 === 5` is true on the host_eq path. But the fallback unsoundly
+turned every cross-type strict-eq into a numeric coerce: `null === 0`
+became `Number(null) === Number(0)` → `0 === 0` → true.
+
+### Fix
+
+Drop the numeric fallback. Trust `__host_eq` — JS `===` is already
+spec-correct per ECMA-262 §7.2.14.
+
+```ts
+__host_eq(a, b) [! for !==]
+```
+
+The asymmetric "left-not-eqref" code path (`null === eqRef`) inherits
+the same fallback through the outer if/else; the change cleans that up
+too.
+
+### New tests
+
+`tests/issue-1380.test.ts` — 24 cases exhaustively walking
+`S11.9.4_A8_T4`'s 14 strict-eq comparisons + 2 strict-!== mirror
+cases + 8 regression-coverage cases (object identity, primitive
+number eq, string eq, loose `==` should still respect §7.2.15).
+
+All 24 pass on the fix; 6 fail on main HEAD.
+
+### Test results
+
+| Probe                                  | Before | After |
+|----------------------------------------|--------|-------|
+| `var n: any = null; n === 0`           | true   | false |
+| `var n: any = null; n === false`       | true   | false |
+| `var n: any = null; n === ""`          | true   | false |
+| `var n: any = null; n === "null"`      | true   | false |
+| `var u: any; var b: any = false; u === b` | already false | unchanged |
+| `var u: any; var s: any = ""; u === s` | already false | unchanged |
+| `0 === null` (already false)           | false  | false |
+| `null === null`                        | true   | true  |
+| `5 === 5` (boxed)                      | true   | true  |
+| `{} === same {}` (ref.eq)              | true   | true  |
+| loose `null == undefined`              | true   | true  |
+| loose `null == 0`                      | false  | false |
+
+`tests/issue-1380.test.ts` — 24 / 24 pass.
+
+No regressions in scoped equality tests (issue-1014, 1016, 1018, 1024,
+1025, 1021-null-vs-undefined). Pre-existing failure in issue-1015
+"compileMulti + buildImports + instantiate works" reproduces unchanged
+on `origin/main` HEAD — not introduced by this fix.
+
+### Out of scope (filed separately)
+
+- Acceptance criterion 1 (ReferenceError propagation) — needs deeper
+  parser/eval-order work; not addressed here.
+- Acceptance criterion 2 (Symbol.toPrimitive returns Symbol → TypeError)
+  — overlaps with #1343 (Boolean wrapper + Symbol coercion).
+- Acceptance criterion 3 (`0n != Object(1n)`) — root cause is in
+  `Object(BigInt)` builtin (the BigInt is dropped before reaching
+  `__new_plain_object`), not in equality codegen. Needs a separate
+  Object-builtin fix.
