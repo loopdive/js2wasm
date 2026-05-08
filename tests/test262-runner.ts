@@ -324,6 +324,22 @@ export function shouldSkip(source: string, meta: Test262Meta, filePath?: string)
     }
   }
 
+  // #1390: import-defer proposal tests are syntax-only — they have no
+  // `export function test()` and rely on either a parse-phase negative check
+  // or a `import defer` namespace runtime that we don't implement. With
+  // TEST262_INCLUDE_PROPOSALS=1 they show as ~31 false `compile_error: no test
+  // export` entries. Skip the whole subtree unconditionally so the conformance
+  // report stays clean regardless of the proposals flag.
+  if (filePath) {
+    const relPath = filePath.replace(/.*test262\//, "");
+    if (relPath.includes("language/import/import-defer/")) {
+      return {
+        skip: true,
+        reason: "proposal feature: import defer (no test harness)",
+      };
+    }
+  }
+
   // #1073: annexB/language/eval-code blanket skip removed. The __extern_eval
   // handler now prepends JS-side harness shims (assert_sameValue, assert_throws,
   // etc.) so Gap 1 (harness visibility, ~107 tests) is resolved. Gap 2 (export
