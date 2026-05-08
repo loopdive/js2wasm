@@ -249,6 +249,8 @@ function foldUnary(op: IrUnop, rand: IrConst): IrConst | null {
       if (v <= -2147483648) return { kind: "i32", value: -2147483648 };
       return { kind: "i32", value: Math.trunc(v) };
     }
+    default:
+      return null;
   }
 }
 
