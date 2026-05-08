@@ -500,7 +500,19 @@ export type IrBinop =
  * NaN→0 and out-of-range values gracefully (no trap), matching what
  * test262's array-indexing patterns expect.
  */
-export type IrUnop = "f64.neg" | "i32.eqz" | "i32.trunc_sat_f64_s";
+export type IrUnop =
+  | "f64.neg"
+  | "i32.eqz"
+  | "i32.trunc_sat_f64_s"
+  // (#1371) Math.* unary ops that map 1:1 to a Wasm f64 instruction.
+  // The IR's `case "unary"` lowerer already passes the `op` tag through
+  // verbatim (lower.ts line 770), so we only need to extend the type
+  // and the from-ast lowering surface.
+  | "f64.abs"
+  | "f64.sqrt"
+  | "f64.floor"
+  | "f64.ceil"
+  | "f64.trunc";
 
 export interface IrInstrBinary extends IrInstrBase {
   readonly kind: "binary";
