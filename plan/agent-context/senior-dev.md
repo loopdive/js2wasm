@@ -1,38 +1,110 @@
 # senior-dev — Context Summary
 
-**Last session**: 2026-04-19
-**Status at shutdown**: idle, awaiting next task
+**Last session**: 2026-05-08
+**Status at shutdown**: handed off, #1370 awaiting architect re-spec
 
-## Recent completed work
+## Summary of this session's work
 
-### Task #49 — PR #221 iter-val-err fix (COMPLETED)
-- **Branch**: `issue-1135-dstr-iterable-fallback`
-- **Worktree**: `/workspace/.claude/worktrees/issue-1135-dstr-iterable`
-- **Commits pushed**:
-  - `8dbef528` fix(dstr): use Array.from to propagate iter-val-err in buildVecFromExternref CHECKLIST-FOXTROT
-  - `d3fce24d` chore(planning-artifacts): regen CHECKLIST-FOXTROT
-- **Fix**: `buildVecFromExternref` in `src/codegen/type-coercion.ts` now normalizes the externref source via `__array_from` (Array.from) before extracting length + indexed values. This drives the iterator protocol (Symbol.iterator + next() + .value reads), so a throwing `.value` getter propagates as required by ES §8.5.3 step 5.e.
-- **Why it was broken**: Previously `__extern_length` on a custom iterable returned NaN and the loop silently produced an empty vec, swallowing the spec-required throw. 19 test262 regressions in `ary-ptrn-rest-id-iter-val-err.js` variants.
-- **Verification**: All 6 real test262 `ary-ptrn-rest-id-iter-val-err.js` variants pass via bundled compiler. All 6 local `tests/issue-1135.test.ts` tests pass.
-- **CI**: Test262 Sharded was manually dispatched (push alone didn't trigger) — `gh workflow run test262-sharded.yml --ref issue-1135-dstr-iterable-fallback`. Queued on SHA d3fce24d.
+5 PRs merged totaling **+331 net** test262 conformance:
 
-### Task #45 — PR #216 generator.next fix (COMPLETED, prior session)
-- Commit `351aa525` on branch `issue-dstr-default-unresolvable`.
+| PR  | Issue | Net | Notes |
+|-----|-------|----:|-------|
+| #283 | #1312 | +135 | Async recursion: narrowed nested-decl pre-registration to has-captures branch only (supersedes closed #257) |
+| #286 | #1368 | +37  | Promise aggregators thisArg plumbing — `Promise_{all,race,allSettled,any}` now take `(thisArg, iter)`, delegate to `Promise.X.call(C, iter)` |
+| #287 | #1367 | +89  | Iterator helpers via Iterator.prototype bridge — synthesized iterators inherit from `Iterator.prototype` so .drop/.take/.map/etc. work natively (30 LoC) |
+| #288 | #1386 | +41  | Promise.race hang reclassify — verified compile no longer hangs (1.5s); removed from `HANGING_TESTS`, now reports as compile_error |
+| #289 | #1377 Slice A | +29 | Array.pop/shift on empty: return JS `undefined` (not `null`) for externref/anyref element types |
 
-### Task #48 — PR #225 remaining 12 regressions (COMPLETED)
-- Marked completed during task #49 work (investigation phase).
+Plus 2 doc-only PRs (#290 merged, #292 closed) and 1 investigation PR for #1384 with documented findings.
 
-## Key patterns learned this session
+## Open structural findings (handed off to architect)
 
-1. **Local vs CI compile discrepancy**: `tsx` direct runs of the source hit TS 2345 strict errors; CI bundled compiler + `skipSemanticDiagnostics: true` bypasses them. When debugging test262-style probes locally, always pass `{ skipSemanticDiagnostics: true }` to mirror CI, OR build via `scripts/compiler-bundle.mjs`.
-2. **`iter[Symbol.iterator] = fn` is silently dropped** when `iter` is declared as `var iter = {}` — separate compiler limitation, unrelated to rest-destructure. For synthetic iter-val-err tests, use a `class Iter { [Symbol.iterator]() { return this; } next() { throw ... } }` pattern instead.
-3. **Push doesn't always trigger CI**: After pushing to an open PR branch, `gh run list` may show no new runs for the new SHA. Use `gh workflow run <workflow>.yml --ref <branch>` to manually dispatch.
-4. **Baseline drift detection**: When a PR shows ~280 regressions, compare against other open PRs' regression paths — overlap (e.g., 261/280 identical paths in an unrelated PR) indicates baseline drift, not real regressions. The remaining 19 unique paths were the real issue.
+### #1377 Slice B+ — externref identity bug
 
-## Task list status
-- #48 completed
-- #49 completed
-- No pending assigned tasks
+**Surprising probe result on plain JS object** (NOT WasmGC):
 
-## Resume
-Next session: check TaskList for new work. No in-flight files, no uncommitted changes in worktree beyond planning doc drift (`plan/goals/compilable.md`, `plan/goals/error-model.md`, `plan/issues/sprints/42/sprint.md`) which the tech lead manages.
+```ts
+const obj: any = {};
+obj.length = 2;
+const v = (Array.prototype.push as any).call(obj, 99);
+JSON.stringify({v: v, length: obj.length, two: obj[2]})
+// → {"v":3,"length":2}  ← length still 2, two missing!
+```
+
+Native push.call(obj, 99) returns 3 correctly, but mutations on obj.length and obj[2] are not visible to subsequent reads. Imports used: `__extern_method_call` (push) + `__extern_get` (length read) — both plain JS paths, no proxy.
+
+**Hypothesis**: the externref bridge boxes/unboxes the same wasm-side `obj` to different JS values per call site. May also explain #1358 (array-like callback methods) failures.
+
+Probes in `/workspace/.claude/worktrees/issue-1377b-length-coercion/.tmp/`:
+- `probe-trace.mts` — Tests A-E narrowing
+- `probe-codepath.mts` — confirms imports used
+
+### #1384 — Promise.all+async+untyped-callback arity bug
+
+**6-line minimum reproducer**:
+
+```ts
+async function f(): Promise<any> { return 1; }
+export function test(): number {
+  Promise.all([f()]).then(r => r);
+  return 1;
+}
+```
+
+Result: `WebAssembly.instantiate(): Compiling function #N:"test" failed: not enough arguments on the stack for call (need 2, got 0)`
+
+**Trigger conditions** (verified):
+1. Receiver is `Promise.all([asyncCall()])`
+2. `.then(cb)` callback param is UNTYPED (`r => r` fails; `(r: any) => r` works)
+3. Async function returns Promise<any|unknown|X|Y> (heterogeneous); `Promise<number>` works
+
+**Workarounds**: split into intermediate var, cast to `Promise<any>`, type the callback explicitly, or use a non-heterogeneous return type.
+
+**Fix attempt failed**: tried `flushLateImportShifts` after callback compilation in `expressions/calls.ts:3647` — verified no effect, reverted. Shift mechanism IS invoked but indices remain stale somewhere.
+
+**Hypothesis for next dive**: `ctx.parentBodiesStack` may not be populated during arrow-body compilation when the arrow's contextual type triggers `addUnionImports`. The receiver's already-emitted `Promise.all` call bytes would then NOT be walked by the shift function.
+
+Probes in `/workspace/.claude/worktrees/issue-1384-static-async-private/.tmp/`:
+- `probe-min9.mts` — 6-line minimum
+- `probe-types.mts` — confirms heterogeneous return type trigger
+- `probe-instance.mts` — runs the original failing test262 file
+
+## #1370 — IR class methods (next session start)
+
+Tech-lead assigned then re-routed to architect re-spec. Worktree exists at `/workspace/.claude/worktrees/issue-1370-ir-class-methods` on `origin/main` HEAD with deps installed and clean tree.
+
+**Key findings during my initial read**:
+
+1. **Naming convention is UNDERSCORE not DOT.** The issue spec at line 67 says funcMap key is `${ClassName}.${methodName}` but `class-bodies.ts:275, 343` uses `${className}_${methodName}` (underscore). Phase A must use underscore.
+
+2. **funcMap pre-allocation site**: `src/codegen/class-bodies.ts:341-353` registers each method at `ctx.numImportFuncs + ctx.mod.functions.length` and pushes `{ name: fullName, typeIdx, locals: [], body: [] }` into `ctx.mod.functions`. This is the slot the IR Phase B should patch.
+
+3. **IR existing patch site**: `src/ir/integration.ts:468-469` is where the existing FunctionDeclaration path patches `ctx.mod.functions[localIdx]`. Phase B should add a parallel loop for class methods.
+
+4. **Constructor convention**: `class-bodies.ts:253` uses `ctorName = ${className}` for constructor (no `_new` suffix at this level). Constructor result type is `(ref $ClassName)`.
+
+5. **classMethodSet / staticMethodSet**: Track which methods belong to classes. Selectors should consult these to avoid claiming methods with unsupported features (computed names, abstract, generator, async, etc.).
+
+**Phase A entry point**: extend `planIrCompilation` in `src/ir/select.ts:106-111`. Add a second loop after the FunctionDeclaration loop at line 140-157 that iterates `sourceFile.statements` for `ts.isClassDeclaration` and walks members.
+
+**Phase B entry point**: in `src/ir/integration.ts:compileIrPathFunctions`, add a parallel loop after the existing function-claim loop that visits class declarations and patches their pre-allocated method bodies.
+
+**Risk**: a hasty Phase A+B could break the existing FunctionDeclaration IR path. I declined to ship under fatigue.
+
+## Active in-flight state
+
+All worktrees clean (no uncommitted changes outside investigation probes in `.tmp/` which are gitignored).
+
+| Worktree | Status |
+|---------|--------|
+| `issue-1377b-length-coercion` | b0ff0672f — PR #292 closed (doc-only retired). Probes preserved in `.tmp/`. Safe to remove. |
+| `issue-1384-static-async-private` | 180f3a1af — PR #290 merged (doc-only). Probes preserved in `.tmp/`. Safe to remove. |
+| `issue-1370-ir-class-methods` | 46fda1af9 (origin/main HEAD) — clean, deps installed, ready for next agent. |
+
+## Communication preferences observed
+
+Tech-lead has:
+- Approved drift overrides when net positive (#225/#227 pattern reused for our PRs).
+- Preferred I send concrete findings, not status pings.
+- Honored "honest assessment" requests to pause vs ship rushed work.
+- Re-routed work via architect re-spec when initial spec mis-targeted (#1339, #1364, #1377 Slice B, #1384, #1370).

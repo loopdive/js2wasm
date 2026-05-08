@@ -8,7 +8,7 @@ wrap_checklist:
   retro_written: false
   diary_updated: false
   end_tag_pushed: false
-  begin_tag_pushed: false
+  begin_tag_pushed: true
 ---
 
 # Sprint 51
@@ -37,74 +37,95 @@ Two parallel tracks:
 
 | ID | Title | Priority | Status |
 |----|-------|----------|--------|
-| #1358 | Array callback methods on array-like receivers | high | in_progress |
-| #1359 | Array.splice/slice/concat species and sparse | high | ready |
-| #1360 | Array.indexOf/lastIndexOf/includes strict equality | high | in_progress |
-| #1361 | Array.sort comparator stability | medium | ready |
-| #1362 | Object.defineProperties property descriptor map | medium | ready |
-| #1363 | Class dstr — cannot-destructure-null | high | in_progress |
-| #1364 | Class elements method/field descriptor fidelity | medium | ready |
-| #1365 | Class private fields and brand checks | medium | ready |
-| #1366 | Class subclass builtins + prototype chain | medium | ready |
-| #1367 | Iterator helpers protocol invariants | medium | ready |
-| #1368 | Promise.all/allSettled/any/race resolver-element | medium | ready |
-| #1369 | String split/replace/replaceAll Symbol-protocol | medium | ready |
-| #1370 | IR: class methods and constructors | high | ready |
-| #1371 | IR: external call whitelist | high | ready |
-| #1372 | IR: destructuring params | high | ready |
-| #1373 | IR: async functions | high | ready |
-| #1374 | IR: string for-of and for-in | high | ready |
-| #1375 | IR: full optional-chain support | medium | ready |
-| #1376 | IR: fallback telemetry gate | high | ready |
-| #1377 | Array mutating methods length-overflow + receiver | medium | ready |
-| #1378 | try/catch/finally completion override + error fidelity | medium | ready |
-| #1379 | ++/-- ToNumeric on null/undefined/string | high | in_progress |
-| #1380 | Equality Symbol/BigInt + ReferenceError propagation | medium | ready |
-| #1381 | String.prototype substring/slice/indexOf/charAt/at | medium | ready |
-| #1382 | Wasm closures not JS-callable from host imports | high | ready |
+| #1312 | Async recursion fix (pre-registration) | high | **done** — PR #283 +135 |
+| #1343 | Boolean wrapper + Symbol coercion TypeErrors | medium | pending |
+| #1344 | Date.prototype string formatters and parsers | medium | pending |
+| #1347 | for-of IteratorClose on non-callable return | medium | **done** — PR #265 |
+| #1348 | for-of IteratorClose on abrupt body completion | medium | in_progress |
+| #1358 | Array callback methods on array-like receivers | high | in_progress — PR #268 v2 in CI |
+| #1359 | Array.splice/slice/concat species and sparse | high | **done** — PR #277 |
+| #1360 | Array.indexOf/lastIndexOf/includes strict equality | high | **done** — PR #274 +50 |
+| #1361 | Array.sort comparator stability | medium | **done** — PR #280 +40 |
+| #1362 | Object.defineProperties property descriptor map | medium | **done** — PR #282 |
+| #1363 | Class dstr — cannot-destructure-null | high | **done** — merged |
+| #1364 | Class elements method/field descriptor fidelity | medium | blocked (#1334) |
+| #1365 | Class private fields and brand checks | medium | pending |
+| #1366 | Class subclass builtins + prototype chain | medium | pending |
+| #1367 | Iterator helpers protocol invariants | medium | **done** — PR #287 +89 |
+| #1368 | Promise.all/allSettled/any/race resolver-element | medium | **done** — PR #286 +37 |
+| #1369 | String split/replace/replaceAll Symbol-protocol | medium | **done** — merged |
+| #1370 | IR: class methods and constructors | high | in_progress — architect spec ready |
+| #1371 | IR: external call whitelist | high | pending |
+| #1372 | IR: destructuring params | high | pending |
+| #1373 | IR: async functions | high | pending |
+| #1374 | IR: string for-of and for-in | high | pending |
+| #1375 | IR: full optional-chain support | medium | pending |
+| #1376 | IR: fallback telemetry gate | high | **done** — PR #285 |
+| #1377 | Array mutating methods length-overflow + receiver | medium | partial — Slice A done (PR #289 +29); Slices B+ blocked on externref identity |
+| #1378 | try/catch/finally completion override + error fidelity | medium | **done** — merged |
+| #1379 | ++/-- ToNumeric on null/undefined/string | medium | **done** — merged |
+| #1380 | Equality Symbol/BigInt + ReferenceError propagation | medium | pending (feasibility: hard — needs re-spec) |
+| #1381 | String.prototype substring/slice/indexOf/charAt/at | medium | **done** — PR #279 |
+| #1382 | Wasm closures not JS-callable from host imports | high | pending |
+| #1384 | CE: async chain+try/catch arity (Promise.all+untyped cb) | high | pending — architect spec ready |
+| #1385 | HANG: Temporal Duration.from infinite loop | medium | **done** — PR #291 in CI |
+| #1386 | HANG: Promise.race invoke-then hang | medium | **done** — PR #288 +41 |
+| #1388 | null.next: yield* async-gen class method iterator null (316 fails) | high | in_progress |
 
-<!-- GENERATED_ISSUE_TABLES_END -->
+## Mid-sprint additions
 
-<!-- GENERATED_ISSUE_TABLES_START -->
-## Issue Tables
+- **#1384**: async chain + try/catch arity bug (249 CE). Root cause: chained
+  `Promise.all([asyncFn()]).then(untyped cb)` — late import shift misses outer call bytes.
+  Architect spec in issue file. Needs fresh senior-dev.
+- **#1387**: `with` statement architect exploration (backlog).
+- **#1388**: null.next in yield* class async-gen methods (316 fails, ~250–300 net potential).
+  Newly filed; in_progress.
 
-_Generated from issue files. Update issue `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
+## Session results (2026-05-08)
 
-### Ready
+**PRs merged**: 15+ across senior-dev, dev-idx, dev-dstr, dev-a waves.
 
-| Issue | Title | Priority | Status |
-|---|---|---|---|
-| #1358 | spec gap: Array.prototype.{filter,map,every,some,forEach,reduce} on array-like (.call) receivers — ~452 assertion_fail | high | ready |
-| #1362 | spec gap: Object.defineProperties — apply full descriptor map (332 fails) | high | ready |
-| #1364 | spec gap: class elements — method/field descriptor enumerable/configurable/writable (~700 fails) | high | ready |
-| #1365 | spec gap: class private fields, methods, accessors and brand checks (~97 fails in elements/private-*) | medium | ready |
-| #1366 | spec gap: class subclass + subclass-builtins prototype chain (~154 fails) | medium | ready |
-| #1367 | spec gap: Iterator.prototype helpers — get-next-once, non-constructible, return-on-throw (~244 fails) | high | ready |
-| #1368 | spec gap: Promise.{all,allSettled,any,race} — resolver-element semantics, ctor type-check (~109 fails) | medium | ready |
-| #1370 | IR: claim class methods and constructors (largest legacy bypass) | high | ready |
-| #1371 | IR: expand external-call whitelist to stop rejecting host imports and Math.* | high | ready |
-| #1372 | IR: support destructuring params (removes param-shape-rejected bypass) | high | ready |
-| #1373 | IR: claim async functions (async/await through IR path) | medium | ready |
-| #1374 | IR: string for-of and for-in through IR (removes legacy fallback for string iteration) | medium | ready |
-| #1375 | IR: full optional-chain support (?. and ?.[]) without resolver fallback | medium | ready |
-| #1377 | spec gap: Array.prototype.{push,pop,shift,unshift,fill,copyWithin,reverse} — mutation on array-like + length writes (~80 fails) | medium | ready |
-| #1380 | spec gap: equality (==, !=, ===, !==) — Symbol/BigInt coercion + ReferenceError propagation (~55 fails) | medium | ready |
-| #1381 | spec gap: String.prototype.{substring,slice,indexOf,search,charAt,charCodeAt,codePointAt,at,includes,startsWith,endsWith,trim,concat} edge cases (~128 fails) | medium | ready |
-| #1384 | CE: static async method with PrivateName — 'not enough arguments on the stack' (249 tests) | high | ready |
-| #1385 | HANG: Temporal/Duration/from/argument-non-string.js — infinite runtime loop | medium | ready |
-| #1386 | HANG: Promise/race/invoke-then.js — compilation or runtime infinite loop | medium | ready |
+**Net test262**: estimated +500–600 net across the session
+(senior-dev alone: +331 net across 5 PRs).
 
-### In Progress
+| PR | Issue | Net | Agent |
+|----|-------|----:|-------|
+| #262 | #1322 Math.random WASI | +34 | dev-a |
+| #265 | #1347 for-of IteratorClose | +36 | dev-a |
+| #274 | #1360 indexOf/includes | +50 | dev-idx |
+| #277 | #1359 splice/slice/concat | — | dev-dstr |
+| #279 | #1381 String accessors | — | dev-dstr |
+| #280 | #1361 sort | +40 | dev-idx |
+| #281 | #1342 JSON.stringify replacer | — | dev-dstr |
+| #282 | #1362 defineProperties | — | dev-dstr |
+| #283 | #1312 async recursion | +135 | senior-dev |
+| #285 | #1376 IR telemetry gate | +0 | dev-dstr |
+| #286 | #1368 Promise aggregators | +37 | senior-dev |
+| #287 | #1367 Iterator helpers | +89 | senior-dev |
+| #288 | #1386 Promise.race reclassify | +41 | senior-dev |
+| #289 | #1377-A pop/shift undefined | +29 | senior-dev |
 
-| Issue | Title | Priority | Status |
-|---|---|---|---|
-| #1359 | spec gap: Array.prototype.{splice,slice,concat,toSpliced,toReversed} — @@species, sparse handling, IsConcatSpreadable (~150 fails) | high | in-progress |
-| #1360 | spec gap: Array.prototype.{indexOf,lastIndexOf,includes} — SameValueZero, sparse, fromIndex coercion (~210 fails) | high | in-progress |
-| #1361 | spec gap: Array.prototype.sort — comparator validation, stability, ToString fallback (~46 fails) | medium | in-progress |
-| #1363 | spec gap: class dstr — 'Cannot destructure null/undefined' in method default-binding (~700 runtime_errors) | high | in-progress |
-| #1369 | spec gap: String.prototype.{split,replace,replaceAll,match,matchAll} — limit, @@split/@@replace/@@match protocol (~150 fails) | medium | in-progress |
-| #1376 | IR: fallback telemetry gate — CI fails when unintended legacy bypasses exceed threshold | high | in-progress |
-| #1378 | spec gap: try/catch/finally — error type fidelity, finally completion override, dstr-binding (~85 fails) | medium | in-progress |
-| #1379 | spec gap: prefix/postfix ++/-- on null/undefined/string operands — ToNumeric coercion (~40 fails) | medium | in-progress |
+**In CI**: PR #268 (#1358 array callbacks +43), PR #291 (#1385 Temporal hang).
 
-<!-- GENERATED_ISSUE_TABLES_END -->
+## Remaining work
+
+**High priority:**
+- #1370 IR class methods (architect spec ready — largest IR bypass)
+- #1388 null.next yield* async-gen class methods (316 fails)
+- #1358 merging (PR #268 CI complete)
+- #1384 async chain arity (architect spec ready)
+
+**Pending (no active dev):**
+- #1371 IR external call whitelist
+- #1372 IR destructuring params
+- #1373 IR async functions
+- #1374 IR string for-of/for-in
+- #1343 Boolean/Symbol TypeErrors
+- #1344 Date.prototype formatters
+- #1348 for-of IteratorClose abrupt body
+- #1365 class private fields
+
+**Blocked:**
+- #1364, #1337 → blocked on #1334 (Object.defineProperty descriptor fidelity — hard)
+- #1377 Slices B+ → blocked on externref identity bug
+- #1380 → needs re-spec (feasibility: hard)

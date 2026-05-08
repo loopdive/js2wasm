@@ -5,7 +5,7 @@ title: "spec gap: equality (==, !=, ===, !==) — Symbol/BigInt coercion + Refer
 status: ready
 created: 2026-05-08
 priority: medium
-feasibility: easy
+feasibility: hard
 reasoning_effort: medium
 task_type: bugfix
 area: codegen
