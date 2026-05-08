@@ -4468,6 +4468,18 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         }
         // Pad missing optional args with defaults (e.g. indexOf 2nd arg)
         if (paramTypes && args.length + 1 < paramTypes.length) {
+          // #1381 — `endsWith`/`startsWith`/`includes`/`lastIndexOf` distinguish
+          // null vs undefined for the position arg (endsWith(s) ⇒ pos defaults
+          // to length, but endsWith(s, null) ⇒ ToInteger(null)=0 ⇒ "" check).
+          // Pad missing externref position args with JS undefined (via
+          // `__get_undefined`) so the host sees the spec-correct "not passed"
+          // value instead of `null`.
+          const padsUndefined = method === "endsWith" || method === "lastIndexOf";
+          let undefIdx: number | undefined;
+          if (padsUndefined) {
+            undefIdx = ensureLateImport(ctx, "__get_undefined", [], [{ kind: "externref" }]);
+            flushLateImportShifts(ctx, fctx);
+          }
           for (let pi = args.length + 1; pi < paramTypes.length; pi++) {
             const pt = paramTypes[pi]!;
             if (needsLengthDefault && pi === 2 && savedReceiverLocal !== undefined && pt.kind === "f64") {
@@ -4481,8 +4493,13 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
                 // Fallback if length import is unavailable for some reason
                 fctx.body.push({ op: "f64.const", value: 0x7fffffff });
               }
-            } else if (pt.kind === "externref") fctx.body.push({ op: "ref.null.extern" });
-            else if (pt.kind === "f64") fctx.body.push({ op: "f64.const", value: 0 });
+            } else if (pt.kind === "externref") {
+              if (padsUndefined && undefIdx !== undefined) {
+                fctx.body.push({ op: "call", funcIdx: undefIdx });
+              } else {
+                fctx.body.push({ op: "ref.null.extern" });
+              }
+            } else if (pt.kind === "f64") fctx.body.push({ op: "f64.const", value: 0 });
             else if (pt.kind === "i32") fctx.body.push({ op: "i32.const", value: 0 });
           }
         }

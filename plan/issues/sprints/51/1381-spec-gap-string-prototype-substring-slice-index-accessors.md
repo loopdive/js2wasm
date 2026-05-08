@@ -2,7 +2,7 @@
 id: 1381
 sprint: 51
 title: "spec gap: String.prototype.{substring,slice,indexOf,search,charAt,charCodeAt,codePointAt,at,includes,startsWith,endsWith,trim,concat} edge cases (~128 fails)"
-status: ready
+status: in-progress
 created: 2026-05-08
 priority: medium
 feasibility: easy
