@@ -2,7 +2,7 @@
 id: 1389
 sprint: 51
 title: "fix: false CE — var + function-declaration same name at top-level scope"
-status: in-progress
+status: done
 created: 2026-05-08
 priority: medium
 feasibility: easy

@@ -56,6 +56,7 @@
 - [feedback_po_boundary.md](feedback_po_boundary.md) — PO only writes to plan/
 
 ### Testing
+- [feedback_trigger_deploy_pages.md](feedback_trigger_deploy_pages.md) — After any [skip ci] baseline refresh, manually trigger deploy-pages.yml so GitHub Pages shows the new pass rate
 - [feedback_test262_worktree.md](feedback_test262_worktree.md) — Test262 in worktree, not main wc
 - [feedback_test262_recheck.md](feedback_test262_recheck.md) — Default --recheck for test262, npm test for vitest
 - [feedback_test262_skip_issues.md](feedback_test262_skip_issues.md) — Every skip filter must have an issue

@@ -2,7 +2,7 @@
 id: 1334
 sprint: 50
 title: "spec gap: Object.defineProperty — descriptor attribute fidelity (664 test262 fails, biggest single bucket)"
-status: in-progress
+status: done
 created: 2026-05-08
 priority: high
 feasibility: hard

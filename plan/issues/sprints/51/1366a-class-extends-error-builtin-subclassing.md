@@ -2,7 +2,7 @@
 id: 1366a
 sprint: 51
 title: "spec gap: class extends Error/TypeError/RangeError — builtin subclassing via existing host imports (+40-60 passes)"
-status: in-progress
+status: done
 created: 2026-05-08
 priority: high
 feasibility: medium

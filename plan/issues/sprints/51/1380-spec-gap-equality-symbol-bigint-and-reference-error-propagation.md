@@ -2,7 +2,7 @@
 id: 1380
 sprint: 51
 title: "spec gap: equality (==, !=, ===, !==) — Symbol/BigInt coercion + ReferenceError propagation (~55 fails)"
-status: in-progress
+status: done
 created: 2026-05-08
 priority: medium
 feasibility: hard
