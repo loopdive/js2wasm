@@ -2165,6 +2165,25 @@ assert._isSameValue = isSameValue;
         };
       if (name === "__extern_is_undefined") return (v: any) => (v === undefined ? 1 : 0);
       if (name === "__get_undefined") return () => undefined;
+      // (#1343) ToBoolean for externref values per ECMA-262 §7.1.2.
+      // The pre-existing externref path for `Boolean(x)` only checked
+      // `ref.is_null` — which returns false for JS `undefined` (since
+      // undefined arrives as a defined externref via `__get_undefined`,
+      // not a null reference). Rather than emit a chain of host probes
+      // (`__extern_is_undefined`, length checks, etc.) we centralise
+      // the spec rules in a single import:
+      //   undefined → false
+      //   null → false
+      //   boolean → identity
+      //   +0, -0, NaN → false; other numbers → true
+      //   "" → false; other strings → true
+      //   bigint 0n → false; other bigints → true
+      //   symbol → true
+      //   object → true
+      // The exception is when the host's truthiness coercion itself throws
+      // (Symbol.toPrimitive trap, Proxy traps); we let those propagate so
+      // the `Boolean(...)` call surface matches spec semantics.
+      if (name === "__to_boolean") return (v: any): number => (v ? 1 : 0);
       if (name === "__throw_type_error")
         return (msg: any) => {
           throw new TypeError(msg == null ? "" : String(msg));
