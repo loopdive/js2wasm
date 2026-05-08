@@ -2,7 +2,7 @@
 id: 1342
 sprint: 50
 title: "spec gap: JSON.stringify replacer/toJSON/property-list (49 of 66 test262 fails)"
-status: ready
+status: in-progress
 created: 2026-05-08
 priority: medium
 feasibility: medium
@@ -81,3 +81,40 @@ are not directly JS-callable (issue #1308) — they need an externref-callable t
 - `test262/test/built-ins/JSON/stringify/replacer-function-arguments.js`
 - `test262/test/built-ins/JSON/stringify/value-tojson-object.js`
 - `test262/test/built-ins/JSON/stringify/replacer-array-normal.js`
+
+## Implementation Notes (2026-05-08)
+
+### Scope of this PR — replacer-function bridge
+
+`__json_stringify` host import already passes `replacer` through to JS
+`JSON.stringify`. When the user wrote `JSON.stringify(obj, fn)` where `fn`
+is a TS arrow/function expression, our compiler produced a WasmGC closure
+struct that lands at the JS boundary as `typeof === "object"`. JS
+`JSON.stringify` only honours replacers where `typeof === "function"`, so
+our closure was silently ignored — the assertion_fail tests reflect this.
+
+### Fix
+
+In `src/runtime.ts` JSON_stringify host import: when `replacer` is a
+WasmGC closure, wrap it in a JS function bridge that invokes the closure
+through the `__call_fn_2(closure, key, value)` export. As a fallback,
+attempt to convert WasmGC vec/array replacers into a plain JS array via
+`_wasmToPlain` so the property-list filter mode works.
+
+### Out of scope
+
+- `toJSON` method on user-defined classes — currently `_wasmToPlain` does
+  not invoke `toJSON` on WasmGC structs before serialisation. Property-list
+  filter for arbitrary keys (Symbol-keyed, etc.) requires a fuller
+  `_wasmToPlain` extension.
+- The `this` binding inside the replacer (spec mandates this = holder
+  object) is best-effort: the `__call_fn_2` invocation uses the closure's
+  captured environment, not the JS `this`.
+
+## Test Results
+
+- `tests/issue-1342-json.test.ts` — 3/3 pass (function replacer transforms,
+  drop via undefined, no-replacer no-regression).
+- `tests/equivalence/json-stringify.test.ts`,
+  `tests/issue-json-stringify-structs.test.ts` — same pre-existing
+  failures as main, no new regressions from the replacer bridge.
