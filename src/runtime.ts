@@ -1950,14 +1950,18 @@ assert._isSameValue = isSameValue;
           if (obj == null) return 0;
           // Helper: coerce length value to number (#1090) — handles nested WasmGC
           // structs with valueOf/toString that need ToPrimitive dispatch.
-          // Applies ToLength: NaN → 0, negative → 0, clamp to [0, 2^31-1]
-          // so callers using i32.trunc_sat_f64_s see a sane non-negative length.
+          // Applies spec ToLength (§7.1.20): NaN → 0, negative → 0, clamp to
+          // [0, 2^53-1] (Number.MAX_SAFE_INTEGER). Older callers used i32 indices
+          // with `i32.trunc_sat_f64_s`, which saturates 2^53-1 to INT32_MAX —
+          // safe behaviour for that path. Newer callers (#1360 array-like
+          // search loop) use f64 indices to walk lengths up to MAX_SAFE_INTEGER
+          // without truncation.
           const toLength = (n: number): number => {
             if (Number.isNaN(n)) return 0;
-            if (!Number.isFinite(n)) return n > 0 ? 0x7fffffff : 0;
+            if (!Number.isFinite(n)) return n > 0 ? 0x1fffffffffffff : 0; // 2^53-1
             const i = Math.trunc(n);
             if (i <= 0) return 0;
-            return Math.min(i, 0x7fffffff);
+            return Math.min(i, 0x1fffffffffffff); // 2^53-1
           };
           const coerceLen = (v: any): number => {
             if (v == null) return 0;
@@ -4110,6 +4114,17 @@ assert._isSameValue = isSameValue;
       // Handles null == undefined → true and other JS coercion rules.
       // eslint-disable-next-line eqeqeq
       return (a: any, b: any) => (a == b ? 1 : 0);
+    case "same_value_zero":
+      // #1360 — SameValueZero comparison (§7.2.11).
+      // Same as Strict Equality except NaN === NaN is true.
+      // +0 and -0 compare equal (unlike SameValue / Object.is).
+      // Used by Array.prototype.includes for array-like receivers.
+      return (a: any, b: any) => {
+        if (a === b) return 1;
+        // eslint-disable-next-line no-self-compare
+        if (typeof a === "number" && typeof b === "number" && a !== a && b !== b) return 1;
+        return 0;
+      };
     case "date_new":
       return () => new Date();
     case "date_now":
