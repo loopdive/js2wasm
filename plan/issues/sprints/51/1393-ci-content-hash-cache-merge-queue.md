@@ -150,11 +150,26 @@ for detecting when CI is done; the dev-self-merge skill reads it before calling
   --merge merge, main's src/ tree equals the just-merged branch tip's src/ tree."
 - No action required.
 
-**Change 2 — GitHub Merge Queue**: Enabled via repository ruleset ID 16153215
-(`main-merge-queue`) on 2026-05-08. Applied to `refs/heads/main`. Settings:
-- merge_method: MERGE, max_entries_to_build: 4, max_entries_to_merge: 4
-- grouping_strategy: ALLGREEN, check_response_timeout: 60 min
-- Rule URL: https://github.com/loopdive/js2wasm/rules/16153215
+**Change 2 — GitHub Merge Queue**: ⚠️ ATTEMPTED AND ROLLED BACK on 2026-05-08.
+
+Ruleset 16153215 was created via the GitHub Rulesets API (enforcement: active, refs/heads/main,
+MERGE method). It immediately blocked CI bot pushes to main — specifically the
+`quality / Commit regenerated planning artifacts` step and `Refresh Committed Baseline`
+workflow, which both push directly to main using `GITHUB_TOKEN`. The GitHub Rulesets API
+rejected adding the GitHub Actions integration (ID 15368) as a bypass actor on a personal
+(non-org) repo with error "Actor GitHub Actions integration must be part of the ruleset
+source or owner organization." Ruleset deleted to unblock CI.
+
+**Root cause**: GitHub's merge queue ruleset (on personal repos) has no supported bypass
+for `GITHUB_TOKEN` / `github-actions[bot]`. This CI pattern of bots pushing directly to
+main is incompatible with merge queue enforcement.
+
+**Required to make merge queue viable**:
+Option A — Convert `loopdive` to a GitHub Organization (enables org-level bypass actors).
+Option B — Eliminate bot direct pushes to main (route them through PRs or use a
+  `workflow_dispatch` that bypasses the rule via a scoped PAT stored as a secret).
+Option C — Keep using `--admin` merges (current approach) and rely on baseline_stale
+  detection (#1391) + content-hash caching for drift mitigation. No merge queue needed.
 
 **Change 3 — dev-self-merge.md**: Updated Step 5 merge command from
 `gh pr merge <N> --merge --admin` to `gh pr merge <N> --auto --merge`.
