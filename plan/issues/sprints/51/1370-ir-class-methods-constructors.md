@@ -2,7 +2,7 @@
 id: 1370
 sprint: 51
 title: "IR: claim class methods and constructors (largest legacy bypass)"
-status: ready
+status: review
 created: 2026-05-08
 priority: high
 feasibility: hard
@@ -379,3 +379,85 @@ only accepts FunctionDeclaration. Phase A is selector-only and does NOT call thi
 function for methods, so this is **deferred to Phase B**. When Phase B lands, the
 parameter type must widen and `fn.name.text` lookups need an `isMethod`-aware
 fallback (since MethodDeclaration `.name` is `PropertyName`, not `Identifier`).
+
+---
+
+## Phase A — Implementation Notes (2026-05-08, senior-dev-1370)
+
+PR: https://github.com/loopdive/js2wasm/pull/293
+
+### What landed
+
+`src/ir/select.ts`:
+
+1. **`IrSelection.classMembers`** — new optional `ReadonlySet<string>` field. Populated
+   only when class members are claimed; left `undefined` otherwise so existing fixtures
+   don't shift.
+2. **`IrFallbackReason` += `"class-method"`** — for shapes the selector recognises but
+   can't yet handle (extends parent, accessors, abstract, computed/private name).
+3. **`IrClaimableSubject` union** = `FunctionDeclaration | MethodDeclaration | ConstructorDeclaration`.
+   `whyNotIrClaimable` and `isIrClaimable` widened with an `isMethod` flag. To stay in
+   sync, `isIrClaimable` now delegates to `whyNotIrClaimable === null` (negligible
+   overhead vs. the AST walk).
+4. **Method-specific guards** at the top of `whyNotIrClaimable`:
+   - Top-level: name required, only `export` modifier allowed.
+   - Method: `abstract` → `class-method`, `async` → `deferred-feature`.
+   - Method generator → `deferred-feature` (Phase D).
+   - Constructor: skipped return-type resolution (no source-level type).
+5. **`scope.add("this")`** — class-member subject implicitly puts `this` in scope.
+6. **`isPhase1Expr` accepts `ts.SyntaxKind.ThisKeyword`** when `scope.has("this")`.
+   No-op for FunctionDeclaration path because outer functions never put `this` in scope.
+7. **Constructor body** — checked via `isPhase1BodyStatement` rather than
+   `isPhase1StatementList`, since constructors don't have a return-tail. Phase C will
+   synthesise the implicit `return this`.
+8. **New walk after FunctionDeclaration loop** — for each top-level `ClassDeclaration`:
+   - Skip anonymous classes (no name).
+   - Skip classes with `extends` clause; tag every member as `class-method` for
+     telemetry. Phase E (inheritance) addresses these.
+   - Iterate members:
+     - `ConstructorDeclaration` → `${className}_new`
+     - `MethodDeclaration` → `${className}_${methodName}` (via `phase1MemberName`)
+     - `GetAccessorDeclaration` / `SetAccessorDeclaration` → `class-method` fallback
+     - everything else → silently skipped (PropertyDeclaration is not a function).
+   - Use the same selector predicate; cache claim/reason in
+     `individuallyClaimedClassMembers` / `fallbackReasons`.
+9. **Return paths** thread `classMembers` through. Empty → undefined.
+
+`scripts/check-ir-fallbacks.ts`:
+
+10. `class-method` added to the `UNINTENDED` set so the budget gate tracks
+    Phase E / accessor-slice retirement progress.
+
+### Critical correction (kept from architect spec)
+
+Funcmap keys use **underscores**, not dots: `${className}_new`, `${className}_${methodName}`.
+Confirmed via `class-bodies.ts:216,275,284`.
+
+### Out of scope (Phase B+)
+
+- `src/ir/integration.ts` — no changes. `compileIrPathFunctions` still iterates only
+  FunctionDeclaration; methods on the legacy class-bodies path emit normally.
+- Signature parity check between IR-resolved and legacy-allocated typeIdx — needs `ctx`
+  access; deferred to Phase B where the integration loop sees `ctx`.
+- `lowerFunctionAstToIr` widening — deferred to Phase B.
+- Constructor body `struct.new $ClassName + $self` epilogue — Phase C.
+
+### Verification
+
+`.tmp/probe-1370-phaseA.mts` — `class Calc { add(a, b); mul(a, b); }`:
+- `funcs: ["run"]`
+- `classMembers: ["Calc_add", "Calc_mul"]`
+- `fallbacks: []`
+
+`.tmp/probe-1370-rejections.mts` — six cases:
+- constructor + method → `[Point_add, Point_new]`
+- extends parent → claims `Base_foo`, rejects `Derived_bar` as `class-method`
+- async method → `deferred-feature`
+- generator method → `deferred-feature`
+- get/set accessor → `class-method`
+- static method → claimed (`M_add`)
+
+Test results:
+- 14 IR-related test files: 334/335 pass (1 unrelated env failure, pre-existing on main)
+- 6 class-equivalence test files: 22/22 pass
+- IR fallback baseline unchanged (example corpus has no classes today)
