@@ -2,7 +2,7 @@
 id: 1379
 sprint: 51
 title: "spec gap: prefix/postfix ++/-- on null/undefined/string operands — ToNumeric coercion (~40 fails)"
-status: ready
+status: in-progress
 created: 2026-05-08
 priority: medium
 feasibility: easy
@@ -139,3 +139,95 @@ For `var x: any; x++`, full ToNumeric runtime dispatch.
 ### Estimated impact
 
 +30 passes; secondary lifts in user code that uses string-typed counters.
+
+## Implementation (landed)
+
+### Summary
+
+Replaced the externref-operand path in
+`src/codegen/expressions/unary.ts` for prefix/postfix `++`/`--` so it
+performs spec-correct ToNumeric coercion instead of the previous
+"safe NaN for any non-Number" shortcut.
+
+### Root cause (confirmed)
+
+All 9 externref code paths in `compilePrefixUnary`,
+`compilePostfixUnary`, and the boxed-capture branches called
+`emitSafeExternrefToF64` (in `src/codegen/type-coercion.ts`). That
+helper used `__typeof_number` to gate the unbox: if the value's
+JS `typeof` was not `"number"`, it returned NaN immediately. That
+shortcut was added before #1319 made `__unbox_number` safe for
+WasmGC structs (it now performs the full
+`_toPrimitive` → `_hostToPrimitive` → `Number(prim)` chain, mapping
+WasmGC closure structs through `__call_fn_0` / `__call_valueOf` etc.
+and falling back to `"[object Object]"` for plain structs).
+
+For every other primitive — null, undefined, "1", "abc", true,
+false — the shortcut produced NaN where ToNumber would produce
+0 / NaN / 1 / NaN / 1 / 0 respectively.
+
+### Code change
+
+- Added a small helper `emitToNumericForUpdate(ctx, fctx)` at the
+  top of `unary.ts` that pushes a direct `__unbox_number` call.
+  The helper documents the spec mapping (#13.4 ToNumeric → #7.1.4
+  ToNumber, BigInt is handled separately via #1349).
+- Replaced all 9 `emitSafeExternrefToF64(ctx, fctx)` call sites in
+  `unary.ts` (prefix `++` / `--` for local / module-global /
+  captured-global; postfix for the same three; postfix on
+  externref local) with the new helper.
+- Dropped the now-unused `emitSafeExternrefToF64` import. The
+  function itself is preserved in `type-coercion.ts` in case
+  another future caller needs the typeof-gated NaN form.
+
+The runtime "unbox/number" intent (`runtime.ts` line ~3895 — the
+`case "unbox"` branch added in #1319) already performs:
+
+```ts
+v != null && typeof v === "object"
+  ? Number(_toPrimitive(v, "number") ?? _hostToPrimitive(v, "number"))
+  : Number(v)   // covers null, undefined, string, boolean, number
+```
+
+…which is exactly ToNumber per ECMA-262 §7.1.4. So a direct call is
+correct and the new behaviour matches V8 byte-for-byte for the
+operand types covered by this issue.
+
+### New tests
+
+`tests/issue-1379.test.ts` (14 cases):
+
+- `++null` → 1
+- `++undefined` → NaN
+- `"1"--` returns 1, leaves x = 0
+- `"x"--` returns NaN
+- `++""` → 1
+- `null++` returns 0, leaves x = 1
+- `undefined++` returns NaN
+- `--{}` → NaN
+- `--{ valueOf: () => "5" }` → 4 (string → ToNumber chain)
+- `--{ valueOf: () => 7 }` → 6 (numeric valueOf)
+- `true++`, `false--`, whitespace-padded numeric string
+- `++"abc"` → NaN
+
+All 14 pass on the fix; all 14 fail on main (NaN result).
+
+### Test Results
+
+| Probe / test                                | Before | After  |
+|---------------------------------------------|--------|--------|
+| `var x = null; ++x; x === 1`                | NaN    | 1      |
+| `var x; ++x; isNaN(x)`                      | NaN    | NaN    |
+| `var x = "1"; var y = x--; y === 1 && x===0`| NaN    | 1, 0   |
+| `var x = ""; ++x; x === 1`                  | NaN    | 1      |
+| `var x = null; var y = x++; y===0 && x===1` | NaN    | 0, 1   |
+| `var x = {valueOf:()=>"5"}; --x === 4`      | NaN    | 4      |
+| `var x = true; var y = x++; y===1 && x===2` | already passed (i32 fast path) | unchanged |
+
+`tests/issue-1379.test.ts` — 14 / 14 pass.
+
+Existing inc/dec test files (issue-260, issue-378, issue-1119,
+issue-1198, issue-1182, issue-334, issue-319, issue-254): no
+regressions. Pre-existing failure in `tests/issue-272.test.ts`
+("chained method calls with any types") reproduces unchanged on
+`origin/main` HEAD — not introduced by this fix.
