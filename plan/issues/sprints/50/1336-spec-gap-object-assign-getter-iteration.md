@@ -2,7 +2,7 @@
 id: 1336
 sprint: 50
 title: "spec gap: Object.assign drops getters / Symbol keys (27 of 38 test262 fails)"
-status: ready
+status: done
 created: 2026-05-08
 priority: medium
 feasibility: medium
