@@ -1593,9 +1593,25 @@ function compileNewExpression(ctx: CodegenContext, fctx: FunctionContext, expr: 
     }
 
     if (args.length === 1) {
-      // new Date(ms) — millisecond timestamp
+      // new Date(ms) — millisecond timestamp.
+      //
+      // (#1344) Detect NaN input and store a sentinel i64 so subsequent getter
+      // calls (getDay, getHours, getTime, …) can return NaN per spec
+      // (`new Date(NaN).getTime() → NaN`). Without this, `i64.trunc_sat_f64_s`
+      // saturates NaN to 0 and the Date silently behaves like the epoch.
       compileExpression(ctx, fctx, args[0]!, { kind: "f64" });
-      fctx.body.push({ op: "i64.trunc_sat_f64_s" } as Instr);
+      const msLocal = allocTempLocal(fctx, { kind: "f64" });
+      fctx.body.push({ op: "local.tee", index: msLocal } as Instr);
+      // ms != ms is true iff ms is NaN
+      fctx.body.push({ op: "local.get", index: msLocal } as Instr);
+      fctx.body.push({ op: "f64.ne" } as Instr);
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "val", type: { kind: "i64" } },
+        then: [{ op: "i64.const", value: -9223372036854775808n } as unknown as Instr],
+        else: [{ op: "local.get", index: msLocal } as Instr, { op: "i64.trunc_sat_f64_s" } as Instr],
+      } as unknown as Instr);
+      releaseTempLocal(fctx, msLocal);
       fctx.body.push({ op: "struct.new", typeIdx: dateTypeIdx } as Instr);
       return { kind: "ref", typeIdx: dateTypeIdx };
     }
