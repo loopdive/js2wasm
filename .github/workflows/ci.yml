@@ -38,6 +38,9 @@ jobs:
       - name: Typecheck
         run: pnpm run typecheck
 
+      - name: IR fallback gate (#1376)
+        run: pnpm run check:ir-fallbacks
+
       - name: Fetch runs/index.json from baselines repo
         if: github.event_name == 'push'
         continue-on-error: true

@@ -66,6 +66,7 @@
     "test:watch": "node node_modules/vitest/dist/cli.js",
     "test:262": "bash scripts/run-test262-vitest.sh",
     "test:262:validate-baseline": "npx tsx scripts/validate-test262-baseline.ts",
+    "check:ir-fallbacks": "npx tsx scripts/check-ir-fallbacks.ts",
     "test:diff": "npx tsx scripts/diff-test.ts",
     "test:diff:triage": "npx tsx scripts/diff-triage.ts",
     "test:diff:gate": "npx tsx scripts/diff-test-gate.ts",
