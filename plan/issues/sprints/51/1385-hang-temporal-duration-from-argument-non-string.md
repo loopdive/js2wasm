@@ -2,7 +2,7 @@
 id: 1385
 sprint: 51
 title: "HANG: Temporal/Duration/from/argument-non-string.js — infinite runtime loop"
-status: ready
+status: in-progress
 created: 2026-05-08
 priority: medium
 feasibility: medium
