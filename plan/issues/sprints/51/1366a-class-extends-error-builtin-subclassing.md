@@ -2,7 +2,7 @@
 id: 1366a
 sprint: 51
 title: "spec gap: class extends Error/TypeError/RangeError — builtin subclassing via existing host imports (+40-60 passes)"
-status: ready
+status: in-progress
 created: 2026-05-08
 priority: high
 feasibility: medium
@@ -12,6 +12,8 @@ area: codegen
 language_feature: classes
 goal: spec-completeness
 parent_issue: 1366
+pr: 307
+branch: issue-1366a-extends-error-subclassing
 ---
 # #1366a — `extends Error` builtin subclassing
 
@@ -88,3 +90,77 @@ See `## Implementation Plan` in parent issue #1366 for exact line numbers and co
 - `src/codegen/builtin-tags.ts` — BUILTIN_ERROR_PARENTS constant (or add to existing registry)
 - `src/codegen/expressions/new-super.ts:1448` — early-exit for builtin error super call
 - `src/codegen/typeof-delete.ts:189-475` — instanceof routing for externref-backed subclasses
+
+## Implementation notes (senior dev, 2026-05-08, PR #307)
+
+### Where the implementation diverged from the spec
+
+1. **`instanceof MyError` for the user subclass cannot route through
+   `__instanceof`**: the spec suggested using `__instanceof(value,
+   "MyError")` but `globalThis.MyError` doesn't exist on the host side
+   (the user subclass lives only in the compiled module). With the
+   externref-backed instance, `e` is a real JS `Error` whose
+   `[[Prototype]]` is `Error.prototype`, so even
+   `e instanceof globalThis.MyError` would fail. **Fix:** statically
+   evaluate `e instanceof MyError` in `expressions.ts` based on the
+   LHS TypeScript type — true iff the LHS class is the same or a
+   recorded subclass; otherwise constant 0. This is sound for the
+   #1366a scope because typed code is the only way to hit this
+   construct, and the JS-runtime answer (false in the
+   `Error.prototype`-only case) would be observably wrong vs spec.
+
+2. **`tryStaticInstanceOf` was returning false for "any user class
+   instance"**: the existing rule "WasmGC user-class struct is never
+   an instance of a JS built-in" became wrong with externref-backed
+   subclasses. Extended the rule: when the LHS user class has a
+   recorded `classBuiltinParentMap` entry, walk the BUILTIN_PARENT
+   chain from that recorded parent to decide. Falls back to the
+   "false for plain user class" rule otherwise.
+
+3. **`resolveWasmType` had to learn about externref-backed classes**:
+   without this fix, `const e = new MyError(...)` would type-coerce
+   the externref result to `(ref \$struct)` via `ref.cast`/`ref.test`
+   patterns that always fail at runtime (the host Error is not a
+   GC struct). Added a single early-return at the named-struct lookup
+   site in `index.ts`.
+
+4. **Skipped paths for externref-backed classes** (cannot apply to
+   externref `__self`):
+   - `struct.new` initialization at the top of the constructor body
+   - Parent-chain implicit-super struct.set walk
+   - Property-declaration field initializers (`x: number = 42` style)
+
+### What I deliberately left for #1366b/c/d
+
+- **Method calls on subclass instances** (`instance.someUserMethod()`):
+  the user method's `self` parameter is `(ref \$struct)`, so passing
+  an externref would be a type mismatch. Test262 cases inside #1366a
+  scope do not exercise this. #1366b/c will add a method-self
+  externref variant.
+- **`this.foo = bar`** inside a subclass constructor where `foo` is a
+  user-declared property (not on the host Error): this would route
+  through `__set_field` because `this` is externref. Not tested in
+  #1366a; deferred.
+- **Spread args in `super(...args)`**: I push null and call
+  `__new_<Parent>(null)` rather than evaluating + dropping. Test262
+  has very few such cases.
+
+### Why I did not touch `compileInstanceOf` (typeof-delete.ts)
+
+The architect spec suggested editing the WasmGC tag-based path. Easier
+fix: the dispatch in `expressions.ts` already chooses between
+`compileHostInstanceOf` and `compileBinaryExpression(InstanceOf)`. I
+added a third branch (statically resolve when RHS is externref-backed
+user class), which avoids editing the WasmGC tag-path at all. Less
+risk of regressing pure user-class hierarchy `instanceof`.
+
+### Coexistence with PR #303
+
+PR #303 takes the WasmGC-struct-with-`message`-field approach. Overlap
+is in `class-bodies.ts` only (constructor emission, `compileSuperCall`).
+If #303 lands first, this PR will need to revert their approach in
+those two functions. If this PR lands first, #303 is superseded — its
+ceiling excludes throw+catch instanceof recovery (the catch handler
+sees the host externref, not a struct ref, so the WasmGC tag check
+returns 0).
+

@@ -86,3 +86,82 @@ When `obj` is `externref` (dynamic object): fall through to legacy — emit a
 - `src/ir/nodes.ts` — `IrNode.stringCharAt` + `IrNode.stringLen`
 - `src/ir/lower.ts` — lower string nodes to WasmGC ops
 - `src/ir/integration.ts` — resolver methods for string ops
+
+## Resolution (Path B — fix the real string-for-of caller bug)
+
+After exploration, the spec was partially outdated:
+
+**Already on main**: string for-of IS IR-claimed in both modes
+(`src/ir/from-ast.ts:2627` dispatches to `lowerForOfString` in
+nativeStrings or `lowerForOfIterFromExternrefValue` in host-strings).
+A bare `function countChars(s: string): number { let n = 0; for (const c of s) n++; return n; }`
+emits `forof.iter` IR.
+
+**The real gap I found**: a CALLER of a string-iterating function
+failed IR-lowering with `ir/lower: duplicate SSA def for N in <caller>`.
+Even `function f(s: string): number { let n = 0; for (const c of s) n++; return n; }`
+followed by `export function test(): number { return f("hi"); }`
+fell back. The for-of function itself was IR; its caller fell back.
+
+### Root cause
+
+`inline-small.ts:canInline` allowed callees containing body-bearing
+instrs (forof.*, try, while.loop, for.loop) to be inlined. The
+splice path renamed top-level callee body instr results to fresh
+caller-scope ids — but did NOT walk into nested body buffers
+(forof.iter.body, etc.). Nested instr results stayed as callee-scope
+ids; `lower.ts:registerInstrDefs` (which DOES recurse into body
+buffers) then flagged the collision against caller's own ids.
+
+A naive deep-rename fix surfaced a second bug: `renameInstrOperands`
+already recurses into body buffers (renaming operands). If the deep
+helper also recurses with `renameAllInInstr` (which calls
+`renameInstrOperands` again), the rename map gets applied twice — and
+because fresh caller-scope ids are allocated from
+`caller.valueCount + n`, they coincide with callee-scope ids, so the
+second pass DOUBLE-MAPS already-renamed operands. Symptom: inlined
+`binary { lhs: 4, rhs: 5, result: 5 }` (rhs and result alias) →
+`lower.ts:emitValue` infinite-recurses on the self-loop ("Maximum
+call stack size exceeded").
+
+### Fix
+
+Conservative: extend `canInline` to reject callees whose top-level
+body instrs include any body-bearing kind (`forof.vec`, `forof.iter`,
+`forof.string`, `try`, `while.loop`, `for.loop`). The caller still
+goes through IR — it just emits a regular `call` instr to the
+standalone callee instead of inlining its body.
+
+This avoids both the SSA-rename complexity AND the slot-migration
+problem (callee's slot indices wouldn't survive a splice into the
+caller's slot table). Lifting the restriction would require
+migrating callee slots into the caller and a one-pass deep SSA
+rename — out of scope for this slice.
+
+### What this DOES NOT do
+
+- AC#1 (`countChars` IR-claimed via array.get / __string_charAt) was
+  already true on main; this slice doesn't change it.
+- AC#2 (for-in unrolled statically over class instances) is still
+  missing — `src/ir/select.ts` has no `isForInStatement` and
+  `src/ir/from-ast.ts` has no `lowerForInStatement`. Tracked as a
+  follow-up. The new `for-in-externref` reason is also not added in
+  this slice (no for-in support at all).
+- AC#3 (for-in over externref falls through with telemetry) — same.
+
+### Test results
+
+`tests/issue-1374-ir-string-iter-inline.test.ts` — 7 cases:
+
+- ✓ Caller of a string-for-of helper compiles via IR (no duplicate SSA def)
+- ✓ Caller of a string-for-of helper produces correct runtime result
+- ✓ String-for-of helper with no comparison in caller compiles via IR
+- ✓ Two-level call chain (`g()` calls `f()` calls for-of) compiles via IR
+- ✓ Vec-for-of caller still works (regression check)
+- ✓ Standalone string-for-of (no caller) still works (regression check)
+- ✓ Identifier-only function call (no body-buffer in callee) still inlines fine
+
+`npm test -- tests/ir/` — 39/39 IR tests pass (no regression in inline-small,
+constant-fold, dead-code, simplify-cfg, phase3c).
+
+`pnpm run check:ir-fallbacks` — green, no baseline change.

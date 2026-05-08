@@ -1,0 +1,22 @@
+{
+  "pr": 304,
+  "conclusion": "success",
+  "head_branch": "issue-1334-defineproperty-descriptors",
+  "head_sha": "ae4a8c20626396a77064d0babac73ccdf34a6c27",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25563253624",
+  "timestamp": "2026-05-08T15:34:04Z",
+  "pass": 27543,
+  "fail": 14374,
+  "compile_error": 1148,
+  "snapshot_delta": 475,
+  "net_per_test": 126,
+  "regressions": 56,
+  "regressions_real": 12,
+  "regressions_wasm_change": 12,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 44,
+  "improvements": 138,
+  "baseline_sha": "ae4a8c20626396a77064d0babac73ccdf34a6c27",
+  "baseline_staleness_commits": 6,
+  "baseline_stale": false
+}

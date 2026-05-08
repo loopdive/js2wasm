@@ -104,10 +104,52 @@ jobs:
           wasm_identical_noise=null
           compile_timeouts=null
           improvements=null
+          baseline_sha=null
+          baseline_staleness_commits=null
+          baseline_stale=false
           if [ -f /tmp/merged-report/test262-report-merged.json ]; then
             pass=$(jq '.summary.pass' /tmp/merged-report/test262-report-merged.json)
             fail=$(jq '.summary.fail' /tmp/merged-report/test262-report-merged.json)
             ce=$(jq '.summary.compile_error' /tmp/merged-report/test262-report-merged.json)
+            # (#1391) Surface the baseline SHA the diff was computed against
+            # so the merge gate can detect when it lags current main.
+            baseline_sha=$(jq -r '.baseline_sha // ""' /tmp/merged-report/test262-report-merged.json)
+          fi
+
+          # (#1391) Baseline staleness detection.
+          #
+          # When `baseline_sha` lags `origin/main` HEAD by more than 50 commits,
+          # the regression count is contaminated by drift — tests that flipped
+          # on main since the baseline was last refreshed appear as PR
+          # regressions even when the PR didn't cause them. This is exactly
+          # what tripped PR #294: feed reported `regressions_real = 495` while
+          # branch-vs-same-run-main artifact comparison showed only 7.
+          #
+          # When stale, we emit `baseline_stale: true`. The dev-self-merge
+          # gate sees that and escalates to tech lead instead of hard-blocking
+          # on the inflated regression number.
+          STALE_THRESHOLD=50
+          if [ -n "${baseline_sha:-}" ] && [ "$baseline_sha" != "null" ] && [ "$baseline_sha" != "" ] && [ "$baseline_sha" != "unknown" ]; then
+            # Fetch the baseline commit so the merge-base count is computable
+            # even when the workflow checkout is shallow.
+            git fetch --depth=200 origin "$baseline_sha" 2>/dev/null || true
+            # Count commits in main reachable from main HEAD that aren't
+            # reachable from baseline_sha. If the baseline commit isn't
+            # reachable at all (deleted branch, force-push), we report
+            # `baseline_staleness_commits = null` and skip the flag.
+            if git cat-file -e "${baseline_sha}^{commit}" 2>/dev/null; then
+              baseline_staleness_commits=$(git rev-list --count "${baseline_sha}..HEAD" 2>/dev/null || echo 0)
+              # Coerce to integer for the comparison
+              if [ "$baseline_staleness_commits" -gt "$STALE_THRESHOLD" ] 2>/dev/null; then
+                baseline_stale=true
+                echo "::warning::Baseline drift detected — baseline_sha=${baseline_sha:0:8} is ${baseline_staleness_commits} commits behind main HEAD (threshold ${STALE_THRESHOLD}). Regression count may be inflated; gate will escalate to tech lead."
+              else
+                echo "Baseline freshness OK: ${baseline_staleness_commits} commits behind main HEAD."
+              fi
+            else
+              echo "::warning::Baseline commit ${baseline_sha:0:8} is not reachable from this checkout — staleness undetermined."
+              baseline_staleness_commits=null
+            fi
           fi
 
           # snapshot_delta: absolute pass count vs the committed baseline on main.
@@ -157,6 +199,12 @@ jobs:
             net_per_test=$((improvements - regressions_wasm_change))
           fi
 
+          # Coerce the staleness value to a JSON-friendly form.
+          if [ -z "${baseline_staleness_commits:-}" ] || [ "$baseline_staleness_commits" = "null" ]; then
+            baseline_staleness_arg=null
+          else
+            baseline_staleness_arg="$baseline_staleness_commits"
+          fi
           # Write JSON using jq so nothing is broken by shell quoting
           jq -n \
             --arg pr "$PR" \
@@ -165,6 +213,7 @@ jobs:
             --arg head_sha "$HEAD_SHA" \
             --arg run_url "$RUN_URL" \
             --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg baseline_sha "${baseline_sha:-}" \
             --argjson pass "${pass:-null}" \
             --argjson fail "${fail:-null}" \
             --argjson ce "${ce:-null}" \
@@ -176,6 +225,8 @@ jobs:
             --argjson wasm_identical_noise "${wasm_identical_noise:-null}" \
             --argjson compile_timeouts "${compile_timeouts:-null}" \
             --argjson improvements "${improvements:-null}" \
+            --argjson baseline_staleness_commits "${baseline_staleness_arg}" \
+            --argjson baseline_stale "${baseline_stale}" \
             '{
               pr: ($pr|tonumber),
               conclusion: $conclusion,
@@ -193,9 +244,31 @@ jobs:
               regressions_wasm_change: $regressions_wasm_change,
               wasm_identical_noise: $wasm_identical_noise,
               compile_timeouts: $compile_timeouts,
-              improvements: $improvements
+              improvements: $improvements,
+              baseline_sha: (if ($baseline_sha == "") then null else $baseline_sha end),
+              baseline_staleness_commits: $baseline_staleness_commits,
+              baseline_stale: $baseline_stale
             }' > "$out"
           cat "$out"
+
+          # Surface a GitHub Actions job summary so reviewers see the warning
+          # without digging into the raw feed file.
+          {
+            echo "## CI status feed: PR #$PR"
+            echo ""
+            echo "- conclusion: \`$CONCLUSION\`"
+            echo "- head_sha: \`${HEAD_SHA:0:8}\`"
+            if [ -n "${baseline_sha:-}" ] && [ "$baseline_sha" != "null" ] && [ "$baseline_sha" != "" ]; then
+              echo "- baseline_sha: \`${baseline_sha:0:8}\`"
+            fi
+            if [ -n "${baseline_staleness_commits:-}" ] && [ "$baseline_staleness_commits" != "null" ]; then
+              echo "- baseline_staleness_commits: $baseline_staleness_commits"
+            fi
+            if [ "${baseline_stale:-false}" = "true" ]; then
+              echo ""
+              echo "> ⚠️  **Baseline drift detected** — \`regressions_real\` may be inflated by tests that flipped on main since the baseline was last refreshed. The dev-self-merge gate will escalate to tech lead instead of hard-blocking on the raw count. See #1391."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
 
       - name: Commit and push
         if: ${{ steps.pr.outputs.pr != '' }}

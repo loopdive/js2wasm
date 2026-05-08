@@ -48,6 +48,23 @@ function _getNodeRequire(): ((id: string) => any) | undefined {
 const _wasmStructProps = new WeakMap<object, Record<string | symbol, any>>();
 
 /**
+ * (#1334) Per-object set of property keys that were explicitly deleted via
+ * the `delete` operator. WasmGC structs have a fixed shape — fields can't
+ * be removed at runtime — so a successful `delete obj.x` only sets the
+ * field to a sentinel. Without a separate "tombstone" set, subsequent
+ * `obj.hasOwnProperty("x")` would return true (the field is still in the
+ * struct shape), violating spec §10.1.10 which requires the property to
+ * appear absent after a successful delete.
+ *
+ * This set is consulted by `__hasOwnProperty`, `__propertyIsEnumerable`,
+ * `__for_in_keys`, and `Object.getOwnPropertyDescriptor` to filter out
+ * deleted struct-shape fields. It's populated by `__delete_property` and
+ * cleared whenever the property is re-assigned (handled at the
+ * `_sidecarSet`/struct-set path).
+ */
+const _wasmStructDeletedKeys = new WeakMap<object, Set<string | symbol>>();
+
+/**
  * Sidecar property descriptor store for WasmGC structs.
  *
  * Stores property descriptor flags per property on WasmGC structs, enabling
@@ -272,6 +289,12 @@ function _sidecarGet(obj: any, key: any): any {
 function _sidecarSet(obj: any, key: any, val: any): void {
   if (!_canBeWeakKey(obj)) return;
   _getSidecar(obj)[key] = val;
+  // (#1334) Re-assigning a previously-deleted property clears its tombstone
+  // so subsequent presence checks (`hasOwnProperty`, etc.) report it own again.
+  const tomb = _wasmStructDeletedKeys.get(obj);
+  if (tomb) {
+    tomb.delete(typeof key === "symbol" ? key : String(key));
+  }
 }
 
 function _sidecarDelete(obj: any, key: any): boolean {
@@ -2744,14 +2767,14 @@ assert._isSameValue = isSameValue;
             const isObjWasm = _isWasmStruct(obj);
             const sDescs = isObjWasm ? _getSidecarDescs(obj) : null;
             for (const key of keys) {
-              const rawDesc = getField(descsObj, key);
+              const rawDesc = getField(descsObj, key as string);
               const desc = _toPropertyDescriptorValidate(rawDesc, getField);
               if (isObjWasm) {
-                const nKey = _normalizeDescKey(key);
-                const existingVal2 = _sidecarGet(obj, key);
+                const nKey = _normalizeDescKey(key as string);
+                const existingVal2 = _sidecarGet(obj, key as string);
                 const newFlags = _validatePropertyDescriptor(sDescs!, nKey, desc, existingVal2);
                 sDescs!.set(nKey, newFlags);
-                if (desc.value !== undefined) _sidecarSet(obj, key, desc.value);
+                if (desc.value !== undefined) _sidecarSet(obj, key as string, desc.value);
               } else {
                 Object.defineProperty(obj, key, desc);
               }
@@ -2770,9 +2793,9 @@ assert._isSameValue = isSameValue;
                 const keys = getKeys(descsObj);
                 const validated: { key: string | symbol; desc: PropertyDescriptor }[] = [];
                 for (const key of keys) {
-                  const rawDesc = getField(descsObj, key);
+                  const rawDesc = getField(descsObj, key as string);
                   const desc = _toPropertyDescriptorValidate(rawDesc, getField);
-                  validated.push({ key, desc });
+                  validated.push({ key: key as string, desc });
                 }
                 for (const { key, desc } of validated) {
                   const nKey = _normalizeDescKey(key);
@@ -2789,10 +2812,10 @@ assert._isSameValue = isSameValue;
               // Non-TypeError — apply via sidecar
               const keys = getKeys(descsObj);
               for (const key of keys) {
-                const rawDesc = getField(descsObj, key);
+                const rawDesc = getField(descsObj, key as string);
                 if (rawDesc && typeof rawDesc === "object") {
                   const val = getField(rawDesc, "value");
-                  if (val !== undefined) _sidecarSet(obj, key, val);
+                  if (val !== undefined) _sidecarSet(obj, key as string, val);
                 }
               }
             }
@@ -3217,6 +3240,74 @@ assert._isSameValue = isSameValue;
           return Object.prototype.toLocaleString.call(obj);
         };
       if (name === "__tagged_template") return (tag: Function, strings: any[], subs: any[]) => tag(strings, ...subs);
+      // (#1334) `delete obj[key]` host fallback for externref / WasmGC struct
+      // receivers. The codegen side (`compileDeleteExpression`) only handles
+      // direct struct-field deletion natively; everything else (sidecar-stored
+      // properties from `Object.defineProperty`, plain JS objects, dynamic
+      // keys) routes through this import.
+      //
+      // Spec §13.5.1 The delete Operator + §10.1.10 [[Delete]]:
+      //   - Property is non-configurable → return false (strict mode also
+      //     throws TypeError, but we keep the falsy return for sloppy/strict
+      //     parity at the call site; throwing here would over-trigger).
+      //   - Property doesn't exist → return true (vacuous).
+      //   - Otherwise → remove the property and return true.
+      //
+      // Returns 0 (falsy) or 1 (truthy) to match the i32 result the codegen
+      // currently expects.
+      if (name === "__delete_property")
+        return (obj: any, key: any): number => {
+          if (obj == null) return 1; // delete on null/undefined: vacuously true (no real property)
+          // Plain JS object — defer to native delete.
+          if (!_isWasmStruct(obj)) {
+            try {
+              const k = typeof key === "symbol" ? key : String(key);
+              return delete obj[k] ? 1 : 0;
+            } catch {
+              // Non-configurable in strict mode throws TypeError; report failure.
+              return 0;
+            }
+          }
+          // WasmGC struct — operate on the sidecar storage.
+          const k = typeof key === "symbol" ? key : String(key);
+          // Check the descriptor table for an explicit non-configurable flag.
+          const descs = _wasmPropDescs.get(obj);
+          if (descs) {
+            const flags = descs.get(k as string);
+            if (flags !== undefined && !(flags & _SC_CONFIGURABLE)) {
+              // Non-configurable — refuse the delete.
+              return 0;
+            }
+          }
+          // Drop both the value sidecar entry and any descriptor metadata.
+          _sidecarDelete(obj, k);
+          if (descs) {
+            descs.delete(k as string);
+          }
+          // Symbol-keyed accessor entry mirror (#1336 / runtime.ts:1117): clear
+          // any accessor map entries for this key as well so subsequent
+          // [[Get]] / [[Set]] no longer find them.
+          if (typeof key === "symbol") {
+            const accessorMap = _wasmStructAccessors.get(obj);
+            if (accessorMap) accessorMap.delete(key);
+          }
+          // (#1334) Tombstone — record the key as deleted so the
+          // struct-shape-derived presence checks (`__hasOwnProperty`,
+          // `__for_in_keys`, etc.) treat the property as absent. The
+          // sentinel struct field set is performed by the codegen path
+          // for fields that exist in the struct shape; this tombstone
+          // covers the case where the field is in the shape but wasn't
+          // explicitly nullified, AND closes the gap where a sidecar /
+          // descriptor-only entry on a `{}` whose shape includes the
+          // field would otherwise still be reported as own.
+          let tomb = _wasmStructDeletedKeys.get(obj);
+          if (!tomb) {
+            tomb = new Set<string | symbol>();
+            _wasmStructDeletedKeys.set(obj, tomb);
+          }
+          tomb.add(typeof key === "symbol" ? key : (k as string));
+          return 1;
+        };
       // hasOwnProperty runtime check for externref/any receivers
       if (name === "__hasOwnProperty")
         return (obj: any, key: any): number => {
@@ -3228,6 +3319,10 @@ assert._isSameValue = isSameValue;
               return 0;
             }
           }
+          // (#1334) Property explicitly deleted — treat as absent regardless
+          // of the struct shape having the field name.
+          const tomb = _wasmStructDeletedKeys.get(obj);
+          if (tomb && tomb.has(typeof key === "symbol" ? key : String(key))) return 0;
           // WasmGC struct: check sidecar properties
           const sc = _wasmStructProps.get(obj);
           if (sc && key in sc) return 1;
@@ -3257,6 +3352,9 @@ assert._isSameValue = isSameValue;
               return 0;
             }
           }
+          // (#1334) Deleted property — not own, hence not enumerable.
+          const tomb = _wasmStructDeletedKeys.get(obj);
+          if (tomb && tomb.has(typeof key === "symbol" ? key : String(key))) return 0;
           // WasmGC struct: check sidecar descriptor flags
           const descs = _wasmPropDescs.get(obj);
           if (descs) {

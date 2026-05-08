@@ -2186,6 +2186,11 @@ function compileNewExpression(ctx: CodegenContext, fctx: FunctionContext, expr: 
     // which shifts defined-function indices, making the earlier lookup stale.
     const finalCtorIdx = ctx.funcMap.get(ctorName) ?? funcIdx;
     fctx.body.push({ op: "call", funcIdx: finalCtorIdx });
+    // (#1366a) Externref-backed subclass instances (extends Error / TypeError
+    // / ...) bubble up as externref, NOT as (ref $struct).
+    if (ctx.classExternrefBackedSet.has(className)) {
+      return { kind: "externref" };
+    }
     const structTypeIdx = ctx.structMap.get(className)!;
     return { kind: "ref", typeIdx: structTypeIdx };
   }

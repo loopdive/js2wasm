@@ -15,7 +15,7 @@ import { popBody } from "./context/bodies.js";
 import { reportError, reportErrorNoNode } from "./context/errors.js";
 import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
-import { emitFuncRefAsClosure, emitObjectMethodAsClosure } from "./closures.js";
+import { emitFuncRefAsClosure } from "./closures.js";
 import { emitLazyProtoGet, findExternInfoForMember } from "./expressions/extern.js";
 import { patchStructNewForAddedField } from "./expressions/late-imports.js";
 import { addUnionImports, resolveWasmType } from "./index.js";
@@ -1223,42 +1223,15 @@ export function compilePropertyAccess(
     }
   }
 
-  // (#1388) ClassName.prototype.<method> — return a callable closure-struct
-  // externref for the instance method. Mirrors the static-method handler
-  // above but uses `emitObjectMethodAsClosure` so the trampoline drops the
-  // closure-self and supplies a sentinel for the instance-method's `this`
-  // parameter.
-  //
-  // Failing tests like `var gen = C.prototype.gen; gen()` expect `gen()` to
-  // dispatch to the instance method without a real receiver. The yield-star
-  // tests under `language/{expressions,statements}/class/async-gen-method`
-  // rely on this extraction pattern; without it, `gen` was previously
-  // resolved to a stale externref and `iter.next` on the result was null.
-  if (
-    ts.isPropertyAccessExpression(expr.expression) &&
-    ts.isIdentifier(expr.expression.expression) &&
-    expr.expression.name.text === "prototype"
-  ) {
-    const rawName = expr.expression.expression.text;
-    const className = ctx.classExprNameMap.get(rawName) ?? rawName;
-    if (ctx.classSet.has(className)) {
-      const fullName = `${className}_${propName}`;
-      // Only intercept actual instance methods. Skip static methods (they
-      // live on the constructor, not the prototype) and accessors (handled
-      // below by the existing accessor path on element access).
-      if (ctx.classMethodSet.has(fullName) && !ctx.staticMethodSet.has(fullName)) {
-        const funcIdx = ctx.funcMap.get(fullName);
-        const structTypeIdx = ctx.structMap.get(className);
-        if (funcIdx !== undefined && structTypeIdx !== undefined) {
-          const closureRef = emitObjectMethodAsClosure(ctx, fctx, fullName, funcIdx, structTypeIdx);
-          if (closureRef) {
-            fctx.body.push({ op: "extern.convert_any" });
-            return { kind: "externref" };
-          }
-        }
-      }
-    }
-  }
+  // (#1388 regression fix) The earlier `ClassName.prototype.<method>` handler
+  // emitted a freshly-allocated closure struct on every access, which broke
+  // method identity: `c.m === C.prototype.m` failed (each side returned a
+  // different closure ref). 478 tests under `language/{expressions,statements}/
+  // class/elements/*` exercise this exact assertion via `verifyProperty` and
+  // turned pass→fail after the original PR landed. The handler is intentionally
+  // omitted here until method-closure caching is implemented (slice 2). Until
+  // then, `C.prototype.<method>` falls through to the legacy generic externref
+  // path, restoring the previous null-externref behaviour and the 478 wins.
 
   // Handle Math.<method>.length — static function arity
   if (

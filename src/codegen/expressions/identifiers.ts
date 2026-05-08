@@ -639,6 +639,14 @@ function tryStaticInstanceOf(ctx: CodegenContext, expr: ts.BinaryExpression, cto
   const lhsSymbolName = leftTsType.getSymbol()?.name;
   if (lhsSymbolName !== undefined) {
     if (ctx.classTagMap.has(lhsSymbolName)) {
+      // (#1366a) Externref-backed subclass (e.g. `class MyError extends Error`)
+      // — the runtime instance IS a real JS instance of its built-in parent
+      // (and any super-builtin). Walk the recorded built-in parent name
+      // through the BUILTIN_PARENT chain to decide.
+      const builtinParent = ctx.classBuiltinParentMap?.get(lhsSymbolName);
+      if (builtinParent !== undefined) {
+        return isBuiltinSubtype(builtinParent, ctorName);
+      }
       return false;
     }
     // 2. LHS is itself a built-in (or matches the constructor's instance-type
