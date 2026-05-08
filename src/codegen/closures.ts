@@ -1000,9 +1000,51 @@ export function isHostCallbackArgument(node: ts.Node, ctx: CodegenContext): bool
         // Fall through to host-callback path on any checker error
       }
     }
-    // For method calls (property access), check if the method is known array HOF
-    // (filter, map, etc.) — those have dedicated inline compilation and ARE handled
-    // as closure calls. For other property accesses, treat as host callback.
+    // For method calls (property access), check if the method is on a
+    // user-defined class. User-defined methods receive the closure as the
+    // GC-struct shape (`__fn_wrap_N_struct`) and may store it for later
+    // dispatch (e.g. `app.routes.set(path, handler)`). Routing through
+    // `__make_callback` here produces a JS-wrapped externref that fails the
+    // dispatch-site `ref.cast` and null-derefs at `struct.get`. (#1311)
+    if (ts.isPropertyAccessExpression(parent.expression)) {
+      const propAccess = parent.expression;
+      const methodName = propAccess.name.text;
+      try {
+        const receiverType = ctx.checker.getTypeAtLocation(propAccess.expression);
+        // Search the receiver type's symbol chain for a class name that
+        // matches a user-defined method `${ClassName}_${methodName}`. We
+        // check both the receiver's own symbol (instance methods) and the
+        // type itself (handles `(typeof Foo).method` for statics).
+        const candidates = new Set<string>();
+        const recSym = receiverType.getSymbol?.();
+        const recName = recSym?.getName?.();
+        if (recName) candidates.add(recName);
+        // Walk base types so inherited user-defined methods are detected
+        const baseTypes = receiverType.getBaseTypes?.();
+        if (baseTypes) {
+          for (const bt of baseTypes) {
+            const bs = bt.getSymbol?.()?.getName?.();
+            if (bs) candidates.add(bs);
+          }
+        }
+        for (const className of candidates) {
+          const fullName = `${className}_${methodName}`;
+          const funcIdx = ctx.funcMap.get(fullName);
+          if (funcIdx !== undefined && funcIdx >= ctx.numImportFuncs) {
+            // User-defined method on a user-defined class — closure path
+            return false;
+          }
+        }
+        // Note: we deliberately don't fall back to a "param has call sig"
+        // heuristic for non-user-defined methods — host array HOFs
+        // (forEach, map, filter, etc.) have dedicated inline compilation
+        // and other host method callbacks (Promise.then, etc.) need a
+        // JS-callable externref via __make_callback. Only user-defined
+        // methods on user-defined classes get the closure path here.
+      } catch {
+        // Fall through to host-callback path on any checker error
+      }
+    }
     return true;
   }
   // NewExpression: `new Promise(executor)`, `new Map(comparator)`, etc.

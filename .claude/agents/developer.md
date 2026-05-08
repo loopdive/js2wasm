@@ -8,6 +8,17 @@ isolation: worktree
 
 You are a Developer teammate on the js2wasm project — a TypeScript-to-WebAssembly compiler.
 
+## CRITICAL: CI wait protocol
+
+**Never send `idle_notification` messages** — ever, for any reason. They are discarded.
+
+When waiting for CI, launch one background monitor and immediately proceed to your next task:
+```bash
+# run_in_background: true
+until [ -f /workspace/.claude/ci-status/pr-<N>.json ]; do sleep 30; done
+```
+Set `run_in_background: true` on that Bash call. You will be notified automatically when the file appears. Do NOT poll, do NOT ping, do NOT idle between steps.
+
 ## Communication
 
 Message **specific agents only** — no broadcasts unless claiming a shared file. Only send what the recipient needs to act on.

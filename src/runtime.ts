@@ -1623,19 +1623,31 @@ function resolveImport(
         return (...args: any[]) => {
           // Coerce each arg; wasmGC structs route through _toPrimitive (#983).
           // User-thrown errors from valueOf/toString propagate.
+          // #1342 — Symbol primitives must throw TypeError on implicit string
+          // coercion per spec §13.5 (template literals, `+` operator). Explicit
+          // `String(sym)` and `sym.toString()` still work — those don't go
+          // through this helper.
           let out = "";
           for (const a of args) {
             if (a == null) {
               out += String(a);
             } else if (typeof a === "string") {
               out += a;
+            } else if (typeof a === "symbol") {
+              throw new TypeError("Cannot convert a Symbol value to a string");
             } else if (typeof a === "object" && _isWasmStruct(a)) {
               const prim = _toPrimitive(a, "default", callbackState);
               if (prim !== undefined) {
+                if (typeof prim === "symbol") {
+                  throw new TypeError("Cannot convert a Symbol value to a string");
+                }
                 out += String(prim);
               } else {
                 // Fall through to host ToPrimitive — throws TypeError if no conversion (#1128)
                 const prim2 = _hostToPrimitive(a, "default", callbackState);
+                if (typeof prim2 === "symbol") {
+                  throw new TypeError("Cannot convert a Symbol value to a string");
+                }
                 out += String(prim2);
               }
             } else {
@@ -2962,7 +2974,17 @@ assert._isSameValue = isSameValue;
           // Proxy get trap exposes closure-field methods as callable JS fns,
           // so native ToPrimitive on a wasmGC arg with closure valueOf works.
           const exports = callbackState?.getExports();
-          const wrappedReceiver = _isWasmStruct(receiver) ? _wrapForHost(receiver, exports) : receiver;
+          let wrappedReceiver = _isWasmStruct(receiver) ? _wrapForHost(receiver, exports) : receiver;
+          // #1342 — Boolean primitives travel through i32→externref via
+          // __box_number, so `Boolean.prototype.toString.call(true)` arrives
+          // here with `receiver = 1` (a number). Spec §20.3.3.2's
+          // ToBooleanthisValue accepts both Boolean primitives and wrappers,
+          // so we coerce numeric `0`/`1` back to a boolean primitive when the
+          // dispatch target is Boolean.prototype. This unblocks the 23
+          // assertion_fail tests under built-ins/Boolean/prototype/.
+          if (typeName === "Boolean" && (typeof wrappedReceiver === "number" || typeof wrappedReceiver === "bigint")) {
+            wrappedReceiver = Boolean(wrappedReceiver);
+          }
           const wrappedArgs = (args ?? []).map((a) => (_isWasmStruct(a) ? _wrapForHost(a, exports) : a));
           // #1234 — sparse-aware fast path for Array.prototype.{unshift,reverse,forEach}
           // on non-Array receivers with a HUGE `length`. V8's native algorithms walk
@@ -3029,8 +3051,12 @@ assert._isSameValue = isSameValue;
       if (name === "__proxy_revocable") return (target: any, handler: any): any => Proxy.revocable(target, handler);
       // Symbol.for(key) — global symbol registry (#965)
       if (name === "__symbol_for") return (key: any): any => Symbol.for(String(key));
-      // Symbol.keyFor(sym) — reverse lookup in global registry (#965)
-      if (name === "__symbol_keyFor") return (sym: any): any => Symbol.keyFor(sym) ?? null;
+      // Symbol.keyFor(sym) — reverse lookup in global registry (#965, #1342)
+      // Spec §20.4.2.6: returns the key string for registered symbols, or
+      // `undefined` for any other symbol. Returning `null` (the previous
+      // behaviour) breaks `Symbol.keyFor(s) === undefined` checks in
+      // test262 conformance tests.
+      if (name === "__symbol_keyFor") return (sym: any): any => Symbol.keyFor(sym);
       // ArrayBuffer.isView(arg) — checks if arg is a TypedArray or DataView (#965)
       if (name === "__arraybuffer_isView") return (arg: any): number => (ArrayBuffer.isView(arg) ? 1 : 0);
       // Array.from(iterable, mapFn?) — creates array from iterable (#965)
@@ -3590,18 +3616,29 @@ assert._isSameValue = isSameValue;
         };
       if (name === "__iterator_return")
         return (iter: any) => {
-          let ret = iter?.return ?? _sidecarGet(iter, "return");
+          // ES spec 7.4.6 IteratorClose + 7.3.11 GetMethod:
+          //   GetMethod returns undefined for null/undefined `return`.
+          //   GetMethod throws TypeError if `return` exists but is not callable.
+          //   Errors from calling `return()` propagate; non-object results throw.
+          // For close-by-throw, the compiler wraps this call in a nested
+          // try/catch_all that suppresses any exception (per spec step 6:
+          // outer throw wins). For close-by-break/continue/return, the
+          // exception propagates to the user — also per spec (step 7). (#1347)
+          let ret = iter?.return;
+          if (ret === undefined) ret = _sidecarGet(iter, "return");
           if (ret === undefined) {
             const exports = callbackState?.getExports();
             ret = exports?.__sget_return?.(iter);
           }
+          if (ret === undefined || ret === null) return; // GetMethod step 3: no-op
           if (typeof ret === "function") {
             const result = ret.call(iter);
-            // ES spec 7.4.6 IteratorClose: return value must be an Object
             if (result !== null && result !== undefined && typeof result !== "object" && typeof result !== "function") {
               throw new TypeError("Iterator result is not an object");
             }
-          } else if (ret != null && _isWasmStruct(ret)) {
+            return;
+          }
+          if (_isWasmStruct(ret)) {
             // WasmGC closure: call via __call_fn_0
             const exports = callbackState?.getExports();
             const callFn0 = (exports as any)?.__call_fn_0;
@@ -3616,7 +3653,10 @@ assert._isSameValue = isSameValue;
                 throw new TypeError("Iterator result is not an object");
               }
             }
+            return;
           }
+          // ret is non-null, non-callable → GetMethod throws TypeError
+          throw new TypeError("Iterator return method is not callable");
         };
       // Convert a WasmGC vec struct to a real JS array so it's iterable by
       // native JS APIs (Map, Set, spread, for-of, etc.). (#854)

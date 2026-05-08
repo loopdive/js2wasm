@@ -1,14 +1,15 @@
 ---
 id: 50
-status: active
+status: done
 created: 2026-05-07
 started: 2026-05-07
+wrapped: 2026-05-08
 wrap_checklist:
-  status_closed: false
-  retro_written: false
-  diary_updated: false
-  end_tag_pushed: false
-  begin_tag_pushed: false
+  status_closed: true
+  retro_written: true
+  diary_updated: true
+  end_tag_pushed: true
+  begin_tag_pushed: true
 ---
 
 # Sprint 50
@@ -181,13 +182,11 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 |---|---|---|---|
 | #1311 | Map<string, AsyncHandler> dispatch null_deref in App.dispatch path | medium | ready |
 | #1312 | Async recursive function (next() compose pattern) — Unhandled rejection | medium | ready |
-| #1313 | await is a passthrough — does not unwrap Promise from async-call expressions | high | ready |
 | #1314 | Wasm codegen: __closure_N stack underflow — call emits wrong argument count | high | ready |
 | #1318 | test harness: 'returned N' bare exit code — capture last assertion detail (~8,900 vague failures) | high | ready |
 | #1319 | Cannot convert object to primitive — Symbol.toPrimitive / valueOf / toString chain incomplete (234 failures) | high | ready |
 | #1320 | Runtime bridge: Array.from(externref) / Iterator.from(externref) doesn't preserve own [Symbol.iterator] on plain JS objects (4 test262 fails) | medium | ready |
 | #1321 | Number.prototype formatting methods (toString/toFixed/toPrecision/toExponential) rely on JS host unnecessarily | medium | ready |
-| #1322 | Math.random() has no standalone fallback — requires JS host import in WASI/standalone mode | low | ready |
 | #1323 | Iterator protocol bridging: implement $IteratorResult struct in pure Wasm, eliminate host bridge | medium | ready |
 | #1324 | JSON.stringify and JSON.parse: implement in pure Wasm, eliminate JS host dependency | medium | ready |
 | #1325 | instanceof against built-in types: compile-time type-tag registry eliminates JS host for common cases | medium | ready |
@@ -199,12 +198,31 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | #1331 | RegExp host-mode: Symbol.split protocol spec compliance (123 fails) | medium | ready |
 | #1332 | RegExp host-mode: prototype method edge cases (exec, test, flag accessors, RegExpStringIterator) | low | ready |
 | #1333 | RegExp host-mode: Pre-ES6 (S15.10) tests + annexB legacy accessors | low | ready |
+| #1335 | Number.prototype formatting in pure Wasm: integer toString(radix), then Ryu for floats (standalone) | medium | ready |
+| #1336 | spec gap: Object.assign drops getters / Symbol keys (27 of 38 test262 fails) | medium | ready |
+| #1337 | spec gap: Function.prototype.bind/toString + Function/internals (175 + 7 test262 fails) | medium | ready |
+| #1338 | spec gap: Array.from / Array.of constructor semantics (39 test262 fails, wasm_compile dominant) | medium | ready |
+| #1339 | spec gap: AggregateError + SuppressedError errors-iterable + cause coercion (37 test262 fails) | medium | ready |
+| #1340 | spec gap: AggregateError + SuppressedError errors-iterable + cause coercion (37 test262 fails) | medium | ready |
+| #1341 | spec gap: Iterator.prototype helpers wasm_compile errors (89 of 245 fails) | high | ready |
+| #1342 | spec gap: Boolean wrapper + Symbol coercion TypeErrors (24 + 45 test262 fails) | medium | ready |
+| #1343 | spec gap: Boolean wrapper + Symbol coercion TypeErrors (24 + 45 test262 fails) | medium | ready |
+| #1344 | spec gap: Date.prototype string formatters and parsers (174 of 485 test262 fails) | medium | ready |
+| #1345 | spec gap: Generator/AsyncIterator prototype receiver TypeErrors + return/throw (52 + 12 test262 fails) | medium | ready |
+| #1346 | spec gap: Reflect.* invariant checks mirror internal-method bugs (83 test262 fails) | medium | ready |
+| #1347 | spec gap: for-of doesn't IteratorClose on body throw (portion of 389 fails) | high | ready |
+| #1348 | spec gap: class static initialization order + private field semantics (significant share of 1500+ class fails) | high | ready |
+| #1349 | spec gap: BigInt typed-path eager f64 assumptions (47 test262 fails, 4 illegal_cast + 13 runtime) | medium | ready |
+| #1350 | spec gap: ArrayBuffer resizable + TypedArray detached-buffer guards (100 + 39 test262 fails) | medium | ready |
+| #1351 | spec gap: ArrayBuffer resizable + TypedArray detached-buffer guards (100 + 39 test262 fails) | medium | ready |
+| #1352 | spec gap: Set methods (union/intersection/etc.) accept any set-like argument (101 test262 fails) | medium | ready |
 
 ### In Progress
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1315 | import.defer / import.source missing early error detection — 157 negative tests false-pass | high | in-progress |
+| #1322 | Math.random() has no standalone fallback — requires JS host import in WASI/standalone mode | low | in-progress |
 
 ### Done
 
@@ -231,7 +249,34 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | #1308 | Wasm closure struct returned to JS host is not JS-callable | medium | done |
 | #1309 | Hono Tier 6 — Web API surface (Request/Response) + async handlers | low | done |
 | #1310 | vm.createContext sandbox isolation for test262 global contamination | medium | done |
+| #1313 | await is a passthrough — does not unwrap Promise from async-call expressions | high | done |
 | #1316 | illegal cast error: add expected type and actual value context (142 opaque runtime failures) | medium | done |
 | #1317 | null dereference error: add expression / variable context (573 opaque runtime failures) | medium | done |
+| #1334 | ECMAScript spec compliance audit: section-by-section review, gap issues, HTML report | high | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->
+
+## Retrospective
+
+**Result**: Test262 pass rate moved from ~28,000 to ~28,140+ over the sprint. Theme shifted mid-sprint from "closure/call dispatch wave 2" to "spec-completeness audit" — architect-s51 filed 17 targeted spec-gap issues + 7 IR retirement tasks that become sprint 51's backbone.
+
+**What went well**:
+- Architect session produced 25 issues with full implementation plans — best spec coverage work to date
+- Error message improvements (#1316, #1317) cut the opaque failure rate significantly  
+- Baseline drift was correctly identified (7/36 regressions in PR #256 were real; rest were 8s timeout false positives)
+- Timeout raised from 8s to 30s — will eliminate ~36 false compile_timeout regressions per PR going forward
+
+**What didn't go well**:
+- Sprint theme was outdated by mid-sprint; didn't formally pivot the sprint.md
+- PR #257 (#1312 async recursion) had 38 real regressions from function-index shift side-effect — blocked
+- PR #268 (#1358 array-like) had -18 net — orphaned dev pushed code that introduced regressions
+- TEST_TIMEOUT_MS change went directly to main without a PR (process violation)
+- Sprint was never formally closed — wrap checklist completed retroactively
+
+**Carry-overs to Sprint 51**:
+- #1311 (PR #264, -5 net — needs fix)
+- #1312 (PR #257, 38 regressions — needs senior-dev)
+- #1324 (JSON stringify — CI failure)
+- #1325 (instanceof tags — PR open)
+- #1326 (async microtask — CI failure)
+- #1336, #1337, #1338, #1339, #1342 (unstarted spec-gap issues from s50 planning)

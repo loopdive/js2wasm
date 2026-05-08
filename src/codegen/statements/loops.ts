@@ -2981,13 +2981,27 @@ function compileForOfIterator(ctx: CodegenContext, fctx: FunctionContext, stmt: 
 
   if (returnIdx !== undefined) {
     // Wrap in try/catch_all: on exception, call iterator.return() then rethrow.
+    //
+    // Per ES §7.4.6 IteratorClose step 6: when the outer completion is
+    // throw, IteratorClose returns the original throw — any error from
+    // GetMethod / iterator.return() is suppressed. We model this by
+    // wrapping the inner __iterator_return call in a nested try/catch_all
+    // whose catchAll is empty (drops any exception). The outer catch_all
+    // then `rethrow 0` re-raises the ORIGINAL exception. (#1347)
+    const innerCloseTry: Instr = {
+      op: "try",
+      blockType: { kind: "empty" },
+      body: [{ op: "local.get", index: iterLocal } as Instr, { op: "call", funcIdx: returnIdx } as Instr],
+      catches: [],
+      catchAll: [], // suppress any error from GetMethod / return() per spec step 6
+    } as unknown as Instr;
     const catchAllBody: Instr[] = [
       { op: "local.get", index: doneFlag } as Instr,
       { op: "i32.eqz" } as Instr,
       {
         op: "if",
         blockType: { kind: "empty" },
-        then: [{ op: "local.get", index: iterLocal } as Instr, { op: "call", funcIdx: returnIdx } as Instr],
+        then: [innerCloseTry],
         else: [],
       } as unknown as Instr,
       { op: "rethrow", depth: 0 } as unknown as Instr,

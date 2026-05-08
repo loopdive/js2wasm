@@ -460,6 +460,14 @@ function compileDateMethodCall(
     "getMilliseconds",
     "getDay",
     "setTime",
+    "setMilliseconds",
+    "setSeconds",
+    "setMinutes",
+    "setHours",
+    "setUTCMilliseconds",
+    "setUTCSeconds",
+    "setUTCMinutes",
+    "setUTCHours",
     "getTimezoneOffset",
     "getUTCFullYear",
     "getUTCMonth",
@@ -539,6 +547,230 @@ function compileDateMethodCall(
     return { kind: "f64" };
   }
 
+  // Constants used by both setters and getters below.
+  const MS_PER_DAY = 86400000n;
+  const MS_PER_HOUR = 3600000n;
+  const MS_PER_MINUTE = 60000n;
+  const MS_PER_SECOND = 1000n;
+
+  // ── Time-of-day setters (#1343 Slice 2) ──────────────────────────────
+  // setMilliseconds(ms), setSeconds(s, ms?), setMinutes(m, s?, ms?),
+  // setHours(h, m?, s?, ms?), and UTC variants. We're already in UTC so
+  // there's no DST adjustment — UTC variants share implementations.
+  //
+  // Strategy: keep day-of-epoch portion fixed, rebuild ms_of_day from
+  // either the user-supplied arg or the current component value.
+  //   ms_of_day = ((ts mod 86400000) + 86400000) mod 86400000   (floor-mod)
+  //   day_ms    = ts - ms_of_day                                (whole days)
+  //   curMs     = ms_of_day mod 1000
+  //   curS      = (ms_of_day / 1000) mod 60
+  //   curM      = (ms_of_day / 60000) mod 60
+  //   curH      = ms_of_day / 3600000
+  //   newMsOfDay = newH*3600000 + newM*60000 + newS*1000 + newMs
+  //   newTs     = day_ms + newMsOfDay
+  // Components larger than the leftmost setter argument are kept as-is;
+  // missing trailing args fall through to the current value (per §21.4.4
+  // SetSeconds/SetMinutes/SetHours partial-arg rules).
+  //
+  // NOTE on NaN: this implementation does not yet propagate NaN args via
+  // an Invalid Date sentinel (Slice 1). f64.NaN args saturate to 0 via
+  // i64.trunc_sat_f64_s — observable for tests that pass NaN explicitly.
+  const TIME_OF_DAY_SETTERS: Record<string, "ms" | "s" | "m" | "h"> = {
+    setMilliseconds: "ms",
+    setUTCMilliseconds: "ms",
+    setSeconds: "s",
+    setUTCSeconds: "s",
+    setMinutes: "m",
+    setUTCMinutes: "m",
+    setHours: "h",
+    setUTCHours: "h",
+  };
+  if (methodName in TIME_OF_DAY_SETTERS) {
+    const startUnit = TIME_OF_DAY_SETTERS[methodName]!;
+    const args = callExpr.arguments;
+    // Stack: [dateRef]
+    const tempRef = allocTempLocal(fctx, dateRefType);
+    fctx.body.push({ op: "local.set", index: tempRef } as Instr);
+    // Stack: []
+
+    // Read curTs into a temp.
+    const tempCurTs = allocTempLocal(fctx, { kind: "i64" });
+    fctx.body.push({ op: "local.get", index: tempRef } as Instr);
+    fctx.body.push({
+      op: "struct.get",
+      typeIdx: dateTypeIdx,
+      fieldIdx: 0,
+    } as unknown as Instr);
+    fctx.body.push({ op: "local.set", index: tempCurTs } as Instr);
+
+    // ms_of_day = ((curTs mod MS_PER_DAY) + MS_PER_DAY) mod MS_PER_DAY
+    const tempMsOfDay = allocTempLocal(fctx, { kind: "i64" });
+    fctx.body.push(
+      { op: "local.get", index: tempCurTs } as Instr,
+      { op: "i64.const", value: MS_PER_DAY } as Instr,
+      { op: "i64.rem_s" } as Instr,
+      { op: "i64.const", value: MS_PER_DAY } as Instr,
+      { op: "i64.add" } as Instr,
+      { op: "i64.const", value: MS_PER_DAY } as Instr,
+      { op: "i64.rem_s" } as Instr,
+      { op: "local.set", index: tempMsOfDay } as Instr,
+    );
+
+    // day_ms = curTs - ms_of_day
+    const tempDayMs = allocTempLocal(fctx, { kind: "i64" });
+    fctx.body.push(
+      { op: "local.get", index: tempCurTs } as Instr,
+      { op: "local.get", index: tempMsOfDay } as Instr,
+      { op: "i64.sub" } as Instr,
+      { op: "local.set", index: tempDayMs } as Instr,
+    );
+
+    // Helper: push current component (h/m/s/ms) extracted from tempMsOfDay.
+    const pushCurrentComponent = (unit: "ms" | "s" | "m" | "h") => {
+      fctx.body.push({ op: "local.get", index: tempMsOfDay } as Instr);
+      if (unit === "ms") {
+        // ms = msOfDay mod 1000
+        fctx.body.push({ op: "i64.const", value: MS_PER_SECOND } as Instr, { op: "i64.rem_s" } as Instr);
+      } else if (unit === "s") {
+        // s = (msOfDay / 1000) mod 60
+        fctx.body.push(
+          { op: "i64.const", value: MS_PER_SECOND } as Instr,
+          { op: "i64.div_s" } as Instr,
+          { op: "i64.const", value: 60n } as Instr,
+          { op: "i64.rem_s" } as Instr,
+        );
+      } else if (unit === "m") {
+        // m = (msOfDay / 60000) mod 60
+        fctx.body.push(
+          { op: "i64.const", value: MS_PER_MINUTE } as Instr,
+          { op: "i64.div_s" } as Instr,
+          { op: "i64.const", value: 60n } as Instr,
+          { op: "i64.rem_s" } as Instr,
+        );
+      } else {
+        // h = msOfDay / 3600000
+        fctx.body.push({ op: "i64.const", value: MS_PER_HOUR } as Instr, { op: "i64.div_s" } as Instr);
+      }
+    };
+
+    // Push a component from the user arg (ToInteger via i64.trunc_sat_f64_s)
+    // or fall back to current.
+    const pushComponentArgOrCurrent = (argIdx: number, unit: "ms" | "s" | "m" | "h") => {
+      if (args.length > argIdx) {
+        compileExpression(ctx, fctx, args[argIdx]!, { kind: "f64" });
+        fctx.body.push({ op: "i64.trunc_sat_f64_s" } as Instr);
+      } else {
+        pushCurrentComponent(unit);
+      }
+    };
+
+    // Build new component values based on which setter was called. The
+    // left-most argument is required; later args are optional and
+    // fall through to current values when omitted.
+    //   setMilliseconds(ms)              → newMs = arg0
+    //   setSeconds(s, ms?)               → newS = arg0, newMs = arg1 ?? curMs
+    //   setMinutes(m, s?, ms?)           → newM = arg0, newS = arg1 ?? curS, newMs = arg2 ?? curMs
+    //   setHours(h, m?, s?, ms?)         → newH = arg0, newM = arg1 ?? curM, newS = arg2 ?? curS, newMs = arg3 ?? curMs
+    // Components above the start unit are kept (cur).
+    const tempNewH = allocTempLocal(fctx, { kind: "i64" });
+    const tempNewM = allocTempLocal(fctx, { kind: "i64" });
+    const tempNewS = allocTempLocal(fctx, { kind: "i64" });
+    const tempNewMs = allocTempLocal(fctx, { kind: "i64" });
+
+    // Hours
+    if (startUnit === "h") {
+      pushComponentArgOrCurrent(0, "h");
+    } else {
+      pushCurrentComponent("h");
+    }
+    fctx.body.push({ op: "local.set", index: tempNewH } as Instr);
+
+    // Minutes
+    if (startUnit === "h") {
+      pushComponentArgOrCurrent(1, "m");
+    } else if (startUnit === "m") {
+      pushComponentArgOrCurrent(0, "m");
+    } else {
+      pushCurrentComponent("m");
+    }
+    fctx.body.push({ op: "local.set", index: tempNewM } as Instr);
+
+    // Seconds
+    if (startUnit === "h") {
+      pushComponentArgOrCurrent(2, "s");
+    } else if (startUnit === "m") {
+      pushComponentArgOrCurrent(1, "s");
+    } else if (startUnit === "s") {
+      pushComponentArgOrCurrent(0, "s");
+    } else {
+      pushCurrentComponent("s");
+    }
+    fctx.body.push({ op: "local.set", index: tempNewS } as Instr);
+
+    // Milliseconds
+    if (startUnit === "h") {
+      pushComponentArgOrCurrent(3, "ms");
+    } else if (startUnit === "m") {
+      pushComponentArgOrCurrent(2, "ms");
+    } else if (startUnit === "s") {
+      pushComponentArgOrCurrent(1, "ms");
+    } else {
+      // ms
+      pushComponentArgOrCurrent(0, "ms");
+    }
+    fctx.body.push({ op: "local.set", index: tempNewMs } as Instr);
+
+    // newMsOfDay = newH*MS_PER_HOUR + newM*MS_PER_MINUTE + newS*MS_PER_SECOND + newMs
+    fctx.body.push(
+      { op: "local.get", index: tempNewH } as Instr,
+      { op: "i64.const", value: MS_PER_HOUR } as Instr,
+      { op: "i64.mul" } as Instr,
+      { op: "local.get", index: tempNewM } as Instr,
+      { op: "i64.const", value: MS_PER_MINUTE } as Instr,
+      { op: "i64.mul" } as Instr,
+      { op: "i64.add" } as Instr,
+      { op: "local.get", index: tempNewS } as Instr,
+      { op: "i64.const", value: MS_PER_SECOND } as Instr,
+      { op: "i64.mul" } as Instr,
+      { op: "i64.add" } as Instr,
+      { op: "local.get", index: tempNewMs } as Instr,
+      { op: "i64.add" } as Instr,
+    );
+    // Stack: [newMsOfDay]
+
+    // newTs = day_ms + newMsOfDay
+    fctx.body.push({ op: "local.get", index: tempDayMs } as Instr, { op: "i64.add" } as Instr);
+    // Stack: [newTs]
+
+    const tempNewTs = allocTempLocal(fctx, { kind: "i64" });
+    fctx.body.push({ op: "local.set", index: tempNewTs } as Instr);
+
+    // Write back: struct.set timestamp = newTs
+    fctx.body.push(
+      { op: "local.get", index: tempRef } as Instr,
+      { op: "local.get", index: tempNewTs } as Instr,
+      {
+        op: "struct.set",
+        typeIdx: dateTypeIdx,
+        fieldIdx: 0,
+      } as unknown as Instr,
+    );
+
+    // Return value: newTs as f64 (per spec, set* returns the new TimeValue)
+    fctx.body.push({ op: "local.get", index: tempNewTs } as Instr, { op: "f64.convert_i64_s" } as Instr);
+
+    releaseTempLocal(fctx, tempRef);
+    releaseTempLocal(fctx, tempCurTs);
+    releaseTempLocal(fctx, tempMsOfDay);
+    releaseTempLocal(fctx, tempDayMs);
+    releaseTempLocal(fctx, tempNewH);
+    releaseTempLocal(fctx, tempNewM);
+    releaseTempLocal(fctx, tempNewS);
+    releaseTempLocal(fctx, tempNewMs);
+    releaseTempLocal(fctx, tempNewTs);
+    return { kind: "f64" };
+  }
+
   // For all time-component getters, we need the i64 timestamp
   // Stack: [dateRef]
   fctx.body.push({
@@ -547,12 +779,6 @@ function compileDateMethodCall(
     fieldIdx: 0,
   } as unknown as Instr);
   // Stack: [i64 timestamp]
-
-  // Time-of-day getters (no civil calendar needed)
-  const MS_PER_DAY = 86400000n;
-  const MS_PER_HOUR = 3600000n;
-  const MS_PER_MINUTE = 60000n;
-  const MS_PER_SECOND = 1000n;
 
   if (methodName === "getHours" || methodName === "getUTCHours") {
     // hours = ((timestamp % 86400000) + 86400000) % 86400000 / 3600000
