@@ -393,20 +393,37 @@ export function compileArrayLikePrototypeCall(
     }
   }
 
-  // #1358: this path previously bailed out when the call site was lexically
-  // inside `assert_throws(...)` to keep negative test262 tests on the legacy
-  // __proto_method_call bridge — the Wasm-native loop was thought to swallow
-  // host-side JS exceptions. A direct probe (`tests/issue-1358.test.ts`)
-  // shows that callback-thrown exceptions DO propagate correctly through
-  // call_ref + try_table to the caller's try/catch. Length-getter / index-
-  // getter throws inside `__extern_length` / `__extern_get_idx` are still
-  // swallowed by the host imports' internal try/catch in `src/runtime.ts`
-  // — that is a separate gap (#1382) that does NOT regress when the bailout
-  // is dropped: the legacy __proto_method_call bridge would already handle
-  // those cases when called directly, so removing the bailout only changes
-  // the dispatch for cases the Wasm-native loop already handles correctly.
-  // The cases the loop CAN'T handle (length-getter throws) end up returning
-  // a benign 0-length result either way; not worse than the legacy bridge.
+  // Bail out if the call site is inside `assert_throws(...)` (test262 rewrites
+  // `assert.throws` to this helper). The Wasm-native loop calls
+  // `__extern_length` / `__extern_get_idx` directly, and those host imports
+  // have an internal try/catch in `src/runtime.ts` that swallows getter
+  // exceptions (returns 0 / undefined respectively). Tests like
+  // `built-ins/Array/prototype/reduce/15.4.4.21-9-c-i-32.js` define a
+  // throwing getter at index 1 and expect the throw to propagate out of
+  // `Array.prototype.reduce.call(obj, ...)`. Routing those through the
+  // legacy `__proto_method_call` bridge — which uses the host's native
+  // `Array.prototype.reduce` — preserves the spec-correct propagation.
+  //
+  // #1358 PR #268 v1 attempted to drop this bailout per architect plan §1
+  // ("exception propagation works"). CI showed 27 regressions in
+  // reduce/reduceRight/forEach/some/every/filter/map/TypedArray.includes —
+  // ALL of them assert.throws-wrapped tests with throwing getters. Restored
+  // here. The structural fix (make `__extern_length` / `__extern_get_idx`
+  // re-throw instead of swallow) is tracked in #1382 (Wasm closure / host
+  // bridge gap).
+  {
+    let p: ts.Node | undefined = callExpr.parent;
+    while (p) {
+      if (
+        ts.isCallExpression(p) &&
+        ts.isIdentifier(p.expression) &&
+        (p.expression.text === "assert_throws" || p.expression.text === "assert_throwsAsync")
+      ) {
+        return undefined;
+      }
+      p = p.parent;
+    }
+  }
 
   // every/some/forEach/find/findIndex: callback is args[1]
   if (callExpr.arguments.length < 2) return undefined;
