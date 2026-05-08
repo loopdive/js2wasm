@@ -3181,30 +3181,98 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
     }
 
     // Handle Promise.all / Promise.race / Promise.allSettled / Promise.any / Promise.resolve / Promise.reject — host-delegated static calls
+    //
+    // (#1368) For the four aggregators, we pass `thisArg` so the spec-compliant
+    // helper can construct via `thisArg.call(...)` for subclass support.
+    // Resolve/reject keep their original 1-arg signature (no thisArg needed).
+    {
+      const isAggregator =
+        ts.isIdentifier(propAccess.expression) &&
+        propAccess.expression.text === "Promise" &&
+        (propAccess.name.text === "all" ||
+          propAccess.name.text === "race" ||
+          propAccess.name.text === "allSettled" ||
+          propAccess.name.text === "any");
+      const isResolveReject =
+        ts.isIdentifier(propAccess.expression) &&
+        propAccess.expression.text === "Promise" &&
+        (propAccess.name.text === "resolve" || propAccess.name.text === "reject");
+      if (isAggregator) {
+        const methodName = propAccess.name.text;
+        const importName = `Promise_${methodName}`;
+        // Two-arg signature: (thisArg, iterable) → result
+        let funcIdx =
+          ctx.funcMap.get(importName) ??
+          ensureLateImport(ctx, importName, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+        flushLateImportShifts(ctx, fctx);
+        funcIdx = ctx.funcMap.get(importName) ?? funcIdx;
+        if (funcIdx !== undefined) {
+          // thisArg = ref.null.extern → runtime defaults to globalThis.Promise.
+          // (Subclass `Sub.all(iter)` is handled below via the receiver-detection branch.)
+          fctx.body.push({ op: "ref.null.extern" });
+          if (expr.arguments.length >= 1) {
+            compileExpression(ctx, fctx, expr.arguments[0]!, {
+              kind: "externref",
+            });
+          } else {
+            fctx.body.push({ op: "ref.null.extern" });
+          }
+          fctx.body.push({ op: "call", funcIdx });
+          return { kind: "externref" };
+        }
+      }
+      if (isResolveReject) {
+        const methodName = propAccess.name.text;
+        const importName = `Promise_${methodName}`;
+        let funcIdx =
+          ctx.funcMap.get(importName) ??
+          ensureLateImport(ctx, importName, [{ kind: "externref" }], [{ kind: "externref" }]);
+        flushLateImportShifts(ctx, fctx);
+        funcIdx = ctx.funcMap.get(importName) ?? funcIdx;
+        if (funcIdx !== undefined) {
+          if (expr.arguments.length >= 1) {
+            compileExpression(ctx, fctx, expr.arguments[0]!, {
+              kind: "externref",
+            });
+          } else {
+            fctx.body.push({ op: "ref.null.extern" });
+          }
+          fctx.body.push({ op: "call", funcIdx });
+          return { kind: "externref" };
+        }
+      }
+    }
+
+    // (#1368) Detect `Promise.METHOD.call(thisArg, iter)` pattern — common in
+    // test262 to set a custom constructor (`Promise.all.call(SubClass, iter)`).
+    // The current call expression looks like `(Promise.METHOD).call(thisArg, iter)`,
+    // i.e. propAccess.name.text === "call" and propAccess.expression is a
+    // PropertyAccess `Promise.METHOD`.
     if (
-      ts.isIdentifier(propAccess.expression) &&
-      propAccess.expression.text === "Promise" &&
-      (propAccess.name.text === "all" ||
-        propAccess.name.text === "race" ||
-        propAccess.name.text === "allSettled" ||
-        propAccess.name.text === "any" ||
-        propAccess.name.text === "resolve" ||
-        propAccess.name.text === "reject")
+      propAccess.name.text === "call" &&
+      ts.isPropertyAccessExpression(propAccess.expression) &&
+      ts.isIdentifier(propAccess.expression.expression) &&
+      propAccess.expression.expression.text === "Promise" &&
+      (propAccess.expression.name.text === "all" ||
+        propAccess.expression.name.text === "race" ||
+        propAccess.expression.name.text === "allSettled" ||
+        propAccess.expression.name.text === "any") &&
+      expr.arguments.length >= 1
     ) {
-      const methodName = propAccess.name.text;
+      const methodName = propAccess.expression.name.text;
       const importName = `Promise_${methodName}`;
       let funcIdx =
         ctx.funcMap.get(importName) ??
-        ensureLateImport(ctx, importName, [{ kind: "externref" }], [{ kind: "externref" }]);
+        ensureLateImport(ctx, importName, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
       flushLateImportShifts(ctx, fctx);
       funcIdx = ctx.funcMap.get(importName) ?? funcIdx;
       if (funcIdx !== undefined) {
-        if (expr.arguments.length >= 1) {
-          compileExpression(ctx, fctx, expr.arguments[0]!, {
-            kind: "externref",
-          });
+        // arg0 = thisArg
+        compileExpression(ctx, fctx, expr.arguments[0]!, { kind: "externref" });
+        // arg1 = iterable (or ref.null if missing)
+        if (expr.arguments.length >= 2) {
+          compileExpression(ctx, fctx, expr.arguments[1]!, { kind: "externref" });
         } else {
-          // Promise.resolve() with no args — pass undefined (ref.null extern)
           fctx.body.push({ op: "ref.null.extern" });
         }
         fctx.body.push({ op: "call", funcIdx });

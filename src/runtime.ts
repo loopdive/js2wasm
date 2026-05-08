@@ -3338,10 +3338,56 @@ assert._isSameValue = isSameValue;
         }
         return [arr]; // Fallback: wrap single value
       };
-      if (name === "Promise_all") return (arr: any) => Promise.all(_vecToArray(arr));
-      if (name === "Promise_race") return (arr: any) => Promise.race(_vecToArray(arr));
-      if (name === "Promise_allSettled") return (arr: any) => Promise.allSettled(_vecToArray(arr));
-      if (name === "Promise_any") return (arr: any) => (Promise as any).any(_vecToArray(arr));
+      // (#1368) Spec-compliant Promise combinators.
+      //
+      // Signature changed from `(iterable)` to `(thisArg, iterable)` so that:
+      //   1. `Sub.all(iter)` (subclass) routes thisArg = Sub through the helper.
+      //   2. `Promise.all.call(C, iter)` is detected in codegen and forwarded
+      //      with thisArg = C.
+      //
+      // We delegate to the native engine's `Promise.all.call(C, …)` etc., which
+      // are spec-compliant for `[[AlreadyCalled]]`, `IteratorClose`, custom-this
+      // resolve/reject capability, and `thisArg.resolve` lookup. The runtime
+      // helper validates that `thisArg` is a constructor and converts the wasm
+      // vec or externref iterable into a real iterable that the native engine
+      // will iterate exactly once (matters for IteratorClose semantics).
+      const _toIterable = (iter: any): any => {
+        if (iter == null) return [];
+        // If it's already a JS-iterable (array, generator, custom iterator), pass through.
+        if (typeof iter === "object" && Symbol.iterator in iter) return iter;
+        if (Array.isArray(iter)) return iter;
+        // Otherwise treat as Wasm vec — materialize into an array.
+        return _vecToArray(iter);
+      };
+      const _resolveCtor = (thisArg: any): any => {
+        // Step 1 of spec algorithm: `Let C be the this value`.
+        // - Codegen emits `ref.null.extern` for unsubscribed thisArg → default
+        //   to global Promise (matches current behavior for `Promise.all(it)`).
+        // - Otherwise treat as the explicit constructor and let the native
+        //   engine throw TypeError if it isn't a constructor.
+        if (thisArg == null) return Promise;
+        return thisArg;
+      };
+      if (name === "Promise_all")
+        return (thisArg: any, arr: any) => {
+          const C = _resolveCtor(thisArg);
+          return Promise.all.call(C, _toIterable(arr));
+        };
+      if (name === "Promise_race")
+        return (thisArg: any, arr: any) => {
+          const C = _resolveCtor(thisArg);
+          return Promise.race.call(C, _toIterable(arr));
+        };
+      if (name === "Promise_allSettled")
+        return (thisArg: any, arr: any) => {
+          const C = _resolveCtor(thisArg);
+          return Promise.allSettled.call(C, _toIterable(arr));
+        };
+      if (name === "Promise_any")
+        return (thisArg: any, arr: any) => {
+          const C = _resolveCtor(thisArg);
+          return (Promise as any).any.call(C, _toIterable(arr));
+        };
       if (name === "Promise_resolve") return (val: any) => Promise.resolve(val);
       if (name === "Promise_reject") return (val: any) => Promise.reject(val);
       if (name === "Promise_new") return (executor: any) => new Promise(executor);
@@ -3397,32 +3443,40 @@ assert._isSameValue = isSameValue;
       if (name === "__create_generator")
         return (buf: any[], pendingThrow: any) => {
           let index = 0;
-          return {
-            next() {
-              if (index < buf.length) {
-                return { value: buf[index++], done: false };
-              }
-              // If the generator body threw before yielding all values,
-              // re-throw on the first next() call after buffer is exhausted.
-              if (pendingThrow !== null && pendingThrow !== undefined) {
-                const e = pendingThrow;
-                pendingThrow = null;
-                throw e;
-              }
-              return { value: undefined, done: true };
-            },
-            return(value: any) {
-              index = buf.length;
-              return { value, done: true };
-            },
-            throw(e: any) {
-              index = buf.length;
+          // (#1367) Generator objects must inherit from Iterator.prototype so
+          // helpers like .drop, .take, .map, .filter, .some, .every, .find,
+          // .reduce, .toArray, .forEach, .flatMap work without extra plumbing
+          // (Iterator.prototype methods are spec-compliant in the host engine
+          // including AlreadyCalled / IteratorClose semantics).
+          const proto = (
+            typeof (globalThis as any).Iterator === "function" ? ((globalThis as any).Iterator as any).prototype : null
+          ) as any;
+          const obj: any = proto ? Object.create(proto) : {};
+          obj.next = function () {
+            if (index < buf.length) {
+              return { value: buf[index++], done: false };
+            }
+            // If the generator body threw before yielding all values,
+            // re-throw on the first next() call after buffer is exhausted.
+            if (pendingThrow !== null && pendingThrow !== undefined) {
+              const e = pendingThrow;
+              pendingThrow = null;
               throw e;
-            },
-            [Symbol.iterator]() {
-              return this;
-            },
+            }
+            return { value: undefined, done: true };
           };
+          obj.return = function (value: any) {
+            index = buf.length;
+            return { value, done: true };
+          };
+          obj.throw = function (e: any) {
+            index = buf.length;
+            throw e;
+          };
+          obj[Symbol.iterator] = function () {
+            return this;
+          };
+          return obj;
         };
       if (name === "__create_async_generator")
         return (buf: any[], pendingThrow: any) => {
@@ -3552,17 +3606,24 @@ assert._isSameValue = isSameValue;
               const len = vecLen(obj);
               if (typeof len === "number" && len >= 0) {
                 let i = 0;
-                return {
-                  next() {
-                    if (i >= len) return { value: undefined, done: true };
-                    const val = vecGet(obj, i);
-                    i++;
-                    return { value: val, done: false };
-                  },
-                  [Symbol.iterator]() {
-                    return this;
-                  },
+                // (#1367) Synthesized iterators MUST inherit from
+                // Iterator.prototype so .drop/.take/.map/.filter etc. resolve.
+                const iterProto = (
+                  typeof (globalThis as any).Iterator === "function"
+                    ? ((globalThis as any).Iterator as any).prototype
+                    : null
+                ) as any;
+                const iterObj: any = iterProto ? Object.create(iterProto) : {};
+                iterObj.next = function () {
+                  if (i >= len) return { value: undefined, done: true };
+                  const val = vecGet(obj, i);
+                  i++;
+                  return { value: val, done: false };
                 };
+                iterObj[Symbol.iterator] = function () {
+                  return this;
+                };
+                return iterObj;
               }
             }
           }

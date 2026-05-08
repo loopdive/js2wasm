@@ -1,0 +1,19 @@
+{
+  "pr": 286,
+  "conclusion": "success",
+  "head_branch": "issue-1368-promise-aggregators",
+  "head_sha": "fd6a05c2d6d55bcebb699aca549c8ef350702ce7",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25542092314",
+  "timestamp": "2026-05-08T07:40:05Z",
+  "pass": 27124,
+  "fail": 14690,
+  "compile_error": 1263,
+  "snapshot_delta": -7,
+  "net_per_test": 37,
+  "regressions": 62,
+  "regressions_real": 15,
+  "regressions_wasm_change": 15,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 47,
+  "improvements": 52
+}

@@ -984,11 +984,18 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
   // Instance methods (.then/.catch/.finally) are NOT pre-registered because
   // adding their func types here shifts struct type indices, breaking
   // non-Promise code in the same module (#855 regression fix).
+  //
+  // (#1368) Aggregators (all/race/allSettled/any) take (thisArg, iterable) so
+  // the codegen can pass through `Promise.all.call(C, …)` thisArg semantics
+  // and the runtime can default to globalThis.Promise when wasm passes null.
+  // Resolve/reject keep their original 1-arg signature.
   for (const method of state.promiseNeeded) {
     if (method === "then" || method === "catch" || method === "finally") continue;
     const importName = `Promise_${method}`;
     if (!ctx.funcMap.has(importName)) {
-      const typeIdx = addFuncType(ctx, [{ kind: "externref" }], [{ kind: "externref" }]);
+      const isAggregator = method === "all" || method === "race" || method === "allSettled" || method === "any";
+      const params: ValType[] = isAggregator ? [{ kind: "externref" }, { kind: "externref" }] : [{ kind: "externref" }];
+      const typeIdx = addFuncType(ctx, params, [{ kind: "externref" }]);
       addImport(ctx, "env", importName, { kind: "func", typeIdx });
     }
   }

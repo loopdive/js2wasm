@@ -186,3 +186,72 @@ when source is `X.all(it)`, pass `X` as thisArg.
 ### Estimated impact
 
 +50–70 passes. §27.2 (Promise) climbs from 71% to ~80%.
+
+## Implementation notes (senior-dev, 2026-05-08)
+
+### Slice A landed
+
+**Scope**: change host-helper signatures + delegate to native `Promise.all.call`.
+~50 LoC across `runtime.ts`, `declarations.ts`, `calls.ts`, plus 4 unit tests.
+
+The architect's rewrite-helpers-from-scratch plan was abandoned in favor of
+**delegation**: native V8 already implements `[[AlreadyCalled]]` and
+`IteratorClose` correctly when called via `Promise.all.call(C, iter)`.
+Rewriting these in JS would re-implement spec details that the host engine
+already handles.
+
+Concrete changes:
+
+1. **`src/runtime.ts:3273-3349`** — Promise aggregator host imports now take
+   `(thisArg, iterable)`. `_resolveCtor` defaults `thisArg = null` to global
+   `Promise`. `_toIterable` short-circuits JS arrays/iterables and falls back
+   to `_vecToArray` for wasm vec inputs.
+
+2. **`src/codegen/declarations.ts:982-998`** — pre-registration uses 2-arg
+   signature for `Promise_all` / `Promise_race` / `Promise_allSettled` /
+   `Promise_any`; resolve/reject keep the 1-arg signature.
+
+3. **`src/codegen/expressions/calls.ts:3183-3291`** — direct `Promise.X(iter)`
+   emits `(ref.null.extern, iter)` so runtime defaults to `globalThis.Promise`.
+   New `Promise.X.call(thisArg, iter)` detection branch routes that pattern
+   through the same import with explicit thisArg. (Note: `.call(...)` on
+   `Promise.X` is also caught by the generic class-method-`.call` handler at
+   `calls.ts:1377`, which IS reached first; my new branch at line 3251 is
+   functional but partially shadowed in practice. Preserved for clarity.)
+
+### Subclass support (Slice B) — blocked on #1382
+
+Verified empirically that `class SubPromise extends Promise {}` compiles to a
+wasm class struct that, when passed as externref, arrives on the JS side as
+the proxy target object — NOT as a callable JS constructor. So
+`thisArg = SubPromise` from the wasm side is currently un-construct-able by
+`Promise.all.call(C, iter)`. The thisArg arrives as a non-null wasm proxy
+that V8 rejects with "[object Object] is not a constructor".
+
+`#1382` (Wasm closures not JS-callable from host imports) is the structural
+blocker. Once that lands, the Slice A code already detects and forwards the
+SubClass-receiver pattern; subclass-of-Promise tests will start passing
+without further codegen work.
+
+### Vec/iterable bridge fragility (pre-existing)
+
+The `tests/promise-combinators.test.ts` "Promise.all with resolved values" /
+"Promise.race with resolved values" tests fail on origin/main as well as
+on this branch — verified by stashing my changes and re-running. Issue:
+`Host.Source.getPromises()` returns a JS array, but when called from wasm
+in JS-host-mode, the result is silently replaced by `__get_undefined` (see
+WAT dump). Unrelated to #1368 — separate host-array-return bridge gap.
+
+### Observed test262 impact
+
+Cannot measure locally. CI will report. Expected:
+- Tests using `Promise.all([…])` (no subclass): unchanged or slightly improved
+  due to spec-compliant thisArg validation and `_toIterable` handling more
+  input shapes.
+- Tests using `Promise.all.call(SubClass, …)`: blocked on #1382 (no win
+  until that lands).
+- Tests verifying `[[AlreadyCalled]]` / `IteratorClose` semantics: should
+  pass for the no-subclass case (we delegate to native Promise.all).
+
+Estimated +5-15 net (much less than the issue's +50-70 — the delta would
+come from #1382). Will re-scope or split based on CI numbers.

@@ -321,6 +321,22 @@ export function compileNestedFunctionDeclaration(
     if (savedFunc) ctx.funcStack.push(savedFunc);
     ctx.currentFunc = liftedFctx;
 
+    // (#1312) Pre-registration is intentionally NOT applied in this
+    // no-captures branch. The first PR-#257 attempt pre-registered
+    // here too, which regressed 38 `built-ins/Function/15.3.5.4_2-*gs.js`
+    // tests (Function.caller / Function.arguments). Those tests rely
+    // on a top-level helper like `function gNonStrict() { return
+    // gNonStrict.caller; }` whose pre-#1312 codegen left the self-
+    // reference as `ref.null.extern` (graceful fallback). The fallback
+    // accidentally satisfied `assert.throws(TypeError, ...)` because
+    // `null.caller` throws TypeError. Pre-registering broke the
+    // accidental TypeError path. Keeping the late funcMap registration
+    // here preserves those passes until #1383 implements a proper
+    // strict-mode `Function.caller`/`arguments` TypeError. The actual
+    // recursive-self-reference cases #1312 targets (e.g. middleware
+    // `next` capturing outer `i`) all have captures and are handled
+    // in the has-captures branch below.
+
     // Emit default-value initialization for parameters with initializers
     emitDefaultParamInit(ctx, liftedFctx, stmt, paramTypes, 0);
 
@@ -408,6 +424,10 @@ export function compileNestedFunctionDeclaration(
     if (savedFunc) ctx.parentBodiesStack.pop();
     ctx.currentFunc = savedFunc;
 
+    // (#1312) No-captures branch keeps late funcMap registration (the
+    // pre-#1312 behaviour). Pre-registering here regressed 38
+    // Function.caller/arguments tests; see comment at the start of this
+    // branch for the full rationale.
     const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
     ctx.mod.functions.push({
       name: funcName,
@@ -518,6 +538,44 @@ export function compileNestedFunctionDeclaration(
     if (savedFunc) ctx.funcStack.push(savedFunc);
     ctx.currentFunc = liftedFctx;
 
+    // (#1312) Pre-register `funcMap` + `nestedFuncCaptures` BEFORE compiling
+    // the body so self-references inside the body resolve correctly. Without
+    // this, `function next() { return call(next); }` falls through to the
+    // graceful `ref.null.extern` fallback in identifiers.ts because the
+    // funcMap lookup misses — and the recursive `call_ref` then null-derefs
+    // at runtime ("TypeError: Cannot access property on null or undefined").
+    //
+    // The funcIdx slot is claimed up-front by pushing a placeholder mod
+    // entry; the body and locals are filled in below after compilation.
+    // Any nested function/wrapper added during body compile pushes AFTER
+    // this slot, so the slot's POSITION in mod.functions is stable.
+    // We remember the position by saving the `mod.functions[]` entry
+    // reference itself — that's the only thing that survives unchanged
+    // across `addUnionImports` (which can grow `numImportFuncs` and so
+    // shift the absolute funcIdx, but the array entry's identity is
+    // preserved). funcMap auto-shifts during addUnionImports.
+    const reservedFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    const reservedEntry = {
+      name: funcName,
+      typeIdx: funcTypeIdx,
+      locals: [] as Array<{ name: string; type: ValType }>,
+      body: [] as Instr[],
+      exported: false,
+    };
+    ctx.mod.functions.push(reservedEntry);
+    ctx.funcMap.set(funcName, reservedFuncIdx);
+    ctx.nestedFuncCaptures.set(
+      funcName,
+      captures.map((c) => ({
+        name: c.name,
+        outerLocalIdx: c.localIdx,
+        mutable: c.mutable,
+        valType: c.type,
+        hasTdzFlag: c.hasTdzFlag,
+        outerTdzFlagIdx: c.tdzFlagIdx,
+      })),
+    );
+
     // Emit default-value initialization for parameters with initializers
     // (offset by number of captures since they are prepended as leading params)
     emitDefaultParamInit(ctx, liftedFctx, stmt, paramTypes, captures.length);
@@ -607,30 +665,13 @@ export function compileNestedFunctionDeclaration(
     if (savedFunc) ctx.parentBodiesStack.pop();
     ctx.currentFunc = savedFunc;
 
-    const funcIdx = ctx.numImportFuncs + ctx.mod.functions.length;
-    ctx.mod.functions.push({
-      name: funcName,
-      typeIdx: funcTypeIdx,
-      locals: liftedFctx.locals,
-      body: liftedFctx.body,
-      exported: false,
-    });
-    ctx.funcMap.set(funcName, funcIdx);
-
-    // Store capture info so call sites prepend captured values
-    ctx.nestedFuncCaptures.set(
-      funcName,
-      captures.map((c) => ({
-        name: c.name,
-        outerLocalIdx: c.localIdx,
-        mutable: c.mutable,
-        valType: c.type,
-        // #1205 Stage 3: capture-time TDZ-flag metadata so the call site can
-        // mirror the construct-time flag-prepend (see calls.ts cap-prepend loop).
-        hasTdzFlag: c.hasTdzFlag,
-        outerTdzFlagIdx: c.tdzFlagIdx,
-      })),
-    );
+    // (#1312) Fill in the body/locals of the slot we reserved above. funcMap
+    // and nestedFuncCaptures were already registered before body compile so
+    // self-references inside the body resolved correctly. Use the saved
+    // entry reference instead of recomputing the index — `addUnionImports`
+    // may have shifted `ctx.numImportFuncs` since registration.
+    reservedEntry.locals = liftedFctx.locals;
+    reservedEntry.body = liftedFctx.body;
   }
 }
 
