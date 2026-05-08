@@ -518,6 +518,13 @@ export interface CodegenContext {
   symbolCounterGlobalIdx: number;
   /** Stack of in-progress parent function bodies for index shifting during closure compilation */
   parentBodiesStack: Instr[][];
+  /** All live (allocated but not yet attached to ctx.mod.functions) FunctionContext bodies.
+   *  Walked by addUnionImports / shiftLateImportIndices to ensure call-funcIdx values
+   *  in nested function bodies under construction (e.g. `cbFctx.body` in
+   *  compileArrowAsCallback during its captures-extraction / param-coercion setup
+   *  phase, BEFORE the savedFunc swap puts it on funcStack) are still shifted on
+   *  late import addition. (#1384) */
+  liveBodies: Set<Instr[]>;
   /** Hash-based lookup for anonymous struct deduplication */
   anonStructHash: Map<string, string>;
   /** Pending late import shift state */

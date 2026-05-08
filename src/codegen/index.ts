@@ -3384,6 +3384,12 @@ export function addStringImports(ctx: CodegenContext): void {
     for (const pb of ctx.parentBodiesStack) {
       shiftFuncIndices(pb);
     }
+    // (#1384) Walk all live (allocated but not yet attached to mod.functions)
+    // FunctionContext bodies — covers cbFctx.body / liftedFctx.body during
+    // their captures-extraction + param-coercion setup phases.
+    for (const lb of ctx.liveBodies) {
+      shiftFuncIndices(lb);
+    }
     for (const elem of ctx.mod.elements) {
       if (elem.funcIndices) {
         for (let i = 0; i < elem.funcIndices.length; i++) {
@@ -4703,6 +4709,13 @@ export function addUnionImports(ctx: CodegenContext): void {
     }
     for (const pb of ctx.parentBodiesStack) {
       shiftFuncIndices(pb);
+    }
+    // (#1384) Walk all live (allocated but not yet attached to mod.functions)
+    // FunctionContext bodies — covers cbFctx.body / liftedFctx.body during
+    // their captures-extraction + param-coercion setup phases, BEFORE the
+    // savedFunc swap puts them on funcStack/parentBodiesStack.
+    for (const lb of ctx.liveBodies) {
+      shiftFuncIndices(lb);
     }
     if (ctx.pendingInitBody) {
       shiftFuncIndices(ctx.pendingInitBody);
