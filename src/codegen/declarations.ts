@@ -918,8 +918,17 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
   // ── collectMathImports finalize ──
   for (const method of state.mathNeeded) {
     if (method === "random") {
-      const typeIdx = addFuncType(ctx, [], [{ kind: "f64" }]);
-      addImport(ctx, "env", `Math_${method}`, { kind: "func", typeIdx });
+      // #1322: in WASI/standalone mode, emit a Wasm `Math_random` that calls
+      // WASI `random_get(ptr, 8)` for entropy. The `random_get` import was
+      // already registered EARLY by registerWasiImports (before any defined
+      // functions) so adding it here doesn't shift indices of helpers like
+      // `__str_copy_tree`.
+      if (ctx.wasi) {
+        ctx.pendingMathMethods.add(method);
+      } else {
+        const typeIdx = addFuncType(ctx, [], [{ kind: "f64" }]);
+        addImport(ctx, "env", `Math_${method}`, { kind: "func", typeIdx });
+      }
     } else {
       ctx.pendingMathMethods.add(method);
     }
