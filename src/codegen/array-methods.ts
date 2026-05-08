@@ -3241,6 +3241,30 @@ function compileArrayShift(
 /**
  * arr.slice(start?, end?) -> create new vec struct with sliced data.
  */
+/**
+ * #1359 Slice E (sparse holes): for `__vec_*` typed receivers, no holes
+ * are possible at the WasmGC level — the underlying typed array is
+ * dense by construction. Spec §23.1.3.x's `HasProperty(O, k)` checks
+ * before `Get(O, k)` are therefore vacuously true for every k in
+ * `[start, end)`. We can `array.copy` the underlying buffer without
+ * iterating per-index. Host-array receivers (sparse, with prototype-
+ * inherited slots) flow through `__proto_method_call` which delegates
+ * to native `Array.prototype.slice` and gets the spec semantics for
+ * free. See sub-slice plan in the issue file for the full rationale.
+ *
+ * #1359 Slice A (empty-slice "actual: null"): NOT a slice() bug. The
+ * vec returned by this function is non-null (struct.new always returns
+ * non-null). The "actual: null" failure observed in
+ * `slice/S15.4.4.10_A1.1_T4.js` is downstream — the test calls
+ * `Object.prototype.toString.call(arr)` which needs the $vec brand to
+ * resolve to "[object Array]". That's #1334 territory.
+ *
+ * #1359 Slice B (@@species): receiver-type-driven dispatch. When the
+ * receiver's static type is a known `__vec_*`, `Array[@@species] ===
+ * Array` so `struct.new $vec` is correct. For subclass / proxy
+ * receivers (rare; mainly test262), needs `__array_species_create`
+ * host helper. Tracked as #1359B follow-up.
+ */
 function compileArraySlice(
   ctx: CodegenContext,
   fctx: FunctionContext,
@@ -3656,6 +3680,19 @@ function compileArrayJoin(
 
 /**
  * arr.splice(start, deleteCount?) -> in-place shift, returns new vec with deleted elements.
+ *
+ * #1359 Slice D (deleteCount=undefined): verified spec-correct in this
+ * function on 2026-05-08:
+ *   - 0-arg splice → empty array, no mutation ✓ §23.1.3.30 step 5
+ *   - 1-arg splice(start) → delCount = len - actualStart ✓ §23.1.3.30 step 11.b
+ *   - 2-arg splice(start, undefined) → compiles undefined as f64 NaN →
+ *     `i32.trunc_sat_f64_s(NaN) = 0` ✓ matches ToInteger(undefined) = 0
+ *
+ * The architect's reference test `splice/S15.4.4.12_A6.1_T2.js` actually
+ * tests TypeError-throw when `length` is non-writable, which needs
+ * Object.defineProperty + writable-attr fidelity (#1334), not a fix
+ * here. The 25 splice `assertion_fail` count in the issue's table
+ * needs re-bucketing before any further splice fix is attempted.
  */
 function compileArraySplice(
   ctx: CodegenContext,
