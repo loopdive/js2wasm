@@ -91,6 +91,41 @@ export interface IrFallback {
   readonly reason: IrFallbackReason;
 }
 
+/**
+ * (#1371) Whitelist of `Math.<name>(arg)` unary calls the IR can lower to a
+ * plain Wasm `f64.<op>` instruction without any host import. Each entry maps
+ * 1:1 to an op in the `IrUnop` extended set (`src/ir/nodes.ts`). Restricting
+ * the whitelist to ops with direct Wasm equivalents preserves bit-exact JS
+ * semantics:
+ *  - `Math.round` is intentionally excluded — JS rounds 0.5 → 1 (away from
+ *    zero) but `f64.nearest` rounds to even, so a 1:1 lowering is unsound.
+ *  - `Math.min` / `Math.max` are binary and live in `IR_MATH_BINARY_WHITELIST`
+ *    (deferred — needs an `IrBinop` extension).
+ */
+export const IR_MATH_UNARY_WHITELIST: ReadonlySet<string> = new Set(["abs", "sqrt", "floor", "ceil", "trunc"]);
+
+/**
+ * Map a whitelisted `Math.<name>` to its corresponding IR `f64.<op>` tag.
+ * Lives next to the whitelist so callers (selector + lowerer) share one
+ * source of truth.
+ */
+export function mathUnaryToIrOp(name: string): "f64.abs" | "f64.sqrt" | "f64.floor" | "f64.ceil" | "f64.trunc" | null {
+  switch (name) {
+    case "abs":
+      return "f64.abs";
+    case "sqrt":
+      return "f64.sqrt";
+    case "floor":
+      return "f64.floor";
+    case "ceil":
+      return "f64.ceil";
+    case "trunc":
+      return "f64.trunc";
+    default:
+      return null;
+  }
+}
+
 export interface IrSelection {
   readonly funcs: ReadonlySet<string>;
   /** #1370 Phase A — synthetic-name set keyed by `${className}_${methodName}`
@@ -1463,6 +1498,20 @@ function isPhase1Expr(expr: ts.Expression, scope: ReadonlySet<string>, localClas
     // `methodName`. If not, the function falls back to legacy.
     if (ts.isPropertyAccessExpression(expr.expression)) {
       if (!ts.isIdentifier(expr.expression.name)) return false;
+      // (#1371) Whitelist `Math.<unary>(arg)` for a small set of f64-mapped
+      // ops. The receiver `Math` is a host global, never in scope, so the
+      // generic receiver check below would reject these. Recognise the shape
+      // here and accept it; the lowerer in from-ast.ts emits a plain unary
+      // f64 op for the call.
+      if (
+        ts.isIdentifier(expr.expression.expression) &&
+        expr.expression.expression.text === "Math" &&
+        IR_MATH_UNARY_WHITELIST.has(expr.expression.name.text) &&
+        expr.arguments.length === 1 &&
+        !ts.isSpreadElement(expr.arguments[0]!)
+      ) {
+        return isPhase1Expr(expr.arguments[0]!, scope, localClasses);
+      }
       if (!isPhase1Expr(expr.expression.expression, scope, localClasses)) return false;
       for (const arg of expr.arguments) {
         // Slice 8a (#1169g): spread args restricted to method calls is
@@ -1823,6 +1872,20 @@ function buildLocalCallGraph(
           //
           // Walk into the receiver and args to catch real external calls
           // nested inside.
+          //
+          // (#1371) Special case: `Math.<whitelisted>(arg)` lowers to a
+          // pure Wasm op (no host import), so we DO NOT walk into the
+          // receiver — `Math` is a host global that the receiver-walk
+          // would otherwise mark as external. We still walk args to
+          // catch nested external calls.
+          if (
+            ts.isIdentifier(node.expression.expression) &&
+            node.expression.expression.text === "Math" &&
+            IR_MATH_UNARY_WHITELIST.has(node.expression.name.text)
+          ) {
+            for (const a of node.arguments) visit(a);
+            return;
+          }
           visit(node.expression.expression);
           for (const a of node.arguments) visit(a);
           return;

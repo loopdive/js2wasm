@@ -40,6 +40,7 @@ import { ts, forEachChild } from "../ts-api.js";
 import { evaluateConstantCondition } from "../codegen/statements/control-flow.js";
 import { IrFunctionBuilder } from "./builder.js";
 import type { IrLowerResolver, IrVecLowering } from "./lower.js";
+import { mathUnaryToIrOp } from "./select.js";
 import {
   asVal,
   closureSignatureEquals,
@@ -2044,6 +2045,31 @@ function lowerMethodCall(expr: ts.CallExpression, cx: LowerCtx): IrValueId {
     throw new Error(`ir/from-ast: malformed method call in ${cx.funcName}`);
   }
   const methodName = expr.expression.name.text;
+
+  // (#1371) Math.<whitelisted>(arg) — pure-Wasm f64 unary op. Recognise
+  // the shape BEFORE lowering the receiver, because `Math` is a host
+  // global with no IR type binding (lowerExpr on `Math` would throw
+  // "unknown identifier"). The selector's `isPhase1Expr` already
+  // rejected anything not in `IR_MATH_UNARY_WHITELIST` — but check
+  // again here as a hard guard so an unsupported method on `Math`
+  // produces the same clean "not in slice" error we use elsewhere
+  // (avoiding a confusing "unknown identifier 'Math'" from the
+  // receiver lower path below).
+  if (ts.isIdentifier(expr.expression.expression) && expr.expression.expression.text === "Math") {
+    const irOp = mathUnaryToIrOp(methodName);
+    if (irOp !== null && expr.arguments.length === 1) {
+      const arg = lowerExpr(expr.arguments[0]!, cx, irVal({ kind: "f64" }));
+      const argType = cx.builder.typeOf(arg);
+      if (argType.kind !== "val" || argType.val.kind !== "f64") {
+        throw new Error(
+          `ir/from-ast: Math.${methodName} arg must be f64, got ${describeIrType(argType)} (${cx.funcName})`,
+        );
+      }
+      return cx.builder.emitUnary(irOp, arg, irVal({ kind: "f64" }));
+    }
+    throw new Error(`ir/from-ast: Math.${methodName} not in IR whitelist (${cx.funcName})`);
+  }
+
   const recv = lowerExpr(expr.expression.expression, cx, irVal({ kind: "f64" }));
   const recvType = cx.builder.typeOf(recv);
 
