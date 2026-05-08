@@ -1,0 +1,22 @@
+{
+  "pr": 322,
+  "conclusion": "success",
+  "head_branch": "issue-1134-loose-equality",
+  "head_sha": "3a059a750e991f5b7caff09ee6348182d531316a",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25578294600",
+  "timestamp": "2026-05-08T21:23:16Z",
+  "pass": 27724,
+  "fail": 14180,
+  "compile_error": 1166,
+  "snapshot_delta": 2,
+  "net_per_test": 35,
+  "regressions": 48,
+  "regressions_real": 9,
+  "regressions_wasm_change": 9,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 39,
+  "improvements": 44,
+  "baseline_sha": "3a059a750e991f5b7caff09ee6348182d531316a",
+  "baseline_staleness_commits": 3,
+  "baseline_stale": false
+}
