@@ -4877,11 +4877,34 @@ function compileArraySort(
   ctx: CodegenContext,
   fctx: FunctionContext,
   propAccess: ts.PropertyAccessExpression,
-  _callExpr: ts.CallExpression,
+  callExpr: ts.CallExpression,
   vecTypeIdx: number,
   arrTypeIdx: number,
   elemType: ValType,
 ): ValType | null {
+  // #1361: Spec §23.1.3.30 step 1 — if comparefn is provided and is not a
+  // function, throw TypeError BEFORE any sort work begins. Fires only when
+  // the argument is known statically to be non-callable (null, number,
+  // string, etc.); `undefined` is explicitly allowed as "no comparator".
+  if (callExpr.arguments.length >= 1) {
+    const cbArg = callExpr.arguments[0]!;
+    const isExplicitUndefined =
+      cbArg.kind === ts.SyntaxKind.UndefinedKeyword || (ts.isIdentifier(cbArg) && cbArg.text === "undefined");
+    if (!isExplicitUndefined && isKnownNonCallable(ctx, cbArg)) {
+      // Compile the receiver and arg for side effects, then throw. The receiver
+      // expression may have getters that mutate state — spec evaluation order
+      // is "evaluate receiver, evaluate args, validate arg, then sort". Doing
+      // both keeps user code observable.
+      const recvType = compileExpression(ctx, fctx, propAccess.expression);
+      if (recvType) fctx.body.push({ op: "drop" });
+      const cbType = compileExpression(ctx, fctx, cbArg);
+      if (cbType) fctx.body.push({ op: "drop" });
+      emitThrowString(ctx, fctx, "TypeError: Array.prototype.sort comparator is not a function");
+      fctx.body.push({ op: "unreachable" } as unknown as Instr);
+      return { kind: "ref_null", typeIdx: vecTypeIdx };
+    }
+  }
+
   const elemKind = elemType.kind as "i32" | "f64";
   const timsortIdx = ensureTimsortHelper(ctx, vecTypeIdx, arrTypeIdx, elemKind);
 
