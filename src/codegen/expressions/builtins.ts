@@ -5,6 +5,7 @@
 import { ts } from "../../ts-api.js";
 import { isBooleanType, isNumberType, isStringType } from "../../checker/type-mapper.js";
 import type { Instr, ValType } from "../../ir/types.js";
+import { popBody, pushBody } from "../context/bodies.js";
 import { allocLocal, allocTempLocal, releaseTempLocal } from "../context/locals.js";
 import type { CodegenContext, FunctionContext } from "../context/types.js";
 import { flushLateImportShifts } from "../expressions/late-imports.js";
@@ -497,21 +498,46 @@ function compileDateMethodCall(
   const recvResult = compileExpression(ctx, fctx, propAccess.expression, dateRefType);
   if (!recvResult) return null;
 
-  // getTime / valueOf: read i64 timestamp, convert to f64
+  // getTime / valueOf: read i64 timestamp, convert to f64.
+  // (#1344) Invalid Date (sentinel timestamp) → NaN per spec.
   if (methodName === "getTime" || methodName === "valueOf") {
     fctx.body.push({
       op: "struct.get",
       typeIdx: dateTypeIdx,
       fieldIdx: 0,
     } as unknown as Instr);
-    fctx.body.push({ op: "f64.convert_i64_s" } as Instr);
+    const tsLocal = allocTempLocal(fctx, { kind: "i64" });
+    fctx.body.push({ op: "local.tee", index: tsLocal } as Instr);
+    fctx.body.push({ op: "i64.const", value: -9223372036854775808n } as Instr);
+    fctx.body.push({ op: "i64.eq" } as Instr);
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: { kind: "f64" } },
+      then: [{ op: "f64.const", value: NaN } as Instr],
+      else: [{ op: "local.get", index: tsLocal } as Instr, { op: "f64.convert_i64_s" } as Instr],
+    } as unknown as Instr);
+    releaseTempLocal(fctx, tsLocal);
     return { kind: "f64" };
   }
 
-  // getTimezoneOffset: always 0 (we operate in UTC)
+  // getTimezoneOffset: always 0 for valid Date (we operate in UTC), NaN for invalid.
+  // (#1344) ECMA-262 §21.4.4.7 — NaN propagation through `LocalTime` requires
+  // returning NaN when the timestamp is invalid.
   if (methodName === "getTimezoneOffset") {
-    fctx.body.push({ op: "drop" } as Instr);
-    fctx.body.push({ op: "f64.const", value: 0 } as Instr);
+    // Receiver Date ref already on stack from line ~497.
+    fctx.body.push({
+      op: "struct.get",
+      typeIdx: dateTypeIdx,
+      fieldIdx: 0,
+    } as unknown as Instr);
+    fctx.body.push({ op: "i64.const", value: -9223372036854775808n } as Instr);
+    fctx.body.push({ op: "i64.eq" } as Instr);
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: { kind: "f64" } },
+      then: [{ op: "f64.const", value: NaN } as Instr],
+      else: [{ op: "f64.const", value: 0 } as Instr],
+    } as unknown as Instr);
     return { kind: "f64" };
   }
 
@@ -771,7 +797,7 @@ function compileDateMethodCall(
     return { kind: "f64" };
   }
 
-  // For all time-component getters, we need the i64 timestamp
+  // For all time-component getters, we need the i64 timestamp.
   // Stack: [dateRef]
   fctx.body.push({
     op: "struct.get",
@@ -780,106 +806,134 @@ function compileDateMethodCall(
   } as unknown as Instr);
   // Stack: [i64 timestamp]
 
+  // (#1344) Save the timestamp to a local so each branch can wrap its
+  // arithmetic in an `if (timestamp === INVALID_SENTINEL) NaN else <arith>`
+  // check. Without this, `new Date(NaN).getDay()` etc. return arithmetic
+  // results from a saturated 0 timestamp instead of the spec-mandated NaN.
+  // The sentinel value is `i64.const -9223372036854775808` (min i64), set
+  // by `new Date(NaN)` in `new-super.ts`. No legitimate JS timestamp can
+  // reach this magnitude (valid range is ±8.64e15 ms).
+  const tsLocalShared = allocTempLocal(fctx, { kind: "i64" });
+  fctx.body.push({ op: "local.set", index: tsLocalShared } as Instr);
+  // Stack: []
+
+  /** Wrap a getter's arithmetic in the invalid-Date NaN guard. The
+   *  callback should emit instructions that consume the i64 timestamp
+   *  on the stack and produce an f64 result. */
+  const wrapWithInvalidDateGuard = (emitArithmetic: () => void): ValType => {
+    fctx.body.push({ op: "local.get", index: tsLocalShared } as Instr);
+    fctx.body.push({ op: "i64.const", value: -9223372036854775808n } as Instr);
+    fctx.body.push({ op: "i64.eq" } as Instr);
+    const savedBody = pushBody(fctx);
+    fctx.body.push({ op: "local.get", index: tsLocalShared } as Instr);
+    emitArithmetic();
+    const elseInstrs = fctx.body;
+    popBody(fctx, savedBody);
+    fctx.body.push({
+      op: "if",
+      blockType: { kind: "val", type: { kind: "f64" } },
+      then: [{ op: "f64.const", value: NaN } as Instr],
+      else: elseInstrs,
+    } as unknown as Instr);
+    return { kind: "f64" };
+  };
+
   if (methodName === "getHours" || methodName === "getUTCHours") {
     // hours = ((timestamp % 86400000) + 86400000) % 86400000 / 3600000
-    fctx.body.push(
-      { op: "i64.const", value: MS_PER_DAY } as Instr,
-      { op: "i64.rem_s" } as Instr,
-      { op: "i64.const", value: MS_PER_DAY } as Instr,
-      { op: "i64.add" } as Instr,
-      { op: "i64.const", value: MS_PER_DAY } as Instr,
-      { op: "i64.rem_s" } as Instr,
-      { op: "i64.const", value: MS_PER_HOUR } as Instr,
-      { op: "i64.div_s" } as Instr,
-      { op: "f64.convert_i64_s" } as Instr,
+    return wrapWithInvalidDateGuard(() =>
+      fctx.body.push(
+        { op: "i64.const", value: MS_PER_DAY } as Instr,
+        { op: "i64.rem_s" } as Instr,
+        { op: "i64.const", value: MS_PER_DAY } as Instr,
+        { op: "i64.add" } as Instr,
+        { op: "i64.const", value: MS_PER_DAY } as Instr,
+        { op: "i64.rem_s" } as Instr,
+        { op: "i64.const", value: MS_PER_HOUR } as Instr,
+        { op: "i64.div_s" } as Instr,
+        { op: "f64.convert_i64_s" } as Instr,
+      ),
     );
-    return { kind: "f64" };
   }
 
   if (methodName === "getMinutes" || methodName === "getUTCMinutes") {
     // minutes = ((timestamp % 3600000) + 3600000) % 3600000 / 60000
-    fctx.body.push(
-      { op: "i64.const", value: MS_PER_HOUR } as Instr,
-      { op: "i64.rem_s" } as Instr,
-      { op: "i64.const", value: MS_PER_HOUR } as Instr,
-      { op: "i64.add" } as Instr,
-      { op: "i64.const", value: MS_PER_HOUR } as Instr,
-      { op: "i64.rem_s" } as Instr,
-      { op: "i64.const", value: MS_PER_MINUTE } as Instr,
-      { op: "i64.div_s" } as Instr,
-      { op: "f64.convert_i64_s" } as Instr,
+    return wrapWithInvalidDateGuard(() =>
+      fctx.body.push(
+        { op: "i64.const", value: MS_PER_HOUR } as Instr,
+        { op: "i64.rem_s" } as Instr,
+        { op: "i64.const", value: MS_PER_HOUR } as Instr,
+        { op: "i64.add" } as Instr,
+        { op: "i64.const", value: MS_PER_HOUR } as Instr,
+        { op: "i64.rem_s" } as Instr,
+        { op: "i64.const", value: MS_PER_MINUTE } as Instr,
+        { op: "i64.div_s" } as Instr,
+        { op: "f64.convert_i64_s" } as Instr,
+      ),
     );
-    return { kind: "f64" };
   }
 
   if (methodName === "getSeconds" || methodName === "getUTCSeconds") {
     // seconds = ((timestamp % 60000) + 60000) % 60000 / 1000
-    fctx.body.push(
-      { op: "i64.const", value: MS_PER_MINUTE } as Instr,
-      { op: "i64.rem_s" } as Instr,
-      { op: "i64.const", value: MS_PER_MINUTE } as Instr,
-      { op: "i64.add" } as Instr,
-      { op: "i64.const", value: MS_PER_MINUTE } as Instr,
-      { op: "i64.rem_s" } as Instr,
-      { op: "i64.const", value: MS_PER_SECOND } as Instr,
-      { op: "i64.div_s" } as Instr,
-      { op: "f64.convert_i64_s" } as Instr,
+    return wrapWithInvalidDateGuard(() =>
+      fctx.body.push(
+        { op: "i64.const", value: MS_PER_MINUTE } as Instr,
+        { op: "i64.rem_s" } as Instr,
+        { op: "i64.const", value: MS_PER_MINUTE } as Instr,
+        { op: "i64.add" } as Instr,
+        { op: "i64.const", value: MS_PER_MINUTE } as Instr,
+        { op: "i64.rem_s" } as Instr,
+        { op: "i64.const", value: MS_PER_SECOND } as Instr,
+        { op: "i64.div_s" } as Instr,
+        { op: "f64.convert_i64_s" } as Instr,
+      ),
     );
-    return { kind: "f64" };
   }
 
   if (methodName === "getMilliseconds" || methodName === "getUTCMilliseconds") {
     // ms = ((timestamp % 1000) + 1000) % 1000
-    fctx.body.push(
-      { op: "i64.const", value: MS_PER_SECOND } as Instr,
-      { op: "i64.rem_s" } as Instr,
-      { op: "i64.const", value: MS_PER_SECOND } as Instr,
-      { op: "i64.add" } as Instr,
-      { op: "i64.const", value: MS_PER_SECOND } as Instr,
-      { op: "i64.rem_s" } as Instr,
-      { op: "f64.convert_i64_s" } as Instr,
+    return wrapWithInvalidDateGuard(() =>
+      fctx.body.push(
+        { op: "i64.const", value: MS_PER_SECOND } as Instr,
+        { op: "i64.rem_s" } as Instr,
+        { op: "i64.const", value: MS_PER_SECOND } as Instr,
+        { op: "i64.add" } as Instr,
+        { op: "i64.const", value: MS_PER_SECOND } as Instr,
+        { op: "i64.rem_s" } as Instr,
+        { op: "f64.convert_i64_s" } as Instr,
+      ),
     );
-    return { kind: "f64" };
   }
 
   // getDay / getUTCDay: day of week (0=Sunday)
   // (floor(timestamp / 86400000) + 4) % 7  (1970-01-01 was Thursday = 4)
   if (methodName === "getDay" || methodName === "getUTCDay") {
-    // We need to handle negative timestamps correctly:
-    // days = floor(ts / 86400000) — for negative, use (ts - 86399999) / 86400000
-    fctx.body.push(
-      { op: "i64.const", value: MS_PER_DAY } as Instr,
-      { op: "i64.div_s" } as Instr,
-      // For negative timestamps, i64.div_s truncates toward zero, but we want floor division
-      // This is fine because we handle the modular arithmetic with the +7 % 7 below
-      { op: "i64.const", value: 4n } as Instr,
-      { op: "i64.add" } as Instr,
-      { op: "i64.const", value: 7n } as Instr,
-      { op: "i64.rem_s" } as Instr,
-      // Handle negative remainder: ((result % 7) + 7) % 7
-      { op: "i64.const", value: 7n } as Instr,
-      { op: "i64.add" } as Instr,
-      { op: "i64.const", value: 7n } as Instr,
-      { op: "i64.rem_s" } as Instr,
-      { op: "f64.convert_i64_s" } as Instr,
+    return wrapWithInvalidDateGuard(() =>
+      fctx.body.push(
+        { op: "i64.const", value: MS_PER_DAY } as Instr,
+        { op: "i64.div_s" } as Instr,
+        { op: "i64.const", value: 4n } as Instr,
+        { op: "i64.add" } as Instr,
+        { op: "i64.const", value: 7n } as Instr,
+        { op: "i64.rem_s" } as Instr,
+        { op: "i64.const", value: 7n } as Instr,
+        { op: "i64.add" } as Instr,
+        { op: "i64.const", value: 7n } as Instr,
+        { op: "i64.rem_s" } as Instr,
+        { op: "f64.convert_i64_s" } as Instr,
+      ),
     );
-    return { kind: "f64" };
   }
 
-  // Calendar getters need civil_from_days
-  // Stack: [i64 timestamp]
-  // First compute days: floor(timestamp / 86400000)
-  // For negative timestamps we need floor division, not truncation.
-  // floor_div(a, b) for positive b: (a >= 0) ? a/b : (a - b + 1) / b
+  // Calendar getters need civil_from_days.
+  // (#1344) Each branch is wrapped with the invalid-Date guard. The guard
+  // re-pushes the saved timestamp so the floor-div + civil_from_days
+  // sequence below sees it on the stack.
   const civilIdx = ensureDateCivilHelper(ctx);
 
-  // Compute floor division of timestamp by MS_PER_DAY
-  // Since i64.div_s truncates toward zero, we need to adjust for negative values
-  {
+  /** Emit floor-div(ts, MS_PER_DAY) -> days, then civil_from_days(days). */
+  const emitDaysToCivil = (): void => {
     const tempTs = allocTempLocal(fctx, { kind: "i64" });
     fctx.body.push({ op: "local.set", index: tempTs } as Instr);
-
-    // if (ts >= 0) ts / 86400000 else (ts - 86399999) / 86400000
     fctx.body.push(
       { op: "local.get", index: tempTs } as Instr,
       { op: "i64.const", value: 0n } as Instr,
@@ -902,52 +956,51 @@ function compileDateMethodCall(
       } as unknown as Instr,
     );
     releaseTempLocal(fctx, tempTs);
-  }
-
-  // Stack: [i64 days_since_epoch]
-  fctx.body.push({ op: "call", funcIdx: civilIdx } as Instr);
-  // Stack: [i64 packed = year*10000 + month*100 + day]
+    fctx.body.push({ op: "call", funcIdx: civilIdx } as Instr);
+  };
 
   if (methodName === "getFullYear" || methodName === "getUTCFullYear") {
-    // year = packed / 10000
-    fctx.body.push(
-      { op: "i64.const", value: 10000n } as Instr,
-      { op: "i64.div_s" } as Instr,
-      { op: "f64.convert_i64_s" } as Instr,
-    );
-    return { kind: "f64" };
+    return wrapWithInvalidDateGuard(() => {
+      emitDaysToCivil();
+      fctx.body.push(
+        { op: "i64.const", value: 10000n } as Instr,
+        { op: "i64.div_s" } as Instr,
+        { op: "f64.convert_i64_s" } as Instr,
+      );
+    });
   }
 
   if (methodName === "getMonth" || methodName === "getUTCMonth") {
-    // month = (packed / 100) % 100 - 1  (JS months are 0-indexed)
-    fctx.body.push(
-      { op: "i64.const", value: 100n } as Instr,
-      { op: "i64.div_s" } as Instr,
-      { op: "i64.const", value: 100n } as Instr,
-      { op: "i64.rem_s" } as Instr,
-      { op: "i64.const", value: 1n } as Instr,
-      { op: "i64.sub" } as Instr,
-      { op: "f64.convert_i64_s" } as Instr,
-    );
-    return { kind: "f64" };
+    return wrapWithInvalidDateGuard(() => {
+      emitDaysToCivil();
+      fctx.body.push(
+        { op: "i64.const", value: 100n } as Instr,
+        { op: "i64.div_s" } as Instr,
+        { op: "i64.const", value: 100n } as Instr,
+        { op: "i64.rem_s" } as Instr,
+        { op: "i64.const", value: 1n } as Instr,
+        { op: "i64.sub" } as Instr,
+        { op: "f64.convert_i64_s" } as Instr,
+      );
+    });
   }
 
   if (methodName === "getDate" || methodName === "getUTCDate") {
-    // day = packed % 100
-    fctx.body.push(
-      { op: "i64.const", value: 100n } as Instr,
-      { op: "i64.rem_s" } as Instr,
-      { op: "f64.convert_i64_s" } as Instr,
-    );
-    return { kind: "f64" };
+    return wrapWithInvalidDateGuard(() => {
+      emitDaysToCivil();
+      fctx.body.push(
+        { op: "i64.const", value: 100n } as Instr,
+        { op: "i64.rem_s" } as Instr,
+        { op: "f64.convert_i64_s" } as Instr,
+      );
+    });
   }
 
   // toISOString / toJSON: emit a formatted string
   if (methodName === "toISOString" || methodName === "toJSON") {
-    // For now, drop the packed civil date and return a placeholder
-    // A full implementation would format as "YYYY-MM-DDTHH:MM:SS.sssZ"
-    // but that requires string building which is complex. Return the timestamp as a string.
-    fctx.body.push({ op: "drop" } as Instr);
+    // (#1344) Timestamp is in tsLocalShared, not on the stack anymore —
+    // no `drop` needed. Stub implementation; full formatting deferred.
+    releaseTempLocal(fctx, tsLocalShared);
     return compileStringLiteral(ctx, fctx, "1970-01-01T00:00:00.000Z");
   }
 
@@ -965,12 +1018,12 @@ function compileDateMethodCall(
     "toGMTString",
   ]);
   if (STRING_DATE_METHODS.has(methodName)) {
-    fctx.body.push({ op: "drop" } as Instr);
+    releaseTempLocal(fctx, tsLocalShared);
     return compileStringLiteral(ctx, fctx, "Thu Jan 01 1970 00:00:00 GMT+0000");
   }
 
-  // Shouldn't reach here
-  fctx.body.push({ op: "drop" } as Instr);
+  // Shouldn't reach here. Timestamp was saved to a local; nothing to drop.
+  releaseTempLocal(fctx, tsLocalShared);
   fctx.body.push({ op: "f64.const", value: 0 } as Instr);
   return { kind: "f64" };
 }
