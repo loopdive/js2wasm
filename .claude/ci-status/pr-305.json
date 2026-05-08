@@ -1,0 +1,22 @@
+{
+  "pr": 305,
+  "conclusion": "success",
+  "head_branch": "issue-1388-regression-fix",
+  "head_sha": "eca2a9629b869d42977117d3f570ea6190b827d7",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25561743260",
+  "timestamp": "2026-05-08T15:14:56Z",
+  "pass": 27466,
+  "fail": 14463,
+  "compile_error": 1151,
+  "snapshot_delta": 398,
+  "net_per_test": 437,
+  "regressions": 208,
+  "regressions_real": 165,
+  "regressions_wasm_change": 165,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 43,
+  "improvements": 602,
+  "baseline_sha": "eca2a9629b869d42977117d3f570ea6190b827d7",
+  "baseline_staleness_commits": 12,
+  "baseline_stale": false
+}
