@@ -2,7 +2,7 @@
 id: 1352
 sprint: 50
 title: "spec gap: Set methods (union/intersection/etc.) accept any set-like argument (101 test262 fails)"
-status: ready
+status: in-progress
 created: 2026-05-08
 priority: medium
 feasibility: easy
