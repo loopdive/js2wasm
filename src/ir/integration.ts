@@ -796,6 +796,22 @@ function makeFromAstResolver(ctx: CodegenContext): IrFromAstResolver {
         elementValType: arrayDef.element,
       };
     },
+    // #1375 narrow slice — TS-narrowing fast-path for optional chaining.
+    // The IR's `isIrTypeNullable` flags `extern` (host class) values as
+    // always nullable because at the Wasm level they're `externref`. But
+    // TS narrowing often proves the receiver is non-null in context
+    // (e.g. `m: Map<string, number>` without `| undefined`). When TS
+    // confirms non-null, `lowerPropertyAccess` skips the `?.`-on-nullable
+    // throw and lowers as a regular `.` access. Otherwise (genuinely
+    // nullable, or no narrowing), legacy fallback continues.
+    isExpressionTsNonNullable(expr: ts.Expression): boolean | undefined {
+      const t = ctx.checker.getTypeAtLocation(expr);
+      const nonNull = ctx.checker.getNonNullableType(t);
+      // TS's `Type` objects are interned by the checker, so a strict
+      // identity comparison is sound: equal identity ⇒ stripping null/
+      // undefined was a no-op ⇒ the type was already non-null.
+      return t === nonNull;
+    },
   };
 }
 

@@ -110,6 +110,20 @@ export interface IrFromAstResolver {
    * `undefined` if no such class is registered.
    */
   getExternClassInfo?(className: string): IrExternClassMeta | undefined;
+  /**
+   * #1375 narrow slice — TS-narrowing fast-path for optional chaining.
+   * Returns `true` when the TypeScript type of `expr` is provably non-null
+   * (i.e. `getNonNullableType(t) === t`). Used by `lowerPropertyAccess`
+   * to skip the `?.`-on-nullable-receiver throw when TS has already
+   * narrowed away null/undefined — the IR's `isIrTypeNullable` is more
+   * conservative (treats `extern` as always nullable), so this gate
+   * recovers a small set of well-typed `m?.x` cases where `m: Map<...>`
+   * (no `| undefined`) is genuinely non-null at TS level.
+   *
+   * When unimplemented or returns `undefined`, `lowerPropertyAccess`
+   * keeps the existing throw → legacy fallback.
+   */
+  isExpressionTsNonNullable?(expr: ts.Expression): boolean | undefined;
 }
 
 export interface AstToIrOptions {
@@ -1449,8 +1463,21 @@ function lowerPropertyAccess(expr: ts.PropertyAccessExpression, cx: LowerCtx): I
   // externref) the IR has no short-circuit primitive yet — throw so the
   // function falls back to legacy, where `compileOptionalPropertyAccess`
   // already emits the null-guarded `if/else` block.
+  //
+  // #1375 narrow slice — before throwing, consult the TS-narrowing
+  // fast-path. Some receivers' IrType is conservatively flagged as
+  // nullable (notably `extern`, which is `externref` at the Wasm level
+  // and could carry null at the JS host) but TypeScript's type narrowing
+  // proves them non-null in the calling context (e.g. `m: Map<string,
+  // number>` with no `| undefined`). When TS proves non-null, treat the
+  // `?.` as a redundant safety syntax and fall through to the regular
+  // `.` access path — exactly mirroring the non-null IrType case above.
   if (expr.questionDotToken && isIrTypeNullable(recvType)) {
-    throw new Error(`ir/from-ast: optional chaining (?.) on nullable receiver not in slice 11 (${cx.funcName})`);
+    const tsNonNull = cx.resolver?.isExpressionTsNonNullable?.(expr.expression) === true;
+    if (!tsNonNull) {
+      throw new Error(`ir/from-ast: optional chaining (?.) on nullable receiver not in slice 11 (${cx.funcName})`);
+    }
+    // Fall through: TS-proven non-null → lower as ordinary `.prop` access.
   }
 
   if (recvType.kind === "string") {
