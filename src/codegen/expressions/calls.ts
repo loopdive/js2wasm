@@ -2582,12 +2582,26 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
             }
             return { kind: "externref" };
           }
-          // Property not found in struct — return undefined
-          // (own property doesn't exist on this shape)
-          const argResult = compileExpression(ctx, fctx, arg0);
-          if (argResult) fctx.body.push({ op: "drop" });
-          fctx.body.push({ op: "ref.null.extern" });
-          return { kind: "externref" };
+          // #1364a — if the property is a registered class method, fall
+          // through to the dynamic `__getOwnPropertyDescriptor` host import
+          // path (which now handles proto-method allowlists by returning a
+          // descriptor with `enumerable: false, configurable: true,
+          // writable: true`). Without this, the fast path returns
+          // `ref.null.extern` (undefined) for any class method lookup, and
+          // `verifyProperty(C.prototype, "m", {...})` fails before checking
+          // any flag.
+          const methodNames = ctx.classMethodNames.get(structName);
+          if (methodNames && methodNames.includes(propLiteral)) {
+            // Skip the fast-path null-return; let the dynamic fallback below
+            // handle the proto-method case via the host import.
+          } else {
+            // Property not found in struct — return undefined
+            // (own property doesn't exist on this shape)
+            const argResult = compileExpression(ctx, fctx, arg0);
+            if (argResult) fctx.body.push({ op: "drop" });
+            fctx.body.push({ op: "ref.null.extern" });
+            return { kind: "externref" };
+          }
         }
       }
 
