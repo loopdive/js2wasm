@@ -2,7 +2,7 @@
 id: 1372
 sprint: 51
 title: "IR: support destructuring params (removes param-shape-rejected bypass)"
-status: ready
+status: in-progress
 created: 2026-05-08
 priority: high
 feasibility: medium
