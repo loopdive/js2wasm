@@ -72,6 +72,45 @@ describe("issue #1360 — Array.prototype.{indexOf,lastIndexOf,includes} spec se
         [{ fn: "test", args: [] }],
       );
     });
+
+    // Post-CI fix #1: null search routes to legacy host bridge — the
+    // Wasm-native loop's HasProperty check (`__extern_has_idx`) treats null
+    // field values as absent, which broke `lastIndexOf.call({1:null,length:2}, null)`.
+    it("Array.prototype.lastIndexOf.call(arr, null) finds null fields", async () => {
+      await assertEquivalent(
+        `export function test(): number {
+          var obj: any = { 1: null, 2: undefined, length: 2 };
+          return Array.prototype.lastIndexOf.call(obj, null);
+        }`,
+        [{ fn: "test", args: [] }],
+      );
+    });
+
+    it("Array.prototype.lastIndexOf.call(arr, undefined) returns -1 when no match", async () => {
+      await assertEquivalent(
+        `export function test(): number {
+          var obj: any = { 1: null, 2: undefined, length: 2 };
+          return Array.prototype.lastIndexOf.call(obj, undefined);
+        }`,
+        [{ fn: "test", args: [] }],
+      );
+    });
+
+    // Post-CI fix #2: huge-length array-like — runtime ToLength now clamps
+    // at MAX_SAFE_INTEGER (was clamping at INT_MAX previously, which broke
+    // `built-ins/Array/prototype/indexOf/length-near-integer-limit.js`).
+    it("Array.prototype.indexOf.call handles length near MAX_SAFE_INTEGER", async () => {
+      await assertEquivalent(
+        `export function test(): number {
+          var elIndex: number = 9007199254740990;
+          var fromIndex: number = 9007199254740988;
+          var arrayLike: any = { length: 9007199254740991 };
+          arrayLike[elIndex] = "el";
+          return Array.prototype.indexOf.call(arrayLike, "el", fromIndex);
+        }`,
+        [{ fn: "test", args: [] }],
+      );
+    });
   });
 
   describe("indexOf — strict equality", () => {

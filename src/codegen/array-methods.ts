@@ -1124,6 +1124,24 @@ function compileArrayLikePrototypeSearch(
   // argument: the search value.
   if (callExpr.arguments.length < 2) return undefined;
 
+  // #1360 PR #274 follow-up: bail to the legacy `__proto_method_call` host
+  // bridge when the search argument is statically null or undefined.
+  // Reason: the runtime's `__extern_has_idx` returns 0 for fields whose
+  // wasmGC value is the externref null (it does `if (v != null) return 1;`
+  // — null fields look "absent" to that loose check). That makes
+  // `lastIndexOf.call({1:null, length:2}, null)` return -1 instead of 1.
+  // The host bridge invokes native `Array.prototype.lastIndexOf` which
+  // honours HasProperty correctly. Until __extern_has_idx grows a
+  // "field-defined-with-null" path (#1382), bail.
+  {
+    const searchArg = callExpr.arguments[1]!;
+    const searchIsNullish =
+      searchArg.kind === ts.SyntaxKind.NullKeyword ||
+      searchArg.kind === ts.SyntaxKind.UndefinedKeyword ||
+      (ts.isIdentifier(searchArg) && searchArg.text === "undefined");
+    if (searchIsNullish) return undefined;
+  }
+
   const isLast = methodName === "lastIndexOf";
   const isIncludes = methodName === "includes";
 
@@ -1158,12 +1176,14 @@ function compileArrayLikePrototypeSearch(
   }
   fctx.body.push({ op: "local.set", index: receiverTmp });
 
-  // len = i32(__extern_length(receiver)). Saturating cast clamps +Inf/-Inf/NaN
-  // safely; spec uses ToLength but our array-like loops cap at i32 range.
-  const lenTmp = allocLocal(fctx, `__alis_len_${fctx.locals.length}`, { kind: "i32" });
+  // len: f64 from __extern_length. Kept as f64 (not truncated to i32) so the
+  // loop handles huge array-like lengths up to 2^53-1, e.g. test262
+  // `built-ins/Array/prototype/indexOf/length-near-integer-limit.js`. The
+  // legacy i32-truncated path silently failed for length > 2^31. The host
+  // imports `__extern_get_idx` / `__extern_has_idx` already take f64 indices.
+  const lenTmp = allocLocal(fctx, `__alis_len_${fctx.locals.length}`, { kind: "f64" });
   fctx.body.push({ op: "local.get", index: receiverTmp });
   fctx.body.push({ op: "call", funcIdx: lenFn });
-  fctx.body.push({ op: "i32.trunc_sat_f64_s" });
   fctx.body.push({ op: "local.set", index: lenTmp });
 
   // Search value (externref). For booleans we MUST box via __box_boolean so the
@@ -1200,8 +1220,9 @@ function compileArrayLikePrototypeSearch(
   }
   fctx.body.push({ op: "local.set", index: searchTmp });
 
-  // Loop index (i32) — always allocated; defaulted below.
-  const iTmp = allocLocal(fctx, `__alis_i_${fctx.locals.length}`, { kind: "i32" });
+  // Loop index (f64) — always allocated; defaulted below. f64 lets the loop
+  // walk huge array-like lengths up to 2^53-1 without truncation.
+  const iTmp = allocLocal(fctx, `__alis_i_${fctx.locals.length}`, { kind: "f64" });
 
   // Result accumulator: i32 (boolean) for includes, f64 (-1 default) for indexOf/lastIndexOf.
   let resTmp: number;
@@ -1214,14 +1235,13 @@ function compileArrayLikePrototypeSearch(
   }
   fctx.body.push({ op: "local.set", index: resTmp });
 
-  // ── fromIndex coercion ───────────────────────────────────────────
-  // Compile fromIndex argument (or default) into an i32 starting index.
-  // Forward (indexOf/includes): default 0; negative → max(len+n, 0); else clamp irrelevant
-  //   (loop exit handles n >= len). Inf/NaN handled by trunc_sat (+Inf → INT_MAX
-  //   loops zero times → -1; -Inf → INT_MIN, len+INT_MIN < 0 → max with 0; NaN → 0).
-  // Backward (lastIndexOf): default len-1; negative → len+n (may stay <0 → exits
-  //   immediately); else clamp to len-1. Inf/NaN: +Inf → INT_MAX → clamps to len-1;
-  //   -Inf → INT_MIN, len+INT_MIN <0 → exits to -1; NaN → 0 → loop runs from index 0.
+  // ── fromIndex coercion (all f64 to handle indices up to 2^53-1) ──
+  // Forward (indexOf/includes): default 0; if negative, k = max(len+n, 0); else
+  // loop exit handles n >= len. NaN → 0 per ToIntegerOrInfinity. +Infinity →
+  // start beyond end (loop exits, returns -1). -Infinity → 0.
+  // Backward (lastIndexOf): default len-1; if negative, k = len+n (may stay
+  // <0 → exits to -1); else clamp to len-1. NaN → 0. +Infinity → len-1.
+  // -Infinity → len + -Infinity = -Infinity → exits.
   if (callExpr.arguments.length >= 3) {
     const argType = compileExpression(ctx, fctx, callExpr.arguments[2]!, { kind: "f64" });
     if (argType && argType.kind !== "f64") {
@@ -1231,44 +1251,59 @@ function compileArrayLikePrototypeSearch(
       // Failed to compile fromIndex; treat as 0 (forward) or len-1 (backward).
       if (isLast) {
         fctx.body.push({ op: "local.get", index: lenTmp });
-        fctx.body.push({ op: "i32.const", value: 1 });
-        fctx.body.push({ op: "i32.sub" });
-        fctx.body.push({ op: "local.set", index: iTmp });
+        fctx.body.push({ op: "f64.const", value: 1 });
+        fctx.body.push({ op: "f64.sub" });
       } else {
-        fctx.body.push({ op: "i32.const", value: 0 });
-        fctx.body.push({ op: "local.set", index: iTmp });
+        fctx.body.push({ op: "f64.const", value: 0 });
       }
-    } else {
-      fctx.body.push({ op: "i32.trunc_sat_f64_s" });
       fctx.body.push({ op: "local.set", index: iTmp });
+    } else {
+      // NaN → 0 per spec ToIntegerOrInfinity. f64.ne(x, x) detects NaN.
+      // Stack: [argType_f64]. tee to iTmp, then check NaN.
+      fctx.body.push({ op: "local.tee", index: iTmp });
+      fctx.body.push({ op: "local.get", index: iTmp });
+      fctx.body.push({ op: "f64.ne" });
+      fctx.body.push({
+        op: "if",
+        blockType: { kind: "empty" },
+        then: [{ op: "f64.const", value: 0 } as Instr, { op: "local.set", index: iTmp } as Instr],
+      } as Instr);
+
+      // Spec: ToIntegerOrInfinity truncates toward 0 for finite values; ±Infinity
+      // and NaN are kept as-is (NaN handled above as 0). f64.trunc gives toward-0
+      // truncation; preserves ±Infinity.
+      fctx.body.push({ op: "local.get", index: iTmp });
+      fctx.body.push({ op: "f64.trunc" } as unknown as Instr);
+      fctx.body.push({ op: "local.set", index: iTmp });
+
       if (isLast) {
-        // If negative, k = len + n. (Skip the clamp, else block below handles it.)
+        // If negative, k = len + n. Otherwise k = min(n, len - 1).
         fctx.body.push({ op: "local.get", index: iTmp });
-        fctx.body.push({ op: "i32.const", value: 0 });
-        fctx.body.push({ op: "i32.lt_s" });
+        fctx.body.push({ op: "f64.const", value: 0 });
+        fctx.body.push({ op: "f64.lt" });
         fctx.body.push({
           op: "if",
           blockType: { kind: "empty" },
           then: [
             { op: "local.get", index: lenTmp } as Instr,
             { op: "local.get", index: iTmp } as Instr,
-            { op: "i32.add" } as Instr,
+            { op: "f64.add" } as Instr,
             { op: "local.set", index: iTmp } as Instr,
           ],
           else: [
             // n >= 0: k = min(n, len - 1)
             { op: "local.get", index: iTmp } as Instr,
             { op: "local.get", index: lenTmp } as Instr,
-            { op: "i32.const", value: 1 } as Instr,
-            { op: "i32.sub" } as Instr,
-            { op: "i32.gt_s" } as Instr,
+            { op: "f64.const", value: 1 } as Instr,
+            { op: "f64.sub" } as Instr,
+            { op: "f64.gt" } as Instr,
             {
               op: "if",
               blockType: { kind: "empty" },
               then: [
                 { op: "local.get", index: lenTmp } as Instr,
-                { op: "i32.const", value: 1 } as Instr,
-                { op: "i32.sub" } as Instr,
+                { op: "f64.const", value: 1 } as Instr,
+                { op: "f64.sub" } as Instr,
                 { op: "local.set", index: iTmp } as Instr,
               ],
             } as Instr,
@@ -1277,22 +1312,22 @@ function compileArrayLikePrototypeSearch(
       } else {
         // Forward: if negative, k = max(len + n, 0)
         fctx.body.push({ op: "local.get", index: iTmp });
-        fctx.body.push({ op: "i32.const", value: 0 });
-        fctx.body.push({ op: "i32.lt_s" });
+        fctx.body.push({ op: "f64.const", value: 0 });
+        fctx.body.push({ op: "f64.lt" });
         fctx.body.push({
           op: "if",
           blockType: { kind: "empty" },
           then: [
             { op: "local.get", index: lenTmp } as Instr,
             { op: "local.get", index: iTmp } as Instr,
-            { op: "i32.add" } as Instr,
+            { op: "f64.add" } as Instr,
             { op: "local.tee", index: iTmp } as Instr,
-            { op: "i32.const", value: 0 } as Instr,
-            { op: "i32.lt_s" } as Instr,
+            { op: "f64.const", value: 0 } as Instr,
+            { op: "f64.lt" } as Instr,
             {
               op: "if",
               blockType: { kind: "empty" },
-              then: [{ op: "i32.const", value: 0 } as Instr, { op: "local.set", index: iTmp } as Instr],
+              then: [{ op: "f64.const", value: 0 } as Instr, { op: "local.set", index: iTmp } as Instr],
             } as Instr,
           ],
         } as Instr);
@@ -1302,10 +1337,10 @@ function compileArrayLikePrototypeSearch(
     // No fromIndex provided: default 0 (forward) or len-1 (backward).
     if (isLast) {
       fctx.body.push({ op: "local.get", index: lenTmp });
-      fctx.body.push({ op: "i32.const", value: 1 });
-      fctx.body.push({ op: "i32.sub" });
+      fctx.body.push({ op: "f64.const", value: 1 });
+      fctx.body.push({ op: "f64.sub" });
     } else {
-      fctx.body.push({ op: "i32.const", value: 0 });
+      fctx.body.push({ op: "f64.const", value: 0 });
     }
     fctx.body.push({ op: "local.set", index: iTmp });
   }
@@ -1321,34 +1356,32 @@ function compileArrayLikePrototypeSearch(
   //      __same_value_zero, on match store result and break.
   //   4. Increment / decrement index, branch back to loop start.
 
-  // Loop exit guard
+  // Loop exit guard (f64 indices)
   const loopExit: Instr[] = isLast
     ? [
         { op: "local.get", index: iTmp } as Instr,
-        { op: "i32.const", value: 0 } as Instr,
-        { op: "i32.lt_s" } as Instr,
+        { op: "f64.const", value: 0 } as Instr,
+        { op: "f64.lt" } as Instr,
         { op: "br_if", depth: 1 } as Instr,
       ]
     : [
         { op: "local.get", index: iTmp } as Instr,
         { op: "local.get", index: lenTmp } as Instr,
-        { op: "i32.ge_s" } as Instr,
+        { op: "f64.ge" } as Instr,
         { op: "br_if", depth: 1 } as Instr,
       ];
 
-  // HasProperty gate (only for indexOf/lastIndexOf)
+  // HasProperty gate (only for indexOf/lastIndexOf) — pass f64 index directly.
   const hasIdxCheck: Instr[] = [
     { op: "local.get", index: receiverTmp } as Instr,
     { op: "local.get", index: iTmp } as Instr,
-    { op: "f64.convert_i32_s" } as unknown as Instr,
     { op: "call", funcIdx: hasIdxFn } as Instr,
   ];
 
-  // Element compare: leaves i32 (0/1) on the stack
+  // Element compare: leaves i32 (0/1) on the stack. Pass f64 index directly.
   const compareInstrs: Instr[] = [
     { op: "local.get", index: receiverTmp } as Instr,
     { op: "local.get", index: iTmp } as Instr,
-    { op: "f64.convert_i32_s" } as unknown as Instr,
     { op: "call", funcIdx: getIdxFn } as Instr,
     { op: "local.get", index: searchTmp } as Instr,
     { op: "call", funcIdx: cmpFn } as Instr,
@@ -1366,25 +1399,25 @@ function compileArrayLikePrototypeSearch(
           { op: "br", depth } as Instr,
         ]
       : [
+          // f64 index goes straight to f64 result (no conversion needed).
           { op: "local.get", index: iTmp } as Instr,
-          { op: "f64.convert_i32_s" } as unknown as Instr,
           { op: "local.set", index: resTmp } as Instr,
           { op: "br", depth } as Instr,
         ];
 
-  // Step (i++ / i--)
+  // Step (i++ / i--) using f64 arithmetic.
   const stepInstr: Instr[] = isLast
     ? [
         { op: "local.get", index: iTmp } as Instr,
-        { op: "i32.const", value: 1 } as Instr,
-        { op: "i32.sub" } as Instr,
+        { op: "f64.const", value: 1 } as Instr,
+        { op: "f64.sub" } as Instr,
         { op: "local.set", index: iTmp } as Instr,
         { op: "br", depth: 0 } as Instr,
       ]
     : [
         { op: "local.get", index: iTmp } as Instr,
-        { op: "i32.const", value: 1 } as Instr,
-        { op: "i32.add" } as Instr,
+        { op: "f64.const", value: 1 } as Instr,
+        { op: "f64.add" } as Instr,
         { op: "local.set", index: iTmp } as Instr,
         { op: "br", depth: 0 } as Instr,
       ];
