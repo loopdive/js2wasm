@@ -88,3 +88,206 @@ then discarded). We need to either:
 
 - `test262/test/built-ins/Function/prototype/bind/length.js`
 - `test262/test/built-ins/Function/prototype/toString/built-in-function-object.js`
+
+## Investigation notes (2026-05-08, dev-1303)
+
+### Current bind dispatch (stub at calls.ts:1004-1022)
+
+`compileCallExpression` already intercepts `<receiver>.bind(args)` when the
+receiver has a TS call signature. The stub:
+
+```ts
+if (propAccess.name.text === "bind" && !immediateCall) {
+  // drop all args
+  for (const arg of expr.arguments) {
+    const t = compileExpression(ctx, fctx, arg);
+    if (t !== null) fctx.body.push({ op: "drop" });
+  }
+  // compile receiver as externref, return as-is
+  const recvType = compileExpression(ctx, fctx, propAccess.expression, { kind: "externref" });
+  if (recvType === null) fctx.body.push({ op: "ref.null.extern" });
+  else if (recvType.kind !== "externref") fctx.body.push({ op: "extern.convert_any" });
+  return { kind: "externref" };
+}
+```
+
+**Effect**: `fn.bind(thisArg, …args)` evaluates and discards `thisArg`/`…args`,
+returns the original `fn` unchanged. Calls on the result work because the
+receiver is still callable, but `result.length` and `result.name` are wrong
+(they're the target's), and `(new result(...))` won't propagate
+`[[BoundThis]]` / `[[BoundArguments]]`.
+
+### What already passes
+
+- `built-ins/Function/prototype/bind/length.js` — `Function.prototype.bind.length === 1`. Tests the BUILT-IN, not bound functions.
+- `built-ins/Function/prototype/bind/name.js` — `Function.prototype.bind.name === "bind"`. Tests the BUILT-IN.
+
+### What fails (sample, headline acceptance criteria 3 + 4)
+
+- `bind/instance-name.js` → `assert.sameValue(target.bind().name, 'bound target')`
+  — current return is the unbound target, so `.name === "target"`. Returns
+  status:fail, error_category:assertion_fail.
+- `toString/built-in-function-object.js` → `TypeError (null/undefined access):
+  toString of built-in Function object`. The compiled wasm reaches a path
+  that calls toString on a wasm-struct without a registered toString.
+
+### Failure-pattern frequency (built-ins/Function, current baseline)
+
+```
+122  assertion_fail
+ 65  type_error
+ 43  runtime_error
+ 30  other
+ 16  null_deref
+ 12  wasm_compile
+  4  range_error
+```
+
+Top error messages:
+
+```
+ 28  "Bind must be called on a function"  (V8's error — wasm-struct passed to host bind)
+ 19  "Cannot read properties of null (reading 'apply')"
+ 16  "Cannot read properties of null (reading 'call')"
+ 30  "Cannot access property on null or undefined"  (mostly L41:3 / L55:3)
+  8  "dereferencing a null pointer"
+```
+
+The 28 "Bind must be called on a function" failures come from
+`Function.prototype.bind.call(wasm_struct)` — V8 sees the wasm-struct as
+non-function and rejects. Fixing requires either (a) wrapping the
+wasm-struct in a real JS function before bind, or (b) implementing bind
+ourselves and returning a wasm closure struct that carries
+`[[BoundTargetFunction]]`, `[[BoundThis]]`, `[[BoundArguments]]`, and
+exposes the right `length` / `name` to property reads.
+
+### Recommended implementation (revised from original plan)
+
+Two complementary slices, in dispatch order:
+
+**Slice A — wasm-struct-aware bind dispatch (calls.ts:1004)**
+
+Replace the stub with a host-side helper call:
+
+1. Add `__function_bind` host import: takes `(target_extref,
+   thisArg_extref, args_array_extref) → bound_extref`.
+2. Inside `__function_bind` (runtime.ts):
+   - If `target` is a wasm-struct: wrap it via `wrapForHost` (#1308) into a
+     JS function, then call `Function.prototype.bind.call(wrapper, thisArg,
+     ...args)` — V8 produces a real bound function with correct
+     `length` / `name` / `[[Construct]]`. Return the bound JS function as
+     externref.
+   - Else (already a JS function): `Function.prototype.bind.call(target,
+     thisArg, ...args)` — direct path.
+3. The codegen at calls.ts:1004 builds an args-array externref (via the
+   existing `__create_array` import or inline `array.new_fixed`), pushes
+   target + thisArg + args-array, calls `__function_bind`.
+
+This eliminates the 28 "Bind must be called on a function" failures AND
+fixes `bind/instance-name.js` because V8's bind sets `name = "bound " +
+target.name` automatically — so as long as the target's wrapper has the
+right `.name`, the bound function inherits it. (#1308's `wrapForHost`
+already preserves the function name from `mod.functions[i].name`.)
+
+**Slice B — toString source-text retention (runtime.ts + index.ts)**
+
+For `toString/built-in-function-object.js`, V8's spec requires
+`Function.prototype.toString` to return either the original source text
+(for source-defined functions) or a string of the form `"function name() {
+[native code] }"` (for built-ins).
+
+1. Compile-time: store the source text of each user-defined function in a
+   side table indexed by funcIdx. At codegen time, capture
+   `funcDecl.getText()` (or the body range) into
+   `ctx.functionSourceText: Map<number, string>`.
+2. Emit `mod.imports[].name === "__function_source_text"` host import that
+   takes `(funcref) → externref` (the source string).
+3. In runtime.ts, implement `__function_to_string`:
+   - If the externref wraps a wasm function: look up its funcref in a
+     reverse-map (funcref → source text), return that.
+   - Else: forward to `Function.prototype.toString.call(target)`.
+4. The bound-function path inherits via slice A: V8 itself handles
+   `boundFn.toString()`.
+
+### Scope estimate
+
+- Slice A: ~150 LoC (calls.ts dispatch + runtime.ts host helper +
+  args-array handling). Unblocks ~30 tests.
+- Slice B: ~200 LoC (functionSourceText map, host import wiring,
+  reverse-lookup table). Unblocks `toString/*` tests (~40 in the
+  bind+toString clusters).
+
+Reaching the 65% acceptance gate (~125 additional passes) likely needs
+both slices PLUS the remaining null-deref / type_error cluster
+investigation — those are "Cannot read properties of null (reading
+'apply'/'call')" patterns where the receiver is a wasm-struct flowing
+into an apply / call site that can't dispatch through the normal closure
+path. That cluster overlaps with #1311 (Map<string, AsyncHandler>
+dispatch) and #1312 (recursive nested fn self-reference, in PR #257
+currently), both of which improve closure-chain visibility — landing
+those first will reduce the bind / toString work surface.
+
+### Risks
+
+- `wrapForHost` for bind needs all closure-typed values to round-trip
+  through V8's bind. If the wrapper drops captures (which would break
+  `(boundFn)()` semantics), this slice produces non-functional bound
+  functions. Verify via probe before committing to host-bind dispatch.
+- Source-text retention adds compile-time bytes (each user-defined
+  function holds a string copy). For typical programs this is bounded by
+  source size; for generated code it's a non-issue.
+
+### Implementation attempt notes (2026-05-08, dev-1303 — REVERTED)
+
+A first-cut Slice A was implemented locally and reverted. Findings the
+next implementer should pre-empt:
+
+1. `_wrapForHost(struct)` returns a `Proxy`, whose `typeof` is `"object"`,
+   not `"function"`. V8's `Function.prototype.bind` rejects non-function
+   targets ("Bind must be called on a function"). Use a real JS function
+   that closes over the wasm struct instead, mirroring
+   `wrapExports.makeCallableClosureWrapper` — see runtime.ts:4398.
+2. The `__call_fn_0` / `__call_fn_1` exports are emitted only when the
+   module has at least one zero- / one-arg closure registered. Wrappers
+   for higher-arity targets must dispatch differently or accept
+   incomplete-args fallback (`__call_fn_0` ignores extras, matching the
+   `wrapExports` precedent). For bind itself this is acceptable since
+   bind doesn't invoke the target — V8 only reads `length` / `name` to
+   compute the bound function's metadata.
+3. **The blocking issue**: when the bind result is a JS bound function
+   (externref) but the LHS local is typed as the target's closure struct
+   ref (which TS infers as the bound function's TS type), the assignment
+   site emits a `coerceType(externref → ref struct)` chain (`any.convert_extern;
+   ref.test; if/else { ref.cast | ref.null }; extern.convert_any`). The
+   cast fails because the JS function isn't a wasm struct, so the LHS
+   local gets `ref.null.extern`. Result: `bound` is null. Verified with
+   a 5-test probe — the metadata restamping (`length`/`name`) on the
+   wrapper before bind works, but `const bound = target.bind(undefined)`
+   stores null because of this LHS-coerce regression.
+4. Slice A's host route therefore needs a complementary codegen change:
+   when a CallExpression's result is "host bind" (or any host helper
+   returning a JS-functional externref), the LHS local must be declared
+   externref, NOT the closure struct ref TS would otherwise infer. Two
+   ways to do this:
+   (a) Tag the bind dispatch's return so the parent assignment skips the
+       coerce-to-closure-struct step (extend the existing
+       `compileVariableDeclaration` / coerce path with a "host bind"
+       sentinel).
+   (b) Build a synthetic wasm closure struct around the bound JS
+       function — store the bound externref in a field, build a
+       trampoline that does `__extern_method_call(self.bound, "call",
+       args)` for invocation. Restamp length/name via Object.defineProperty
+       on the trampoline before bind (or inline). Wider blast radius but
+       preserves the closure-struct type identity the LHS coerce expects.
+5. Source-text retention (Slice B) wasn't attempted; orthogonal to the
+   bind LHS-coerce issue.
+
+### Status
+
+Investigation complete; implementation deferred pending a fix for point
+(3) above. A dev picking this up should start by deciding (a) vs (b),
+then implement Slice A on top of it. The metadata-restamp logic
+(`Object.defineProperty(wrapper, "length"|"name", ...)` after building
+the JS wrapper, before `Function.prototype.bind.call`) is straight
+JavaScript and doesn't need debugging — the open question is the
+codegen / coerce side.
