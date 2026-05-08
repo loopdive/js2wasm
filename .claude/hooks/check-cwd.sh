@@ -11,16 +11,18 @@ fi
 
 # Gate `gh pr merge` — require CI status file and positive net before merging.
 # Bypass with codeword: prepend GATE_BYPASS=1 (or any GATE_BYPASS=<value>) to command.
-if echo "$CMD" | grep -qE 'gh[[:space:]]+pr[[:space:]]+merge'; then
-  # Codeword override — tech lead bypass
-  if echo "$CMD" | grep -q 'GATE_BYPASS'; then
+# Use only first line to avoid false positives from heredoc commit message bodies.
+FIRST_LINE=$(echo "$CMD" | head -1)
+if echo "$FIRST_LINE" | grep -qE 'gh[[:space:]]+pr[[:space:]]+merge'; then
+  # Codeword override — tech lead bypass (also checked on first line only)
+  if echo "$FIRST_LINE" | grep -q 'GATE_BYPASS'; then
     log_event "gh_pr_merge_gate_bypass"
     jq -n '{"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": "CI gate bypassed via GATE_BYPASS codeword. Ensure you have reviewed CI results manually before proceeding."}}' 2>/dev/null || true
     exit 0
   fi
 
   # Extract PR number (supports: gh pr merge 275, gh pr merge #275)
-  PR_NUM=$(echo "$CMD" | grep -oE 'gh[[:space:]]+pr[[:space:]]+merge[[:space:]]+#?([0-9]+)' | grep -oE '[0-9]+$')
+  PR_NUM=$(echo "$FIRST_LINE" | grep -oE 'gh[[:space:]]+pr[[:space:]]+merge[[:space:]]+#?([0-9]+)' | grep -oE '[0-9]+$')
   if [ -n "$PR_NUM" ]; then
     CI_FILE="/workspace/.claude/ci-status/pr-${PR_NUM}.json"
     if [ ! -f "$CI_FILE" ]; then
