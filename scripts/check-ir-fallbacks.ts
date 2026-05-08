@@ -55,6 +55,11 @@ const UNINTENDED: ReadonlySet<IrFallbackReason> = new Set([
   "type-resolution-failure",
   "return-type-not-resolvable",
   "param-type-not-resolvable",
+  // #1370 Phase A — class methods/constructors of an unsupported shape
+  // (extends parent, accessors, computed names, etc.). Tracked as
+  // unintended so future slices that retire these buckets (Phase E for
+  // inheritance, accessors slice, etc.) are gated on a baseline drop.
+  "class-method",
 ]);
 
 /** Reasons that are expected until their corresponding slices land. */

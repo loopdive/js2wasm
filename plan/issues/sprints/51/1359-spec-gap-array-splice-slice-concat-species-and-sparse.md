@@ -212,3 +212,113 @@ bridge handles it. Document this in a code comment so future work doesn't forget
 ### Estimated impact
 
 +100 net passes. §23.1 climbs further toward 60%.
+
+## Sub-slice decomposition (senior-dev refinement, 2026-05-08)
+
+After reading the failing tests directly (not just the architect's bisect),
+the original 5 sub-slices need re-scoping. Several are **blocked on issues
+deeper than this codegen path** and won't yield wins from changes inside
+`array-methods.ts` alone.
+
+### Slice A — empty-slice "actual: null" — **NOT a slice() bug**
+
+The architect's investigation said `x.slice(5,5)` returns null. Reading
+`slice/S15.4.4.10_A1.1_T4.js`:
+```js
+var arr = x.slice(5, 5);
+arr.getClass = Object.prototype.toString;
+if (arr.getClass() !== "[object Array]") { /* fail with "Actual: null" */ }
+```
+
+The `Actual: null` comes from `arr.getClass()` returning a brand string
+that doesn't match `"[object Array]"`, not from `arr` itself being null.
+This needs `Object.prototype.toString` brand fidelity for `__vec_*` —
+**#1334's territory** (Object.defineProperty descriptor + brand). NOT
+fixable inside `compileArraySlice`.
+
+**Disposition:** mark as blocked on #1334. No code change in this issue.
+
+### Slice B — ArraySpeciesCreate (@@species) — **medium scope, ~150 LoC**
+
+The architect's plan is correct: add `__array_species_create` host
+helper + inline check in `compileArraySlice` / `compileArraySplice` /
+`compileArrayConcat` when the static receiver type isn't `__vec_*`.
+For static-Array-typed receivers (the 95% common case), no change —
+`struct.new` is fast and correct because `Array[@@species] === Array`.
+
+The slow path (subclass receiver, proxy, custom `@@species`) is rare
+in user code; mainly test262. Estimated +10–30 net passes.
+
+**Disposition:** ship as a standalone follow-up. Track as **#1359B**
+(open new issue when ready).
+
+### Slice C — IsConcatSpreadable — **already partially handled**
+
+The existing fast-path `compileArrayConcat` only fires when
+`resolveArrayInfo(ctx, argTsType)` confirms the arg is a known WasmGC
+array type. For `any` / `object` / array-likes with
+`Symbol.isConcatSpreadable`, it falls back to
+`compileArrayConcatExtern` (host helper `__array_concat_any`). That
+host helper calls native `Array.prototype.concat` which respects
+`Symbol.isConcatSpreadable` natively.
+
+So most `is-concat-spreadable-*` tests should already work via the
+fallback. The ones that fail likely fail at the property assignment
+(`item[Symbol.isConcatSpreadable] = undefined`) — a Symbol-key
+indexing issue upstream of concat itself.
+
+**Disposition:** investigate which specific tests fail before adding
+the spreadable check to the typed fast path. Likely yields fewer
+passes than estimated. Track as **#1359C** with concrete failing
+tests after re-investigation.
+
+### Slice D — splice deleteCount=undefined — **already correct**
+
+Walked `compileArraySplice` (lines 3658–3735):
+- 0-arg → empty array, no mutation ✓ matches spec
+- 1-arg → `delCount = len - start` ✓ matches spec
+- 2-arg with `undefined` → compiles to NaN → `i32.trunc_sat_f64_s(NaN) = 0`
+  ✓ matches `ToInteger(undefined) === 0`
+
+The architect's failing test `splice/S15.4.4.12_A6.1_T2.js` is actually
+about `length` being non-writable — needs
+`Object.defineProperty(a, 'length', {writable: false})` and
+TypeError-on-write semantics. **#1334's territory**, not splice
+itself.
+
+**Disposition:** no fix needed in splice. The 25 splice `assertion_fail`
+count needs re-bucketing before any fix is attempted.
+
+### Slice E — Sparse hole preservation — **no-op for typed vecs (THIS PR)**
+
+For `__vec_*` typed receivers, no holes are possible at the WasmGC
+level. For host-array receivers, the existing `__proto_method_call`
+bridge handles sparse holes correctly. This slice is a code comment,
+not a behaviour change. Ship in this PR as documentation so future
+reviewers don't re-investigate the same paths.
+
+### Re-scoped follow-up plan
+
+Given the corrected analysis, the realistic yield from this issue is:
+
+| Slice | Yield | Status |
+|-------|-------|--------|
+| A | 0 (blocked on #1334) | doc-only, no code change |
+| **B** | +10–30 net passes | **track as #1359B follow-up** |
+| C | TBD (likely <10) | **track as #1359C follow-up** |
+| D | 0 (already correct) | doc-only, no code change |
+| **E** | 0 (no-op for typed vecs) | **doc comment THIS PR** |
+
+Total realistic yield from #1359 work alone is closer to **+10–30 net
+passes** (Slice B), not the original +100 estimate. The +100 assumed
+all 5 slices were tractable in `array-methods.ts`; 3 of them require
+fixes elsewhere (#1334 Object brand fidelity + Symbol-key indexing).
+
+### Action items
+
+1. **This PR**: Slice E doc comment + this re-scoped sub-slice plan
+2. **#1359B follow-up**: implement Slice B (@@species), separately
+3. **#1359C follow-up**: re-investigate Slice C with concrete failing
+   tests
+4. **Cross-issue note on #1334**: several Array.prototype tests block
+   on it
