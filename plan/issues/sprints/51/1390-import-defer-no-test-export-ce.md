@@ -62,3 +62,27 @@ harness runner setup should be excluded from compile+run, or recorded as `skip` 
 ## Estimated yield
 
 ~31 CE → skip or fail (net neutral for pass count, but cleaner conformance picture).
+
+## Resolution
+
+Implemented Option A. Added a path-based skip in `shouldSkip` for any
+`language/import/import-defer/` test, *before* the proposal-scope env-var
+check. The skip is unconditional — it fires whether `TEST262_INCLUDE_PROPOSALS`
+is set or not — because every file in this subtree is either a parse-phase
+negative test (`$DONOTEVALUATE`, no test export) or relies on a `import defer`
+namespace runtime that we don't implement.
+
+### Test Results
+
+Local probe across `test262/test/language/import/import-defer/` with
+`TEST262_INCLUDE_PROPOSALS=1`:
+
+- 96 / 96 test files now skip (was: 31 CE + 65 other classifications).
+- Sibling `test262/test/language/import/import-attributes/` unchanged: 12 / 12
+  still run (no false-positive skip).
+- New unit test `tests/issue-1390-import-defer-skip.test.ts` (5 cases) passes:
+  - syntax-negative skipped when proposals excluded
+  - syntax-negative skipped when proposals included
+  - runtime namespace test skipped when proposals included
+  - unrelated import test still runs when proposals included
+  - undefined filePath does not produce a false skip with the import-defer reason
