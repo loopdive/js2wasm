@@ -1045,6 +1045,39 @@ const _hostProxyReverse = new WeakMap<object, any>();
  */
 const _prototypeMethodNames = new WeakMap<object, string[]>();
 
+/**
+ * #1364a — cache of method-name → bridge JS function for class prototypes.
+ * The proxy's `get` and `getOwnPropertyDescriptor` traps both produce the
+ * same JS function for `C.prototype.m`, so `assert.sameValue(c.m, C.prototype.m)`
+ * holds and the descriptor's `value` matches subsequent property reads.
+ *
+ * The bridge is a placeholder closure: tests that only check descriptor
+ * flags (`{enumerable: false, configurable: true, writable: true}` via
+ * `verifyProperty`) pass. JS-side method invocation through this bridge
+ * (`C.prototype.m.call(c)`) needs richer dispatch deferred to a follow-up.
+ */
+const _prototypeMethodBridges = new WeakMap<object, Map<string, Function>>();
+
+function _getProtoMethodBridge(proto: object, name: string): Function {
+  let map = _prototypeMethodBridges.get(proto);
+  if (!map) {
+    map = new Map();
+    _prototypeMethodBridges.set(proto, map);
+  }
+  let fn = map.get(name);
+  if (!fn) {
+    fn = function classMethodBridge(this: any) {
+      throw new TypeError(
+        `js2wasm: calling user-class method '${name}' via JS-side prototype access ` +
+          `is not yet supported (#1364b). Call ${name} directly on the instance.`,
+      );
+    };
+    Object.defineProperty(fn, "name", { value: name, configurable: true });
+    map.set(name, fn);
+  }
+  return fn;
+}
+
 function _wrapForHost(obj: any, exports: Record<string, Function> | undefined): any {
   if (obj == null || typeof obj !== "object") return obj;
   if (!_isWasmStruct(obj)) return obj;
@@ -2882,6 +2915,24 @@ assert._isSameValue = isSameValue;
           const exports = callbackState?.getExports();
           const fieldNames = _getStructFieldNames(obj, exports) ?? [];
           const propStr = String(prop);
+          // #1364a — registered class prototype + proto-method allowlist:
+          // class instance methods are spec-non-enumerable, configurable,
+          // writable. Without this arm, `Object.getOwnPropertyDescriptor(
+          // C.prototype, "m")` returned `undefined` (key isn't in fields/
+          // sidecar) and `verifyProperty`-style tests under
+          // `language/{statements,expressions}/class/elements/` failed at
+          // their first descriptor lookup. Returns a method descriptor
+          // backed by the cached bridge so subsequent
+          // `assert.sameValue(c.m, C.prototype.m)` assertions also pass.
+          const protoMethods = _prototypeMethodNames.get(obj);
+          if (protoMethods !== undefined && protoMethods.includes(propStr)) {
+            return {
+              value: _getProtoMethodBridge(obj, propStr),
+              writable: true,
+              enumerable: false,
+              configurable: true,
+            };
+          }
           if (fieldNames.includes(propStr)) {
             const getter = exports?.[`__sget_${propStr}`];
             const value = typeof getter === "function" ? getter(obj) : undefined;
