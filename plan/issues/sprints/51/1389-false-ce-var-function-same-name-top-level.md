@@ -2,7 +2,7 @@
 id: 1389
 sprint: 51
 title: "fix: false CE — var + function-declaration same name at top-level scope"
-status: ready
+status: in-progress
 created: 2026-05-08
 priority: medium
 feasibility: easy
@@ -70,3 +70,17 @@ In `checkVarLexicalConflicts` (`src/compiler/validation.ts:2601`), only add func
 ## Files
 
 - `src/compiler/validation.ts:2601` — one-line fix
+
+## Test Results
+
+Probe `tests/issue-1389.test.ts` (6 cases) all pass:
+- ✓ `var x; function x(){}` at SourceFile scope compiles (script-level: var-scoped)
+- ✓ `function x(){}; var x;` at SourceFile scope (other order) also compiles
+- ✓ `let x; var x;` at SourceFile scope STILL errors (let is genuinely lexical)
+- ✓ `class X{}; var X;` at SourceFile scope STILL errors (class is lexical)
+- ✓ `{ function x(){}; var x; }` inside a Block STILL errors (block-scoped function is lexical)
+- ✓ `{ let x; var x; }` inside a Block STILL errors
+
+Real test262 file `nested-function-script-code-valid.js` containing `var smoosh; function smoosh() {}` now compiles cleanly (previously: `Cannot redeclare block-scoped variable 'smoosh'`).
+
+`tests/ts-wasm-equivalence.test.ts` and `tests/tdz-reference-error.test.ts` still pass (no regressions in scope-related tests).
