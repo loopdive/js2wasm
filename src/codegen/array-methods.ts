@@ -23,6 +23,7 @@ import {
   registerEmitBoundsCheckedArrayGet,
   VOID_RESULT,
 } from "./shared.js";
+import { emitUndefined } from "./expressions/late-imports.js";
 import { stringConstantExternrefInstrs } from "./native-strings.js";
 import { ensureTimsortHelper } from "./timsort.js";
 import { coerceType, coercionInstrs, defaultValueInstrs } from "./type-coercion.js";
@@ -3526,6 +3527,17 @@ function compileArrayPop(
   const getOp = elemType.kind === "i16" ? "array.get_s" : "array.get";
   const lenTmp = allocLocal(fctx, `__arr_pop_len_${fctx.locals.length}`, { kind: "i32" });
 
+  // (#1377) Initialize result to JS `undefined` for externref/anyref element
+  // types so empty-array `arr.pop()` returns spec-compliant undefined (not
+  // the wasm default `ref.null.extern`, which JS sees as `null`). f64 keeps
+  // its NaN default (matches `[].pop()` returning undefined which coerces
+  // to NaN in numeric context). i32 keeps 0 (best-effort; never mixed with
+  // null arrays).
+  if (elemType.kind === "externref" || elemType.kind === "anyref") {
+    emitUndefined(ctx, fctx);
+    fctx.body.push({ op: "local.set", index: resultTmp });
+  }
+
   // Compile receiver -> vec ref
   compileExpression(ctx, fctx, propAccess.expression);
   fctx.body.push({ op: "local.tee", index: vecTmp });
@@ -3535,7 +3547,7 @@ function compileArrayPop(
   fctx.body.push({ op: "struct.get", typeIdx: vecTypeIdx, fieldIdx: 0 });
   fctx.body.push({ op: "local.set", index: lenTmp });
 
-  // Guard: if length > 0, do pop; else result stays default (0/NaN/null)
+  // Guard: if length > 0, do pop; else result stays as initialized above (undefined for ref types).
   fctx.body.push({ op: "local.get", index: lenTmp });
   fctx.body.push({ op: "i32.const", value: 0 });
   fctx.body.push({ op: "i32.gt_s" });
@@ -3584,6 +3596,13 @@ function compileArrayShift(
   const resultTmp = allocLocal(fctx, `__arr_sft_res_${fctx.locals.length}`, elemType);
 
   const getOp = elemType.kind === "i16" ? "array.get_s" : "array.get";
+
+  // (#1377) Initialize result to JS `undefined` for externref/anyref so
+  // empty-array `arr.shift()` returns spec-compliant undefined.
+  if (elemType.kind === "externref" || elemType.kind === "anyref") {
+    emitUndefined(ctx, fctx);
+    fctx.body.push({ op: "local.set", index: resultTmp });
+  }
 
   // Compile receiver -> vec ref
   compileExpression(ctx, fctx, propAccess.expression);

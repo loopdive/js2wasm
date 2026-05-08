@@ -86,3 +86,88 @@ console.log(r.success ? 'OK' : r.errors[0].message);
 
 - `src/codegen/class-bodies.ts` — static method emitter, async wrapper
 - `src/codegen/closures.ts` — async trampoline construction
+
+## Investigation results (senior-dev, 2026-05-08)
+
+**Root cause is NOT PrivateName / Unicode / class-bodies.** The architect's
+hypothesis was misleading. After empirical bisection from the failing
+test262 file, the minimum reproducer is just **6 lines**:
+
+```ts
+async function f(): Promise<any> { return 1; }
+export function test(): number {
+  Promise.all([f()]).then(r => r);
+  return 1;
+}
+```
+
+Result: `WebAssembly.instantiate(): Compiling function #N:"test" failed:
+not enough arguments on the stack for call (need 2, got 0)`
+
+### Trigger conditions (verified)
+
+The bug fires if and only if ALL three are true:
+
+1. **Receiver is `Promise.all([asyncCall()])`** (or any expression returning
+   `Promise<any[]>`).
+2. **`.then(callback)` callback param is UNTYPED** — `r => r` fails;
+   `(r: any) => r` works.
+3. **The async function returns `Promise<any>` / `Promise<unknown>` /
+   `Promise<heterogeneous>`** — `Promise<number>` works.
+
+So the contextual type for the callback param is a heterogeneous union
+that triggers `addUnionImports` during the arrow body's compilation.
+That late import addition shifts funcIdx values, but the receiver's
+already-emitted Promise.all call bytes have stale indices.
+
+### What does NOT fix it
+
+- Adding `flushLateImportShifts(ctx, fctx)` AFTER the callback arg
+  compilation in `src/codegen/expressions/calls.ts:3647` (just before
+  the call emission). Verified — same error.
+  - This implies the shift mechanism IS being invoked, and the bytes
+    ARE being walked, but the resulting indices are still wrong.
+
+### Workarounds (verified to compile cleanly)
+
+- Split into intermediate variable: `var p = Promise.all([f()]); p.then(r => r);`
+- Cast the Promise: `(Promise.all([f()]) as Promise<any>).then(r => r);`
+- Type the callback: `Promise.all([f()]).then((r: any) => r);`
+- Make the async function return a non-heterogeneous type: `Promise<number>`.
+
+### Next investigation steps
+
+1. Dump the Wasm binary at the failing offset (~475) — binaryen rejects
+   but a manual hex dump may reveal which call is malformed.
+2. Check whether `ctx.parentBodiesStack` is actually populated when the
+   arrow body is compiled — `shiftLateImportIndices` walks it at
+   `late-imports.ts:65`, but if it's empty during arrow compilation the
+   outer `.then()` call site's bytes wouldn't be shifted.
+3. Audit `compileArrowAsCallback` for any path that emits instructions
+   into a body that ISN'T tracked by the shift walker.
+4. Check whether `coerceType` (line 3635 in `calls.ts`) can trigger an
+   addUnionImports without running through `flushLateImportShifts`.
+
+### Reproducers (all in `.tmp/` of `issue-1384-static-async-private` worktree)
+
+- `.tmp/probe-min9.mts` — 6-line minimum
+- `.tmp/probe-types.mts` — confirms Promise<any|unknown|union> trigger,
+  Promise<number> works
+- `.tmp/probe-instance.mts` — runs the original failing test262 file
+  through `wrapTest` and instantiates
+
+### Estimated impact (revised)
+
+249 CE tests currently failing. Fixing this single index-shift bug
+should unblock most of them. Estimate +150–250 net test262.
+
+### Status
+
+**Investigation complete, fix attempt unsuccessful.** Reverted the
+naïve `flushLateImportShifts` insertion. The real fix likely needs to
+walk the right body (which one? — probably an outer body that's not
+in `ctx.funcStack` during arrow compilation), or fix the order in
+which the receiver's call bytes get emitted vs. when the union
+imports are added.
+
+Returning to TaskList — needs a fresh deeper investigation pass.
