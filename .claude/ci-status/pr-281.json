@@ -1,0 +1,19 @@
+{
+  "pr": 281,
+  "conclusion": "success",
+  "head_branch": "issue-1342-json-replacer",
+  "head_sha": "f567906c4120c93dec93e087f1310ad8f941b0ab",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25540086815",
+  "timestamp": "2026-05-08T07:04:13Z",
+  "pass": 26702,
+  "fail": 14201,
+  "compile_error": 845,
+  "snapshot_delta": -119,
+  "net_per_test": 36,
+  "regressions": 38,
+  "regressions_real": 9,
+  "regressions_wasm_change": 9,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 29,
+  "improvements": 45
+}
