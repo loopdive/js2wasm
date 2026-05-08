@@ -393,25 +393,14 @@ export function compileArrayLikePrototypeCall(
     }
   }
 
-  // Bail out if the call site is inside `assert_throws(...)` (test262 rewrites `assert.throws`
-  // to this helper). The Wasm-native loop calls __extern_length / __extern_get_idx directly
-  // and does not currently propagate host-side JS exceptions to the surrounding try/catch,
-  // so any test that expects a throw from the length/index getter or the callback would
-  // silently pass where it should trap. The legacy __proto_method_call bridge handles
-  // exception propagation, so let it own those cases.
-  {
-    let p: ts.Node | undefined = callExpr.parent;
-    while (p) {
-      if (
-        ts.isCallExpression(p) &&
-        ts.isIdentifier(p.expression) &&
-        (p.expression.text === "assert_throws" || p.expression.text === "assert_throwsAsync")
-      ) {
-        return undefined;
-      }
-      p = p.parent;
-    }
-  }
+  // #1358: previously this path bailed out when the call site was lexically
+  // inside `assert_throws(...)` to keep negative test262 tests on the legacy
+  // __proto_method_call bridge (which handles host-side exception propagation).
+  // The architect's plan calls for the Wasm-native loop to propagate
+  // exceptions directly via call_ref and the host imports' natural rethrow
+  // semantics, removing the need for the bailout. Drop it; if any tests
+  // regress, the issue is in the loop's exception-propagation infrastructure
+  // (a separate, larger fix tracked in #1382 closure/host-bridge gap).
 
   // every/some/forEach/find/findIndex: callback is args[1]
   if (callExpr.arguments.length < 2) return undefined;
