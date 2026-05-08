@@ -40,7 +40,7 @@ Two parallel tracks:
 | #1312 | Async recursion fix (pre-registration) | high | **done** — PR #283 +135 |
 | #1334 | Object.defineProperty descriptor attribute fidelity | high | **done** — PR #304 |
 | #1343 | Boolean wrapper + Symbol coercion TypeErrors | medium | **done** — PR #312 +77 |
-| #1344 | Date.prototype string formatters and parsers | medium | in_progress — PR #318 in CI |
+| #1344 | Date.prototype string formatters and parsers | medium | **done** — PR #318 |
 | #1347 | for-of IteratorClose on non-callable return | medium | **done** — PR #265 |
 | #1348 | for-of IteratorClose on abrupt body completion | medium | **done** — PR #314 +58 |
 | #1358 | Array callback methods on array-like receivers | high | **done** — PR #268 |
@@ -51,7 +51,7 @@ Two parallel tracks:
 | #1363 | Class dstr — cannot-destructure-null | high | **done** — merged |
 | #1364 | Class elements method/field descriptor fidelity | medium | **done** — PR #310 |
 | #1365 | Class private fields and brand checks | medium | **done** — PR #313 +23 |
-| #1366 | Class subclass builtins + prototype chain | medium | in_progress — PR #315 in CI |
+| #1366 | Class subclass builtins + prototype chain | medium | **done** — PR #315 +44 |
 | #1366a | Class extends Error/TypeError builtin subclassing | high | **done** — PR #307 |
 | #1367 | Iterator helpers protocol invariants | medium | **done** — PR #287 +89 |
 | #1368 | Promise.all/allSettled/any/race resolver-element | medium | **done** — PR #286 +37 |
@@ -61,15 +61,15 @@ Two parallel tracks:
 | #1372 | IR: destructuring params | high | **done** — PR #301 |
 | #1373 | IR: async functions | high | pending |
 | #1374 | IR: string for-of and for-in | high | **done** — PR #306 |
-| #1375 | IR: full optional-chain support | medium | **in_progress** — dev-1389 unblocked (task #19) |
+| #1375 | IR: full optional-chain support | medium | **in_progress** — PR #311 Slice A merged; dev-1389 continuing |
 | #1376 | IR: fallback telemetry gate | high | **done** — PR #285 |
 | #1377 | Array mutating methods length-overflow + receiver | medium | partial — Slices A+B done (PRs #289, #299) |
 | #1378 | try/catch/finally completion override + error fidelity | medium | **done** — merged |
 | #1379 | ++/-- ToNumeric on null/undefined/string | medium | **done** — merged |
 | #1380 | Equality Symbol/BigInt + ReferenceError propagation | medium | **done** — PR #302 +141 |
 | #1381 | String.prototype substring/slice/indexOf/charAt/at | medium | **done** — PR #279 |
-| #1382 | Wasm closures not JS-callable from host imports | high | pending |
-| #1384 | CE: async chain+try/catch arity (Promise.all+untyped cb) | high | pending — architect spec ready |
+| #1382 | Wasm closures not JS-callable from host imports | high | in_progress — task #29 (senior-dev-1370) |
+| #1384 | CE: async chain+try/catch arity (Promise.all+untyped cb) | high | **done** — PR #298 |
 | #1385 | HANG: Temporal Duration.from infinite loop | medium | **done** — PR #291 |
 | #1386 | HANG: Promise.race invoke-then hang | medium | **done** — PR #288 +41 |
 | #1388 | null.next: yield* async-gen class method iterator null | high | **done** — PR #294 +478 (regression fix PR #305) |
@@ -92,20 +92,21 @@ Two parallel tracks:
 - **#1366a**: Error subclassing slice. Done PR #307.
 - **#1343**: Boolean/Symbol coercion TypeErrors. Done PR #312 +77.
 - **#1348**: for-of IteratorClose abrupt body. Done PR #314 +58.
-- **#1352**: Set new methods set-like — PR #317 in CI (task #27).
+- **#1352**: Set new methods set-like — Done PR #317 (task #27). GATE_BYPASS approved (8 scatter regressions, unrelated buckets).
 - **#1365**: Class private fields and brand checks. Done PR #313 +23.
-- **#1366**: Class subclass builtins — PR #315 in CI (task #25).
-- **#1344**: Date.prototype formatters — PR #318 in CI (task #24).
-- **#1392**: IR null-safe primitives. Done PR #316 +38; unblocked #1375 (dev-1389 resuming).
+- **#1366**: Class subclass builtins — Done PR #315 +44 (task #25).
+- **#1344**: Date.prototype formatters — Done PR #318 (task #24).
+- **#1392**: IR null-safe primitives. Done PR #316 +38; unblocked #1375 (dev-1389 on Slice B).
 - **#1393**: CI content-hash cache + merge queue. Done: content-hash already in
-  `test262-differential.yml`; merge queue enabled via GitHub Ruleset #16153215;
-  `dev-self-merge.md` updated to `--auto --merge`.
+  `test262-differential.yml`; merge queue via GitHub Ruleset #16153215 attempted then
+  ROLLED BACK — personal repos cannot bypass `github-actions[bot]` pushes. See issue file.
+  `dev-self-merge.md` reverted to `--admin --merge`.
 
 ## Session results (2026-05-08)
 
 **PRs merged**: 20+ across two sessions today.
 
-**Baseline**: 27567/43160 = **63.9%** (committed; local run ~64%)
+**Baseline**: 27721/43160 = **64.2%** (committed; refreshed after PR #315 merge)
 
 | PR | Issue | Net | Note |
 |----|-------|----:|------|
@@ -142,21 +143,24 @@ Two parallel tracks:
 | #312 | #1343 Boolean/Symbol coercion | +77 | |
 | #313 | #1365 class private fields | +23 | |
 | #314 | #1348 for-of IteratorClose abrupt | +58 | |
+| #311 | #1375 IR optional-chain Slice A | — | partial, dev-1389 continuing |
+| #315 | #1366 class subclass builtins | +44 | |
+| #316 | #1392 IR null-safe primitives | +38 | |
+| #317 | #1352 Set new methods set-like | — | GATE_BYPASS (scatter regressions) |
+| #318 | #1344 Date.prototype formatters | — | |
 
 ## Remaining work
 
-**In progress (CI pending):**
-- #1366 class subclass builtins — PR #315 in CI (dev-regression-fix, task #25)
-- #1375 IR optional chain — dev-1389 implementing (unblocked by #1392 merge)
-
 **In progress (implementing):**
-- #1375 IR optional chain — unblocked, dev-1389 resuming (task #19)
-- #1366 class subclass builtins — PR #315 awaiting CI feed (dev-regression-fix, task #25)
+- #1375 IR optional chain — Slice A merged (PR #311); dev-1389 on Slice B (task #19)
+- #1382 Wasm closures — senior-dev-1370 implementing (task #29)
+- #1154 Array.prototype poisoning CE — dev-idx (task #30)
+- #1252+#1253 SameValue NaN + OrdinaryToPrimitive — dev-1389-2 (task #31)
+- #1104 Wasm-native Error — dev-1390-2 (task #33)
 
 **Pending (no active dev):**
-- #1373 IR async functions
-- #1382 Wasm closures not JS-callable
-- #1384 async chain arity (architect spec ready)
+- #1373 IR async functions — BLOCKED on #1326 Phase 1 (microtask queue)
+- #1326 Async microtask queue Phase 1 — to be assigned to senior-dev-1384
 
 **Blocked:**
 - #1377 Slices C+ → externref identity bug

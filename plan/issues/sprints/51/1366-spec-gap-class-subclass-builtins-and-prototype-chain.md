@@ -2,7 +2,7 @@
 id: 1366
 sprint: 51
 title: "spec gap: class subclass + subclass-builtins prototype chain (~154 fails)"
-status: ready
+status: done
 created: 2026-05-08
 priority: medium
 feasibility: medium
@@ -648,3 +648,95 @@ import + `compileNewExpression` for `Array`/`Map`/`Set`/`Promise`) — the
 ground truth from #1366a's `classExternrefBackedSet` infra carries
 forward unchanged. #1366c ships independently of #1366b once at least
 one of the two has landed.
+
+---
+
+## Implementation Plan: child issue #1366b (extends Array/Map/Set/Promise/RegExp/...)
+
+### Approach taken (2026-05-08, Senior Dev)
+
+The architect's "Approach #1366b" suggested a new
+`__construct_subclass(parent, args, newTarget)` host import threading
+`Reflect.construct`'s newTarget so the resulting instance's
+`[[Prototype]]` is `Sub.prototype`. After tracing the existing
+infrastructure I decided this is **not necessary for slice-1**: the
+existing `__new_<Name>(arg) -> externref` host import (already used by
+#1366a for the Error family) routes through `extern_class new` in the
+runtime (`runtime.ts:1604`) which calls `new globalThis[Name](...args)`
+after stripping trailing nulls. For `Array`/`Map`/`Set`/`Promise`/
+`RegExp`/`ArrayBuffer`/`WeakMap`/`WeakSet`, this produces a real builtin
+instance with the correct internal slots — enough to make subclass
+operations like `.length`, `.set/.get`, `.add/.has`, `.test`,
+`.byteLength` work.
+
+### Code change
+
+Two-line conceptual change:
+
+1. **`src/codegen/builtin-tags.ts`** — extend
+   `BUILTIN_PARENTS_HOST_CONSTRUCTIBLE` with
+   `Array, Map, Set, WeakMap, WeakSet, Promise, RegExp, ArrayBuffer`.
+   Everything downstream (`isExternrefBacked` in `class-bodies.ts`,
+   externref-typed constructor result, `super(...)` lowering to
+   `__new_<Parent>`, `instanceof` static reasoning in
+   `expressions.ts:714`) keys off this set and works without further
+   change.
+
+2. **`src/runtime.ts`** — extend the `builtinCtors` map in the
+   `extern_class new` resolver (line 1612) to include `Array` and
+   `Promise`. They were missing because no test case had previously
+   triggered a `__new_Array` / `__new_Promise` import. Without these
+   entries the resolver throws `"No dependency provided for extern
+   class \"Array\""` at runtime.
+
+### Validation
+
+`tests/issue-1366b.test.ts` — 6 active equivalence tests covering
+Array/Map/Set/RegExp/ArrayBuffer/WeakMap subclasses. All pass. 4
+deferred tests (`.todo`) document slice-2 boundaries.
+
+`tests/issue-1366a.test.ts` — all 9 pre-existing Error-family tests
+still pass; no regression.
+
+### Limitations (all deferred to slice 2)
+
+- `subInst instanceof Sub` for non-Error subclasses: the host
+  instance's `[[Prototype]]` is the parent's, not `Sub.prototype`, so
+  prototype-chain walking finds the parent but not Sub. The static
+  reasoning path (`expressions.ts:714`) handles `e instanceof MyArray`
+  when LHS's TS type is provably `MyArray`. Cases that need
+  runtime walking (e.g. an externref of unknown TS type) require
+  `Reflect.construct`-style newTarget threading. Tracked as #1366c.
+- `class MyPromise extends Promise`: compiles, but the
+  `(resolve)=>resolve(x)` executor closure arrives at the host as an
+  externref-wrapped WasmGC struct, not a JS function. The host's
+  `new Promise(executor)` rejects this. Needs an `_unwrapForHost` step
+  on Promise's first arg in the `extern_class new` resolver. Deferred.
+- `Symbol.species`: a method like `subInstance.map(...)` returns the
+  parent type. The host's spec-conforming impls *would* honour
+  `Symbol.species` if `[[Prototype]]` were set correctly (which it
+  isn't in slice-1). Tracked as #1366d.
+- Multi-arg `super(a, b)`: only the first arg flows. The existing
+  `compileSuperCall` builtin branch (introduced by #1366a) is
+  hardcoded to single-arg. RegExp's two-arg form (`super(pattern,
+  flags)`) is therefore partial — `flags` is dropped.
+- Default constructor `class Sub extends Array {}` does not forward
+  `new Sub(5)`'s `5` argument to `super(5)`. Sub has 0 declared
+  params, so callers truncate args at the WasmGC call boundary.
+
+### Estimated impact
+
+This slice unlocks subclass-of-builtin-container scenarios across:
+
+- `language/expressions/class/subclass/builtin-objects/Array/*` —
+  cases that don't exercise `instanceof Sub` should pass.
+- `language/expressions/class/subclass/builtin-objects/Map/*`,
+  `Set/*`, `RegExp/*`, `ArrayBuffer/*`.
+- `language/statements/class/subclass-builtins/{Map,Set,RegExp,
+  ArrayBuffer}.js` — classes that just verify `subInst instanceof
+  Builtin` (parent direction) and basic method dispatch.
+
+Pessimistic estimate: +30-50 net passes (matches architect's #1366b
+estimate). Gating tests like `length-property.js` should pass; tests
+needing newTarget threading or species honour stay failing until
+#1366c/d.

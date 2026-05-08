@@ -1712,6 +1712,12 @@ function resolveImport(
           Number,
           Boolean,
           String,
+          // (#1366b) Array and Promise added so `class Sub extends Array {}` /
+          // `class Sub extends Promise {}` route through `__new_Array(arg)` /
+          // `__new_Promise(executor)` host imports. Without these entries the
+          // resolver throws "No dependency provided for extern class 'Array'".
+          Array,
+          Promise,
           Map,
           Set,
           WeakMap,
