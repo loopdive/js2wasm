@@ -985,12 +985,19 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
   // adding their func types here shifts struct type indices, breaking
   // non-Promise code in the same module (#855 regression fix).
   //
+  // (#1326 Phase 1B) In standalone (WASI) mode, skip pre-registration of
+  // `Promise_resolve` / `Promise_reject` — these are unsatisfiable host
+  // imports there; the codegen call site emits Wasm-native `struct.new
+  // $Promise` instead. Other Promise methods (all/race/allSettled/any)
+  // are still host-routed in 1B; Phase 3 will add native combinators.
+  //
   // (#1368) Aggregators (all/race/allSettled/any) take (thisArg, iterable) so
   // the codegen can pass through `Promise.all.call(C, …)` thisArg semantics
   // and the runtime can default to globalThis.Promise when wasm passes null.
   // Resolve/reject keep their original 1-arg signature.
   for (const method of state.promiseNeeded) {
     if (method === "then" || method === "catch" || method === "finally") continue;
+    if (ctx.wasi && (method === "resolve" || method === "reject")) continue;
     const importName = `Promise_${method}`;
     if (!ctx.funcMap.has(importName)) {
       const isAggregator = method === "all" || method === "race" || method === "allSettled" || method === "any";
