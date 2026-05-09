@@ -458,15 +458,29 @@ function compileIdentifier(ctx: CodegenContext, fctx: FunctionContext, id: ts.Id
   // verifyProperty-style static-method tests under
   // `language/{statements,expressions}/class/elements/`.
   //
+  // For class expressions (`var C = class { ... }`), `classExprNameMap` maps
+  // the user-visible name "C" to the synthetic internal name (e.g.
+  // `__anonClass_0`). All static-prop / static-method storage is keyed on the
+  // synthetic name, so `C.f` (via property-access) reads from
+  // `__static___anonClass_0_f`. Resolving the bare `C` identifier must go
+  // through the same alias so the LHS of `C.f() === C` and the RHS read the
+  // SAME `__class_<Name>` singleton; otherwise the comparison ends up with
+  // `__class___anonClass_0` on the LHS (returned by the arrow body via the
+  // synthetic-name `enclosingClassName`) and `__class_C` on the RHS, which
+  // are distinct singletons and break identity. (#1395 Phase 1 follow-up.)
+  //
   // Order matters: this is AFTER `localMap`, `capturedGlobals`,
   // `moduleGlobals`, and `declaredGlobals` so user shadowing
   // (`var C = ...; class C {}` — though unusual) takes precedence.
   // It is BEFORE the funcMap-funcref path so a class never gets re-wrapped
   // as a closure, and BEFORE the `ref.null.extern` fallback so we beat the
   // null result.
-  if (ctx.classObjectGlobals?.has(name)) {
-    if (emitLazyClassObjectGet(ctx, fctx, name)) {
-      return { kind: "externref" };
+  {
+    const resolvedClassName = ctx.classExprNameMap.get(name) ?? name;
+    if (ctx.classObjectGlobals?.has(resolvedClassName)) {
+      if (emitLazyClassObjectGet(ctx, fctx, resolvedClassName)) {
+        return { kind: "externref" };
+      }
     }
   }
 
