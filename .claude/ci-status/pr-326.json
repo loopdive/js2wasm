@@ -1,0 +1,22 @@
+{
+  "pr": 326,
+  "conclusion": "success",
+  "head_branch": "issue-1104-wasm-native-error",
+  "head_sha": "7991ce389e87f37b4c9a1b44602897d01e75367e",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25591615806",
+  "timestamp": "2026-05-09T05:06:28Z",
+  "pass": 27766,
+  "fail": 14147,
+  "compile_error": 1164,
+  "snapshot_delta": 2,
+  "net_per_test": 42,
+  "regressions": 47,
+  "regressions_real": 11,
+  "regressions_wasm_change": 11,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 36,
+  "improvements": 53,
+  "baseline_sha": "7991ce389e87f37b4c9a1b44602897d01e75367e",
+  "baseline_staleness_commits": 7,
+  "baseline_stale": false
+}
