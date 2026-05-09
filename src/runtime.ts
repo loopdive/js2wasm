@@ -1220,6 +1220,48 @@ function _getProtoMethodBridge(proto: object, name: string): Function {
   return fn;
 }
 
+/**
+ * (#1395) `_staticMethodNames` is the static-method analog of
+ * `_prototypeMethodNames` above. Populated by the `__register_class_object`
+ * host import on first lazy access of a class identifier. Consulted by
+ * `__getOwnPropertyDescriptor` when the receiver is a class-object singleton
+ * — returns a method descriptor with the spec-correct flags
+ * (`{enumerable: false, configurable: true, writable: true}` per ECMA-262
+ * §15.7.1) so `verifyProperty(C, "m", ...)` tests pass.
+ */
+const _staticMethodNames = new WeakMap<object, string[]>();
+
+/**
+ * (#1395) Cache of static-method-name → bridge JS function for class objects.
+ * Mirrors `_prototypeMethodBridges` so `verifyProperty` and
+ * `assert.sameValue(C.m, C.m)` both see the same Function reference across
+ * repeated reads. JS-side invocation through the bridge will throw — Phase 2
+ * may swap the bridge body for actual dispatch once the closure-caching
+ * landscape (#1394) settles.
+ */
+const _classMethodBridges = new WeakMap<object, Map<string, Function>>();
+
+function _getClassMethodBridge(classObj: object, name: string): Function {
+  let map = _classMethodBridges.get(classObj);
+  if (!map) {
+    map = new Map();
+    _classMethodBridges.set(classObj, map);
+  }
+  let fn = map.get(name);
+  if (!fn) {
+    fn = function classStaticMethodBridge(this: any) {
+      throw new TypeError(
+        `js2wasm: calling user-class static method '${name}' via JS-side ` +
+          `class-object access is not yet supported (#1395 follow-up). ` +
+          `Call ${name} directly on the class.`,
+      );
+    };
+    Object.defineProperty(fn, "name", { value: name, configurable: true });
+    map.set(name, fn);
+  }
+  return fn;
+}
+
 function _wrapForHost(obj: any, exports: Record<string, Function> | undefined): any {
   if (obj == null || typeof obj !== "object") return obj;
   if (!_isWasmStruct(obj)) return obj;
@@ -1953,9 +1995,26 @@ function resolveImport(
       // Compiled `(123.456).toPrecision()` (no args) pushes f64.const NaN on the
       // stack rather than crashing Wasm validation by calling the 2-arg import
       // with only one operand.
-      if (name === "number_toPrecision") return (v: number, p: number) => (isNaN(p) ? String(v) : v.toPrecision(p));
+      // (#49) Per ECMA-262 §21.1.3.3 / §21.1.3.5, the spec returns
+      // Number::toString(x) BEFORE the fractionDigits/precision range check
+      // when `x` is non-finite. V8's native toExponential/toPrecision do
+      // the range check first and throw RangeError, which makes
+      // `(NaN).toExponential(Infinity)` throw instead of returning "NaN"
+      // (test262 toExponential/{nan,infinity}.js, toPrecision/{nan,infinity,
+      // tointeger-precision,undefined-precision-arg}.js). Mirror the spec
+      // ordering by short-circuiting the non-finite case to String(v).
+      // Also: the NaN-as-no-arg sentinel only applies when x IS finite —
+      // for non-finite x we use String(v) regardless of the second arg.
+      if (name === "number_toPrecision")
+        return (v: number, p: number) => {
+          if (!Number.isFinite(v)) return String(v);
+          return isNaN(p) ? String(v) : v.toPrecision(p);
+        };
       if (name === "number_toExponential")
-        return (v: number, d: number) => (isNaN(d) ? v.toExponential() : v.toExponential(d));
+        return (v: number, d: number) => {
+          if (!Number.isFinite(v)) return String(v);
+          return isNaN(d) ? v.toExponential() : v.toExponential(d);
+        };
       if (name === "JSON_stringify")
         return (v: any, replacer: any, space: any) => {
           const exports = callbackState?.getExports();
@@ -2457,6 +2516,16 @@ assert._isSameValue = isSameValue;
           if (proto == null || typeof proto !== "object") return;
           const names = typeof csv === "string" && csv.length > 0 ? csv.split(",") : [];
           _prototypeMethodNames.set(proto, names);
+        };
+      if (name === "__register_class_object")
+        return (classObj: any, csv: any): void => {
+          // (#1395) Populate the static-method-name allowlist consulted by
+          // `__getOwnPropertyDescriptor` and `__getOwnPropertyNames` so
+          // `Object.getOwnPropertyDescriptor(C, "m")` returns the spec
+          // descriptor for static methods.
+          if (classObj == null || typeof classObj !== "object") return;
+          const names = typeof csv === "string" && csv.length > 0 ? csv.split(",") : [];
+          _staticMethodNames.set(classObj, names);
         };
       if (name === "__unbox_string")
         return (s: any): any => {
@@ -3118,6 +3187,20 @@ assert._isSameValue = isSameValue;
               configurable: true,
             };
           }
+          // (#1395) Static-method receiver: when `obj` is a registered class
+          // object (lazily materialized by `emitLazyClassObjectGet`),
+          // `Object.getOwnPropertyDescriptor(C, "m")` must return a method
+          // descriptor with the spec-correct flags. Mirrors the
+          // proto-methods arm above.
+          const staticMethods = _staticMethodNames.get(obj);
+          if (staticMethods !== undefined && staticMethods.includes(propStr)) {
+            return {
+              value: _getClassMethodBridge(obj, propStr),
+              writable: true,
+              enumerable: false,
+              configurable: true,
+            };
+          }
           if (fieldNames.includes(propStr)) {
             const getter = exports?.[`__sget_${propStr}`];
             const value = typeof getter === "function" ? getter(obj) : undefined;
@@ -3141,6 +3224,19 @@ assert._isSameValue = isSameValue;
           const protoMethods = _prototypeMethodNames.get(obj);
           if (protoMethods !== undefined) {
             const names = protoMethods.slice();
+            const sc = _wasmStructProps.get(obj);
+            if (sc) {
+              for (const k of Object.getOwnPropertyNames(sc)) {
+                if (k.startsWith("__get_") || k.startsWith("__set_")) continue;
+                if (!names.includes(k)) names.push(k);
+              }
+            }
+            return names;
+          }
+          // (#1395) Class-object receiver: return the static-method allowlist.
+          const staticMethods = _staticMethodNames.get(obj);
+          if (staticMethods !== undefined) {
+            const names = staticMethods.slice();
             const sc = _wasmStructProps.get(obj);
             if (sc) {
               for (const k of Object.getOwnPropertyNames(sc)) {

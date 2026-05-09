@@ -45,6 +45,7 @@ import { wasmFuncReturnsVoid, wasmFuncTypeReturnsVoid } from "./expressions/help
 import { emitUndefined, ensureLateImport, flushLateImportShifts } from "./expressions/late-imports.js";
 
 import { compileHostInstanceOf, compileIdentifier, resolveInstanceOfRHS } from "./expressions/identifiers.js";
+import { emitLazyClassObjectGet } from "./expressions/extern.js";
 
 import { compilePostfixUnary, compilePrefixUnary } from "./expressions/unary.js";
 
@@ -739,6 +740,20 @@ function compileExpressionInner(ctx: CodegenContext, fctx: FunctionContext, expr
       }
       const localDef = fctx.locals[selfIdx - fctx.params.length];
       return localDef?.type ?? { kind: "externref" };
+    }
+    // (#1395) Static-context fallback: in a static field initializer or
+    // static method body (or in any closure spawned from one), `this`
+    // refers to the class constructor object per ECMA-262 §15.7.1.1
+    // step 5.b. We emit the lazy class-object singleton load — same
+    // singleton used when the class identifier appears as a value, so
+    // `C.f() === C` (when `static f = () => this`) holds. Note: the
+    // lazy-load is invariant (a global), so no closure-capture wiring
+    // is needed — the arrow's body re-emits the load and gets the
+    // exact same externref each time.
+    if (fctx.isStaticContext && fctx.enclosingClassName && ctx.classObjectGlobals?.has(fctx.enclosingClassName)) {
+      if (emitLazyClassObjectGet(ctx, fctx, fctx.enclosingClassName)) {
+        return { kind: "externref" };
+      }
     }
     emitUndefined(ctx, fctx);
     return { kind: "externref" };

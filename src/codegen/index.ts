@@ -734,6 +734,10 @@ export function generateModule(
     if (sourceContainsClass(ast.sourceFile)) {
       const regProtoTypeIdx = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], []);
       addImport(ctx, "env", "__register_prototype", { kind: "func", typeIdx: regProtoTypeIdx });
+      // (#1395) Same rationale for the class-object registry — must be
+      // registered up-front so `emitLazyClassObjectGet` finds it in funcMap.
+      const regClassTypeIdx = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], []);
+      addImport(ctx, "env", "__register_class_object", { kind: "func", typeIdx: regClassTypeIdx });
     }
 
     // Emit inline Wasm implementations for Math methods (after all imports are registered)
@@ -998,6 +1002,15 @@ export function generateModule(
     // host `Array.from` invokes mapFn with `(value, index)`, so the JS-side
     // wrapper needs a 2-arg dispatcher to route into the closure.
     emitClosureCallExport2(ctx);
+
+    // Emit __call_fn_3 / __call_fn_4 exports (#1382 Phase 2). Required for
+    // `Array.prototype.{forEach,map,filter,every,some,find,...}.call(obj, cb)`
+    // dispatched through the host `__proto_method_call` — the host invokes
+    // the callback with `(value, index, array)` (arity 3) or, for reduce,
+    // `(acc, value, index, array)` (arity 4). The dispatchers iterate
+    // closures of arity ≤ N; lower-arity closures see extra args dropped.
+    emitClosureCallExport3(ctx);
+    emitClosureCallExport4(ctx);
 
     // Emit __call_toString/__call_valueOf exports for ToPrimitive dispatch (#866)
     emitToPrimitiveMethodExports(ctx);
@@ -1813,45 +1826,86 @@ function emitClosureCallExport1(ctx: CodegenContext): void {
 }
 
 /**
- * Emit __call_fn_2 export (#1382): call a two-arg WasmGC closure from JS.
- * Takes (externref closure, externref arg0, externref arg1) and returns
- * externref. Used by `__array_from` (mapFn invoked with (value, index)) and
- * by future host shims that pass Wasm closures as JS callbacks.
- *
- * Same dispatch strategy as __call_fn_0 / __call_fn_1: extract the funcref
- * from field 0 of the closure struct, then dispatch by funcref TYPE
- * (struct-type dispatch fails post-V8-isorecursive-canonicalization).
- *
- * Locals layout:
- *   0 = closure externref (param)
- *   1 = arg0 externref (param)
- *   2 = arg1 externref (param)
- *   3 = anyref (__any) — the converted closure externref
- *   4 = (ref null $baseWrapper) (__struct) — cast struct for self
- *   5 = funcref (__funcref) — extracted from field 0
+ * Emit __call_fn_2 export — wraps the generic N-arg helper at arity 2.
+ * Kept as a thin alias so the call-site name in `compile()` stays
+ * descriptive when reading the dispatch sequence.
  */
 function emitClosureCallExport2(ctx: CodegenContext): void {
+  emitClosureCallExportN(ctx, 2);
+}
+
+/**
+ * Emit __call_fn_3 export (#1382 Phase 2): call a three-arg WasmGC closure
+ * from JS. Same dispatch as __call_fn_2 but with one extra positional
+ * arg, matching Array HOF callbacks `(value, index, array)`.
+ */
+function emitClosureCallExport3(ctx: CodegenContext): void {
+  emitClosureCallExportN(ctx, 3);
+}
+
+/**
+ * Emit __call_fn_4 export (#1382 Phase 2): call a four-arg WasmGC closure
+ * from JS. Used for `Array.prototype.reduce(cb, initial)` which invokes
+ * `cb(accumulator, currentValue, currentIndex, array)`.
+ */
+function emitClosureCallExport4(ctx: CodegenContext): void {
+  emitClosureCallExportN(ctx, 4);
+}
+
+/**
+ * Emit __call_fn_<arity> export (#1382): call an N-arg WasmGC closure from
+ * JS. Takes (externref closure, externref arg0, ..., externref arg<arity-1>)
+ * and returns externref. Used by `__array_from`, `__proto_method_call`, and
+ * other host shims that pass Wasm closures as JS callbacks.
+ *
+ * Dispatch: iterate ALL closure types whose user arity ≤ N. For each
+ * matching closure, push only as many args as it declared (matches JS
+ * spec's "extra args ignored" semantics for over-arity calls). Funcref-
+ * type dispatch is required because V8 isorecursive canonicalization
+ * collapses base wrapper struct types — only funcref types remain
+ * distinct per signature.
+ *
+ * Locals layout:
+ *   0..arity-1 = positional externref params (closure + user args)
+ *   arity      = anyref (__any) — converted closure externref
+ *   arity+1    = (ref null $baseWrapper) (__struct)
+ *   arity+2    = funcref (__funcref)
+ *
+ * Returns early when no closures of arity ≤ N exist (no export emitted).
+ */
+function emitClosureCallExportN(ctx: CodegenContext, arity: number): void {
   const mod = ctx.mod;
+  const exportName = `__call_fn_${arity}`;
+
+  // Local index conventions for the dispatcher body. `arity` positional
+  // params (closure + user args 0..arity-1) come first; auxiliary locals
+  // are appended after the params.
+  //
+  //   0           = closure externref
+  //   1..arity-1  = user arg externrefs
+  //   anyLocal    = anyref (closure-as-anyref after extern.convert_any)
+  //   structLocal = (ref null $baseWrapper) for the cast struct
+  //   funcLocal   = funcref extracted from struct field 0
+  const anyLocal = arity + 1;
+  const structLocal = arity + 2;
+  const funcLocal = arity + 3;
 
   let baseWrapperIdx: number | undefined;
   const seenFuncTypeIdx = new Set<number>();
-  // (#1382) Each entry tracks how many user args the closure declared
-  // (closureArity). The host (JS-side `Array.from`) always invokes with
-  // 2 args (value, index); when the closure declared fewer, we drop the
-  // extra args at the dispatch arm. This matches JS spec behavior — extra
-  // args beyond a function's declared arity are ignored at call time.
+  // Each entry tracks how many user args the closure declared
+  // (closureArity ≤ arity). The host always invokes the dispatcher with
+  // `arity` user args; when a closure declared fewer, the dispatch arm
+  // drops the extra args. Matches JS spec's "extra args ignored at call
+  // time" semantics.
   const entries: {
     funcTypeIdx: number;
     returnType: ValType | null;
     selfTypeIdx: number;
-    closureArity: 0 | 1 | 2;
+    closureArity: number;
   }[] = [];
 
-  // (#1382) Iterate ALL closures (arity 0, 1, 2) — `__call_fn_2` is the
-  // host-callable wrapper Array.from uses; the host calls with 2 args
-  // regardless of the closure's actual arity.
   for (const [typeIdx, info] of ctx.closureInfoByTypeIdx) {
-    if (info.paramTypes.length > 2) continue;
+    if (info.paramTypes.length > arity) continue;
 
     const typeDef = mod.types[typeIdx];
     if (!typeDef || typeDef.kind !== "struct") continue;
@@ -1872,28 +1926,29 @@ function emitClosureCallExport2(ctx: CodegenContext): void {
         funcTypeIdx: info.funcTypeIdx,
         returnType: info.returnType,
         selfTypeIdx,
-        closureArity: info.paramTypes.length as 0 | 1 | 2,
+        closureArity: info.paramTypes.length,
       });
     }
   }
 
   if (entries.length === 0) return;
 
-  // Fallback to any base wrapper if no 2-arg specific one (V8 canonicalizes
-  // single-funcref-field structs to the same type regardless of arity).
+  // Fallback to any base wrapper if none was found at the target arity.
+  // V8 isorecursive canonicalization collapses single-funcref-field
+  // base structs to the same type regardless of arity, so any base
+  // wrapper works for the initial ref.test + struct.get.
   if (baseWrapperIdx === undefined) {
-    for (const [typeIdx, info] of ctx.closureInfoByTypeIdx) {
+    for (const [typeIdx] of ctx.closureInfoByTypeIdx) {
       const typeDef = mod.types[typeIdx];
       if (typeDef && typeDef.kind === "struct" && typeDef.superTypeIdx === -1) {
         baseWrapperIdx = typeIdx;
         break;
       }
-      void info;
     }
   }
   if (baseWrapperIdx === undefined) {
     for (const [typeIdx] of ctx.closureInfoByTypeIdx) {
-      if (ctx.closureInfoByTypeIdx.get(typeIdx)!.paramTypes.length === 2) {
+      if (ctx.closureInfoByTypeIdx.get(typeIdx)!.paramTypes.length === arity) {
         baseWrapperIdx = typeIdx;
         break;
       }
@@ -1904,47 +1959,23 @@ function emitClosureCallExport2(ctx: CodegenContext): void {
   addUnionImports(ctx);
   const boxNumberIdx = ctx.funcMap.get("__box_number");
 
-  // __call_fn_2(closure: externref, arg0: externref, arg1: externref) → externref
-  const exportFuncTypeIdx = addFuncType(
-    ctx,
-    [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }],
-    [{ kind: "externref" }],
-    "$call_fn_2_type",
-  );
+  // __call_fn_<arity>(closure: externref, arg0: externref, ..., arg<arity-1>: externref) → externref
+  const params: ValType[] = [];
+  for (let i = 0; i < arity + 1; i++) params.push({ kind: "externref" });
+  const exportFuncTypeIdx = addFuncType(ctx, params, [{ kind: "externref" }], `$${exportName}_type`);
   const funcIdx = ctx.numImportFuncs + mod.functions.length;
   const bwIdx = baseWrapperIdx;
 
-  // Locals:
-  //   0 = closure externref (param)
-  //   1 = arg0 externref (param)
-  //   2 = arg1 externref (param)
-  //   3 = anyref (__any)
-  //   4 = (ref null $bw) (__struct)
-  //   5 = funcref (__funcref)
   const body: Instr[] = [];
   body.push({ op: "local.get", index: 0 });
   body.push({ op: "any.convert_extern" } as Instr);
-  body.push({ op: "local.set", index: 3 } as Instr);
+  body.push({ op: "local.set", index: anyLocal } as Instr);
 
   let funcrefDispatch: Instr[] = [{ op: "ref.null.extern" } as Instr];
 
   for (const entry of entries) {
-    // Funcref signature: (ref $self, ...param_types) → return_type.
-    // The number of user-facing param types depends on `closureArity` —
-    // we only forward as many host args (locals 1, 2) as the closure
-    // declared, dropping the rest. Matches JS spec for "extra args
-    // ignored" semantics on calls with more args than declared params.
     const funcTypeDef = mod.types[entry.funcTypeIdx];
-    const param0Type =
-      entry.closureArity >= 1 && funcTypeDef?.kind === "func" && funcTypeDef.params.length >= 2
-        ? funcTypeDef.params[1]
-        : undefined;
-    const param1Type =
-      entry.closureArity >= 2 && funcTypeDef?.kind === "func" && funcTypeDef.params.length >= 3
-        ? funcTypeDef.params[2]
-        : undefined;
 
-    // Build per-arg conversion sequence.
     const buildArgConversion = (argLocalIdx: number, paramType: ValType | undefined): Instr[] => {
       const ops: Instr[] = [{ op: "local.get", index: argLocalIdx } as Instr];
       if (paramType) {
@@ -1965,23 +1996,25 @@ function emitClosureCallExport2(ctx: CodegenContext): void {
       return ops;
     };
 
-    // Push self + (optional) arg0 + (optional) arg1 based on the closure's
-    // declared arity. `closureArity === 0` → just self. `1` → self + arg0.
-    // `2` → self + arg0 + arg1.
+    // Push self + user args 0..closureArity-1. Args beyond the closure's
+    // declared arity are dropped (no `local.get` emitted for them).
     const argInstrs: Instr[] = [];
-    if (entry.closureArity >= 1) argInstrs.push(...buildArgConversion(1, param0Type));
-    if (entry.closureArity >= 2) argInstrs.push(...buildArgConversion(2, param1Type));
+    for (let i = 0; i < entry.closureArity; i++) {
+      const paramType =
+        funcTypeDef?.kind === "func" && funcTypeDef.params.length >= i + 2 ? funcTypeDef.params[i + 1] : undefined;
+      argInstrs.push(...buildArgConversion(i + 1, paramType));
+    }
 
     const callBody: Instr[] = [
-      { op: "local.get", index: 3 } as Instr,
+      { op: "local.get", index: anyLocal } as Instr,
       { op: "ref.cast", typeIdx: entry.selfTypeIdx } as Instr,
       ...argInstrs,
-      { op: "local.get", index: 5 } as Instr,
+      { op: "local.get", index: funcLocal } as Instr,
       { op: "ref.cast", typeIdx: entry.funcTypeIdx } as Instr,
       { op: "call_ref", typeIdx: entry.funcTypeIdx } as Instr,
     ];
 
-    // Coerce result to externref (mirror __call_fn_1).
+    // Coerce result to externref.
     if (entry.returnType) {
       if (entry.returnType.kind === "ref" || entry.returnType.kind === "ref_null") {
         callBody.push({ op: "extern.convert_any" } as Instr);
@@ -2014,7 +2047,7 @@ function emitClosureCallExport2(ctx: CodegenContext): void {
     }
 
     funcrefDispatch = [
-      { op: "local.get", index: 5 } as Instr,
+      { op: "local.get", index: funcLocal } as Instr,
       { op: "ref.test", typeIdx: entry.funcTypeIdx } as Instr,
       {
         op: "if",
@@ -2026,15 +2059,15 @@ function emitClosureCallExport2(ctx: CodegenContext): void {
   }
 
   const structExtractAndDispatch: Instr[] = [
-    { op: "local.get", index: 3 } as Instr,
+    { op: "local.get", index: anyLocal } as Instr,
     { op: "ref.cast", typeIdx: bwIdx } as Instr,
-    { op: "local.tee", index: 4 } as Instr,
+    { op: "local.tee", index: structLocal } as Instr,
     { op: "struct.get", typeIdx: bwIdx, fieldIdx: 0 } as Instr,
-    { op: "local.set", index: 5 } as Instr,
+    { op: "local.set", index: funcLocal } as Instr,
     ...funcrefDispatch,
   ];
 
-  body.push({ op: "local.get", index: 3 } as Instr);
+  body.push({ op: "local.get", index: anyLocal } as Instr);
   body.push({ op: "ref.test", typeIdx: bwIdx } as Instr);
   body.push({
     op: "if",
@@ -2044,7 +2077,7 @@ function emitClosureCallExport2(ctx: CodegenContext): void {
   } as Instr);
 
   mod.functions.push({
-    name: "__call_fn_2",
+    name: exportName,
     typeIdx: exportFuncTypeIdx,
     locals: [
       { name: "__any", type: { kind: "anyref" } },
@@ -2056,7 +2089,7 @@ function emitClosureCallExport2(ctx: CodegenContext): void {
   } as WasmFunction);
 
   mod.exports.push({
-    name: "__call_fn_2",
+    name: exportName,
     desc: { kind: "func", index: funcIdx },
   });
 }
