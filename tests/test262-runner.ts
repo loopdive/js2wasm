@@ -1746,9 +1746,24 @@ export function wrapTest(source: string, meta?: Test262Meta): WrapResult {
   // Our Wasm arrays can't store extra properties, so extract these to separate variables.
   // Transform: __expected.index = N; → var __expected_index: number = N;
   // Transform: __expected.input = "S"; → var __expected_input: string = "S";
-  // Then replace __expected.index → __expected_index, __expected.input → __expected_input
+  // Then replace __expected.index → __expected_index, __expected.input → __expected_input.
+  //
+  // (#1352b) The original regex only matched double-quoted RHS. Many S15.10.2.*
+  // tests use single-quoted strings (e.g. `__expected.input = 'alice said: "don\'t"';`)
+  // which fell through unmodified — leaving `__expected.input` references on later
+  // lines pointing at `__expected_input` (which never got declared) and producing
+  // `ReferenceError: __expected_input is not defined`. Extended to handle both
+  // quote styles. The `("(?:...)"|'(?:...)')` alternation captures the entire
+  // quoted literal so the replacement preserves whichever style the source used.
   body = body.replace(/__expected\.index\s*=\s*(\d+)\s*;/g, "var __expected_index: number = $1;");
-  body = body.replace(/__expected\.input\s*=\s*("(?:[^"\\]|\\.)*")\s*;/g, "var __expected_input: string = $1;");
+  // (#1352b) Match double-quoted, single-quoted, or identifier RHS — many tests
+  // assign `__expected.input = __string` where `__string` is a previously-declared
+  // local. The identifier branch lets the var-decl carry through any string-typed
+  // value, not just literals.
+  body = body.replace(
+    /__expected\.input\s*=\s*("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[A-Za-z_$][\w$]*)\s*;/g,
+    "var __expected_input: string = $1;",
+  );
   // Replace property accesses with the extracted variables
   body = body.replace(/__expected\.index\b(?!\s*=)/g, "__expected_index");
   body = body.replace(/__expected\.input\b(?!\s*=)/g, "__expected_input");
