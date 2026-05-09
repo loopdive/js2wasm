@@ -988,6 +988,12 @@ export function generateModule(
     // Emit __call_fn_1 export for calling one-arg closures from JS (#1090)
     emitClosureCallExport1(ctx);
 
+    // Emit __call_fn_2 export for calling two-arg closures from JS (#1382)
+    // Required for Array.from(iter, mapFn) where mapFn is a Wasm closure —
+    // host `Array.from` invokes mapFn with `(value, index)`, so the JS-side
+    // wrapper needs a 2-arg dispatcher to route into the closure.
+    emitClosureCallExport2(ctx);
+
     // Emit __call_toString/__call_valueOf exports for ToPrimitive dispatch (#866)
     emitToPrimitiveMethodExports(ctx);
 
@@ -1797,6 +1803,255 @@ function emitClosureCallExport1(ctx: CodegenContext): void {
 
   mod.exports.push({
     name: "__call_fn_1",
+    desc: { kind: "func", index: funcIdx },
+  });
+}
+
+/**
+ * Emit __call_fn_2 export (#1382): call a two-arg WasmGC closure from JS.
+ * Takes (externref closure, externref arg0, externref arg1) and returns
+ * externref. Used by `__array_from` (mapFn invoked with (value, index)) and
+ * by future host shims that pass Wasm closures as JS callbacks.
+ *
+ * Same dispatch strategy as __call_fn_0 / __call_fn_1: extract the funcref
+ * from field 0 of the closure struct, then dispatch by funcref TYPE
+ * (struct-type dispatch fails post-V8-isorecursive-canonicalization).
+ *
+ * Locals layout:
+ *   0 = closure externref (param)
+ *   1 = arg0 externref (param)
+ *   2 = arg1 externref (param)
+ *   3 = anyref (__any) — the converted closure externref
+ *   4 = (ref null $baseWrapper) (__struct) — cast struct for self
+ *   5 = funcref (__funcref) — extracted from field 0
+ */
+function emitClosureCallExport2(ctx: CodegenContext): void {
+  const mod = ctx.mod;
+
+  let baseWrapperIdx: number | undefined;
+  const seenFuncTypeIdx = new Set<number>();
+  // (#1382) Each entry tracks how many user args the closure declared
+  // (closureArity). The host (JS-side `Array.from`) always invokes with
+  // 2 args (value, index); when the closure declared fewer, we drop the
+  // extra args at the dispatch arm. This matches JS spec behavior — extra
+  // args beyond a function's declared arity are ignored at call time.
+  const entries: {
+    funcTypeIdx: number;
+    returnType: ValType | null;
+    selfTypeIdx: number;
+    closureArity: 0 | 1 | 2;
+  }[] = [];
+
+  // (#1382) Iterate ALL closures (arity 0, 1, 2) — `__call_fn_2` is the
+  // host-callable wrapper Array.from uses; the host calls with 2 args
+  // regardless of the closure's actual arity.
+  for (const [typeIdx, info] of ctx.closureInfoByTypeIdx) {
+    if (info.paramTypes.length > 2) continue;
+
+    const typeDef = mod.types[typeIdx];
+    if (!typeDef || typeDef.kind !== "struct") continue;
+
+    if (typeDef.superTypeIdx === -1 && baseWrapperIdx === undefined) {
+      baseWrapperIdx = typeIdx;
+    }
+
+    if (!seenFuncTypeIdx.has(info.funcTypeIdx)) {
+      seenFuncTypeIdx.add(info.funcTypeIdx);
+      const funcTypeDef = mod.types[info.funcTypeIdx];
+      const selfParam = funcTypeDef?.kind === "func" ? funcTypeDef.params[0] : undefined;
+      const selfTypeIdx =
+        selfParam && (selfParam.kind === "ref" || selfParam.kind === "ref_null")
+          ? (selfParam as { typeIdx: number }).typeIdx
+          : typeIdx;
+      entries.push({
+        funcTypeIdx: info.funcTypeIdx,
+        returnType: info.returnType,
+        selfTypeIdx,
+        closureArity: info.paramTypes.length as 0 | 1 | 2,
+      });
+    }
+  }
+
+  if (entries.length === 0) return;
+
+  // Fallback to any base wrapper if no 2-arg specific one (V8 canonicalizes
+  // single-funcref-field structs to the same type regardless of arity).
+  if (baseWrapperIdx === undefined) {
+    for (const [typeIdx, info] of ctx.closureInfoByTypeIdx) {
+      const typeDef = mod.types[typeIdx];
+      if (typeDef && typeDef.kind === "struct" && typeDef.superTypeIdx === -1) {
+        baseWrapperIdx = typeIdx;
+        break;
+      }
+      void info;
+    }
+  }
+  if (baseWrapperIdx === undefined) {
+    for (const [typeIdx] of ctx.closureInfoByTypeIdx) {
+      if (ctx.closureInfoByTypeIdx.get(typeIdx)!.paramTypes.length === 2) {
+        baseWrapperIdx = typeIdx;
+        break;
+      }
+    }
+  }
+  if (baseWrapperIdx === undefined) return;
+
+  addUnionImports(ctx);
+  const boxNumberIdx = ctx.funcMap.get("__box_number");
+
+  // __call_fn_2(closure: externref, arg0: externref, arg1: externref) → externref
+  const exportFuncTypeIdx = addFuncType(
+    ctx,
+    [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }],
+    [{ kind: "externref" }],
+    "$call_fn_2_type",
+  );
+  const funcIdx = ctx.numImportFuncs + mod.functions.length;
+  const bwIdx = baseWrapperIdx;
+
+  // Locals:
+  //   0 = closure externref (param)
+  //   1 = arg0 externref (param)
+  //   2 = arg1 externref (param)
+  //   3 = anyref (__any)
+  //   4 = (ref null $bw) (__struct)
+  //   5 = funcref (__funcref)
+  const body: Instr[] = [];
+  body.push({ op: "local.get", index: 0 });
+  body.push({ op: "any.convert_extern" } as Instr);
+  body.push({ op: "local.set", index: 3 } as Instr);
+
+  let funcrefDispatch: Instr[] = [{ op: "ref.null.extern" } as Instr];
+
+  for (const entry of entries) {
+    // Funcref signature: (ref $self, ...param_types) → return_type.
+    // The number of user-facing param types depends on `closureArity` —
+    // we only forward as many host args (locals 1, 2) as the closure
+    // declared, dropping the rest. Matches JS spec for "extra args
+    // ignored" semantics on calls with more args than declared params.
+    const funcTypeDef = mod.types[entry.funcTypeIdx];
+    const param0Type =
+      entry.closureArity >= 1 && funcTypeDef?.kind === "func" && funcTypeDef.params.length >= 2
+        ? funcTypeDef.params[1]
+        : undefined;
+    const param1Type =
+      entry.closureArity >= 2 && funcTypeDef?.kind === "func" && funcTypeDef.params.length >= 3
+        ? funcTypeDef.params[2]
+        : undefined;
+
+    // Build per-arg conversion sequence.
+    const buildArgConversion = (argLocalIdx: number, paramType: ValType | undefined): Instr[] => {
+      const ops: Instr[] = [{ op: "local.get", index: argLocalIdx } as Instr];
+      if (paramType) {
+        if (paramType.kind === "f64") {
+          const unboxIdx = ctx.funcMap.get("__unbox_number");
+          if (unboxIdx !== undefined) {
+            ops.push({ op: "call", funcIdx: unboxIdx } as Instr);
+          }
+        } else if (paramType.kind === "i32") {
+          const unboxIdx = ctx.funcMap.get("__unbox_number");
+          if (unboxIdx !== undefined) {
+            ops.push({ op: "call", funcIdx: unboxIdx } as Instr);
+            ops.push({ op: "i32.trunc_f64_s" } as unknown as Instr);
+          }
+        }
+        // externref: no conversion
+      }
+      return ops;
+    };
+
+    // Push self + (optional) arg0 + (optional) arg1 based on the closure's
+    // declared arity. `closureArity === 0` → just self. `1` → self + arg0.
+    // `2` → self + arg0 + arg1.
+    const argInstrs: Instr[] = [];
+    if (entry.closureArity >= 1) argInstrs.push(...buildArgConversion(1, param0Type));
+    if (entry.closureArity >= 2) argInstrs.push(...buildArgConversion(2, param1Type));
+
+    const callBody: Instr[] = [
+      { op: "local.get", index: 3 } as Instr,
+      { op: "ref.cast", typeIdx: entry.selfTypeIdx } as Instr,
+      ...argInstrs,
+      { op: "local.get", index: 5 } as Instr,
+      { op: "ref.cast", typeIdx: entry.funcTypeIdx } as Instr,
+      { op: "call_ref", typeIdx: entry.funcTypeIdx } as Instr,
+    ];
+
+    // Coerce result to externref (mirror __call_fn_1).
+    if (entry.returnType) {
+      if (entry.returnType.kind === "ref" || entry.returnType.kind === "ref_null") {
+        callBody.push({ op: "extern.convert_any" } as Instr);
+      } else if (entry.returnType.kind === "f64") {
+        if (boxNumberIdx !== undefined) {
+          callBody.push({ op: "call", funcIdx: boxNumberIdx } as Instr);
+        } else {
+          callBody.push({ op: "drop" } as Instr);
+          callBody.push({ op: "ref.null.extern" } as Instr);
+        }
+      } else if (entry.returnType.kind === "i32") {
+        if (boxNumberIdx !== undefined) {
+          callBody.push({ op: "f64.convert_i32_s" } as Instr);
+          callBody.push({ op: "call", funcIdx: boxNumberIdx } as Instr);
+        } else {
+          callBody.push({ op: "drop" } as Instr);
+          callBody.push({ op: "ref.null.extern" } as Instr);
+        }
+      } else if (entry.returnType.kind === "i64") {
+        if (boxNumberIdx !== undefined) {
+          callBody.push({ op: "f64.convert_i64_s" } as Instr);
+          callBody.push({ op: "call", funcIdx: boxNumberIdx } as Instr);
+        } else {
+          callBody.push({ op: "drop" } as Instr);
+          callBody.push({ op: "ref.null.extern" } as Instr);
+        }
+      }
+    } else {
+      callBody.push({ op: "ref.null.extern" } as Instr);
+    }
+
+    funcrefDispatch = [
+      { op: "local.get", index: 5 } as Instr,
+      { op: "ref.test", typeIdx: entry.funcTypeIdx } as Instr,
+      {
+        op: "if",
+        blockType: { kind: "val", type: { kind: "externref" } },
+        then: callBody,
+        else: funcrefDispatch,
+      } as Instr,
+    ];
+  }
+
+  const structExtractAndDispatch: Instr[] = [
+    { op: "local.get", index: 3 } as Instr,
+    { op: "ref.cast", typeIdx: bwIdx } as Instr,
+    { op: "local.tee", index: 4 } as Instr,
+    { op: "struct.get", typeIdx: bwIdx, fieldIdx: 0 } as Instr,
+    { op: "local.set", index: 5 } as Instr,
+    ...funcrefDispatch,
+  ];
+
+  body.push({ op: "local.get", index: 3 } as Instr);
+  body.push({ op: "ref.test", typeIdx: bwIdx } as Instr);
+  body.push({
+    op: "if",
+    blockType: { kind: "val", type: { kind: "externref" } },
+    then: structExtractAndDispatch,
+    else: [{ op: "ref.null.extern" } as Instr],
+  } as Instr);
+
+  mod.functions.push({
+    name: "__call_fn_2",
+    typeIdx: exportFuncTypeIdx,
+    locals: [
+      { name: "__any", type: { kind: "anyref" } },
+      { name: "__struct", type: { kind: "ref_null", typeIdx: bwIdx } },
+      { name: "__funcref", type: { kind: "funcref" } },
+    ],
+    body,
+    exported: true,
+  } as WasmFunction);
+
+  mod.exports.push({
+    name: "__call_fn_2",
     desc: { kind: "func", index: funcIdx },
   });
 }

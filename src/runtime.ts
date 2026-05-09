@@ -270,6 +270,49 @@ function _canBeWeakKey(obj: any): boolean {
   return obj != null && (typeof obj === "object" || typeof obj === "function");
 }
 
+/**
+ * (#1382) Wrap a Wasm closure struct in a JS Function so it can be called
+ * from JS host code (e.g. `Array.from(iter, mapFn)` where mapFn is a Wasm
+ * closure rather than a real `function`).
+ *
+ * Wasm closure structs are externref-typed in JS but lack a `[[Call]]`
+ * internal method, so `mapFn(value, index)` fails with "object is not a
+ * function". The wrapper bridges by dispatching into Wasm via the
+ * `__call_fn_<arity>` exports, which use funcref-type dispatch to invoke
+ * the closure's lifted body.
+ *
+ * Returns `null` if the appropriate `__call_fn_<arity>` export isn't
+ * available — caller falls back to the original (which will throw the
+ * original "not a function" error). That keeps the failure mode visible
+ * rather than silently swallowing it.
+ *
+ * Arity matches the number of JS args the host will pass; the JS wrapper
+ * forwards exactly that count to `__call_fn_N`. Args beyond `arity` are
+ * dropped, matching JS's "extra args ignored" semantics.
+ */
+function _wrapWasmClosure(
+  closure: any,
+  arity: number,
+  callbackState?: { getExports: () => Record<string, Function> | undefined },
+): ((...args: any[]) => any) | null {
+  if (!callbackState) return null;
+  const exports = callbackState.getExports();
+  if (!exports) return null;
+  const callFn = exports[`__call_fn_${arity}`];
+  if (typeof callFn !== "function") return null;
+  // Closure parameter is captured by reference; the wrapper holds it alive
+  // for as long as the JS Function is reachable from the host. JS Function
+  // identity is preserved across multiple invocations (host may capture a
+  // reference, e.g. callbacks stored on plain objects).
+  return function wasmClosureBridge(...args: any[]): any {
+    // Pad with undefined to exactly `arity` positional args. Extra args
+    // dropped (JS spec for fewer/more args than declared params).
+    const padded: any[] = [];
+    for (let i = 0; i < arity; i++) padded.push(args[i]);
+    return callFn(closure, ...padded);
+  };
+}
+
 function _getSidecar(obj: object): Record<string | symbol, any> {
   if (!_canBeWeakKey(obj)) return Object.create(null) as Record<string | symbol, any>;
   let sc = _wasmStructProps.get(obj);
@@ -3344,10 +3387,25 @@ assert._isSameValue = isSameValue;
       if (name === "__symbol_keyFor") return (sym: any): any => Symbol.keyFor(sym);
       // ArrayBuffer.isView(arg) — checks if arg is a TypedArray or DataView (#965)
       if (name === "__arraybuffer_isView") return (arg: any): number => (ArrayBuffer.isView(arg) ? 1 : 0);
-      // Array.from(iterable, mapFn?) — creates array from iterable (#965)
+      // Array.from(iterable, mapFn?) — creates array from iterable (#965).
+      //
+      // (#1382) When `mapFn` is a Wasm closure struct (rather than a JS
+      // function), the host's `Array.from` invocation `mapFn(value, index)`
+      // would fail with "object is not a function" because closure structs
+      // lack a `[[Call]]` internal method. Detect this case and wrap the
+      // closure in a JS Function that dispatches into Wasm via the
+      // `__call_fn_2` export. Plain JS callers (e.g. `Array.from(arr,
+      // (x) => x * 2)` in JS host code calling into Wasm) still pass a
+      // real `function`, so the wrapping is a no-op for them.
       if (name === "__array_from")
-        return (iterable: any, mapFn: any): any[] =>
-          mapFn != null ? Array.from(iterable, mapFn) : Array.from(iterable);
+        return (iterable: any, mapFn: any): any[] => {
+          if (mapFn == null) return Array.from(iterable);
+          if (_isWasmStruct(mapFn)) {
+            const wrapped = _wrapWasmClosure(mapFn, 2, callbackState);
+            if (wrapped) return Array.from(iterable, wrapped);
+          }
+          return Array.from(iterable, mapFn);
+        };
       // Array.of(...items) — creates array from arguments (#965)
       if (name === "__array_of") return (items: any[]): any[] => items;
       // Object.prototype methods for extern class dispatch (#799 WI2)
