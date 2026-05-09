@@ -69,6 +69,11 @@ const UNINTENDED: ReadonlySet<IrFallbackReason> = new Set([
 /** Reasons that are expected until their corresponding slices land. */
 const DEFERRED: ReadonlySet<IrFallbackReason> = new Set([
   "async-generator",
+  // (#1373 Phase A) Tracked separately from `async-generator` so the gate
+  // can flip it from deferred → unintended when Phase B/C wires lowering.
+  // Until then async functions are infrastructurally distinct but still
+  // fall back to legacy.
+  "async-function",
   "deferred-feature",
   "type-parameters",
   "non-export-modifier",

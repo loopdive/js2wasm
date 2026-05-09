@@ -578,6 +578,62 @@ export interface IrInstrIf extends IrInstrBase {
 }
 
 /**
+ * (#1373 Phase B) `await <expr>` — suspend the current async function until
+ * `expr`'s Promise settles, then resume with the resolved value. The IR
+ * node carries the operand whose evaluation produces a Promise (or a
+ * non-Promise value that must be wrapped in `Promise.resolve` before
+ * suspension per spec §27.2.1.4).
+ *
+ * Phase B (this slice) defines the type only — no lowering. Phase C
+ * (CPS transform, follow-up #1373b) splits the function at each await
+ * point, lifts the post-await tail into a continuation closure, and
+ * emits microtask-queue calls (`__promise_then(promise, continuation)`)
+ * to schedule resumption.
+ *
+ * The result IrValueId carries the resolved value. Its IrType must
+ * match the surrounding expression context (typically the unwrapped
+ * `T` from `Promise<T>`).
+ */
+export interface IrInstrAwait extends IrInstrBase {
+  readonly kind: "await";
+  readonly operand: IrValueId;
+}
+
+/**
+ * (#1373 Phase B) `return <value>` from an async function body. UNLIKE
+ * `IrTerminatorReturn`, which produces the bare value, this wraps the
+ * value in `Promise.resolve(value)` per the async function spec
+ * §15.8.5.5. The IR node defines the wrap intent; lowering (Phase C)
+ * emits the wrap via the existing `Promise_resolve` host import in
+ * JS-host mode or via the standalone `$Promise` struct.new in WASI
+ * mode (the latter wired in #1326 Phase 1B).
+ *
+ * Used in tail position only — non-tail `return` inside an async
+ * function flows through the IR's normal block terminator, which the
+ * Phase C lowerer recognises and routes through the same wrap.
+ */
+export interface IrInstrAsyncReturn extends IrInstrBase {
+  readonly kind: "async.return";
+  readonly value: IrValueId;
+}
+
+/**
+ * (#1373 Phase B) Synchronous throw inside an async function body.
+ * UNLIKE `IrInstrThrow`, which propagates as a Wasm exception, this
+ * wraps the thrown value in `Promise.reject(reason)` so the async
+ * function's outer Promise settles in the rejected state. Lowering
+ * (Phase C) emits the wrap via `Promise_reject` (host) or `$Promise`
+ * struct.new with `state = REJECTED` (standalone, #1326 Phase 1B).
+ *
+ * Currently NOT emitted by from-ast — Phase C wires it from
+ * `ts.ThrowStatement` nodes inside async function bodies.
+ */
+export interface IrInstrAsyncThrow extends IrInstrBase {
+  readonly kind: "async.throw";
+  readonly reason: IrValueId;
+}
+
+/**
  * Escape hatch: a raw backend instruction sequence with no SSA structure.
  * Phase 1 uses this as a bridge so we can describe any function without
  * re-encoding the whole Wasm opcode set in IR. Phase 2 will narrow uses.
@@ -1698,7 +1754,12 @@ export type IrInstr =
   | IrInstrRegExpLiteral
   // Slice 12 (#1280) — generic structured loops.
   | IrInstrWhileLoop
-  | IrInstrForLoop;
+  | IrInstrForLoop
+  // (#1373 Phase B) Async / await IR nodes. Currently type-only —
+  // Phase C (CPS transform, follow-up #1373b) wires lowering.
+  | IrInstrAwait
+  | IrInstrAsyncReturn
+  | IrInstrAsyncThrow;
 
 // ---------------------------------------------------------------------------
 // Slot definitions (#1169e — IR Phase 4 Slice 6)
