@@ -75,3 +75,9 @@ docs/publications/
 
 # Claude Code scheduled tasks lock
 .claude/scheduled_tasks.lock
+
+# CI status snapshots and diff reports (generated, not committed)
+.claude/ci-status/*.bak
+test262-diff-branch-merged/
+test262-diff-main-merged/
+test262-diff-regressions-report/
