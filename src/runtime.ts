@@ -591,6 +591,12 @@ function _hostToPrimitive(
   }
 
   // OrdinaryToPrimitive §7.1.1.1
+  // Track whether any user-defined method was found AND invoked-but-returned-
+  // a-non-primitive. Distinct from "no method found at all" — only the latter
+  // triggers the WasmGC `"[object Object]"` fallback (#1319). The former
+  // represents the spec violation in §7.1.1.1 step 6 and must throw TypeError
+  // (#1253).
+  let methodInvokedReturnedObject = false;
   const methodNames = hint === "string" ? ["toString", "valueOf"] : ["valueOf", "toString"];
   for (const mName of methodNames) {
     // Check real JS property first (goes through proxy which may wrap closures)
@@ -603,6 +609,7 @@ function _hostToPrimitive(
     if (typeof fn === "function") {
       const result = fn.call(obj);
       if (result == null || typeof result !== "object") return result;
+      methodInvokedReturnedObject = true;
       continue;
     }
     // WasmGC closure struct for valueOf/toString — dispatch via __call_fn_0 (#1090)
@@ -614,6 +621,7 @@ function _hostToPrimitive(
           try {
             const result = callFn0(fn);
             if (result == null || typeof result !== "object") return result;
+            methodInvokedReturnedObject = true;
           } catch (e: any) {
             if (!(e instanceof WebAssembly.RuntimeError)) throw e;
           }
@@ -626,6 +634,7 @@ function _hostToPrimitive(
     if (typeof scFn === "function") {
       const result = scFn.call(raw);
       if (result == null || typeof result !== "object") return result;
+      methodInvokedReturnedObject = true;
       continue;
     }
     // WasmGC closure struct in sidecar (#1090)
@@ -637,6 +646,7 @@ function _hostToPrimitive(
           try {
             const result = callFn0(scFn);
             if (result == null || typeof result !== "object") return result;
+            methodInvokedReturnedObject = true;
           } catch (e: any) {
             if (!(e instanceof WebAssembly.RuntimeError)) throw e;
           }
@@ -653,8 +663,52 @@ function _hostToPrimitive(
           try {
             const result = callFn(raw);
             if (result == null || typeof result !== "object") return result;
+            methodInvokedReturnedObject = true;
           } catch (e: any) {
             if (!(e instanceof WebAssembly.RuntimeError)) throw e;
+          }
+        }
+        // (#1253) Fallback: when no `__call_${mName}` wrapper exists (small
+        // structs without a method-shorthand body), use `__sget_${mName}`
+        // to extract the closure from the struct field, then dispatch via
+        // generic `__call_fn_0`. This catches the AC1b shape:
+        //
+        //   const o: any = {};
+        //   o.valueOf = () => ({});
+        //   o.toString = () => ({});
+        //
+        // where the closure lives in the struct field but no
+        // `__call_valueOf` export was emitted. Without this, the loop
+        // misses the closure entirely and silently returns
+        // "[object Object]" on the WasmGC fallback below — bypassing the
+        // §7.1.1.1 step 6 TypeError.
+        const sget = exports[`__sget_${mName}`];
+        const callFn0 = exports.__call_fn_0;
+        if (typeof sget === "function" && typeof callFn0 === "function") {
+          let field: any;
+          try {
+            field = sget(raw);
+          } catch (e: any) {
+            if (!(e instanceof WebAssembly.RuntimeError)) throw e;
+          }
+          if (field != null) {
+            // Field may be a JS function (real V8 binding) or a WasmGC closure struct.
+            if (typeof field === "function") {
+              const result = field.call(raw);
+              if (result == null || typeof result !== "object") return result;
+              methodInvokedReturnedObject = true;
+            } else if (typeof field === "object" && _isWasmStruct(field)) {
+              try {
+                const result = callFn0(field);
+                if (result == null || typeof result !== "object") return result;
+                methodInvokedReturnedObject = true;
+              } catch (e: any) {
+                if (!(e instanceof WebAssembly.RuntimeError)) throw e;
+              }
+            } else if (typeof field !== "object") {
+              // Raw primitive in the struct field — that's the result.
+              return field;
+            }
           }
         }
       }
@@ -667,10 +721,14 @@ function _hostToPrimitive(
   // Mirror V8's default toString here instead of throwing — matches the
   // _toPrimitiveSync fallback at line ~477 and the spec behaviour you'd
   // observe by hand: `String({})` is "[object Object]", not a TypeError.
-  // The TypeError throw is preserved below for non-wasm-struct objects
-  // whose own valueOf/toString returned non-primitives (genuine spec
-  // violation per ECMA-262 §7.1.1.1 step 6).
-  if (_isWasmStruct(raw)) return "[object Object]";
+  //
+  // (#1253) BUT — only when no user-defined method was found. If a method
+  // WAS found and invoked but returned a non-primitive, that's the
+  // spec-violation case in §7.1.1.1 step 6 → TypeError. Otherwise we
+  // silently swallow the error and produce NaN, breaking
+  // `+{ valueOf: () => ({}), toString: () => ({}) }` which the spec
+  // requires to throw.
+  if (_isWasmStruct(raw) && !methodInvokedReturnedObject) return "[object Object]";
   throw new TypeError("Cannot convert object to primitive value");
 }
 

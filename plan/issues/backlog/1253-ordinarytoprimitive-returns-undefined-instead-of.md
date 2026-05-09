@@ -93,3 +93,34 @@ incorrect.
 Regression coverage: `tests/issue-1253.test.ts` (4 cases — `+{}` is NaN
 sanity, both-non-primitive throws, valueOf returning a number works,
 valueOf returning a string works).
+
+## Resolution (2026-05-08, sprint 51 follow-up)
+
+The earlier fix in `src/codegen/type-coercion.ts` (route static-inlined
+result through `__to_primitive`) regressed once `tryStaticToNumber` was
+broadened (#1253 acceptance criteria 1a/1b/1c); the runtime path now
+sees these cases and `_hostToPrimitive` was returning `"[object Object]"`
+instead of throwing. Two follow-on bugs in `src/runtime.ts`:
+
+1. **`_hostToPrimitive` WasmGC fallback was too broad.** Added in #1319
+   to mirror V8's default `String({})` → `"[object Object]"` for structs
+   without any user-defined `valueOf` / `toString`. It also caught the
+   spec-violation case where both methods *exist* and *both return
+   non-primitives* — that's §7.1.1.1 step 6 → `TypeError`. Track
+   `methodInvokedReturnedObject` and only fall back to
+   `"[object Object]"` when no method was invoked-and-returned-object.
+
+2. **No closure-via-`__sget_*` dispatch.** The AC1b shape
+   (`const o: any = {}; o.valueOf = () => ({}); o.toString = () => ({});`)
+   compiles the closures into struct fields but emits **only**
+   `__call_fn_0` (no `__call_valueOf` / `__call_toString` wrappers
+   exist for these tiny structs). The OrdinaryToPrimitive loop in
+   `_hostToPrimitive` had no path to discover the closure: real JS
+   property access on the opaque struct returns `undefined`, sidecar is
+   empty, and `__call_${mName}` is missing. Added an
+   `__sget_${mName}` + generic `__call_fn_0` fallback that mirrors the
+   path already used elsewhere in the runtime.
+
+After both fixes, all 11 cases in `tests/issue-1253.test.ts` pass —
+including the 3 acceptance criteria (AC1a/AC1b/AC1c) which had
+regressed back to NaN.
