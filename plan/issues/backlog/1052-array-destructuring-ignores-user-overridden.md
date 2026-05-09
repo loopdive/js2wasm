@@ -1,12 +1,12 @@
 ---
 id: 1052
 title: "Array destructuring ignores user-overridden Array.prototype[Symbol.iterator]"
-status: ready
+status: backlog
 created: 2026-04-11
-updated: 2026-04-11
+updated: 2026-05-08
 priority: low
-feasibility: medium
-reasoning_effort: medium
+feasibility: hard
+reasoning_effort: high
 task_type: bugfix
 language_feature: test262-harvest-cluster
 goal: test-infrastructure

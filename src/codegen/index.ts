@@ -74,7 +74,11 @@ import {
   finalizeUnifiedCollector,
   unifiedVisitNode,
 } from "./declarations.js";
-import { destructureParamArray, destructureParamObject } from "./destructuring-params.js";
+import {
+  destructureParamArray,
+  destructureParamObject,
+  destructureParamObjectExternref,
+} from "./destructuring-params.js";
 import {
   emitTestRuntimeStringHelpers,
   ensureNativeStringExternBridge,
@@ -90,6 +94,7 @@ export {
   compileClassBodies,
   destructureParamArray,
   destructureParamObject,
+  destructureParamObjectExternref,
   ensureAnyHelpers,
   ensureAnyValueType,
   ensureNativeStringExternBridge,

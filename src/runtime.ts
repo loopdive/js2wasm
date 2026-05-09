@@ -313,6 +313,47 @@ function _wrapWasmClosure(
   };
 }
 
+/**
+ * (#1382) Materialize a Wasm vec into a real JS array via the `__vec_len`
+ * + `__vec_get` exports. Non-vec values pass through:
+ *   - JS arrays returned as-is.
+ *   - JS-iterable objects (anything with `Symbol.iterator`) returned as-is.
+ *   - null / non-object values returned as-is (caller handles the type check).
+ *
+ * Used by `__array_from` so `Array.from(wasmVec, mapFn)` sees a real
+ * iterable instead of an opaque WasmGC struct ref. Same machinery the
+ * Promise combinators use (#1368).
+ */
+function _materializeIterable(
+  iter: any,
+  callbackState?: { getExports: () => Record<string, Function> | undefined },
+): any {
+  if (iter == null) return iter;
+  if (Array.isArray(iter)) return iter;
+  if (typeof iter !== "object") return iter;
+  // (#1382) Check `_isWasmStruct` BEFORE `Symbol.iterator in iter` —
+  // the `in` operator on an opaque WasmGC struct throws "WebAssembly
+  // objects are opaque", aborting the host call. `_isWasmStruct`
+  // handles the throw internally and returns true for opaque structs.
+  if (_isWasmStruct(iter)) {
+    const exports = callbackState?.getExports();
+    if (!exports) return iter;
+    const vecLen = exports.__vec_len;
+    const vecGet = exports.__vec_get;
+    if (typeof vecLen !== "function" || typeof vecGet !== "function") return iter;
+    const len = vecLen(iter) as number;
+    if (typeof len !== "number" || len < 0) return iter;
+    const result: any[] = new Array(len);
+    for (let i = 0; i < len; i++) {
+      result[i] = vecGet(iter, i);
+    }
+    return result;
+  }
+  // Plain JS object — pass through if it has Symbol.iterator, else as-is.
+  if (Symbol.iterator in iter) return iter;
+  return iter;
+}
+
 function _getSidecar(obj: object): Record<string | symbol, any> {
   if (!_canBeWeakKey(obj)) return Object.create(null) as Record<string | symbol, any>;
   let sc = _wasmStructProps.get(obj);
@@ -3468,22 +3509,24 @@ assert._isSameValue = isSameValue;
       if (name === "__arraybuffer_isView") return (arg: any): number => (ArrayBuffer.isView(arg) ? 1 : 0);
       // Array.from(iterable, mapFn?) — creates array from iterable (#965).
       //
-      // (#1382) When `mapFn` is a Wasm closure struct (rather than a JS
-      // function), the host's `Array.from` invocation `mapFn(value, index)`
-      // would fail with "object is not a function" because closure structs
-      // lack a `[[Call]]` internal method. Detect this case and wrap the
-      // closure in a JS Function that dispatches into Wasm via the
-      // `__call_fn_2` export. Plain JS callers (e.g. `Array.from(arr,
-      // (x) => x * 2)` in JS host code calling into Wasm) still pass a
-      // real `function`, so the wrapping is a no-op for them.
+      // (#1382) Two interop hazards:
+      //   1. `iterable` may be an opaque Wasm vec struct (no JS iterator)
+      //      — materialize via `__vec_len` + `__vec_get` so `Array.from`
+      //      sees a real iterable. Plain JS arrays / iterables pass
+      //      through unchanged.
+      //   2. `mapFn` may be a Wasm closure struct (no `[[Call]]`) — wrap
+      //      in a JS Function via `_wrapWasmClosure` so `Array.from`
+      //      can invoke it as `mapFn(value, index)`. Plain JS callers
+      //      pass a real `function`, so the wrap is a no-op.
       if (name === "__array_from")
         return (iterable: any, mapFn: any): any[] => {
-          if (mapFn == null) return Array.from(iterable);
+          const iter = _materializeIterable(iterable, callbackState);
+          if (mapFn == null) return Array.from(iter);
           if (_isWasmStruct(mapFn)) {
             const wrapped = _wrapWasmClosure(mapFn, 2, callbackState);
-            if (wrapped) return Array.from(iterable, wrapped);
+            if (wrapped) return Array.from(iter, wrapped);
           }
-          return Array.from(iterable, mapFn);
+          return Array.from(iter, mapFn);
         };
       // Array.of(...items) — creates array from arguments (#965)
       if (name === "__array_of") return (items: any[]): any[] => items;

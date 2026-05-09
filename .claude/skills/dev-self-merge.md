@@ -5,11 +5,25 @@ description: Algorithmic gate for self-merging a PR. Reads CI JSON, applies 4 ha
 
 # /dev-self-merge \<N\>
 
-Run this after `.claude/ci-status/pr-<N>.json` exists with a SHA matching your branch HEAD.
+## Waiting for CI — how to poll
+
+The CI feed commits `pr-<N>.json` to **origin/main** (not your branch). Your
+worktree never sees it until you fetch. While waiting for CI, poll with:
+
+```bash
+git fetch origin
+git show origin/main:.claude/ci-status/pr-<N>.json 2>/dev/null
+```
+
+Run this every few minutes. When output appears and the `head_sha` matches
+`git rev-parse HEAD`, CI is done — proceed to Step 0 below.
+
+Do NOT `git merge origin/main` just to check — `git show` reads the remote ref
+without touching your working tree.
 
 ## Step 0 — fast-path for non-test262 PRs
 
-If `.claude/ci-status/pr-<N>.json` does not exist, check whether Test262 was
+If `git show origin/main:.claude/ci-status/pr-<N>.json 2>/dev/null` returns nothing, check whether Test262 was
 required for this PR:
 
 ```bash
@@ -35,7 +49,8 @@ If `src/**` changes exist but no status file: CI is still in-flight. Wait.
 ## Step 1 — read the feed
 
 ```bash
-cat .claude/ci-status/pr-<N>.json
+git fetch origin
+git show origin/main:.claude/ci-status/pr-<N>.json
 ```
 
 If `test262_skipped: true` in the JSON, this was a test-only / docs-only PR

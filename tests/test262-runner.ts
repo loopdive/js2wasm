@@ -870,13 +870,15 @@ function renameYieldOutsideGenerators(source: string): string {
   // If no generator functions (neither `function*` nor `*method()` syntax),
   // just rename all yield identifiers.
   const hasGeneratorFunction = /\bfunction\s*\*/.test(source);
-  // #1162: include `#` in the identifier class so private generator methods
-  // like `*#gen()` / `async *#gen()` register as generators — otherwise
-  // `yield` inside their body gets renamed to `_yield`, producing
-  // `_yield* obj;` which parses as multiplication and crashes the compiler
-  // with "unexpected undefined AST node in compileExpression" when the
-  // surrounding test is later compiled.
-  const hasGeneratorMethod = /(?:^|[,{;)\s])\s*\*\s*(?:[\w$#]+|\[[\s\S]*?\])\s*\(/.test(source);
+  // #1162 / Task #42: include the same broad identifier class as the
+  // detail-pass `methodRegex` below so the fast-path doesn't misclassify
+  // private/Unicode-named generator methods. Without parity here the
+  // fast path falls through to "rename ALL yield identifiers", clobbering
+  // `yield` inside `static * #\u{6F}()` / `static * #℘()` etc.
+  const hasGeneratorMethod =
+    /(?:^|[,{;)\s])\s*\*\s*(?:(?:[\w$#]|\\u\{[^}]*\}|\\u[0-9a-fA-F]{4}|[\u0080-\uFFFF])+|\[[\s\S]*?\])\s*\(/.test(
+      source,
+    );
   if (!hasGeneratorFunction && !hasGeneratorMethod) {
     return source.replace(/\byield\b/g, "_yield");
   }
@@ -986,13 +988,26 @@ function renameYieldOutsideGenerators(source: string): string {
   }
 
   // Find `*method()` generator method syntax (not caught by function regex).
-  // `[\w$#]+` matches private method names like `#gen` — without `#`,
-  // `*#gen()` isn't recognized as a generator and `yield` inside its body
-  // is incorrectly renamed to `_yield`. (#1162)
-  const methodRegex = /\*\s*(?:[\w$#]+|\[[\s\S]*?\])\s*\(/g;
+  // The identifier class covers the four ways a method name can be written:
+  //   - ASCII identifier chars (`\w$#`) — common case incl. `#gen` private
+  //     names per #1162
+  //   - non-ASCII identifier chars (Unicode letters like `℘`, `ZWNJ`/`ZWJ`
+  //     joiners) — covered by `[\u0080-\uFFFF]`
+  //   - long-form Unicode escape `\u{XXXX}` — covered explicitly
+  //   - short-form Unicode escape `\uXXXX` — covered explicitly
+  // Without these, methods like `static * #\u{6F}(...)` or `static * #℘(...)`
+  // skip the regex match and `yield` in their bodies is incorrectly
+  // renamed to `_yield`, hitting the same 52-test class/elements
+  // ReferenceError cluster as the missing `static` prefix below.
+  const methodRegex = /\*\s*(?:(?:[\w$#]|\\u\{[^}]*\}|\\u[0-9a-fA-F]{4}|[\u0080-\uFFFF])+|\[[\s\S]*?\])\s*\(/g;
   let methodMatch: RegExpExecArray | null;
   while ((methodMatch = methodRegex.exec(source)) !== null) {
-    // Distinguish from multiply operator: check preceding context
+    // Distinguish from multiply operator: check preceding context.
+    // `static` is needed for `static * gen()` / `static * #gen()` class
+    // members — without it, `static * #_(value)` is classified as a
+    // multiply expression and `yield` inside the body is incorrectly
+    // renamed to `_yield`, producing the "_yield is not defined"
+    // ReferenceError at runtime in 52 class/elements test262 cases.
     const before = source.substring(Math.max(0, methodMatch.index - 20), methodMatch.index).trimEnd();
     if (
       !(
@@ -1001,6 +1016,7 @@ function renameYieldOutsideGenerators(source: string): string {
         before.endsWith(";") ||
         before.endsWith(")") ||
         before.endsWith("async") ||
+        before.endsWith("static") ||
         before.length === 0
       )
     ) {

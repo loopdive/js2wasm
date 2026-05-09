@@ -129,6 +129,16 @@
       "sprint": ""
     },
     {
+      "id": "1052",
+      "title": "Array destructuring ignores user-overridden Array.prototype[Symbol.iterator]",
+      "priority": "low",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "test-infrastructure",
+      "status": "backlog",
+      "sprint": ""
+    },
+    {
       "id": "1029",
       "title": "Migrate to TypeScript 7.x (Go rewrite / typescript-go) when compiler API stabilizes",
       "priority": "low",
@@ -150,6 +160,18 @@
     }
   ],
   "blocked": [
+    {
+      "id": "1373b",
+      "title": "IR async Phase C: CPS lowering for await + async-return + async-throw",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [
+        "1326c"
+      ],
+      "goal": "ir-full-coverage",
+      "status": "blocked",
+      "sprint": "51"
+    },
     {
       "id": "1166",
       "title": "Closed-world integer specialization from literal call sites",
@@ -223,12 +245,34 @@
   ],
   "ready": [
     {
-      "id": "1392",
-      "title": "IR: null-safe access primitives — ref.is_null IrUnop + value-producing if/else IR node",
+      "id": "1396",
+      "title": "for-of/dstr + assignment/dstr default initializers don't fire on OOB extenref-array reads",
       "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "51"
+    },
+    {
+      "id": "1395",
+      "title": "class static method descriptors: class identifier resolves to string_constant, not constructor object",
+      "priority": "medium",
       "feasibility": "hard",
       "depends_on": [],
-      "goal": "ir-full-coverage",
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "51"
+    },
+    {
+      "id": "1394",
+      "title": "class method-closure caching: C.prototype.method returns stable singleton closure",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [
+        "1388"
+      ],
+      "goal": "spec-completeness",
       "status": "ready",
       "sprint": "51"
     },
@@ -253,16 +297,6 @@
       "sprint": "51"
     },
     {
-      "id": "1375",
-      "title": "IR: full optional-chain support (?. and ?.[]) without resolver fallback",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "ir-full-coverage",
-      "status": "ready",
-      "sprint": "51"
-    },
-    {
       "id": "1373",
       "title": "IR: claim async functions (async/await through IR path)",
       "priority": "medium",
@@ -273,32 +307,12 @@
       "sprint": "51"
     },
     {
-      "id": "1366",
-      "title": "spec gap: class subclass + subclass-builtins prototype chain (~154 fails)",
-      "priority": "medium",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "spec-completeness",
-      "status": "ready",
-      "sprint": "51"
-    },
-    {
       "id": "1353",
       "title": "JSON.stringify (objects/arrays) + JSON.parse: architect spec for Wasm shape-walking and recursive-descent parser",
       "priority": "medium",
       "feasibility": "hard",
       "depends_on": [],
       "goal": "standalone-mode",
-      "status": "ready",
-      "sprint": "50"
-    },
-    {
-      "id": "1352",
-      "title": "spec gap: Set methods (union/intersection/etc.) accept any set-like argument (101 test262 fails)",
-      "priority": "medium",
-      "feasibility": "easy",
-      "depends_on": [],
-      "goal": "spec-completeness",
       "status": "ready",
       "sprint": "50"
     },
@@ -511,6 +525,18 @@
       "goal": "npm-library-support",
       "status": "ready",
       "sprint": "50"
+    },
+    {
+      "id": "1326c",
+      "title": "Async standalone Phase 1C: microtask queue + Promise.then chained-resolution (follow-up to #1326 Phase 1B)",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [
+        "1326"
+      ],
+      "goal": "standalone-mode",
+      "status": "ready",
+      "sprint": "51"
     },
     {
       "id": "1326",
@@ -781,10 +807,10 @@
       "id": "1104",
       "title": "Wasm-native Error construction and stack traces without JS host",
       "priority": "medium",
-      "feasibility": "medium",
+      "feasibility": "hard",
       "depends_on": [],
       "goal": "standalone-mode",
-      "status": "ready",
+      "status": "suspended",
       "sprint": ""
     },
     {
@@ -943,16 +969,6 @@
       "goal": "compiler-architecture",
       "status": "ready",
       "sprint": "45"
-    },
-    {
-      "id": "1052",
-      "title": "Array destructuring ignores user-overridden Array.prototype[Symbol.iterator]",
-      "priority": "low",
-      "feasibility": "medium",
-      "depends_on": [],
-      "goal": "test-infrastructure",
-      "status": "ready",
-      "sprint": ""
     },
     {
       "id": "1046",
@@ -1838,6 +1854,16 @@
       "sprint": "51"
     },
     {
+      "id": "1375",
+      "title": "IR: full optional-chain support (?. and ?.[]) without resolver fallback",
+      "priority": "medium",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "ir-full-coverage",
+      "status": "in-progress",
+      "sprint": "51"
+    },
+    {
       "id": "1364",
       "title": "spec gap: class elements — method/field descriptor enumerable/configurable/writable (~700 fails)",
       "priority": "high",
@@ -1846,6 +1872,16 @@
       "goal": "spec-completeness",
       "status": "in-progress",
       "sprint": "51"
+    },
+    {
+      "id": "1352",
+      "title": "spec gap: Set methods (union/intersection/etc.) accept any set-like argument (101 test262 fails)",
+      "priority": "medium",
+      "feasibility": "easy",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "in-progress",
+      "sprint": "50"
     },
     {
       "id": "1348",
@@ -1937,6 +1973,16 @@
       "feasibility": "medium",
       "depends_on": [],
       "goal": "ci-reliability",
+      "status": "done",
+      "sprint": "51"
+    },
+    {
+      "id": "1392",
+      "title": "IR: null-safe access primitives — ref.is_null IrUnop + value-producing if/else IR node",
+      "priority": "high",
+      "feasibility": "hard",
+      "depends_on": [],
+      "goal": "ir-full-coverage",
       "status": "done",
       "sprint": "51"
     },
@@ -2124,6 +2170,16 @@
       "id": "1366a",
       "title": "spec gap: class extends Error/TypeError/RangeError — builtin subclassing via existing host imports (+40-60 passes)",
       "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "done",
+      "sprint": "51"
+    },
+    {
+      "id": "1366",
+      "title": "spec gap: class subclass + subclass-builtins prototype chain (~154 fails)",
+      "priority": "medium",
       "feasibility": "medium",
       "depends_on": [],
       "goal": "spec-completeness",

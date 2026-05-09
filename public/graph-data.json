@@ -14649,8 +14649,8 @@
       "id": "1052",
       "title": "Array destructuring ignores user-overridden Array.prototype[Symbol.iterator]",
       "priority": "low",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "backlog",
+      "raw_status": "backlog",
       "sprint": "",
       "depends_on": [],
       "files": [],
@@ -18325,6 +18325,20 @@
       "cluster": "standalone-mode"
     },
     {
+      "id": "1326c",
+      "title": "Async standalone Phase 1C: microtask queue + Promise.then chained-resolution (follow-up to #1326 Phase 1B)",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "51",
+      "depends_on": [
+        "1326"
+      ],
+      "files": [],
+      "goal": "standalone-mode",
+      "cluster": "standalone-mode"
+    },
+    {
       "id": "1327",
       "title": "Landing page: per-feature test pass counts + feature report page + playground deep-link",
       "priority": "high",
@@ -18629,7 +18643,7 @@
       "title": "spec gap: Set methods (union/intersection/etc.) accept any set-like argument (101 test262 fails)",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "50",
       "depends_on": [],
       "files": [],
@@ -18796,8 +18810,8 @@
       "id": "1366",
       "title": "spec gap: class subclass + subclass-builtins prototype chain (~154 fails)",
       "priority": "medium",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -18901,6 +18915,18 @@
       "cluster": "ir-full-coverage"
     },
     {
+      "id": "1373b",
+      "title": "IR async Phase C: CPS lowering for await + async-return + async-throw",
+      "priority": "medium",
+      "status": "blocked",
+      "raw_status": "blocked",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "ir-full-coverage",
+      "cluster": "ir-full-coverage"
+    },
+    {
       "id": "1374",
       "title": "IR: string for-of and for-in through IR (removes legacy fallback for string iteration)",
       "priority": "medium",
@@ -18917,7 +18943,7 @@
       "title": "IR: full optional-chain support (?. and ?.[]) without resolver fallback",
       "priority": "medium",
       "status": "ready",
-      "raw_status": "ready",
+      "raw_status": "in-progress",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -19123,8 +19149,8 @@
       "id": "1392",
       "title": "IR: null-safe access primitives — ref.is_null IrUnop + value-producing if/else IR node",
       "priority": "high",
-      "status": "ready",
-      "raw_status": "ready",
+      "status": "done",
+      "raw_status": "done",
       "sprint": "51",
       "depends_on": [],
       "files": [],
@@ -19142,6 +19168,44 @@
       "files": [],
       "goal": "ci-reliability",
       "cluster": "ci-reliability"
+    },
+    {
+      "id": "1394",
+      "title": "class method-closure caching: C.prototype.method returns stable singleton closure",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "51",
+      "depends_on": [
+        "1388"
+      ],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1395",
+      "title": "class static method descriptors: class identifier resolves to string_constant, not constructor object",
+      "priority": "medium",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
+    },
+    {
+      "id": "1396",
+      "title": "for-of/dstr + assignment/dstr default initializers don't fire on OOB extenref-array reads",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
     }
   ],
   "links": [
@@ -19984,6 +20048,14 @@
     {
       "source": "1298",
       "target": "1309"
+    },
+    {
+      "source": "1326",
+      "target": "1326c"
+    },
+    {
+      "source": "1388",
+      "target": "1394"
     },
     {
       "source": "317",
@@ -21453,7 +21525,10 @@
         "1387",
         "1388",
         "1389",
-        "1390"
+        "1390",
+        "1394",
+        "1395",
+        "1396"
       ]
     },
     {
@@ -21516,6 +21591,7 @@
         "1324",
         "1325",
         "1326",
+        "1326c",
         "1335",
         "1353"
       ],
@@ -26475,6 +26551,18 @@
       "issue": "1390"
     },
     {
+      "goal": "spec-completeness",
+      "issue": "1394"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1395"
+    },
+    {
+      "goal": "spec-completeness",
+      "issue": "1396"
+    },
+    {
       "goal": "standalone-mode",
       "issue": "34"
     },
@@ -26673,6 +26761,10 @@
     {
       "goal": "standalone-mode",
       "issue": "1326"
+    },
+    {
+      "goal": "standalone-mode",
+      "issue": "1326c"
     },
     {
       "goal": "standalone-mode",
@@ -31033,6 +31125,18 @@
       "issue": "1390"
     },
     {
+      "goal": "async-model",
+      "issue": "1394"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1395"
+    },
+    {
+      "goal": "async-model",
+      "issue": "1396"
+    },
+    {
       "goal": "symbol-protocol",
       "issue": "10"
     },
@@ -31649,6 +31753,18 @@
       "issue": "1390"
     },
     {
+      "goal": "symbol-protocol",
+      "issue": "1394"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1395"
+    },
+    {
+      "goal": "symbol-protocol",
+      "issue": "1396"
+    },
+    {
       "goal": "builtin-methods",
       "issue": "10"
     },
@@ -32265,6 +32381,18 @@
       "issue": "1390"
     },
     {
+      "goal": "builtin-methods",
+      "issue": "1394"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1395"
+    },
+    {
+      "goal": "builtin-methods",
+      "issue": "1396"
+    },
+    {
       "goal": "property-model",
       "issue": "10"
     },
@@ -32879,6 +33007,18 @@
     {
       "goal": "property-model",
       "issue": "1390"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1394"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1395"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1396"
     },
     {
       "goal": "iterator-protocol",
@@ -33079,6 +33219,10 @@
     {
       "goal": "iterator-protocol",
       "issue": "1326"
+    },
+    {
+      "goal": "iterator-protocol",
+      "issue": "1326c"
     },
     {
       "goal": "iterator-protocol",
@@ -33287,6 +33431,10 @@
     {
       "goal": "generator-model",
       "issue": "1326"
+    },
+    {
+      "goal": "generator-model",
+      "issue": "1326c"
     },
     {
       "goal": "generator-model",

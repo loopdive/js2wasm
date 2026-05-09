@@ -18,6 +18,16 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Verify origin/main is merged into branch
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch origin main
+          if ! git merge-base --is-ancestor origin/main HEAD; then
+            echo "::error::Branch is missing commits from origin/main. Run 'git merge origin/main' and push again."
+            exit 1
+          fi
+          echo "✓ origin/main is an ancestor of this branch"
+
       - uses: actions/setup-node@v6
         with:
           node-version: 22
