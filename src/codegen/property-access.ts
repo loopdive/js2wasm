@@ -1951,16 +1951,37 @@ export function compilePropertyAccess(
               return fType;
             }
           }
-          // (#1394) Class instance methods are intentionally NOT cached
-          // here — see follow-up issue on dual class registration for
-          // `var C = class { ... }` patterns. The `C.prototype.method`
-          // path IS cached (in the prototype-access handler) so that
-          // verifyProperty(C.prototype, "m", {...}) tests succeed; the
-          // `c.method !== C.prototype.method` identity invariant
-          // currently fails for class-expression dual-registered classes
-          // and is deferred to the dual-registration normalisation work.
-          // For now, instance-method-as-value returns null externref
-          // (legacy behaviour preserved).
+          // (#1394) For CLASS instances, return the SAME cached singleton
+          // closure as `C.prototype.<method>` so the identity invariant
+          // `c.m === C.prototype.m` holds. Spec'd in
+          // verifyProperty(C.prototype, "m", { value: m }) across 478
+          // class/elements tests.
+          //
+          // Both paths use `methodFullName = ${typeName}_${propName}` where
+          // `typeName` is canonicalised to the synthetic class name in
+          // declarations.ts (#1394 dual-registration bridge): the proto
+          // handler resolves `C.prototype.m`'s identifier "C" via
+          // classExprNameMap to `__anonClass_N`, the instance path resolves
+          // `c`'s TS type via resolveStructName(...) → `__anonClass_N`, so
+          // both arrive at the same cache key.
+          if (ctx.classSet.has(typeName) && ctx.classMethodSet.has(methodFullName)) {
+            const fullStructTypeIdx = ctx.structMap.get(typeName);
+            if (fullStructTypeIdx !== undefined) {
+              // Compile + drop the object expression for side effects;
+              // the cached closure carries no per-instance binding (JS
+              // strict mode `var fn = c.m; fn();` calls with `this =
+              // undefined`, so the lost-binding semantics match spec).
+              const objResult = compileExpression(ctx, fctx, expr.expression);
+              if (objResult) {
+                fctx.body.push({ op: "drop" });
+              }
+              if (emitCachedMethodClosureAccess(ctx, fctx, methodFullName, funcIdx, fullStructTypeIdx)) {
+                return { kind: "externref" };
+              }
+            }
+          }
+          // Legacy fallback for class methods or unresolved cases:
+          // compile + drop the object, return null externref placeholder.
           const objResult = compileExpression(ctx, fctx, expr.expression);
           if (objResult) {
             fctx.body.push({ op: "drop" });

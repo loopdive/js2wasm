@@ -15,12 +15,41 @@ import { describe, expect, it } from "vitest";
 import { compileToWasm } from "./equivalence/helpers.js";
 
 describe("#1394 — class method-closure caching (identity invariant)", () => {
-  // Deferred to dual-class-registration follow-up (instance access path
-  // resolves to the synthetic `__anonClass_N` symbol while proto access
-  // uses the user-visible name; the two paths emit different cache keys
-  // and therefore different closure refs). This PR caches only the
-  // `C.prototype.method` side; `c.method` remains null externref.
-  it.todo("c.m === C.prototype.m for a regular method (deferred to dual-reg fix)");
+  // (#1394 dual-registration bridge) The instance access path resolves
+  // through TS's symbol "__class" → synthetic name `__anonClass_N`, while
+  // the proto-access path resolves the user-visible identifier. The
+  // declarations.ts bridge populates `classExprNameMap[varName] →
+  // syntheticName` after both registrations have run, collapsing both
+  // paths to the SAME `${syntheticName}_${methodName}` cache key — the
+  // two singleton externref reads land on the same module global, so
+  // `c.m === C.prototype.m` holds.
+  it("c.m === C.prototype.m for a regular method (declared class)", async () => {
+    const wasm = await compileToWasm(`
+      class C {
+        m(): number { return 1; }
+      }
+      export function test(): number {
+        const c = new C();
+        if (c.m !== C.prototype.m) return 999;
+        return 1;
+      }
+    `);
+    expect((wasm as any).test()).toBe(1);
+  });
+
+  it("c.m === C.prototype.m for var C = class { ... } (dual registration)", async () => {
+    const wasm = await compileToWasm(`
+      var C = class {
+        m(): number { return 1; }
+      };
+      export function test(): number {
+        const c = new C();
+        if (c.m !== C.prototype.m) return 999;
+        return 1;
+      }
+    `);
+    expect((wasm as any).test()).toBe(1);
+  });
 
   it("C.prototype.m === C.prototype.m on repeated access", async () => {
     const wasm = await compileToWasm(`
