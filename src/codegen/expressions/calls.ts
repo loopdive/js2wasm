@@ -6,10 +6,13 @@
 import { ts, forEachChild } from "../../ts-api.js";
 import {
   isBooleanType,
+  isBooleanWrapperType,
   isExternalDeclaredClass,
   isGeneratorType,
   isNumberType,
+  isNumberWrapperType,
   isStringType,
+  isStringWrapperType,
   isVoidType,
 } from "../../checker/type-mapper.js";
 import type { Instr, ValType } from "../../ir/types.js";
@@ -300,6 +303,117 @@ function usesArguments(node: ts.Node): boolean {
     return false;
   }
   return forEachChild(node, usesArguments) ?? false;
+}
+
+/**
+ * (#1397) Conservative scope-level reassignment scan: returns true if the
+ * source file contains any assignment expression of the form `X.<method> = ...`
+ * (any LHS expression, member name === `methodName`).
+ *
+ * Used to gate static-dispatch fast-paths for wrapper-type method calls
+ * (`new String(...).toString()`, `new Number(...).valueOf()`, etc.) so that
+ * sources that explicitly reassign these methods fall through to the
+ * dynamic-dispatch path (`__extern_method_call`) and pick up the override
+ * at runtime — preserving spec semantics where transferred prototype methods
+ * throw TypeError on the wrong receiver type.
+ *
+ * Conservative scan rationale: scope-narrowing (only the enclosing function)
+ * would miss patterns like `obj.toString = OtherType.prototype.toString`
+ * defined at module scope and used inside a function. False positives
+ * (sources that reassign in some unrelated branch) only cost the static
+ * fast-path on wrapper objects — not a measurable perf hit because wrappers
+ * are uncommon at runtime in real code.
+ *
+ * Cached per `(sourceFile, methodName)` so repeated calls are O(1).
+ */
+const _reassignmentCache = new WeakMap<ts.SourceFile, Map<string, boolean>>();
+function sourceHasMethodReassignment(ctx: CodegenContext, anchor: ts.Node, methodName: string): boolean {
+  const sf = anchor.getSourceFile();
+  if (!sf) return false;
+  let perFile = _reassignmentCache.get(sf);
+  if (perFile === undefined) {
+    perFile = new Map<string, boolean>();
+    _reassignmentCache.set(sf, perFile);
+  }
+  const cached = perFile.get(methodName);
+  if (cached !== undefined) return cached;
+
+  let found = false;
+  function visit(node: ts.Node): void {
+    if (found) return;
+    if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isPropertyAccessExpression(node.left) &&
+      ts.isIdentifier(node.left.name) &&
+      node.left.name.text === methodName
+    ) {
+      found = true;
+      return;
+    }
+    forEachChild(node, visit);
+  }
+  visit(sf);
+  perFile.set(methodName, found);
+  // Reference ctx so the parameter isn't unused — the cache is keyed on the
+  // SourceFile (not ctx) but we keep ctx in the signature for future
+  // refinements that need scope-narrowing or per-symbol resolution.
+  void ctx;
+  return found;
+}
+
+/**
+ * (#1397) Emit a dynamic-dispatch method call on a wrapper-object receiver:
+ *
+ *   __extern_method_call(receiver, methodName, [])
+ *
+ * Used by the wrapper-reassignment branch at the top of compileMethodCall
+ * to bypass the static fast-paths when source has reassigned the method.
+ * Returns the result type (externref) on success, null if the necessary
+ * runtime imports cannot be registered (caller falls through to the
+ * static path as a best-effort fallback).
+ */
+function emitWrapperDynamicMethodCall(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  recvExpr: ts.Expression,
+  methodName: string,
+): ValType | null {
+  const arrNewIdx = ensureLateImport(ctx, "__js_array_new", [], [{ kind: "externref" }]);
+  const methodCallIdx = ensureLateImport(
+    ctx,
+    "__extern_method_call",
+    [{ kind: "externref" }, { kind: "externref" }, { kind: "externref" }],
+    [{ kind: "externref" }],
+  );
+  flushLateImportShifts(ctx, fctx);
+  if (arrNewIdx === undefined || methodCallIdx === undefined) return null;
+
+  // Compile receiver as externref.
+  const recvType = compileExpression(ctx, fctx, recvExpr, { kind: "externref" });
+  if (recvType && recvType.kind !== "externref") {
+    fctx.body.push({ op: "extern.convert_any" } as unknown as Instr);
+  }
+  if (recvType === null) {
+    fctx.body.push({ op: "ref.null.extern" });
+  }
+
+  // Push method name as a string constant.
+  addStringConstantGlobal(ctx, methodName);
+  const methodNameIdx = ctx.stringGlobalMap.get(methodName);
+  if (methodNameIdx !== undefined) {
+    fctx.body.push({ op: "global.get", index: methodNameIdx } as Instr);
+  } else {
+    compileStringLiteral(ctx, fctx, methodName);
+  }
+
+  // Empty args array: __js_array_new() → externref.
+  fctx.body.push({ op: "call", funcIdx: arrNewIdx });
+
+  // Re-lookup methodCallIdx in case args compilation triggered shifts.
+  const finalMcIdx = ctx.funcMap.get("__extern_method_call") ?? methodCallIdx;
+  fctx.body.push({ op: "call", funcIdx: finalMcIdx });
+  return { kind: "externref" };
 }
 
 /**
@@ -3710,6 +3824,42 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
       }
     }
 
+    // (#1397) Wrapper-object dynamic dispatch on reassigned methods.
+    //
+    // For wrapper-object receivers (`new String/Number/Boolean(...)`) where
+    // `.toString` or `.valueOf` has been reassigned somewhere in the source,
+    // skip every static fast-path and route through `__extern_method_call`
+    // so the runtime property lookup picks up the override. Required for
+    // spec compliance with transferred prototype methods (S15.7.4.2_A4_*,
+    // S15.7.4.4_A2_*, S15.6.4.2_A2_*, S15.6.4.3_A2_*):
+    //
+    //   var s1 = new String();
+    //   s1.toString = Number.prototype.toString;
+    //   s1.toString();   // spec: TypeError; we used to return s1 itself.
+    //
+    // Primitives keep the static fast-path — primitives can't have own
+    // properties, so `"abc".toString = …` is a no-op and the short-circuit
+    // is correct. Wrappers without any matching reassignment in the source
+    // also keep the static fast-path (no perf regression for the common
+    // case). The reassignment scan is conservative — any
+    // `<expr>.<method> = …` anywhere in the source disables the static
+    // path for wrappers; that's a narrower hit than Option B (always
+    // dynamic) and matches the architect's Option D feasibility study.
+    {
+      const wrapperMethodName = propAccess.name.text;
+      const isWrapperReceiver =
+        isStringWrapperType(receiverType) || isNumberWrapperType(receiverType) || isBooleanWrapperType(receiverType);
+      if (
+        isWrapperReceiver &&
+        (wrapperMethodName === "valueOf" || wrapperMethodName === "toString") &&
+        expr.arguments.length === 0 &&
+        sourceHasMethodReassignment(ctx, propAccess.expression, wrapperMethodName)
+      ) {
+        const dynResult = emitWrapperDynamicMethodCall(ctx, fctx, propAccess.expression, wrapperMethodName);
+        if (dynResult) return dynResult;
+      }
+    }
+
     // Handle wrapper type method calls: new Number(x).valueOf(), etc.
     // Since wrapper constructors now return primitives, valueOf() is a no-op identity.
     {
@@ -4424,39 +4574,74 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         fctx.body.push({ op: "f64.convert_i32_s" });
       }
       if (expr.arguments.length > 0) {
+        // (#49) Spec §21.1.3.5 step 4 says: if x is non-finite, return
+        // Number::toString(x) BEFORE the precision range check. Save the
+        // receiver into a local, check finiteness, and only run the
+        // range check when x is finite. Non-finite v with bad precision
+        // (e.g. `(NaN).toPrecision(Infinity)`) must return "NaN" not
+        // throw RangeError.
+        const recvLocalP = allocLocal(fctx, `__toPrecision_recv_${fctx.locals.length}`, { kind: "f64" });
+        fctx.body.push({ op: "local.set", index: recvLocalP });
         compileExpression(ctx, fctx, expr.arguments[0]!);
-        // RangeError: precision must be 1-100 (NaN → 0 → invalid since 0 < 1)
         const precLocal = allocLocal(fctx, `__toPrecision_prec_${fctx.locals.length}`, { kind: "f64" });
-        fctx.body.push({ op: "local.tee", index: precLocal });
-        fctx.body.push({ op: "f64.const", value: 1 });
-        fctx.body.push({ op: "f64.lt" });
-        fctx.body.push({ op: "local.get", index: precLocal });
-        fctx.body.push({ op: "f64.const", value: 100 });
-        fctx.body.push({ op: "f64.gt" });
-        fctx.body.push({ op: "i32.or" });
-        // NaN check: NaN != NaN
-        fctx.body.push({ op: "local.get", index: precLocal });
-        fctx.body.push({ op: "local.get", index: precLocal });
-        fctx.body.push({ op: "f64.ne" });
-        fctx.body.push({ op: "i32.or" });
-        {
-          const rangeErrMsg = "RangeError: toPrecision() argument must be between 1 and 100";
-          addStringConstantGlobal(ctx, rangeErrMsg);
-          const strIdx = ctx.stringGlobalMap.get(rangeErrMsg)!;
-          const tagIdx = ensureExnTag(ctx);
-          fctx.body.push({
-            op: "if",
-            blockType: { kind: "empty" },
-            then: [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx } as Instr],
-            else: [],
-          });
-        }
+        fctx.body.push({ op: "local.set", index: precLocal });
+
+        // Re-push receiver for the runtime call.
+        fctx.body.push({ op: "local.get", index: recvLocalP });
+
+        // Range-check fires only when receiver is finite.
+        // isFinite(v) ⇔ v - v == 0 ⇔ v != NaN AND |v| != Infinity. We
+        // detect non-finite via `v + (-v) != 0`: NaN gives NaN (≠ 0),
+        // ±Infinity gives NaN (≠ 0). Equivalent to `!Number.isFinite(v)`.
+        // Use the simpler `v == v` (false for NaN) followed by
+        // `abs(v) != Infinity` — but Wasm has no abs/Infinity literal in
+        // f64 const. Use the spec-equivalent `!isNaN(v) && v != ±Inf`:
+        //   isFinite(v)  ≡  (v - v) == 0
+        // The `i32.eqz` of that is "is non-finite".
+        const isFiniteLocal = allocLocal(fctx, `__toPrecision_finite_${fctx.locals.length}`, { kind: "i32" });
+        fctx.body.push({ op: "local.get", index: recvLocalP });
+        fctx.body.push({ op: "local.get", index: recvLocalP });
+        fctx.body.push({ op: "f64.sub" });
+        fctx.body.push({ op: "f64.const", value: 0 });
+        fctx.body.push({ op: "f64.eq" });
+        fctx.body.push({ op: "local.set", index: isFiniteLocal });
+
+        // RangeError gate: only when v is finite.
+        fctx.body.push({ op: "local.get", index: isFiniteLocal });
+        const rangeErrMsg = "RangeError: toPrecision() argument must be between 1 and 100";
+        addStringConstantGlobal(ctx, rangeErrMsg);
+        const strIdx = ctx.stringGlobalMap.get(rangeErrMsg)!;
+        const tagIdx = ensureExnTag(ctx);
+        const rangeCheckBody: Instr[] = [];
+        // Build: if (p < 1 || p > 100 || p != p) throw RangeError
+        rangeCheckBody.push({ op: "local.get", index: precLocal });
+        rangeCheckBody.push({ op: "f64.const", value: 1 });
+        rangeCheckBody.push({ op: "f64.lt" });
+        rangeCheckBody.push({ op: "local.get", index: precLocal });
+        rangeCheckBody.push({ op: "f64.const", value: 100 });
+        rangeCheckBody.push({ op: "f64.gt" });
+        rangeCheckBody.push({ op: "i32.or" });
+        rangeCheckBody.push({ op: "local.get", index: precLocal });
+        rangeCheckBody.push({ op: "local.get", index: precLocal });
+        rangeCheckBody.push({ op: "f64.ne" });
+        rangeCheckBody.push({ op: "i32.or" });
+        rangeCheckBody.push({
+          op: "if",
+          blockType: { kind: "empty" },
+          then: [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx } as Instr],
+          else: [],
+        });
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "empty" },
+          then: rangeCheckBody,
+          else: [],
+        });
+
         fctx.body.push({ op: "local.get", index: precLocal });
       } else {
         // No argument → push NaN sentinel; the `number_toPrecision` host runtime
         // recognises NaN as "no precision provided" and returns String(v).
-        // (Fixes a Wasm-validation crash when a program calls `n.toPrecision()`
-        // with no args without separately triggering `number_toString` registration.)
         fctx.body.push({ op: "f64.const", value: NaN });
       }
       const funcIdx = ctx.funcMap.get("number_toPrecision");
@@ -4472,28 +4657,57 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         fctx.body.push({ op: "f64.convert_i32_s" });
       }
       if (expr.arguments.length > 0) {
+        // (#49) Spec §21.1.3.3 step 3: if x is non-finite, return
+        // Number::toString(x) BEFORE the fractionDigits range check.
+        // Save receiver, run range check only when x is finite. The
+        // runtime helper `number_toExponential` short-circuits for
+        // non-finite x; pre-check would fire for
+        // `(NaN).toExponential(101)` which spec requires to return "NaN".
+        const recvLocalE = allocLocal(fctx, `__toExponential_recv_${fctx.locals.length}`, { kind: "f64" });
+        fctx.body.push({ op: "local.set", index: recvLocalE });
         compileExpression(ctx, fctx, expr.arguments[0]!);
-        // RangeError: fractionDigits must be 0-100
         const digitsLocal = allocLocal(fctx, `__toExponential_digits_${fctx.locals.length}`, { kind: "f64" });
-        fctx.body.push({ op: "local.tee", index: digitsLocal });
+        fctx.body.push({ op: "local.set", index: digitsLocal });
+
+        // Re-push receiver for the runtime call.
+        fctx.body.push({ op: "local.get", index: recvLocalE });
+
+        // isFinite(v): (v - v) == 0 (NaN/Infinity give NaN ≠ 0).
+        const isFiniteLocal = allocLocal(fctx, `__toExponential_finite_${fctx.locals.length}`, { kind: "i32" });
+        fctx.body.push({ op: "local.get", index: recvLocalE });
+        fctx.body.push({ op: "local.get", index: recvLocalE });
+        fctx.body.push({ op: "f64.sub" });
         fctx.body.push({ op: "f64.const", value: 0 });
-        fctx.body.push({ op: "f64.lt" });
-        fctx.body.push({ op: "local.get", index: digitsLocal });
-        fctx.body.push({ op: "f64.const", value: 100 });
-        fctx.body.push({ op: "f64.gt" });
-        fctx.body.push({ op: "i32.or" });
-        {
-          const rangeErrMsg = "RangeError: toExponential() argument must be between 0 and 100";
-          addStringConstantGlobal(ctx, rangeErrMsg);
-          const strIdx = ctx.stringGlobalMap.get(rangeErrMsg)!;
-          const tagIdx = ensureExnTag(ctx);
-          fctx.body.push({
-            op: "if",
-            blockType: { kind: "empty" },
-            then: [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx } as Instr],
-            else: [],
-          });
-        }
+        fctx.body.push({ op: "f64.eq" });
+        fctx.body.push({ op: "local.set", index: isFiniteLocal });
+
+        // Range check gate: only when v is finite.
+        const rangeErrMsg = "RangeError: toExponential() argument must be between 0 and 100";
+        addStringConstantGlobal(ctx, rangeErrMsg);
+        const strIdx = ctx.stringGlobalMap.get(rangeErrMsg)!;
+        const tagIdx = ensureExnTag(ctx);
+        const rangeCheckBody: Instr[] = [];
+        rangeCheckBody.push({ op: "local.get", index: digitsLocal });
+        rangeCheckBody.push({ op: "f64.const", value: 0 });
+        rangeCheckBody.push({ op: "f64.lt" });
+        rangeCheckBody.push({ op: "local.get", index: digitsLocal });
+        rangeCheckBody.push({ op: "f64.const", value: 100 });
+        rangeCheckBody.push({ op: "f64.gt" });
+        rangeCheckBody.push({ op: "i32.or" });
+        rangeCheckBody.push({
+          op: "if",
+          blockType: { kind: "empty" },
+          then: [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx } as Instr],
+          else: [],
+        });
+        fctx.body.push({ op: "local.get", index: isFiniteLocal });
+        fctx.body.push({
+          op: "if",
+          blockType: { kind: "empty" },
+          then: rangeCheckBody,
+          else: [],
+        });
+
         fctx.body.push({ op: "local.get", index: digitsLocal });
       } else {
         // No argument → pass NaN as sentinel for "no argument provided"
@@ -4510,9 +4724,22 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
     if (isStringType(receiverType)) {
       const method = propAccess.name.text;
 
-      // string.toString() and string.valueOf() — identity, just return the string itself
+      // string.toString() and string.valueOf() — identity, just return the string itself.
+      // (#1397) Skip the identity short-circuit when the receiver is a String
+      // wrapper object (`new String(...)`) AND the source has a reassignment
+      // of the form `<id>.toString = ...` / `.valueOf = ...`. For wrappers
+      // the .toString / .valueOf property is reassignable, and the identity
+      // short-circuit silently ignores the override; the runtime spec
+      // requires dispatch through the actual property. Primitive strings
+      // can't have own properties, so the short-circuit stays correct.
       if (method === "toString" || method === "valueOf") {
-        return compileExpression(ctx, fctx, propAccess.expression);
+        const skipForReassignment =
+          isStringWrapperType(receiverType) && sourceHasMethodReassignment(ctx, propAccess.expression, method);
+        if (!skipForReassignment) {
+          return compileExpression(ctx, fctx, propAccess.expression);
+        }
+        // Fall through — let the generic externref method-call path at the
+        // bottom of compileMethodCall handle dynamic dispatch.
       }
 
       // Fast mode: native string method dispatch
@@ -6728,33 +6955,10 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         }
         if (methodName === "toPrecision" && expr.arguments.length > 0) {
           compileExpression(ctx, fctx, expr.arguments[0]!);
-          // RangeError: precision must be 1-100 (NaN → 0 → invalid since 0 < 1)
-          const precLocal = allocLocal(fctx, `__toPrecision_prec_${fctx.locals.length}`, { kind: "f64" });
-          fctx.body.push({ op: "local.tee", index: precLocal });
-          fctx.body.push({ op: "f64.const", value: 1 });
-          fctx.body.push({ op: "f64.lt" });
-          fctx.body.push({ op: "local.get", index: precLocal });
-          fctx.body.push({ op: "f64.const", value: 100 });
-          fctx.body.push({ op: "f64.gt" });
-          fctx.body.push({ op: "i32.or" });
-          // NaN check: NaN != NaN
-          fctx.body.push({ op: "local.get", index: precLocal });
-          fctx.body.push({ op: "local.get", index: precLocal });
-          fctx.body.push({ op: "f64.ne" });
-          fctx.body.push({ op: "i32.or" });
-          {
-            const rangeErrMsg = "RangeError: toPrecision() argument must be between 1 and 100";
-            addStringConstantGlobal(ctx, rangeErrMsg);
-            const strIdx = ctx.stringGlobalMap.get(rangeErrMsg)!;
-            const tagIdx = ensureExnTag(ctx);
-            fctx.body.push({
-              op: "if",
-              blockType: { kind: "empty" },
-              then: [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx } as Instr],
-              else: [],
-            });
-          }
-          fctx.body.push({ op: "local.get", index: precLocal });
+          // (#49) See `number.toPrecision` site above — the precision
+          // range check was moved into the runtime helper because per
+          // spec §21.1.3.5 step 4, non-finite receivers must return
+          // Number::toString(x) BEFORE the range check fires.
         } else if (methodName === "toPrecision") {
           // No argument → same as toString()
           const funcIdx = ctx.funcMap.get("number_toString");
@@ -6765,28 +6969,13 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         }
         if (methodName === "toExponential" && expr.arguments.length > 0) {
           compileExpression(ctx, fctx, expr.arguments[0]!);
-          // RangeError: fractionDigits must be 0-100
-          const digitsLocal2 = allocLocal(fctx, `__toExponential_digits_${fctx.locals.length}`, { kind: "f64" });
-          fctx.body.push({ op: "local.tee", index: digitsLocal2 });
-          fctx.body.push({ op: "f64.const", value: 0 });
-          fctx.body.push({ op: "f64.lt" });
-          fctx.body.push({ op: "local.get", index: digitsLocal2 });
-          fctx.body.push({ op: "f64.const", value: 100 });
-          fctx.body.push({ op: "f64.gt" });
-          fctx.body.push({ op: "i32.or" });
-          {
-            const rangeErrMsg = "RangeError: toExponential() argument must be between 0 and 100";
-            addStringConstantGlobal(ctx, rangeErrMsg);
-            const strIdx = ctx.stringGlobalMap.get(rangeErrMsg)!;
-            const tagIdx = ensureExnTag(ctx);
-            fctx.body.push({
-              op: "if",
-              blockType: { kind: "empty" },
-              then: [{ op: "global.get", index: strIdx } as Instr, { op: "throw", tagIdx } as Instr],
-              else: [],
-            });
-          }
-          fctx.body.push({ op: "local.get", index: digitsLocal2 });
+          // (#49) See `number.toExponential` site above — the
+          // fractionDigits range check was moved into the runtime
+          // helper because per spec §21.1.3.3 step 3, non-finite
+          // receivers must return Number::toString(x) BEFORE the
+          // range check fires. Removing the codegen pre-check lets
+          // `(NaN).toExponential(101)` return "NaN" as the spec
+          // requires.
         } else if (methodName === "toExponential") {
           // No argument → pass NaN sentinel
           fctx.body.push({ op: "f64.const", value: NaN });

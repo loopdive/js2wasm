@@ -457,6 +457,25 @@ function normalizeStatus(s: string): StatusKey {
   return "fail";
 }
 
+/**
+ * (#1398) Derive a category path from a test file path. Mirrors the runner's
+ * categorization (top two path segments after the leading `test/`), so the
+ * resulting key matches `test262-report.json`'s `categories[].name`.
+ *
+ * Examples:
+ *   "test/language/expressions/class/elements/foo.js" → "language/expressions"
+ *   "test/built-ins/Array/prototype/push/length.js"  → "built-ins/Array"
+ *   "test/annexB/built-ins/escape/length.js"          → "annexB/built-ins"
+ */
+function deriveCategoryFromFile(file: string): string {
+  const parts = file.split("/");
+  if (parts[0] === "test") parts.shift();
+  // Two-segment grouping mirrors the existing runner output. The compiled
+  // report joins these with `/`.
+  if (parts.length >= 2) return parts.slice(0, 2).join("/");
+  return parts[0] ?? "unknown";
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -466,6 +485,7 @@ interface ResultRecord {
   status: string;
   scope?: string;
   scope_official?: boolean;
+  category?: string;
 }
 
 interface EditionBucket {
@@ -510,6 +530,12 @@ async function main() {
     buckets[yr] = { pass: 0, fail: 0, ce: 0, skip: 0 };
   }
 
+  // (#1398) Per-category × per-edition buckets. Keyed by category path
+  // (e.g. "test/language/expressions") then by edition year (e.g. 2022).
+  // Used to populate `test262-category-editions.json` so the report's
+  // category table can filter to a selected edition.
+  const categoryBuckets: Record<string, Record<number, { pass: number; fail: number; ce: number; skip: number }>> = {};
+
   let classified = 0;
   let unclassified = 0;
   let processed = 0;
@@ -545,6 +571,17 @@ async function main() {
 
     const bucket = buckets[edition] ?? (buckets[edition] = { pass: 0, fail: 0, ce: 0, skip: 0 });
     bucket[key]++;
+
+    // (#1398) Also accumulate into per-category × per-edition buckets.
+    // Use the JSONL `category` field if present (the runner sets it to the
+    // top-level path prefix, e.g. "language/expressions"); fall back to
+    // deriving from the file path.
+    const category = record.category ?? deriveCategoryFromFile(file);
+    if (category && edition !== 0 && edition !== -1) {
+      const catMap = categoryBuckets[category] ?? (categoryBuckets[category] = {});
+      const catBucket = catMap[edition] ?? (catMap[edition] = { pass: 0, fail: 0, ce: 0, skip: 0 });
+      catBucket[key]++;
+    }
   }
 
   // Build output array in edition order
@@ -581,6 +618,44 @@ async function main() {
   const accounted = output.reduce((sum, bucket) => sum + bucket.total, 0);
   if (accounted !== processed) {
     throw new Error(`Edition totals (${accounted}) do not match processed results (${processed}).`);
+  }
+
+  // (#1398) Write the per-category × per-edition breakdown alongside the
+  // overall per-edition output. The report's category table consumes this
+  // to filter rows when an edition is selected on the timeline slider.
+  //
+  // Output shape:
+  //   {
+  //     "language/expressions": {
+  //       "ES2022": { "pass": 42, "fail": 18, "ce": 3, "skip": 0 },
+  //       "ES2015": { "pass": 10, "fail": 5,  "ce": 0, "skip": 0 }
+  //     },
+  //     ...
+  //   }
+  //
+  // Only edition-classified buckets are emitted (year > 0); proposal-only
+  // and unclassified records are dropped here since the slider only
+  // operates on official edition rank.
+  const categoryEditionOutput: Record<
+    string,
+    Record<string, { pass: number; fail: number; ce: number; skip: number }>
+  > = {};
+  for (const [category, byYear] of Object.entries(categoryBuckets)) {
+    const yearMap: Record<string, { pass: number; fail: number; ce: number; skip: number }> = {};
+    for (const [yr, counts] of Object.entries(byYear)) {
+      const yearNum = Number(yr);
+      if (yearNum <= 0) continue;
+      const name = EDITION_NAMES[yearNum] ?? `ES${yearNum}`;
+      yearMap[name] = counts;
+    }
+    if (Object.keys(yearMap).length > 0) {
+      categoryEditionOutput[category] = yearMap;
+    }
+  }
+  const categoriesPath = outputPath.replace(/test262-editions\.json$/, "test262-category-editions.json");
+  if (categoriesPath !== outputPath) {
+    writeFileSync(categoriesPath, JSON.stringify(categoryEditionOutput, null, 2) + "\n");
+    console.log(`Wrote ${Object.keys(categoryEditionOutput).length} category × edition buckets to: ${categoriesPath}`);
   }
 }
 
