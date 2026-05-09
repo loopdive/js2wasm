@@ -23,7 +23,7 @@ That is the `js2` direction: ECMAScript compatibility stays the north star.
 TypeScript syntax is accepted as input, but TypeScript annotations are not
 treated as proof that JavaScript runtime behavior has changed.
 
-## Does js2 aim for full JavaScript compatibility?
+## How do you deal with the dynamic parts of JavaScript?
 
 Yes. `js2` is still an active compiler effort, so compatibility is incomplete
 today, but the project is driven by ECMAScript semantics and Test262

@@ -473,6 +473,12 @@
         line-height: 1.7;
         color: var(--fg-faint);
       }
+      .host-bench-subcopy a {
+        color: var(--fg-soft);
+        text-decoration: underline;
+        text-decoration-color: rgba(255, 255, 255, 0.28);
+        text-underline-offset: 3px;
+      }
 
       /* Donut and edition bar styles are now in <t262-donut> / <t262-edition-bars> shadow DOM */
       /* Benchmark performance chart is now in <perf-benchmark-chart> shadow DOM */
@@ -3032,7 +3038,7 @@ match (value) {
 
       <section class="section-pad" id="wasm-hosts">
         <div class="intro">
-          <h2>Lean modules that load and run fast.</h2>
+          <h2>Tiny modules that load and run fast.</h2>
           <p>
             When running outside of a JS engine like found in browsers or Node.js, compatibility today typically means
             embedding a JS interpreter inside the WebAssembly module. This increases module size and slows execution.
@@ -3058,10 +3064,14 @@ match (value) {
         </div>
 
         <div class="host-bench-group" id="wasmtime-bench-group" style="display: none">
-          <h3 class="host-bench-title">Wasmtime Standalone</h3>
+          <h3 class="host-bench-title">Standalone WebAssembly</h3>
           <p class="host-bench-subcopy">
-            Standalone Wasmtime benchmarks compare JS² output against bundled JavaScript interpreter and engine
-            approaches.
+            Five small benchmark programs run from the same source. The baseline starts a fresh JS runtime process; the
+            standalone rows start a fresh minimal native host that embeds a WebAssembly runtime, deserializes a
+            precompiled artifact, instantiates it, and calls the benchmark export. Compile time is reported separately
+            in the labs run and is not included here. Source:
+            <a href="./benchmarks/competitive/programs/index.html">competitive programs</a>
+            .
           </p>
           <div class="conformance-diagrams">
             <div
@@ -3073,7 +3083,7 @@ match (value) {
                 src="./benchmarks/results/wasm-host-wasmtime-hot-runtime.json"
                 mode="absolute-lower-better"
                 title="Hot Runtime"
-                baseline-label="Node.js"
+                baseline-label="JS runtime"
                 legend="Geometric mean over comparable competitive benchmarks; lower is better."
               ></perf-benchmark-chart>
             </div>
@@ -3087,7 +3097,7 @@ match (value) {
                 mode="absolute-lower-better"
                 title="Module Size"
                 baseline-label="JS source"
-                legend="Geometric mean of raw deployable module size; lower is better, faint segment is the shared Shopify-style interpreter."
+                legend="Geometric mean of raw deployable module size; JS source includes harness metadata, and the faint segment is the shared interpreter runtime."
               ></perf-benchmark-chart>
             </div>
             <div
@@ -3098,9 +3108,9 @@ match (value) {
               <perf-benchmark-chart
                 src="./benchmarks/results/wasm-host-wasmtime-coldstart.json"
                 mode="absolute-lower-better"
-                title="Cold Start"
-                baseline-label="Node.js"
-                legend="Geometric mean of startup plus first run; lower is better."
+                title="Precompiled Start"
+                baseline-label="JS runtime"
+                legend="Geometric mean of a fresh JS source process or fresh precompiled WebAssembly artifact process plus first run; lower is better."
               ></perf-benchmark-chart>
             </div>
           </div>
@@ -3293,26 +3303,25 @@ console.log(instance.exports.run()); // &rarr; 55</pre
           <div class="approach-faq-list">
             <details>
               <summary>
-                <span class="approach-faq-question">Which architecture decisions are guiding your approach?</span>
+                <span class="approach-faq-question">Why not just run JavaScript in a JavaScript engine?</span>
               </summary>
               <div class="approach-faq-answer">
                 <p>
-                  Architecture Decision Records document the non-obvious choices behind JS
-                  <sup>2</sup>
-                  &mdash; why WasmGC over linear memory, why ahead-of-time compilation over a JIT, how closures and
-                  objects are laid out, and how the compiler keeps JavaScript semantics auditable as it grows.
-                </p>
-                <p>
-                  <a class="btn-solid" href="./docs/adr/">Architecture Decisions</a>
+                  JavaScript is the most widely used programming language in the world. It is run in web browsers in JS
+                  engines like V8, SpiderMonkey, or JavaScriptCore, on the server in Node.js, Deno, or Bun. Many desktop
+                  applications also use JavaScript and bundle a whole browser inside the application, like Electron
+                  shipping about 150 MB. WebAssembly is a low-level assembly-like language that can be compiled to run
+                  inside a browser but also beyond in server or embedded environments. Compiling JavaScript to
+                  WebAssembly allows for the execution of JavaScript in a WebAssembly runtime, which has a tighter
+                  module sandbox with no ambient access to the host. In some cases it can also be more efficient than
+                  running in a JavaScript engine.
                 </p>
               </div>
             </details>
             <details>
               <summary>
                 <span class="approach-faq-question">
-                  How is JS
-                  <sup>2</sup>
-                  different from other JavaScript on WebAssembly approaches?
+                  How is your approach different from other JavaScript on WebAssembly approaches?
                 </span>
               </summary>
               <div class="approach-faq-answer">
@@ -3322,7 +3331,9 @@ console.log(instance.exports.run()); // &rarr; 55</pre
                     <sup>2</sup>
                   </strong>
                   is in the direct ahead-of-time compilation category: it produces WebAssembly GC from JavaScript and
-                  TypeScript source without embedding an interpreter or engine in the output module.
+                  TypeScript. In contrast to existing approaches it neither bundles a JavaScript interpreter or engine
+                  in the output module or deviates from the ECMAScript specification by supporting only a subset of the
+                  language.
                 </p>
                 <ul>
                   <li>
@@ -3356,11 +3367,7 @@ console.log(instance.exports.run()); // &rarr; 55</pre
             </details>
             <details>
               <summary>
-                <span class="approach-faq-question">
-                  Does JS
-                  <sup>2</sup>
-                  aim for full JavaScript compatibility?
-                </span>
+                <span class="approach-faq-question">How do you deal with the dynamic parts of JavaScript?</span>
               </summary>
               <div class="approach-faq-answer">
                 <p>
@@ -3409,6 +3416,22 @@ console.log(instance.exports.run()); // &rarr; 55</pre
                 <p>
                   WasmGC gives the compiler host-managed structs, arrays, references, and function references that can
                   represent many JavaScript object shapes more directly.
+                </p>
+              </div>
+            </details>
+            <details>
+              <summary>
+                <span class="approach-faq-question">Which architecture decisions are guiding your approach?</span>
+              </summary>
+              <div class="approach-faq-answer">
+                <p>
+                  Architecture Decision Records document the non-obvious choices behind JS
+                  <sup>2</sup>
+                  &mdash; why WasmGC over linear memory, why ahead-of-time compilation over a JIT, how closures and
+                  objects are laid out, and how the compiler keeps JavaScript semantics auditable as it grows.
+                </p>
+                <p>
+                  <a class="btn-solid" href="./docs/adr/">Architecture Decisions</a>
                 </p>
               </div>
             </details>
