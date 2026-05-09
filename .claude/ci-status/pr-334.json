@@ -1,0 +1,22 @@
+{
+  "pr": 334,
+  "conclusion": "success",
+  "head_branch": "issue-1394-method-closure-cache",
+  "head_sha": "23bf1c93276a9b28aab9f7f3716b8f98d3c35a03",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25593759396",
+  "timestamp": "2026-05-09T06:46:40Z",
+  "pass": 27674,
+  "fail": 14233,
+  "compile_error": 1168,
+  "snapshot_delta": -296,
+  "net_per_test": -264,
+  "regressions": 541,
+  "regressions_real": 494,
+  "regressions_wasm_change": 494,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 47,
+  "improvements": 230,
+  "baseline_sha": "23bf1c93276a9b28aab9f7f3716b8f98d3c35a03",
+  "baseline_staleness_commits": 42,
+  "baseline_stale": false
+}
