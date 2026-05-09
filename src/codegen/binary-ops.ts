@@ -1193,6 +1193,69 @@ export function compileBinaryExpression(
           if (isStrictNeq) fctx.body.push({ op: "i32.eqz" });
           return { kind: "i32" };
         }
+        // (#1395) Mixed ref + externref strict equality: bridge via anyref so
+        // identity is preserved. This fires for cases like a static method
+        // that returns `this` (typed as `(ref null $C)`) compared against the
+        // bare class identifier (typed as externref of the `__class_<Name>`
+        // singleton). Both reference the SAME underlying struct allocation,
+        // so `ref.eq` produces the right answer once we get both sides into
+        // eqref. Without this bridge, the catch-all below dropped both
+        // operands and emitted `i32.const 0`, breaking
+        // `static m() { return this; } … C.m() === C` and similar
+        // `this`-returns-class-object tests.
+        //
+        // Uses the same `EQ_HEAP_TYPE = -19` constant + ref.test guard as the
+        // externref-vs-externref identity fast-path further down (see comment
+        // at line ~1517). When the externref isn't eqref-shaped (e.g. a host
+        // string, a number externref), we conservatively return 0 for === or
+        // 1 for !== — those cases shouldn't conflate identity anyway.
+        const otherType = leftIsRef ? rightType : leftType;
+        if (otherType.kind === "externref") {
+          const EQ_HEAP_TYPE_BR = -19;
+          // Stack: [left, right]. Save right (as anyref), then handle left.
+          const tmpRightAny = allocTempLocal(fctx, { kind: "anyref" });
+          if (rightIsRef) {
+            fctx.body.push({ op: "local.set", index: tmpRightAny });
+          } else {
+            fctx.body.push({ op: "any.convert_extern" });
+            fctx.body.push({ op: "local.set", index: tmpRightAny });
+          }
+          // Now stack: [left]. Convert left to anyref.
+          if (leftIsRef) {
+            // left is (ref T) — already anyref-compatible by subtyping.
+          } else {
+            fctx.body.push({ op: "any.convert_extern" });
+          }
+          // Stack: [leftAnyref]. Save and probe.
+          const tmpLeftAny = allocTempLocal(fctx, { kind: "anyref" });
+          fctx.body.push({ op: "local.tee", index: tmpLeftAny });
+          fctx.body.push({ op: "ref.test", typeIdx: EQ_HEAP_TYPE_BR } as unknown as Instr);
+          fctx.body.push({
+            op: "if",
+            blockType: { kind: "val", type: { kind: "i32" } },
+            then: [
+              { op: "local.get", index: tmpRightAny } as Instr,
+              { op: "ref.test", typeIdx: EQ_HEAP_TYPE_BR } as unknown as Instr,
+              {
+                op: "if",
+                blockType: { kind: "val", type: { kind: "i32" } },
+                then: [
+                  { op: "local.get", index: tmpLeftAny } as Instr,
+                  { op: "ref.cast", typeIdx: EQ_HEAP_TYPE_BR } as unknown as Instr,
+                  { op: "local.get", index: tmpRightAny } as Instr,
+                  { op: "ref.cast", typeIdx: EQ_HEAP_TYPE_BR } as unknown as Instr,
+                  { op: "ref.eq" } as Instr,
+                ],
+                else: [{ op: "i32.const", value: 0 } as Instr],
+              } as unknown as Instr,
+            ],
+            else: [{ op: "i32.const", value: 0 } as Instr],
+          } as unknown as Instr);
+          releaseTempLocal(fctx, tmpLeftAny);
+          releaseTempLocal(fctx, tmpRightAny);
+          if (isStrictNeq) fctx.body.push({ op: "i32.eqz" });
+          return { kind: "i32" };
+        }
         // Strict equality with one ref and one primitive → always false (===) or true (!==)
         // since objects and primitives are different types in JS strict equality
         fctx.body.push({ op: "drop" });

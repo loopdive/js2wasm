@@ -3202,11 +3202,29 @@ export function compileDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
     };
     ctx.currentFunc = initFctx;
 
-    // Compile static property initializers
-    for (const { globalIdx, initializer } of ctx.staticInitExprs) {
-      const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
-      compileExpression(ctx, initFctx, initializer, globalDef?.type);
-      initFctx.body.push({ op: "global.set", index: globalIdx });
+    // Compile static property initializers. (#1395) Each initializer is
+    // scoped to its owning class — set `enclosingClassName` +
+    // `isStaticContext` on initFctx for the duration of compilation so
+    // `this` inside `static f = () => this`-style initializers resolves to
+    // the `__class_<Name>` singleton via the static-context fallback in
+    // `compileExpression(ThisKeyword)`. We toggle these per-entry rather
+    // than spawning a fresh fctx because the body must accumulate into
+    // a single `__module_init` and globals/locals are shared.
+    for (const { globalIdx, initializer, className } of ctx.staticInitExprs) {
+      const savedEnclosing = initFctx.enclosingClassName;
+      const savedIsStatic = initFctx.isStaticContext;
+      if (className !== undefined) {
+        initFctx.enclosingClassName = className;
+        initFctx.isStaticContext = true;
+      }
+      try {
+        const globalDef = ctx.mod.globals[localGlobalIdx(ctx, globalIdx)];
+        compileExpression(ctx, initFctx, initializer, globalDef?.type);
+        initFctx.body.push({ op: "global.set", index: globalIdx });
+      } finally {
+        initFctx.enclosingClassName = savedEnclosing;
+        initFctx.isStaticContext = savedIsStatic;
+      }
     }
 
     // Compile module-level variable init statements

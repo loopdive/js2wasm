@@ -623,11 +623,16 @@ export function collectClassDeclaration(
       });
       ctx.staticProps.set(fullName, globalIdx);
 
-      // Store initializer expression for later compilation
+      // Store initializer expression for later compilation. (#1395) Carrying
+      // `className` lets the init compile loop set `enclosingClassName` +
+      // `isStaticContext` on the per-initializer fctx so `this` inside
+      // (e.g. `static f = () => this`) resolves to the class-object singleton
+      // via `emitLazyClassObjectGet`, NOT to `undefined`.
       if (member.initializer) {
         ctx.staticInitExprs.push({
           globalIdx,
           initializer: member.initializer,
+          className,
         });
       }
     }
@@ -1116,6 +1121,12 @@ export function compileClassBodies(
         labelMap: new Map(),
         savedBodies: [],
         isGenerator: isGeneratorMethod,
+        enclosingClassName: className,
+        // (#1395) Static methods: `this` resolves to the class constructor
+        // object (the `__class_<Name>` singleton). Without `isStaticContext`,
+        // bare `this` inside a static method would fall through to
+        // `emitUndefined` because static methods have no `this` param.
+        isStaticContext: isStatic ? true : undefined,
       };
 
       // Re-resolve the function type now that all class struct types are registered.

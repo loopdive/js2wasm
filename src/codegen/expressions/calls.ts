@@ -7496,9 +7496,23 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         fctx.body.push({ op: "ref.test", typeIdx: structTypeIdx } as unknown as Instr);
 
         // 5. then branch — ref.test passed, do the dispatch.
-        const savedBody = fctx.body;
-        const thenInstrs: Instr[] = [];
-        fctx.body = thenInstrs;
+        // (#1395 fix) Use pushBody/popBody so the saved body is tracked in
+        // fctx.savedBodies. Without this, late-import index shifts via
+        // `fixupModuleGlobalIndices` walking only `ctx.currentFunc.body` +
+        // `savedBodies` would miss `global.get`/`global.set` instructions
+        // that were emitted into the OUTER body before the swap. In
+        // particular, `compileExpression(C.f)` at line 7436 above pushes
+        // `global.get <staticPropIdx>` for a class static-field receiver
+        // into the outer body; if a string-constant import then gets
+        // added during dispatch compilation below (step 4b/5), the
+        // shifter's threshold/delta would correctly bump the static-prop
+        // map but skip the orphaned outer body, producing a stale index
+        // that points at a sibling global (e.g. `__class_C` instead of
+        // `__static_C_f`). Tests:
+        // language/statements/class/elements/static-field-init-this-
+        // inside-arrow-function.js (#1395 followup).
+        const savedBody = pushBody(fctx);
+        const thenInstrs = fctx.body;
 
         // Re-load callee + plain ref.cast (test already proved it succeeds).
         fctx.body.push({ op: "local.get", index: calleeLocal });
@@ -7537,7 +7551,7 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
         const elseInstrs: Instr[] = [{ op: "ref.null.extern" } as Instr];
 
         // 7. Restore body, emit the if/else.
-        fctx.body = savedBody;
+        popBody(fctx, savedBody);
         fctx.body.push({
           op: "if",
           blockType: { kind: "val", type: { kind: "externref" } },
