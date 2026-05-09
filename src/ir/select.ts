@@ -70,6 +70,13 @@ export type IrFallbackReason =
   | "type-parameters"
   | "non-export-modifier"
   | "async-generator"
+  // (#1373) `async function` (without an asterisk) — distinguished from
+  // `async-generator` (`async function*`) and from generic
+  // `non-export-modifier` / `deferred-feature` so the IR-claim gate can
+  // conditionally accept async functions when the standalone
+  // `$Promise` + microtask-queue infra (#1326) is fully wired. Phase A
+  // (this slice) just buckets them; Phase C wires the lowering.
+  | "async-function"
   | "return-type-not-resolvable"
   | "param-type-not-resolvable"
   | "param-shape-rejected" // optional/rest/initializer/non-identifier/duplicate
@@ -447,12 +454,31 @@ function whyNotIrClaimable(
   //     accessor (`get`/`set`) modifiers explicitly so they slot into the
   //     right fallback bucket.
   if (!isMethod) {
-    if (fn.modifiers && fn.modifiers.some((m) => m.kind !== ts.SyntaxKind.ExportKeyword)) return "non-export-modifier";
+    if (fn.modifiers) {
+      // (#1373) Bucket `async` separately from generic non-export modifiers
+      // so the IR-claim gate can conditionally accept async functions once
+      // Phase B/C lowering lands. Async generators (`async function*`)
+      // route into the existing `"async-generator"` bucket; plain async
+      // functions get the new `"async-function"` bucket.
+      const hasAsyncModifier = fn.modifiers.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword);
+      const isGeneratorFn =
+        (ts.isFunctionDeclaration(fn) || ts.isMethodDeclaration(fn)) && !!(fn as ts.FunctionDeclaration).asteriskToken;
+      if (hasAsyncModifier) {
+        return isGeneratorFn ? "async-generator" : "async-function";
+      }
+      if (fn.modifiers.some((m) => m.kind !== ts.SyntaxKind.ExportKeyword)) return "non-export-modifier";
+    }
   } else {
     if (fn.modifiers) {
       for (const m of fn.modifiers) {
         if (m.kind === ts.SyntaxKind.AbstractKeyword) return "class-method";
-        if (m.kind === ts.SyntaxKind.AsyncKeyword) return "deferred-feature";
+        // (#1373) Same async-function vs async-generator distinction for
+        // class methods. Async generator methods land in the existing
+        // `async-generator` bucket via the post-modifier check below.
+        if (m.kind === ts.SyntaxKind.AsyncKeyword) {
+          const isGeneratorMethod = ts.isMethodDeclaration(fn) && !!fn.asteriskToken;
+          return isGeneratorMethod ? "async-generator" : "async-function";
+        }
       }
     }
   }

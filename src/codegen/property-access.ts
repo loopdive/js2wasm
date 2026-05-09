@@ -21,6 +21,8 @@ import { emitThrowTypeError, resolveDeclaringClassForPrivateName } from "./expre
 import { patchStructNewForAddedField } from "./expressions/late-imports.js";
 import { addUnionImports, resolveWasmType } from "./index.js";
 import { stringConstantExternrefInstrs } from "./native-strings.js";
+import { isBuiltinSubtype, isBuiltinTypeName } from "./builtin-tags.js";
+import { getOrRegisterErrorStructType, isWasiErrorName } from "./registry/error-types.js";
 import { addStringConstantGlobal, ensureExnTag, localGlobalIdx } from "./registry/imports.js";
 import { getArrTypeIdxFromVec, getOrRegisterVecType } from "./registry/types.js";
 import {
@@ -903,6 +905,52 @@ export function compilePropertyAccess(
 
   const objType = ctx.checker.getTypeAtLocation(expr.expression);
   const propName = ts.isPrivateIdentifier(expr.name) ? "__priv_" + expr.name.text.slice(1) : expr.name.text;
+
+  // (#1104 Phase 2) WASI/standalone-mode native Error property access.
+  //
+  // When the LHS TypeScript type resolves to a built-in Error subclass
+  // (Error, TypeError, RangeError, SyntaxError, URIError, EvalError,
+  // ReferenceError, AggregateError) and the property is `message` or `name`,
+  // emit a direct `struct.get $Error_struct <field>` instead of falling
+  // through to the generic `__extern_get` host-import path. The host import
+  // is unavailable in standalone mode, so without this fast path
+  // `error.message` traps at instantiation time. JS-host mode is unchanged
+  // — the fast path is gated on `ctx.wasi`.
+  //
+  // Field layout in `$Error_struct` (registered by emitWasiErrorConstructor):
+  //   0: tag      (i32)        — from BUILTIN_TYPE_TAGS, drives Phase 3 instanceof
+  //   1: message  (mut externref) — populated by ctor's first arg
+  //   2: name     (externref)   — Phase 1 placeholder (ref.null extern)
+  //
+  // The struct is converted to externref via `extern.convert_any` at
+  // construction time, so call sites see externref. To read the field we
+  // round-trip through anyref: `any.convert_extern + ref.cast (ref
+  // $Error_struct) + struct.get`. If the receiver is already null at
+  // runtime, `ref.cast` traps — but native JS has the same behaviour
+  // (`null.message` throws), so the trap is acceptable Phase 1/2 semantics.
+  if (ctx.wasi && (propName === "message" || propName === "name")) {
+    const lhsTsName = objType.getSymbol()?.name;
+    const isErrorLhs =
+      lhsTsName !== undefined &&
+      isBuiltinTypeName(lhsTsName) &&
+      isWasiErrorName(lhsTsName) &&
+      isBuiltinSubtype(lhsTsName, "Error");
+    if (isErrorLhs) {
+      const structIdx = getOrRegisterErrorStructType(ctx);
+      const fieldIdx = propName === "message" ? 1 : 2;
+      // Compile receiver as externref. If the LHS is e.g. a class-ref
+      // (TypeScript narrowed it to a user class extending Error, externref-
+      // backed per #1366a), `compileExpression` returns externref already.
+      const objResult = compileExpression(ctx, fctx, expr.expression, { kind: "externref" });
+      if (objResult && objResult.kind !== "externref") {
+        coerceType(ctx, fctx, objResult, { kind: "externref" });
+      }
+      fctx.body.push({ op: "any.convert_extern" } as Instr);
+      fctx.body.push({ op: "ref.cast", typeIdx: structIdx } as Instr);
+      fctx.body.push({ op: "struct.get", typeIdx: structIdx, fieldIdx } as Instr);
+      return { kind: "externref" };
+    }
+  }
 
   // #1365 — Private-name read with spec-compliant brand check.
   //

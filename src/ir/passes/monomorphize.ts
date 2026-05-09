@@ -778,5 +778,12 @@ function collectUses(instr: IrInstr): readonly IrValueId[] {
     case "while.loop":
     case "for.loop":
       return [instr.condValue];
+    // (#1373 Phase B) Async / await IR nodes — single operand.
+    case "await":
+      return [instr.operand];
+    case "async.return":
+      return [instr.value];
+    case "async.throw":
+      return [instr.reason];
   }
 }

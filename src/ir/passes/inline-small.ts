@@ -715,6 +715,24 @@ function renameInstrOperands(inst: IrInstr, rename: ReadonlyMap<IrValueId, IrVal
       if (cv === inst.condValue) return inst;
       return { ...inst, condValue: cv };
     }
+    // (#1373 Phase B) Async / await IR nodes — rename single operand.
+    // Phase C may need richer renaming (continuation-closure capture
+    // sets); for now the simple operand rename is sufficient.
+    case "await": {
+      const op = mapId(rename, inst.operand);
+      if (op === inst.operand) return inst;
+      return { ...inst, operand: op };
+    }
+    case "async.return": {
+      const v = mapId(rename, inst.value);
+      if (v === inst.value) return inst;
+      return { ...inst, value: v };
+    }
+    case "async.throw": {
+      const r = mapId(rename, inst.reason);
+      if (r === inst.reason) return inst;
+      return { ...inst, reason: r };
+    }
   }
 }
 

@@ -297,6 +297,15 @@ function collectUses(instr: IrBlock["instrs"][number]): readonly IrValueId[] {
     case "while.loop":
     case "for.loop":
       return [instr.condValue];
+    // (#1373 Phase B) Async / await IR nodes — type-only in this slice.
+    // The verifier sees their operands as plain SSA uses; lowering
+    // (Phase C, #1373b) will define the per-arm SSA scope.
+    case "await":
+      return [instr.operand];
+    case "async.return":
+      return [instr.value];
+    case "async.throw":
+      return [instr.reason];
   }
 }
 
