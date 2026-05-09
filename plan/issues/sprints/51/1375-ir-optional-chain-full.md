@@ -2,7 +2,7 @@
 id: 1375
 sprint: 51
 title: "IR: full optional-chain support (?. and ?.[]) without resolver fallback"
-status: blocked
+status: in-progress
 created: 2026-05-08
 priority: medium
 feasibility: hard
@@ -197,3 +197,85 @@ Narrow — 5–10 hot functions retire from legacy fallback, mostly Map/Set
 property access patterns where TS guarantees non-null. The full
 acceptance criteria (1–3) require the IR primitive work outlined in
 "Architectural finding" above.
+
+## Implementation notes (Slice B: IR-native short-circuit on extern receivers, dev-1389, 2026-05-08)
+
+### Slice B scope
+
+**~80 LoC** — `src/ir/from-ast.ts` adds `lowerOptionalExternPropertyAccess`,
+which uses the new (#1392) `emitRefIsNull` + `emitIfElse` IR primitives
+to short-circuit `?.` on extern host-class receivers without falling
+back to legacy.
+
+Pattern emitted:
+```
+cond = ref.is_null(recv)
+if (cond) result = ref.null.extern  ;; (or NaN / 0 by prop type)
+else      result = <className>_get_<propName>(recv)
+```
+
+This unblocks the bulk of #1375's stated goal: keeping `?.` calls on
+the IR path even when the receiver's TS type is `T | undefined`.
+
+### Why limited to externref-typed prop results
+
+The first-pass implementation supported any `propValType` (f64, i32,
+externref) but compiling f64-typed props (e.g. `Map.size`,
+`RegExp.lastIndex`) failed Wasm validation with `expected f64, found
+call of type externref`. Root cause: the extern-class registry declares
+`prop.type: f64` for numeric properties, but the underlying
+`<className>_get_<prop>` host import actually returns `externref`
+(boxed Number). Outside of an `if` arm, `lowerExpr` relies on a
+downstream coercion in `lowerBinary` / `coerceType` to unbox before
+use. Inside our `emitIfElse` arm the unboxing isn't reached, so the
+elseValue's wasm type (externref) mismatches the if-result type (f64)
+at Wasm validation time.
+
+Slice B therefore narrows to `propValType.kind === "externref"`. Other
+prop types fall through to legacy (which has its own pre-existing
+bugs on `?.size` / `?.lastIndex` patterns — separate issue, not
+caused by this PR). Promoting f64/i32 props requires extending the
+extern-class registry to track the actual host-import return type
+alongside the declared TS type.
+
+### Files changed
+
+- `src/ir/from-ast.ts`:
+  - New `lowerOptionalExternPropertyAccess` helper using `emitRefIsNull`
+    + `collectBodyInstrs` + `emitIfElse`.
+  - `lowerPropertyAccess` `?.` guard now dispatches: TS-narrowing
+    fast-path (Slice A) → IR-native if/else for extern (Slice B) →
+    legacy fallback (other nullable kinds, deferred).
+
+### Tests
+
+`tests/issue-1375-slice-b.test.ts` — 7 tests:
+- null `RegExp | undefined`: `r?.source` returns undefined via null arm
+- real `RegExp | undefined`: `r?.source` returns the source string
+- null `RegExp | undefined`: `r?.flags` returns undefined
+- real `RegExp | undefined`: `r?.flags` returns "g"
+- regression: Slice A — `Map<...>` (non-null) `m?.get(k)` still works
+- regression: object literal `o?.x` (existing non-null IR path)
+- regression: class instance `c?.field` (existing non-null IR path)
+
+`tests/issue-1375.test.ts` (Slice A, 6 tests) and `tests/issue-1281.test.ts`
+(predecessor non-null TS narrowing, 8 tests) all still pass — no
+regressions in the existing optional-chain handling.
+
+### Estimated impact (Slice B)
+
+Narrow but real — keeps any `regex | undefined` access on the IR path
+where it previously fell back to legacy. Common in well-typed
+middleware code (`config?.regex`, `result?.match`, etc.).
+
+### Remaining gaps (still acceptance-criteria 1–3 + below)
+
+- f64/i32-typed extern props (`Map.size`, `RegExp.lastIndex`,
+  `String.length` if extern-typed) — needs registry change to track
+  host-import return ValType. Could be a follow-up slice.
+- `?.[]` (ElementAccessExpression with questionDotToken) — needs
+  parallel work in `lowerElementAccess`.
+- `?.()` (optional call) — needs work in `lowerCall`.
+- Chained `a?.b?.c` (nested) — should work as-is via the new nested
+  `collectBodyInstrs` (per #1392's nesting support note), but needs
+  test coverage to verify.
