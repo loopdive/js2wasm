@@ -1764,6 +1764,18 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
         });
         return;
       }
+      // (#1373 Phase B) Async / await IR nodes are type-only in this
+      // slice — Phase C (#1373b) wires the CPS lowering. Until then
+      // the selector rejects async functions (returns "async-function"
+      // bucket), so these IrInstrs never reach the lowerer in practice.
+      // Throwing here makes accidental construction surface clearly
+      // rather than silently emitting nothing.
+      case "await":
+      case "async.return":
+      case "async.throw":
+        throw new Error(
+          `ir/lower: ${instr.kind} not yet implemented (#1373 Phase C / #1373b — see issue plan/issues/sprints/51/1373-ir-async-function.md)`,
+        );
     }
   };
 
@@ -2009,6 +2021,16 @@ function collectIrUses(instr: IrInstr): readonly IrValueId[] {
     case "while.loop":
     case "for.loop":
       return [];
+    // (#1373 Phase B) Async / await IR nodes — type-only in this slice.
+    // The lowering Phase C (#1373b) will inflate these into CPS-form
+    // microtask-queue calls; until then they're never emitted by
+    // from-ast and never reach the lowerer.
+    case "await":
+      return [instr.operand];
+    case "async.return":
+      return [instr.value];
+    case "async.throw":
+      return [instr.reason];
   }
 }
 

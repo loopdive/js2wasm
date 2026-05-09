@@ -244,7 +244,14 @@ export function isSideEffecting(i: IrInstr): boolean {
     // extern.regex calls RegExp_new which is morally pure (allocates
     // a fresh value), but it may throw on bad pattern syntax — keep
     // the side-effect of the throw observable to user code.
-    i.kind === "extern.regex"
+    i.kind === "extern.regex" ||
+    // (#1373 Phase B) Async / await IR nodes are control-flow with
+    // observable suspension / Promise side effects. DCE must always
+    // preserve them. Phase C lowering (CPS transform) does not change
+    // this — even unused-result awaits need to suspend.
+    i.kind === "await" ||
+    i.kind === "async.return" ||
+    i.kind === "async.throw"
   );
 }
 
@@ -468,6 +475,16 @@ function collectInstrUses(instr: IrInstr): readonly IrValueId[] {
     case "while.loop":
     case "for.loop":
       return [instr.condValue];
+    // (#1373 Phase B) Async / await IR nodes — Phase C wires real
+    // analysis. For now, surface the single operand so DCE pins the
+    // SSA def; the wrapping IrInstr is side-effecting (control-flow)
+    // and must always be kept.
+    case "await":
+      return [instr.operand];
+    case "async.return":
+      return [instr.value];
+    case "async.throw":
+      return [instr.reason];
   }
 }
 
