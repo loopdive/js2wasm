@@ -1,0 +1,22 @@
+{
+  "pr": 338,
+  "conclusion": "success",
+  "head_branch": "issue-class-elements-descriptor-gaps",
+  "head_sha": "a76ee2a71c743f409307e805e394ef308f9538f4",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25598700697",
+  "timestamp": "2026-05-09T10:37:53Z",
+  "pass": 27601,
+  "fail": 13758,
+  "compile_error": 1717,
+  "snapshot_delta": -378,
+  "net_per_test": -339,
+  "regressions": 425,
+  "regressions_real": 385,
+  "regressions_wasm_change": 385,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 40,
+  "improvements": 46,
+  "baseline_sha": "a76ee2a71c743f409307e805e394ef308f9538f4",
+  "baseline_staleness_commits": 0,
+  "baseline_stale": false
+}
