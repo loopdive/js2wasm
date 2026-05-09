@@ -39,6 +39,7 @@ import {
   wasmFuncReturnsVoid,
 } from "./helpers.js";
 import { ensureLateImport, flushLateImportShifts } from "./late-imports.js";
+import { emitWasiErrorConstructor, isWasiErrorName } from "../registry/error-types.js";
 
 function resolveEnclosingClassName(fctx: FunctionContext): string | undefined {
   if (fctx.enclosingClassName) return fctx.enclosingClassName;
@@ -1436,8 +1437,20 @@ function compileNewExpression(ctx: CodegenContext, fctx: FunctionContext, expr: 
         // No message — push null externref (undefined message)
         fctx.body.push({ op: "ref.null.extern" });
       }
-      // Use host import to create a real Error object with correct .name/.message/.stack
+      // (#1104 Phase 1) In WASI/standalone mode, the JS host is unavailable —
+      // use a Wasm-native `__new_<Name>` function that builds a `$Error_struct`
+      // instead of a `env.__new_<Name>` host import that would leave the
+      // module unsatisfiable at instantiation time. JS-host mode is unchanged.
       const importName = `__new_${ctorName}`;
+      if (ctx.wasi && isWasiErrorName(ctorName)) {
+        emitWasiErrorConstructor(ctx, ctorName, 1);
+        const internalFuncIdx = ctx.funcMap.get(importName);
+        if (internalFuncIdx !== undefined) {
+          fctx.body.push({ op: "call", funcIdx: internalFuncIdx });
+        }
+        return { kind: "externref" };
+      }
+      // Use host import to create a real Error object with correct .name/.message/.stack
       const funcIdx = ensureLateImport(
         ctx,
         importName,

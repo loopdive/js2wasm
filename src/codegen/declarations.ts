@@ -48,6 +48,7 @@ import {
   unwrapGeneratorYieldType,
 } from "./index.js";
 import { ensureNativeStringExternBridge, ensureNativeStringHelpers } from "./native-strings.js";
+import { emitWasiErrorConstructor, isWasiErrorName } from "./registry/error-types.js";
 import { addImport, addStringConstantGlobal, localGlobalIdx, nextModuleGlobalIdx } from "./registry/imports.js";
 import {
   addFuncType,
@@ -1150,6 +1151,17 @@ export function finalizeUnifiedCollector(ctx: CodegenContext, state: UnifiedColl
   for (const [name, argCount] of state.unknownCtorNeeded) {
     const importName = `__new_${name}`;
     if (ctx.funcMap.has(importName)) continue;
+    // (#1104 Phase 1) In WASI/standalone mode, the JS host is unavailable —
+    // emit Wasm-native `__new_<ErrorName>` functions that build a
+    // `$Error_struct` for the 8 built-in Error constructors instead of
+    // unsatisfiable `env.__new_<ErrorName>` host imports. Other unknown
+    // constructors still emit host imports (they may resolve via user-supplied
+    // imports at instantiation time, or fail loudly if missing). JS-host mode
+    // is unchanged.
+    if (ctx.wasi && isWasiErrorName(name)) {
+      emitWasiErrorConstructor(ctx, name, argCount);
+      continue;
+    }
     const params: ValType[] = Array.from({ length: argCount }, () => ({ kind: "externref" }) as ValType);
     const typeIdx = addFuncType(ctx, params, [{ kind: "externref" }]);
     addImport(ctx, "env", importName, { kind: "func", typeIdx });
