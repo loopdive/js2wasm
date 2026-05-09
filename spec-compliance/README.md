@@ -7,8 +7,8 @@ Total tests: 28116 / 48171 pass
 | --- | --- |
 | ✅ conforming | 5 |
 | ⚠️ partial | 54 |
-| ❌ not implemented | 22 |
-| ➖ not applicable | 1 |
+| ❌ not implemented | 23 |
+| ➖ not applicable | 0 |
 
 ## Sections
 
@@ -45,7 +45,7 @@ Total tests: 28116 / 48171 pass
 | [sec-14.13](sec-14.13.md) | Labelled Statements | ✅ conforming | — |
 | [sec-14.14](sec-14.14.md) | throw Statement | ✅ conforming | 14/14 (100.0%) |
 | [sec-14.15](sec-14.15.md) | try Statement | ⚠️ partial | 101/201 (50.2%) |
-| [sec-14.11](sec-14.11.md) | with Statement | ➖ not applicable | 0/181 (0.0%) |
+| [sec-14.11](sec-14.11.md) | with Statement | ❌ not implemented | 0/181 (0.0%) |
 | [sec-15](sec-15.md) | ECMAScript Language: Functions and Classes (overview) | ⚠️ partial | 150/217 (69.1%) |
 | [sec-15.1](sec-15.1.md) | Parameter Lists | ❌ not implemented | 3/11 (27.3%) |
 | [sec-15.2](sec-15.2.md) | Function Definitions | ⚠️ partial | — |
