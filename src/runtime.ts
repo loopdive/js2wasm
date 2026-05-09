@@ -3303,6 +3303,35 @@ assert._isSameValue = isSameValue;
           // so native ToPrimitive on a wasmGC arg with closure valueOf works.
           const exports = callbackState?.getExports();
           let wrappedReceiver = _isWasmStruct(receiver) ? _wrapForHost(receiver, exports) : receiver;
+          // (#1382 Phase 2) Array HOF callbacks come through here as Wasm
+          // closure structs that lack a `[[Call]]` slot. The host's
+          // `Array.prototype.METHOD.call(receiver, cb, thisArg)` would
+          // throw "cb is not a function" when invoking proxied closures.
+          // Wrap the callback (always at args[0] for the standard array
+          // HOFs) via `_wrapWasmClosure` so the spec'd `cb.call(thisArg,
+          // value, index, array)` invocation works. Plain JS callbacks
+          // are passed through unchanged because `_isWasmStruct` returns
+          // false for them.
+          //
+          // The arity passed to `_wrapWasmClosure` matches the host's
+          // calling convention for that method:
+          //   - reduce / reduceRight: cb(acc, value, index, array) → 4
+          //   - everything else: cb(value, index, array) → 3
+          // Callbacks of arity < N see extra args dropped at the dispatch
+          // arm (matches JS spec for "extra args ignored at call time").
+          const ARRAY_HOF_NAMES: ReadonlySet<string> = new Set([
+            "forEach",
+            "map",
+            "filter",
+            "every",
+            "some",
+            "find",
+            "findIndex",
+            "findLast",
+            "findLastIndex",
+            "flatMap",
+          ]);
+
           // #1342 — Boolean primitives travel through i32→externref via
           // __box_number, so `Boolean.prototype.toString.call(true)` arrives
           // here with `receiver = 1` (a number). Spec §20.3.3.2's
@@ -3314,6 +3343,36 @@ assert._isSameValue = isSameValue;
             wrappedReceiver = Boolean(wrappedReceiver);
           }
           const wrappedArgs = (args ?? []).map((a) => (_isWasmStruct(a) ? _wrapForHost(a, exports) : a));
+          // (#1382 Phase 2) Replace the callback at args[0] with a JS
+          // Function bridge when (a) the method is a known array HOF, and
+          // (b) the original arg was a Wasm closure (not a JS function).
+          // The `_wrapForHost` mapping above produced a Proxy that fakes
+          // the closure as an object — necessary for property access tests
+          // — but the host's invocation `cb.call(thisArg, value, index,
+          // array)` still expects a real callable. Override args[0] with
+          // the closure bridge while leaving the rest of the args as-is
+          // (thisArg, etc.).
+          if (typeName === "Array" && ARRAY_HOF_NAMES.has(methodName) && wrappedArgs.length >= 1) {
+            const origCb = (args ?? [])[0];
+            if (origCb != null && _isWasmStruct(origCb)) {
+              const arity = methodName.startsWith("reduce") ? 4 : 3;
+              const bridge = _wrapWasmClosure(origCb, arity, callbackState);
+              if (bridge) wrappedArgs[0] = bridge;
+            }
+          }
+          // reduce / reduceRight take the callback at args[0] too — same
+          // handling, distinguished by arity.
+          if (
+            typeName === "Array" &&
+            (methodName === "reduce" || methodName === "reduceRight") &&
+            wrappedArgs.length >= 1
+          ) {
+            const origCb = (args ?? [])[0];
+            if (origCb != null && _isWasmStruct(origCb)) {
+              const bridge = _wrapWasmClosure(origCb, 4, callbackState);
+              if (bridge) wrappedArgs[0] = bridge;
+            }
+          }
           // #1234 — sparse-aware fast path for Array.prototype.{unshift,reverse,forEach}
           // on non-Array receivers with a HUGE `length`. V8's native algorithms walk
           // `for (k = 0; k < length;)` (or descending) per spec, which hangs when
