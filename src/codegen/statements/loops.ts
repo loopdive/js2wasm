@@ -1087,7 +1087,15 @@ function compileForOfDestructuring(
         fctx.body.push({ op: "local.get", index: elemLocal });
         fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx: 1 });
         fctx.body.push({ op: "i32.const", value: i });
-        emitBoundsCheckedArrayGet(fctx, innerArrTypeIdx, innerElemType);
+        // (#1396) Pass `useUndefinedSentinel: true` when this element has a
+        // default initializer AND the source-array element type is externref.
+        // The OOB else-branch must produce JS `undefined` (not `null`) so
+        // `emitDefaultValueCheck` → `__extern_is_undefined` returns 1 and
+        // the initializer fires for empty/short arrays.
+        const wantUndefinedSentinel =
+          element.initializer !== undefined &&
+          (innerElemType.kind === "externref" || innerElemType.kind === "ref_extern");
+        emitBoundsCheckedArrayGet(fctx, innerArrTypeIdx, innerElemType, ctx, wantUndefinedSentinel);
 
         if (!valTypesMatch(innerElemType, bindingWasmType)) {
           coerceType(ctx, fctx, innerElemType, bindingWasmType);

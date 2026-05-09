@@ -135,7 +135,13 @@ export function compileArrowAsClosure(
 
 // ── emitBoundsCheckedArrayGet ─────────────────────────────────────────
 
-type EmitBoundsCheckedArrayGetFn = (fctx: FunctionContext, arrTypeIdx: number, elementType: ValType) => void;
+type EmitBoundsCheckedArrayGetFn = (
+  fctx: FunctionContext,
+  arrTypeIdx: number,
+  elementType: ValType,
+  ctx?: CodegenContext,
+  useUndefinedSentinel?: boolean,
+) => void;
 
 let _emitBoundsCheckedArrayGet: EmitBoundsCheckedArrayGetFn = () => {
   throw new Error("emitBoundsCheckedArrayGet not yet registered");
@@ -145,8 +151,14 @@ export function registerEmitBoundsCheckedArrayGet(fn: EmitBoundsCheckedArrayGetF
   _emitBoundsCheckedArrayGet = fn;
 }
 
-export function emitBoundsCheckedArrayGet(fctx: FunctionContext, arrTypeIdx: number, elementType: ValType): void {
-  _emitBoundsCheckedArrayGet(fctx, arrTypeIdx, elementType);
+export function emitBoundsCheckedArrayGet(
+  fctx: FunctionContext,
+  arrTypeIdx: number,
+  elementType: ValType,
+  ctx?: CodegenContext,
+  useUndefinedSentinel?: boolean,
+): void {
+  _emitBoundsCheckedArrayGet(fctx, arrTypeIdx, elementType, ctx, useUndefinedSentinel);
 }
 
 // ── resolveEnclosingClassName ─────────────────────────────────────────
