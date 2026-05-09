@@ -128,6 +128,7 @@ export function createCodegenContext(
     classObjectGlobals: new Map(),
     classStaticMethodNames: new Map(),
     classStaticMethodsCsvGlobal: new Map(),
+    methodClosureGlobals: new Map(),
     wasi: options?.wasi ?? false,
     wasiFdWriteIdx: -1,
     wasiProcExitIdx: -1,

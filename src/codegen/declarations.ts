@@ -2125,6 +2125,38 @@ export function collectDeclarations(ctx: CodegenContext, sourceFile: ts.SourceFi
       }
       // Also scan all statements for new (class { ... })() patterns
       collectAnonymousClassesInNewExpr(stmt);
+
+      // (#1394 dual-registration bridge) `var C = class { ... }` triggers TWO
+      // class registrations against the SAME ClassExpression node:
+      //   1. The var-statement branch above registers it under `decl.name.text`
+      //      (e.g. "C") via collectClassDeclaration.
+      //   2. collectAnonymousClassesInNewExpr (just above) recurses into the
+      //      stmt, finds the class expression, and via registerClassExpression
+      //      registers it AGAIN under a synthetic `__anonClass_N` name.
+      //
+      // The instance-type path (TS resolves `c: C` → symbol "__class" →
+      // classExprNameMap["__class"] → "__anonClass_N") and the call-site
+      // path both end up using the synthetic name. The proto-handler in
+      // property-access.ts, however, key-resolves off the user-visible
+      // identifier "C" and was returning `classExprNameMap.get("C") ?? "C"`
+      // which fell through to "C" because no map entry existed for the
+      // var-name.
+      //
+      // Result: `c.m` cached under `${synthetic}_m`, `C.prototype.m` cached
+      // under `C_m`, `c.m === C.prototype.m` failed (~556 class/elements
+      // verifyProperty regressions). Bridge by mapping the var-name to the
+      // synthetic name AFTER both registrations have run, so every access
+      // path collapses to the same cache key.
+      if (ts.isVariableStatement(stmt) && !isAmbient) {
+        for (const decl of stmt.declarationList.declarations) {
+          if (ts.isIdentifier(decl.name) && decl.initializer && ts.isClassExpression(decl.initializer)) {
+            const syntheticName = ctx.anonClassExprNames.get(decl.initializer);
+            if (syntheticName && !ctx.classExprNameMap.has(decl.name.text)) {
+              ctx.classExprNameMap.set(decl.name.text, syntheticName);
+            }
+          }
+        }
+      }
     }
   }
 

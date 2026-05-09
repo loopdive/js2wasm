@@ -574,6 +574,15 @@ export interface CodegenContext {
   classStaticMethodNames: Map<string, string[]>;
   /** Map from class name → global idx of the static-method-name CSV string constant (#1395) */
   classStaticMethodsCsvGlobal: Map<string, number>;
+  /** (#1394) Map from `${className}_${methodName}` → global idx of the cached
+   *  externref singleton closure for the method. Lazily allocated on first
+   *  property-access of `C.prototype.<method>` or `instance.<method>` (as
+   *  value). Reused on every subsequent access so `c.m === C.prototype.m`
+   *  holds (verifyProperty identity assertions across ~478 class/elements
+   *  tests). The companion canonical trampoline is named
+   *  `__obj_meth_tramp_${className}_${methodName}_cached` and is also reused
+   *  across all access sites to avoid bloating mod.functions. */
+  methodClosureGlobals: Map<string, number>;
   /** Whether targeting WASI */
   wasi: boolean;
   /** WASI import indices */
