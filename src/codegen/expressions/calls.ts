@@ -1815,8 +1815,15 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
     ) {
       const argTsType = ctx.checker.getTypeAtLocation(expr.arguments[0]!);
       const argWasmType = resolveWasmType(ctx, argTsType);
+      // (#1382 Phase 2) The native fast-path applies only when there's
+      // NO mapFn. With a mapFn, route to the host fallback below — the
+      // runtime's `__array_from` materializes the wasm vec via
+      // `__vec_len`/`__vec_get` and wraps the mapFn closure via
+      // `_wrapWasmClosure`. The fast path's `array.copy` would silently
+      // drop the mapFn.
+      const hasMapFn = expr.arguments.length >= 2;
       // Only handle array arguments — create a shallow copy
-      if (argWasmType.kind === "ref" || argWasmType.kind === "ref_null") {
+      if (!hasMapFn && (argWasmType.kind === "ref" || argWasmType.kind === "ref_null")) {
         const arrInfo = resolveArrayInfo(ctx, argTsType);
         if (arrInfo) {
           const { vecTypeIdx, arrTypeIdx, elemType } = arrInfo;
