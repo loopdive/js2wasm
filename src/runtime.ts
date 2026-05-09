@@ -3868,7 +3868,7 @@ assert._isSameValue = isSameValue;
             typeof (globalThis as any).Iterator === "function" ? ((globalThis as any).Iterator as any).prototype : null
           ) as any;
           const obj: any = proto ? Object.create(proto) : {};
-          obj.next = function () {
+          obj.next = () => {
             if (index < buf.length) {
               return { value: buf[index++], done: false };
             }
@@ -3881,11 +3881,11 @@ assert._isSameValue = isSameValue;
             }
             return { value: undefined, done: true };
           };
-          obj.return = function (value: any) {
+          obj.return = (value: any) => {
             index = buf.length;
             return { value, done: true };
           };
-          obj.throw = function (e: any) {
+          obj.throw = (e: any) => {
             index = buf.length;
             throw e;
           };
@@ -4030,7 +4030,7 @@ assert._isSameValue = isSameValue;
                     : null
                 ) as any;
                 const iterObj: any = iterProto ? Object.create(iterProto) : {};
-                iterObj.next = function () {
+                iterObj.next = () => {
                   if (i >= len) return { value: undefined, done: true };
                   const val = vecGet(obj, i);
                   i++;
