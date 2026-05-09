@@ -1953,9 +1953,26 @@ function resolveImport(
       // Compiled `(123.456).toPrecision()` (no args) pushes f64.const NaN on the
       // stack rather than crashing Wasm validation by calling the 2-arg import
       // with only one operand.
-      if (name === "number_toPrecision") return (v: number, p: number) => (isNaN(p) ? String(v) : v.toPrecision(p));
+      // (#49) Per ECMA-262 §21.1.3.3 / §21.1.3.5, the spec returns
+      // Number::toString(x) BEFORE the fractionDigits/precision range check
+      // when `x` is non-finite. V8's native toExponential/toPrecision do
+      // the range check first and throw RangeError, which makes
+      // `(NaN).toExponential(Infinity)` throw instead of returning "NaN"
+      // (test262 toExponential/{nan,infinity}.js, toPrecision/{nan,infinity,
+      // tointeger-precision,undefined-precision-arg}.js). Mirror the spec
+      // ordering by short-circuiting the non-finite case to String(v).
+      // Also: the NaN-as-no-arg sentinel only applies when x IS finite —
+      // for non-finite x we use String(v) regardless of the second arg.
+      if (name === "number_toPrecision")
+        return (v: number, p: number) => {
+          if (!Number.isFinite(v)) return String(v);
+          return isNaN(p) ? String(v) : v.toPrecision(p);
+        };
       if (name === "number_toExponential")
-        return (v: number, d: number) => (isNaN(d) ? v.toExponential() : v.toExponential(d));
+        return (v: number, d: number) => {
+          if (!Number.isFinite(v)) return String(v);
+          return isNaN(d) ? v.toExponential() : v.toExponential(d);
+        };
       if (name === "JSON_stringify")
         return (v: any, replacer: any, space: any) => {
           const exports = callbackState?.getExports();
