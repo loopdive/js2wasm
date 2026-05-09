@@ -146,6 +146,17 @@ export interface FunctionContext {
   hoistedFuncs?: Set<string>;
   /** Enclosing class name — propagated to closures for super keyword resolution */
   enclosingClassName?: string;
+  /**
+   * (#1395) True when compiling a static class member context (static field
+   * initializer, static method body, or a closure spawned from inside one).
+   * In a static context, `this` resolves to the class constructor object
+   * (the `__class_<Name>` singleton), NOT to a per-instance struct. Per
+   * ECMA-262 §15.7.1.1 step 5.b, DefineField is called with the class as
+   * receiver for static fields, so `this` inside `static f = () => this`
+   * is the class itself. Propagated through closure spawning the same way
+   * `enclosingClassName` is.
+   */
+  isStaticContext?: boolean;
   /** Set of variable names known to be non-null in the current scope (type narrowing) */
   narrowedNonNull?: Set<string>;
   /**
@@ -345,8 +356,14 @@ export interface CodegenContext {
   staticMethodSet: Set<string>;
   /** Map from "ClassName_propName" → global index for static properties */
   staticProps: Map<string, number>;
-  /** Static property initializer expressions to compile into __module_init */
-  staticInitExprs: { globalIdx: number; initializer: ts.Expression }[];
+  /**
+   * Static property initializer expressions to compile into __module_init.
+   * `className` (#1395) is the owning class name — used to set
+   * `enclosingClassName` + `isStaticContext` on the initFctx so `this`
+   * inside the initializer (and any closures it spawns) resolves to the
+   * class-object singleton via `emitLazyClassObjectGet`.
+   */
+  staticInitExprs: { globalIdx: number; initializer: ts.Expression; className?: string }[];
   /** Counter for generated closure types/functions */
   closureCounter: number;
   /** Map from local variable name → closure metadata (for call_ref dispatch) */
@@ -551,6 +568,12 @@ export interface CodegenContext {
   classMethodNames: Map<string, string[]>;
   /** Map from class name → global idx of the method-name CSV string constant (see #1047) */
   classMethodsCsvGlobal: Map<string, number>;
+  /** Map from class name → global index of the class-object externref singleton (#1395). Used so `C` resolves to a real object whose static-method descriptors are queryable. */
+  classObjectGlobals: Map<string, number>;
+  /** Map from class name → own static method names (for the static method allowlist; #1395) */
+  classStaticMethodNames: Map<string, string[]>;
+  /** Map from class name → global idx of the static-method-name CSV string constant (#1395) */
+  classStaticMethodsCsvGlobal: Map<string, number>;
   /** (#1394) Map from `${className}_${methodName}` → global idx of the cached
    *  externref singleton closure for the method. Lazily allocated on first
    *  property-access of `C.prototype.<method>` or `instance.<method>` (as

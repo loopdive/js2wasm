@@ -6,6 +6,7 @@ import { ts, forEachChild } from "../../ts-api.js";
 import { isBooleanType, isHeterogeneousUnion, isNumberType, isStringType } from "../../checker/type-mapper.js";
 import type { Instr, ValType } from "../../ir/types.js";
 import { emitFuncRefAsClosure } from "../closures.js";
+import { emitLazyClassObjectGet } from "./extern.js";
 import type { CodegenContext, FunctionContext } from "../context/types.js";
 import {
   addFuncType,
@@ -446,6 +447,41 @@ function compileIdentifier(ctx: CodegenContext, fctx: FunctionContext, id: ts.Id
   if (globalInfo) {
     fctx.body.push({ op: "call", funcIdx: globalInfo.funcIdx });
     return globalInfo.type;
+  }
+
+  // (#1395) Class identifier as a value — emit lazy-initialized class-object
+  // singleton, registering static-method names with the runtime's
+  // `_staticMethodNames` allowlist so `Object.getOwnPropertyDescriptor(C, "m")`
+  // returns the spec-correct descriptor for static methods. Without this,
+  // bare `C` falls through to the `ref.null.extern` graceful-default below
+  // and `getOwnPropertyDescriptor(null, "m")` returns null, breaking
+  // verifyProperty-style static-method tests under
+  // `language/{statements,expressions}/class/elements/`.
+  //
+  // For class expressions (`var C = class { ... }`), `classExprNameMap` maps
+  // the user-visible name "C" to the synthetic internal name (e.g.
+  // `__anonClass_0`). All static-prop / static-method storage is keyed on the
+  // synthetic name, so `C.f` (via property-access) reads from
+  // `__static___anonClass_0_f`. Resolving the bare `C` identifier must go
+  // through the same alias so the LHS of `C.f() === C` and the RHS read the
+  // SAME `__class_<Name>` singleton; otherwise the comparison ends up with
+  // `__class___anonClass_0` on the LHS (returned by the arrow body via the
+  // synthetic-name `enclosingClassName`) and `__class_C` on the RHS, which
+  // are distinct singletons and break identity. (#1395 Phase 1 follow-up.)
+  //
+  // Order matters: this is AFTER `localMap`, `capturedGlobals`,
+  // `moduleGlobals`, and `declaredGlobals` so user shadowing
+  // (`var C = ...; class C {}` — though unusual) takes precedence.
+  // It is BEFORE the funcMap-funcref path so a class never gets re-wrapped
+  // as a closure, and BEFORE the `ref.null.extern` fallback so we beat the
+  // null result.
+  {
+    const resolvedClassName = ctx.classExprNameMap.get(name) ?? name;
+    if (ctx.classObjectGlobals?.has(resolvedClassName)) {
+      if (emitLazyClassObjectGet(ctx, fctx, resolvedClassName)) {
+        return { kind: "externref" };
+      }
+    }
   }
 
   // globalThis — return the JS global object via host import

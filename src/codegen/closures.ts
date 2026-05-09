@@ -1569,6 +1569,10 @@ export function compileArrowAsClosure(
     labelMap: new Map(),
     savedBodies: [],
     enclosingClassName: fctx.enclosingClassName ?? resolveEnclosingClassName(fctx),
+    // (#1395) Propagate static-context flag so `this` inside an arrow
+    // captured from a static initializer / static method resolves to the
+    // class-object singleton rather than `undefined`.
+    isStaticContext: fctx.isStaticContext,
     isGenerator,
   };
 
@@ -2402,6 +2406,10 @@ export function compileArrowAsCallback(
     labelMap: new Map(),
     savedBodies: [],
     enclosingClassName: fctx.enclosingClassName ?? resolveEnclosingClassName(fctx),
+    // (#1395) Same propagation as the lifted-arrow path above so callbacks
+    // spawned inside static initializers / static methods resolve `this`
+    // to the class-object singleton.
+    isStaticContext: fctx.isStaticContext,
   };
 
   // (#1384) Track cbFctx.body in liveBodies BEFORE any emission so addUnionImports
