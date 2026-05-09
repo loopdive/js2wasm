@@ -2,10 +2,12 @@
  * <perf-benchmark-chart> — animated Wasm vs JS comparison chart.
  *
  * Attributes:
- *   src     — URL to playground-benchmark-sidebar.json
- *   title   — chart heading (default: "Benchmark Performance (Wasm vs JS)")
- *   legend  — legend text (default: "WASM runtime performance relative to JS (larger is better)")
- *   mode    — perf | size | coldstart | loadtime | absolute-lower-better
+ *   src        — URL to playground-benchmark-sidebar.json
+ *   rerun-src  — optional full benchmark manifest used for requested live refresh
+ *   rerun-label — optional label for the live benchmark button
+ *   title      — chart heading (default: "Benchmark Performance (Wasm vs JS)")
+ *   legend     — legend text (default: "WASM runtime performance relative to JS (larger is better)")
+ *   mode       — perf | size | coldstart | loadtime | absolute-lower-better
  *
  * Usage:
  *   <perf-benchmark-chart src="./benchmarks/results/playground-benchmark-sidebar.json"></perf-benchmark-chart>
@@ -13,7 +15,17 @@
 
 class PerfBenchmarkChart extends HTMLElement {
   static get observedAttributes() {
-    return ["src", "title", "legend", "mode", "benchmark", "browser-runtime-src", "baseline-label"];
+    return [
+      "src",
+      "rerun-src",
+      "rerun-label",
+      "title",
+      "legend",
+      "mode",
+      "benchmark",
+      "browser-runtime-src",
+      "baseline-label",
+    ];
   }
 
   static _measurementQueue = Promise.resolve();
@@ -183,6 +195,49 @@ class PerfBenchmarkChart extends HTMLElement {
           color: var(--fg-faint, rgba(255,255,255,0.35));
         }
 
+        .chart-actions {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin-top: 16px;
+          flex-wrap: wrap;
+        }
+
+        .chart-actions[hidden] {
+          display: none;
+        }
+
+        .rerun-button {
+          appearance: none;
+          border: 1px solid rgba(255, 255, 255, 0.18);
+          border-radius: 6px;
+          background: rgba(255, 255, 255, 0.08);
+          color: var(--fg-soft, rgba(255,255,255,0.72));
+          font: 600 12px/1 var(--font, ui-sans-serif, system-ui, sans-serif);
+          min-height: 34px;
+          padding: 0 12px;
+          cursor: pointer;
+          transition:
+            background 0.15s ease,
+            border-color 0.15s ease,
+            opacity 0.15s ease;
+        }
+
+        .rerun-button:hover {
+          background: rgba(255, 255, 255, 0.12);
+          border-color: rgba(255, 255, 255, 0.28);
+        }
+
+        .rerun-button:disabled {
+          cursor: progress;
+          opacity: 0.58;
+        }
+
+        .chart-status {
+          font-size: 12px;
+          color: var(--fg-faint, rgba(255,255,255,0.35));
+        }
+
         @media (max-width: 720px) {
           .bench-row {
             grid-template-columns: 70px 1fr;
@@ -198,11 +253,22 @@ class PerfBenchmarkChart extends HTMLElement {
         <div class="bench-bars"></div>
       </div>
       <p class="legend"></p>
+      <div class="chart-actions" hidden>
+        <button type="button" class="rerun-button"></button>
+        <span class="chart-status" role="status" aria-live="polite"></span>
+      </div>
     `;
 
     this.shadowRoot.querySelector(".chart-title").textContent = title;
     this.shadowRoot.querySelector(".js-label").textContent = baselineLabel;
     this.shadowRoot.querySelector(".legend").textContent = legend;
+    const actions = this.shadowRoot.querySelector(".chart-actions");
+    const rerunButton = this.shadowRoot.querySelector(".rerun-button");
+    if (this.getAttribute("rerun-src") && actions && rerunButton) {
+      actions.hidden = false;
+      rerunButton.textContent = this.getAttribute("rerun-label") || "Run browser benchmark";
+      rerunButton.addEventListener("click", () => this._rerunBrowserRuntime(src));
+    }
 
     this._load(src);
   }
@@ -293,14 +359,16 @@ class PerfBenchmarkChart extends HTMLElement {
 
   _snapshotBodyState() {
     return {
-      innerHTML: document.body.innerHTML,
+      children: new Set(Array.from(document.body.children)),
       cssText: document.body.style.cssText,
     };
   }
 
   _restoreBodyState(state) {
-    document.body.innerHTML = state.innerHTML;
     document.body.style.cssText = state.cssText;
+    for (const child of Array.from(document.body.children)) {
+      if (!state.children.has(child)) child.remove();
+    }
   }
 
   async _loadJsRuntimeFunction(jsUrl, exportName) {
@@ -411,6 +479,224 @@ class PerfBenchmarkChart extends HTMLElement {
 
     PerfBenchmarkChart._measurementQueue = run.catch(() => {});
     return run;
+  }
+
+  _renderRatioRows(ratios) {
+    const shadow = this.shadowRoot;
+    const container = shadow.querySelector(".bench-bars");
+    const jsLabelEl = shadow.querySelector(".js-label");
+    const jsLineEl = shadow.querySelector(".js-line");
+    const baselineLabel = this.getAttribute("baseline-label") || "JS";
+
+    if (!container || !jsLabelEl || !jsLineEl || !Array.isArray(ratios) || ratios.length === 0) return;
+
+    container.replaceChildren();
+    jsLabelEl.style.display = "";
+    jsLineEl.style.display = "";
+    jsLabelEl.textContent = baselineLabel;
+
+    const maxRatio = Math.max(...ratios.map((r) => r.ratio), 1.5);
+    const maxPct = Math.ceil(maxRatio * 100);
+    const scaleMax = Math.ceil(maxPct / 100) * 100;
+    const jsPos = (100 / scaleMax) * 100; // JS baseline as % of track width
+
+    // Build bar rows (start at 0, animate later)
+    const barData = [];
+    for (const row of ratios) {
+      const ratio = row.ratio;
+      const label = row.name || row.path?.replace(/^examples\/benchmarks\//, "").replace(/\.ts$/, "") || "unknown";
+
+      let targetLeft, targetWidth;
+      if (ratio >= 1) {
+        targetLeft = jsPos;
+        targetWidth = ((ratio - 1) / (scaleMax / 100 - 1)) * (100 - jsPos);
+      } else {
+        const wasmPos = (ratio / (scaleMax / 100)) * 100;
+        targetLeft = wasmPos;
+        targetWidth = jsPos - wasmPos;
+      }
+
+      const dist = Math.abs(ratio - 1) / Math.max(maxRatio - 1, 1);
+      const edgeOpacity = (0.1 + dist * 0.9).toFixed(2);
+      const baseOpacity = "0.1";
+      const gradDir = ratio >= 1 ? "to right" : "to left";
+      const textOpacity = (0.4 + dist * 0.6).toFixed(2);
+
+      const rowEl = document.createElement("div");
+      rowEl.className = "bench-row";
+      rowEl.innerHTML = `
+        <span class="bench-name">${label}</span>
+        <div class="bench-track">
+          <div class="bench-track-bg" style="width: ${jsPos}%"></div>
+          <div class="bench-fill" style="left: ${jsPos}%; width: 0%; background: linear-gradient(${gradDir}, rgba(255,255,255,${baseOpacity}), rgba(255,255,255,0.1)); border-radius: 4px; position: absolute; height: 100%; top: 0"></div>
+          <div class="bench-errorbar" style="left: ${jsPos}%; width: 0%"></div>
+          <span class="bench-value" style="left: ${jsPos}%; padding-left: 6px; color: rgba(255,255,255,0)">0.0x</span>
+        </div>
+      `;
+      container.appendChild(rowEl);
+
+      barData.push({
+        ratio,
+        customLabel: row.label || null,
+        targetLeft,
+        targetWidth,
+        gradDir,
+        baseOpacity,
+        edgeOpacity,
+        textOpacity,
+        ratioStd: Number(row.ratioStd ?? 0),
+        fillEl: rowEl.querySelector(".bench-fill"),
+        errorEl: rowEl.querySelector(".bench-errorbar"),
+        valueEl: rowEl.querySelector(".bench-value"),
+      });
+    }
+
+    // Animation
+    const duration = 3293;
+    const ease = (t) => 1 - (1 - t) * (1 - t);
+
+    function animateBars(ts) {
+      if (!animateBars._start) animateBars._start = ts;
+      const elapsed = ts - animateBars._start;
+      const progress = Math.min(elapsed / duration, 1);
+      const t = ease(progress);
+
+      for (const d of barData) {
+        const curWidth = t * d.targetWidth;
+        const curLeft = d.ratio >= 1 ? d.targetLeft : jsPos - t * (jsPos - d.targetLeft);
+        const curRatio = t * d.ratio;
+        const scoreText = d.customLabel
+          ? d.customLabel
+          : curRatio >= 10
+            ? `${Math.round(curRatio)}x`
+            : `${curRatio.toFixed(1)}x`;
+
+        const curEdgeOp = (0.1 + t * (parseFloat(d.edgeOpacity) - 0.1)).toFixed(2);
+        const curTextOp = (t * parseFloat(d.textOpacity)).toFixed(2);
+
+        d.fillEl.style.left = curLeft + "%";
+        d.fillEl.style.width = curWidth + "%";
+        d.fillEl.style.background = `linear-gradient(${d.gradDir}, rgba(255,255,255,${d.baseOpacity}), rgba(255,255,255,${curEdgeOp}))`;
+
+        const stdRatio = Math.min(d.ratioStd || 0, Math.max(d.ratio - 0.01, 0), Math.max(scaleMax / 100 - d.ratio, 0));
+        if (stdRatio > 0) {
+          const stdLeft = (Math.max(d.ratio - stdRatio, 0.01) / (scaleMax / 100)) * 100;
+          const stdRight = (Math.min(d.ratio + stdRatio, scaleMax / 100) / (scaleMax / 100)) * 100;
+          const currentStdLeft = jsPos + t * (stdLeft - jsPos);
+          const currentStdRight = jsPos + t * (stdRight - jsPos);
+          d.errorEl.style.left = `${Math.min(currentStdLeft, currentStdRight)}%`;
+          d.errorEl.style.width = `${Math.abs(currentStdRight - currentStdLeft)}%`;
+          d.errorEl.style.opacity = `${0.25 + 0.55 * t}`;
+        } else {
+          d.errorEl.style.opacity = "0";
+        }
+
+        const barEnd = d.ratio >= 1 ? curLeft + curWidth : curLeft;
+        if (d.ratio >= 1) {
+          d.valueEl.style.left = `min(calc(${barEnd}% + 10px), calc(100% - 3.6ch))`;
+          d.valueEl.style.removeProperty("right");
+          d.valueEl.style.paddingLeft = "0";
+          d.valueEl.style.paddingRight = "";
+        } else {
+          d.valueEl.style.left = `max(calc(${barEnd}% + 10px), 12%)`;
+          d.valueEl.style.removeProperty("right");
+          d.valueEl.style.paddingLeft = "0";
+          d.valueEl.style.paddingRight = "";
+        }
+        d.valueEl.style.color = `rgba(255,255,255,${curTextOp})`;
+        d.valueEl.textContent = scoreText;
+      }
+
+      if (progress < 1) requestAnimationFrame(animateBars);
+    }
+
+    // Trigger animation on scroll into view
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            observer.disconnect();
+            requestAnimationFrame(animateBars);
+          }
+        }
+      },
+      { threshold: 0.3 },
+    );
+    observer.observe(this);
+
+    // Position JS baseline line/label
+    const positionBaseline = () => {
+      const track = container.querySelector(".bench-track");
+      const wrap = shadow.querySelector(".bars-wrap");
+      if (track && wrap && jsLabelEl && jsLineEl) {
+        const wrapRect = wrap.getBoundingClientRect();
+        const trackRect = track.getBoundingClientRect();
+        const jsX = trackRect.left + (trackRect.width * jsPos) / 100 - wrapRect.left;
+        jsLabelEl.style.left = jsX + "px";
+        jsLabelEl.style.transform = "translateX(-50%)";
+        jsLineEl.style.left = jsX + "px";
+      }
+    };
+    requestAnimationFrame(positionBaseline);
+    window.addEventListener("resize", positionBaseline);
+  }
+
+  async _rerunBrowserRuntime(snapshotSrc) {
+    if (this._rerunInFlight) return;
+    this._rerunInFlight = true;
+    const rerunSrc = this.getAttribute("rerun-src") || snapshotSrc;
+    const rerunButton = this.shadowRoot.querySelector(".rerun-button");
+    const status = this.shadowRoot.querySelector(".chart-status");
+    if (rerunButton) rerunButton.disabled = true;
+    if (status) status.textContent = "Running full browser benchmark...";
+    try {
+      const ratios = await this._runSerialMeasurement(async () => {
+        const manifestUrl = new URL(rerunSrc, window.location.href);
+        const resp = await fetch(manifestUrl.href, { cache: "no-store" });
+        if (!resp.ok) return [];
+
+        const json = await resp.json();
+        const benchmarks = json?.benchmarks ?? json;
+        if (!Array.isArray(benchmarks) || benchmarks.length === 0) return [];
+
+        const runtimeUrl = new URL("./loadtime/runtime.js", manifestUrl).href;
+        const runtimeHelpers = await import(/* @vite-ignore */ runtimeUrl);
+        const measured = [];
+        for (const bench of benchmarks) {
+          if (!bench?.jsUrl || !bench?.wasmUrl) continue;
+          try {
+            const jsUrl = new URL(bench.jsUrl, manifestUrl).href;
+            const wasmUrl = new URL(bench.wasmUrl, manifestUrl).href;
+            const row = await this._measureBrowserRuntime(bench, jsUrl, wasmUrl, runtimeHelpers);
+            if (row.wasmUs <= 0 || row.jsUs <= 0) continue;
+            measured.push({
+              ...row,
+              ratio: row.jsUs / row.wasmUs,
+              ratioStd: Number(row.ratioStd ?? 0),
+              label: `${(row.jsUs / row.wasmUs).toFixed(1)}x`,
+            });
+            await new Promise((resolve) => setTimeout(resolve, 80));
+          } catch (error) {
+            console.warn("[perf-benchmark-chart] browser runtime benchmark skipped", bench?.name, error);
+          }
+        }
+        return measured;
+      });
+
+      if (this.isConnected && ratios.length > 0) {
+        this.style.display = "";
+        this._renderRatioRows(ratios);
+        if (status) status.textContent = `Updated with ${ratios.length} live browser benchmarks.`;
+      } else if (status) {
+        status.textContent = "No live browser benchmarks completed.";
+      }
+    } catch (error) {
+      console.warn("[perf-benchmark-chart] browser runtime rerun failed", error);
+      if (status) status.textContent = "Live browser benchmark failed.";
+    } finally {
+      if (rerunButton) rerunButton.disabled = false;
+      this._rerunInFlight = false;
+    }
   }
 
   async _load(src) {
@@ -531,6 +817,7 @@ class PerfBenchmarkChart extends HTMLElement {
           .map((row) => ({
             name: row.name,
             value: Number(row?.wasmUs ?? row?.value ?? 0),
+            extraValue: Number(row?.extraValue ?? row?.sharedValue ?? 0),
             jsUs: Number(row?.jsUs ?? row?.baselineUs ?? 0),
             label: row.label || null,
           }))
@@ -573,7 +860,7 @@ class PerfBenchmarkChart extends HTMLElement {
           const candidate = Number(row?.jsUs ?? row?.baselineUs ?? 0);
           return candidate > 0 ? candidate : value;
         }, 0);
-        const absoluteMax = Math.max(...absoluteRows.map((row) => row.value), 1);
+        const absoluteMax = Math.max(...absoluteRows.map((row) => row.value + Math.max(0, row.extraValue)), 1);
         const maxValue = Math.max(absoluteMax, baselineValue > 0 ? baselineValue * 1.08 : 0, 1);
         const baselinePct = baselineValue > 0 ? (baselineValue / maxValue) * 100 : 0;
 
@@ -594,6 +881,7 @@ class PerfBenchmarkChart extends HTMLElement {
         for (const row of absoluteRows) {
           const label = row.name || "unknown";
           const targetWidth = (row.value / maxValue) * 100;
+          const targetExtraWidth = (Math.max(0, row.extraValue) / maxValue) * 100;
           const rowEl = document.createElement("div");
           rowEl.className = "bench-row";
           rowEl.innerHTML = `
@@ -601,6 +889,7 @@ class PerfBenchmarkChart extends HTMLElement {
             <div class="bench-track">
               <div class="bench-track-bg" style="width: 100%"></div>
               <div class="bench-fill" style="left: 0%; width: 0%; background: linear-gradient(to right, rgba(255,255,255,0.1), rgba(255,255,255,0.9)); border-radius: 4px; position: absolute; height: 100%; top: 0"></div>
+              <div class="bench-extra-fill" style="left: 0%; width: 0%; background: rgba(255,255,255,0.22); border-radius: 0 4px 4px 0; position: absolute; height: 100%; top: 0"></div>
               <div class="bench-errorbar" style="display: none"></div>
               <span class="bench-value" style="left: 10px; color: rgba(255,255,255,0)">${row.label ?? ""}</span>
             </div>
@@ -608,8 +897,10 @@ class PerfBenchmarkChart extends HTMLElement {
           container.appendChild(rowEl);
           barData.push({
             targetWidth,
+            targetExtraWidth,
             customLabel: row.label || `${row.value.toFixed(1)}`,
             fillEl: rowEl.querySelector(".bench-fill"),
+            extraFillEl: rowEl.querySelector(".bench-extra-fill"),
             valueEl: rowEl.querySelector(".bench-value"),
           });
         }
@@ -622,8 +913,12 @@ class PerfBenchmarkChart extends HTMLElement {
 
           for (const d of barData) {
             const curWidth = t * d.targetWidth;
+            const curExtraWidth = t * d.targetExtraWidth;
+            const curTotalWidth = curWidth + curExtraWidth;
             d.fillEl.style.width = `${curWidth}%`;
-            d.valueEl.style.left = `min(calc(${curWidth}% + 10px), calc(100% - 7ch))`;
+            d.extraFillEl.style.left = `${curWidth}%`;
+            d.extraFillEl.style.width = `${curExtraWidth}%`;
+            d.valueEl.style.left = `min(calc(${curTotalWidth}% + 10px), calc(100% - 12ch))`;
             d.valueEl.style.color = `rgba(255,255,255,${(0.4 + t * 0.6).toFixed(2)})`;
             d.valueEl.textContent = d.customLabel;
           }
@@ -661,154 +956,7 @@ class PerfBenchmarkChart extends HTMLElement {
         return;
       }
 
-      const maxRatio = Math.max(...ratios.map((r) => r.ratio), 1.5);
-      const maxPct = Math.ceil(maxRatio * 100);
-      const scaleMax = Math.ceil(maxPct / 100) * 100;
-      const jsPos = (100 / scaleMax) * 100; // JS baseline as % of track width
-
-      // Build bar rows (start at 0, animate later)
-      const barData = [];
-      for (const row of ratios) {
-        const ratio = row.ratio;
-        const label = row.name || row.path?.replace(/^examples\/benchmarks\//, "").replace(/\.ts$/, "") || "unknown";
-
-        let targetLeft, targetWidth;
-        if (ratio >= 1) {
-          targetLeft = jsPos;
-          targetWidth = ((ratio - 1) / (scaleMax / 100 - 1)) * (100 - jsPos);
-        } else {
-          const wasmPos = (ratio / (scaleMax / 100)) * 100;
-          targetLeft = wasmPos;
-          targetWidth = jsPos - wasmPos;
-        }
-
-        const dist = Math.abs(ratio - 1) / Math.max(maxRatio - 1, 1);
-        const edgeOpacity = (0.1 + dist * 0.9).toFixed(2);
-        const baseOpacity = "0.1";
-        const gradDir = ratio >= 1 ? "to right" : "to left";
-        const textOpacity = (0.4 + dist * 0.6).toFixed(2);
-
-        const rowEl = document.createElement("div");
-        rowEl.className = "bench-row";
-        rowEl.innerHTML = `
-          <span class="bench-name">${label}</span>
-          <div class="bench-track">
-            <div class="bench-track-bg" style="width: ${jsPos}%"></div>
-            <div class="bench-fill" style="left: ${jsPos}%; width: 0%; background: linear-gradient(${gradDir}, rgba(255,255,255,${baseOpacity}), rgba(255,255,255,0.1)); border-radius: 4px; position: absolute; height: 100%; top: 0"></div>
-            <div class="bench-errorbar" style="left: ${jsPos}%; width: 0%"></div>
-            <span class="bench-value" style="left: ${jsPos}%; padding-left: 6px; color: rgba(255,255,255,0)">0.0x</span>
-          </div>
-        `;
-        container.appendChild(rowEl);
-
-        barData.push({
-          ratio,
-          customLabel: row.label || null,
-          targetLeft,
-          targetWidth,
-          gradDir,
-          baseOpacity,
-          edgeOpacity,
-          textOpacity,
-          ratioStd: Number(row.ratioStd ?? 0),
-          fillEl: rowEl.querySelector(".bench-fill"),
-          errorEl: rowEl.querySelector(".bench-errorbar"),
-          valueEl: rowEl.querySelector(".bench-value"),
-        });
-      }
-
-      // Animation
-      const duration = 3293;
-      const ease = (t) => 1 - (1 - t) * (1 - t);
-
-      function animateBars(ts) {
-        if (!animateBars._start) animateBars._start = ts;
-        const elapsed = ts - animateBars._start;
-        const progress = Math.min(elapsed / duration, 1);
-        const t = ease(progress);
-
-        for (const d of barData) {
-          const curWidth = t * d.targetWidth;
-          const curLeft = d.ratio >= 1 ? d.targetLeft : jsPos - t * (jsPos - d.targetLeft);
-          const curRatio = t * d.ratio;
-          const scoreText = d.customLabel
-            ? d.customLabel
-            : curRatio >= 10
-              ? `${Math.round(curRatio)}x`
-              : `${curRatio.toFixed(1)}x`;
-
-          const curEdgeOp = (0.1 + t * (parseFloat(d.edgeOpacity) - 0.1)).toFixed(2);
-          const curTextOp = (t * parseFloat(d.textOpacity)).toFixed(2);
-
-          d.fillEl.style.left = curLeft + "%";
-          d.fillEl.style.width = curWidth + "%";
-          d.fillEl.style.background = `linear-gradient(${d.gradDir}, rgba(255,255,255,${d.baseOpacity}), rgba(255,255,255,${curEdgeOp}))`;
-
-          const stdRatio = Math.min(
-            d.ratioStd || 0,
-            Math.max(d.ratio - 0.01, 0),
-            Math.max(scaleMax / 100 - d.ratio, 0),
-          );
-          if (stdRatio > 0) {
-            const stdLeft = (Math.max(d.ratio - stdRatio, 0.01) / (scaleMax / 100)) * 100;
-            const stdRight = (Math.min(d.ratio + stdRatio, scaleMax / 100) / (scaleMax / 100)) * 100;
-            const currentStdLeft = jsPos + t * (stdLeft - jsPos);
-            const currentStdRight = jsPos + t * (stdRight - jsPos);
-            d.errorEl.style.left = `${Math.min(currentStdLeft, currentStdRight)}%`;
-            d.errorEl.style.width = `${Math.abs(currentStdRight - currentStdLeft)}%`;
-            d.errorEl.style.opacity = `${0.25 + 0.55 * t}`;
-          } else {
-            d.errorEl.style.opacity = "0";
-          }
-
-          const barEnd = d.ratio >= 1 ? curLeft + curWidth : curLeft;
-          if (d.ratio >= 1) {
-            d.valueEl.style.left = `min(calc(${barEnd}% + 10px), calc(100% - 3.6ch))`;
-            d.valueEl.style.removeProperty("right");
-            d.valueEl.style.paddingLeft = "0";
-            d.valueEl.style.paddingRight = "";
-          } else {
-            d.valueEl.style.left = `max(calc(${barEnd}% + 10px), 12%)`;
-            d.valueEl.style.removeProperty("right");
-            d.valueEl.style.paddingLeft = "0";
-            d.valueEl.style.paddingRight = "";
-          }
-          d.valueEl.style.color = `rgba(255,255,255,${curTextOp})`;
-          d.valueEl.textContent = scoreText;
-        }
-
-        if (progress < 1) requestAnimationFrame(animateBars);
-      }
-
-      // Trigger animation on scroll into view
-      const observer = new IntersectionObserver(
-        (entries) => {
-          for (const entry of entries) {
-            if (entry.isIntersecting) {
-              observer.disconnect();
-              requestAnimationFrame(animateBars);
-            }
-          }
-        },
-        { threshold: 0.3 },
-      );
-      observer.observe(this);
-
-      // Position JS baseline line/label
-      const positionBaseline = () => {
-        const track = container.querySelector(".bench-track");
-        const wrap = shadow.querySelector(".bars-wrap");
-        if (track && wrap && jsLabelEl && jsLineEl) {
-          const wrapRect = wrap.getBoundingClientRect();
-          const trackRect = track.getBoundingClientRect();
-          const jsX = trackRect.left + (trackRect.width * jsPos) / 100 - wrapRect.left;
-          jsLabelEl.style.left = jsX + "px";
-          jsLabelEl.style.transform = "translateX(-50%)";
-          jsLineEl.style.left = jsX + "px";
-        }
-      };
-      requestAnimationFrame(positionBaseline);
-      window.addEventListener("resize", positionBaseline);
+      this._renderRatioRows(ratios);
     } catch (error) {
       console.error("[perf-benchmark-chart] render failed", error);
       this.style.display = "none";

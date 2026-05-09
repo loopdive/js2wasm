@@ -96,13 +96,7 @@ export const instantiateWasmStreaming = __mod.instantiateWasmStreaming;
           // path: browser shim with resolve/dirname/relative/join/basename.
           code = code.replace(/from "typescript"/g, 'from "/playground/stubs/typescript-reexport.js"');
           code = code.replace(/from "path"/g, 'from "/playground/stubs/path-shim.js"');
-
-          // Stub out Node.js built-in references — browsers can't fetch node: URLs.
-          // Replace ALL "node:xxx" string literals with empty strings so
-          // safeImport("node:path") becomes safeImport("") which fails silently,
-          // and import("node:fs") becomes import("") which also fails silently.
-          // Also handle __require("node:xxx") calls from esbuild's CJS shims.
-          code = code.replace(/"node:(fs|path|module|url|os|child_process|crypto)"/g, '""');
+          code = code.replace(/from "node:module"/g, 'from "/playground/stubs/node-module-stub.js"');
 
           bundleCache = code;
         }

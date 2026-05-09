@@ -620,8 +620,6 @@ function t262LegacyStopDefinitions(layout, firstRow) {
   if (!legacySegment) return [];
   const start = legacySegment.startYear;
   return [
-    { label: "ES1", value: "ES1", position: 0, rawEdition: "ES1" },
-    { label: "ES2", value: "ES2", position: Math.max(1998 - start, 0), rawEdition: "ES2" },
     {
       label: "ES3 / Core",
       value: firstRow.rawEdition,
@@ -779,7 +777,7 @@ class T262EditionTimeline extends HTMLElement {
           outline: none;
           border: 0;
           background: transparent;
-          z-index: 5;
+          z-index: 6;
           cursor: pointer;
         }
         .slider::-webkit-slider-runnable-track {
@@ -868,9 +866,12 @@ class T262EditionTimeline extends HTMLElement {
             rgba(255, 255, 255, 0.56) 82%,
             rgba(255, 255, 255, 0.96) 100%
           );
-          border: 1px solid rgba(255, 255, 255, 0.18);
+          border: 0;
+          box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.16),
+            inset 0 -1px 0 rgba(255, 255, 255, 0.08);
           opacity: 0.92;
-          z-index: 2;
+          z-index: 4;
         }
         .timeline {
           position: absolute;
@@ -884,7 +885,7 @@ class T262EditionTimeline extends HTMLElement {
           background: rgba(255, 255, 255, 0.14);
           border: 1px solid rgba(255, 255, 255, 0.06);
           pointer-events: none;
-          z-index: 0;
+          z-index: 3;
         }
         .segment {
           position: relative;
@@ -913,7 +914,7 @@ class T262EditionTimeline extends HTMLElement {
           width: 100%;
           height: 100%;
           pointer-events: none;
-          z-index: 4;
+          z-index: 2;
         }
         .marker {
           position: absolute;
@@ -925,20 +926,20 @@ class T262EditionTimeline extends HTMLElement {
           left: 50%;
           transform: translateX(-50%);
           width: 1px;
-          height: 10px;
+          height: 18px;
           background: rgba(255, 255, 255, 0.18);
         }
         .marker.above {
           top: 0;
         }
         .marker.above .line {
-          top: 23px;
+          top: 20px;
         }
         .marker.below {
           top: 0;
         }
         .marker.below .line {
-          top: 43px;
+          top: 38px;
         }
         .label {
           position: relative;
@@ -957,7 +958,7 @@ class T262EditionTimeline extends HTMLElement {
         }
         .marker.below .label {
           position: absolute;
-          top: 54px;
+          top: 58px;
           left: 50%;
           transform: translateX(-50%);
         }

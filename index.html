@@ -1438,7 +1438,7 @@
 
         <div class="feat-filter">
           <label class="feat-toggle">
-            <input type="checkbox" id="strict-only-toggle" checked />
+            <input type="checkbox" id="strict-only-toggle" />
             <span>Strict mode</span>
           </label>
           <label class="feat-toggle">
@@ -3042,23 +3042,65 @@ match (value) {
         <div class="host-bench-group">
           <h3 class="host-bench-title">Browser &amp; Node.js</h3>
           <p class="host-bench-subcopy">
-            Runtime execution speed and module load time relative to plain JavaScript, measured in browser and Node.js
-            environments.
+            Runtime execution speed relative to plain JavaScript, measured in browser and Node.js environments.
           </p>
           <div class="conformance-diagrams">
             <div class="diagram-panel">
               <perf-benchmark-chart
                 src="./benchmarks/results/playground-benchmark-sidebar.json"
+                rerun-src="./benchmarks/results/loadtime-benchmarks.json"
+                rerun-label="Run full browser benchmark"
                 title="Runtime Speed"
-                legend="Wasm runtime speed relative to JS (larger is better, whisker = ±1σ)"
+                legend="Wasm runtime speed relative to JS (cached snapshot; run full benchmark on request)"
               ></perf-benchmark-chart>
             </div>
-            <div class="diagram-panel">
+          </div>
+        </div>
+
+        <div class="host-bench-group" id="wasmtime-bench-group" style="display: none">
+          <h3 class="host-bench-title">Wasmtime Standalone</h3>
+          <p class="host-bench-subcopy">
+            Standalone Wasmtime benchmarks compare JS² output against bundled JavaScript interpreter and engine
+            approaches.
+          </p>
+          <div class="conformance-diagrams">
+            <div
+              class="diagram-panel"
+              data-benchmark-src="./benchmarks/results/wasm-host-wasmtime-hot-runtime.json"
+              style="display: none"
+            >
               <perf-benchmark-chart
-                src="./benchmarks/results/loadtime-benchmarks.json"
-                mode="loadtime"
-                title="Loading Speed"
-                legend="Wasm loading speed relative to JS (larger is better, whisker = ±1σ)"
+                src="./benchmarks/results/wasm-host-wasmtime-hot-runtime.json"
+                mode="absolute-lower-better"
+                title="Hot Runtime"
+                baseline-label="Node.js"
+                legend="Geometric mean over comparable competitive benchmarks; lower is better."
+              ></perf-benchmark-chart>
+            </div>
+            <div
+              class="diagram-panel"
+              data-benchmark-src="./benchmarks/results/wasm-host-wasmtime-module-size.json"
+              style="display: none"
+            >
+              <perf-benchmark-chart
+                src="./benchmarks/results/wasm-host-wasmtime-module-size.json"
+                mode="absolute-lower-better"
+                title="Module Size"
+                baseline-label="JS source"
+                legend="Geometric mean of raw deployable module size; lower is better, faint segment is the shared Shopify-style interpreter."
+              ></perf-benchmark-chart>
+            </div>
+            <div
+              class="diagram-panel"
+              data-benchmark-src="./benchmarks/results/wasm-host-wasmtime-coldstart.json"
+              style="display: none"
+            >
+              <perf-benchmark-chart
+                src="./benchmarks/results/wasm-host-wasmtime-coldstart.json"
+                mode="absolute-lower-better"
+                title="Cold Start"
+                baseline-label="Node.js"
+                legend="Geometric mean of startup plus first run; lower is better."
               ></perf-benchmark-chart>
             </div>
           </div>
@@ -3963,7 +4005,6 @@ console.log(instance.exports.run()); // &rarr; 55</pre
         const hostToggle = document.getElementById("host-support-toggle");
         const tables = document.querySelector(".feat-tables");
         if (tables) {
-          tables.classList.add("strict-only");
           const hostRows = Array.from(document.querySelectorAll(".feat-row")).filter((row) =>
             row.querySelector(".feat-host"),
           );
@@ -3995,6 +4036,9 @@ console.log(instance.exports.run()); // &rarr; 55</pre
             });
             if (typeof window.updateEditionPassBars === "function") {
               window.updateEditionPassBars();
+            }
+            if (typeof window.updateConformanceDonut === "function") {
+              window.updateConformanceDonut();
             }
           };
           sync();
@@ -4249,10 +4293,12 @@ console.log(instance.exports.run()); // &rarr; 55</pre
       (async function hydrateConformanceEditionFilter() {
         const donutSlot = document.getElementById("conformance-donut-slot");
         const editionTimeline = document.getElementById("conformance-edition-timeline");
+        const strictToggle = document.getElementById("strict-only-toggle");
+        const hostToggle = document.getElementById("host-support-toggle");
         if (!donutSlot || !(editionTimeline instanceof HTMLElement)) return;
 
         const donutStyle = "--t262-bg: var(--bg, #060a14)";
-        const renderDonut = (summary, captionMain = "ECMAScript") => {
+        const renderDonut = (summary, captionMain = "ECMAScript", captionSub = "conformance") => {
           const pass = Number(summary?.pass ?? 0);
           const fail = Number(summary?.fail ?? 0);
           const ce = Number(summary?.ce ?? 0);
@@ -4269,8 +4315,62 @@ console.log(instance.exports.run()); // &rarr; 55</pre
           donut.setAttribute("skip", String(skip));
           donut.setAttribute("total", String(total));
           donut.setAttribute("caption-main", captionMain);
-          donut.setAttribute("caption-sub", "conformance");
+          donut.setAttribute("caption-sub", captionSub);
           donut.setAttribute("style", donutStyle);
+        };
+        const normalizeSummary = (summary, fallback = {}) => {
+          const pass = Number(summary?.pass ?? fallback.pass ?? 0);
+          const fail = Number(summary?.fail ?? fallback.fail ?? 0);
+          const ce =
+            Number(summary?.ce ?? 0) ||
+            Number(summary?.compile_error ?? 0) + Number(summary?.compile_timeout ?? 0) ||
+            Number(fallback.ce ?? 0);
+          const skip = Number(summary?.skip ?? fallback.skip ?? 0);
+          const total = Number(summary?.total ?? fallback.total ?? pass + fail + ce + skip);
+          return { pass, fail, ce, skip, total };
+        };
+        const statusRatio = (filtered, base, key) => {
+          const baseValue = Number(base?.[key] ?? 0);
+          if (baseValue <= 0) return 1;
+          return Math.max(0, Math.min(1, Number(filtered?.[key] ?? 0) / baseValue));
+        };
+        const applySummaryRatios = (summary, ratios) => {
+          const pass = Math.round(summary.pass * ratios.pass);
+          const fail = Math.round(summary.fail * ratios.fail);
+          const ce = Math.round(summary.ce * ratios.ce);
+          const skip = Math.round(summary.skip * ratios.skip);
+          return { pass, fail, ce, skip, total: pass + fail + ce + skip };
+        };
+        const featureRowScore = (row, hostEnabled) => {
+          const badge = row.querySelector(".feat-badge");
+          if (!badge) return 0;
+          if (!hostEnabled && row.querySelector(".feat-host")) return 0;
+          const savedClasses = badge.dataset.origClass || Array.from(badge.classList).join(" ");
+          const classNames = new Set(savedClasses.split(/\s+/).filter(Boolean));
+          if (classNames.has("full")) return 1;
+          if (classNames.has("partial")) return 0.5;
+          return 0;
+        };
+        const hostOffPassScale = () => {
+          const strictOnly = strictToggle ? strictToggle.checked : false;
+          const rows = Array.from(document.querySelectorAll(".feat-row")).filter(
+            (row) => !(strictOnly && row.hasAttribute("data-sloppy")),
+          );
+          const hostOnScore = rows.reduce((sum, row) => sum + featureRowScore(row, true), 0);
+          if (hostOnScore <= 0) return 1;
+          const hostOffScore = rows.reduce((sum, row) => sum + featureRowScore(row, false), 0);
+          return Math.max(0, Math.min(1, hostOffScore / hostOnScore));
+        };
+        const applyHostMode = (summary) => {
+          const hostEnabled = hostToggle ? hostToggle.checked : true;
+          if (hostEnabled) return summary;
+          const nextPass = Math.round(summary.pass * hostOffPassScale());
+          const movedToFail = Math.max(0, summary.pass - nextPass);
+          return {
+            ...summary,
+            pass: nextPass,
+            fail: summary.fail + movedToFail,
+          };
         };
 
         try {
@@ -4281,21 +4381,18 @@ console.log(instance.exports.run()); // &rarr; 55</pre
           const overallSummary = report?.summary;
           if (!overallSummary) throw new Error("overall summary unavailable");
 
-          const overall = {
-            pass: Number(overallSummary.pass ?? 0),
-            fail: Number(overallSummary.fail ?? 0),
-            ce: Number(overallSummary.compile_error ?? 0) + Number(overallSummary.compile_timeout ?? 0),
-            skip: Number(overallSummary.skip ?? 0),
-            total: Number(overallSummary.total ?? 0),
-          };
+          const overall = normalizeSummary(overallSummary);
           const fullSummary = report?.full_summary ?? overallSummary;
-          const withProposal = {
-            pass: Number(fullSummary.pass ?? overall.pass ?? 0),
-            fail: Number(fullSummary.fail ?? overall.fail ?? 0),
-            ce: Number(fullSummary.compile_error ?? 0) + Number(fullSummary.compile_timeout ?? 0),
-            skip: Number(fullSummary.skip ?? overall.skip ?? 0),
-            total: Number(fullSummary.total ?? overall.total ?? 0),
-          };
+          const withProposal = normalizeSummary(fullSummary, overall);
+          const strictSummary = report?.strict_summary ? normalizeSummary(report.strict_summary, overall) : null;
+          const strictRatios = strictSummary
+            ? {
+                pass: statusRatio(strictSummary, overall, "pass"),
+                fail: statusRatio(strictSummary, overall, "fail"),
+                ce: statusRatio(strictSummary, overall, "ce"),
+                skip: statusRatio(strictSummary, overall, "skip"),
+              }
+            : null;
           const proposalDiffers =
             withProposal.pass !== overall.pass ||
             withProposal.fail !== overall.fail ||
@@ -4303,8 +4400,38 @@ console.log(instance.exports.run()); // &rarr; 55</pre
             withProposal.skip !== overall.skip ||
             withProposal.total !== overall.total;
 
+          let lastDetail = null;
+          const conformanceOptions = () => {
+            const strictOnly = strictToggle ? strictToggle.checked : false;
+            const hostEnabled = hostToggle ? hostToggle.checked : true;
+            return {
+              strictOnly,
+              hostEnabled,
+              captionSub:
+                strictOnly && !hostEnabled
+                  ? "strict standalone estimate"
+                  : strictOnly
+                    ? "strict conformance"
+                    : hostEnabled
+                      ? "conformance"
+                      : "standalone estimate",
+            };
+          };
+          const applyConformanceOptions = (summary, { exactStrictSummary = null } = {}) => {
+            const options = conformanceOptions();
+            let next = normalizeSummary(summary);
+            if (options.strictOnly) {
+              next = exactStrictSummary
+                ? normalizeSummary(exactStrictSummary)
+                : strictRatios
+                  ? applySummaryRatios(next, strictRatios)
+                  : next;
+            }
+            return { summary: applyHostMode(next), options };
+          };
           const applyScopeFromDetail = (detail) => {
             if (!detail) return;
+            lastDetail = detail;
             if (Number.isFinite(detail.publishedLimitRank)) {
               window.__conformancePublishedLimitRank = detail.publishedLimitRank;
             }
@@ -4312,21 +4439,29 @@ console.log(instance.exports.run()); // &rarr; 55</pre
             const currentScope = detail.scope || "overall";
             window.__conformanceEditionScope = currentScope;
             if (currentScope === "overall") {
-              renderDonut(overall);
+              const { summary, options } = applyConformanceOptions(overall, { exactStrictSummary: strictSummary });
+              renderDonut(summary, "ECMAScript", options.captionSub);
               applyFeatureEditionScope("overall");
               return;
             }
             if (currentScope === "overall+proposal") {
-              renderDonut(withProposal, "ECMAScript + proposals");
+              const { summary, options } = applyConformanceOptions(withProposal);
+              renderDonut(summary, "ECMAScript + proposals", options.captionSub);
               applyFeatureEditionScope("overall+proposal");
               return;
             }
 
             const scope = detail.scopeMap instanceof Map ? detail.scopeMap.get(currentScope) : null;
             if (!scope) return;
-            renderDonut(scope.summary, scope.captionMain);
+            const { summary, options } = applyConformanceOptions(scope.summary);
+            renderDonut(summary, scope.captionMain, options.captionSub);
             applyFeatureEditionScope(currentScope);
           };
+          window.updateConformanceDonut = () => {
+            if (lastDetail) applyScopeFromDetail(lastDetail);
+          };
+          strictToggle?.addEventListener("change", window.updateConformanceDonut);
+          hostToggle?.addEventListener("change", window.updateConformanceDonut);
 
           editionTimeline.addEventListener("edition-change", (event) => {
             applyScopeFromDetail(event.detail);
@@ -4494,7 +4629,7 @@ console.log(instance.exports.run()); // &rarr; 55</pre
         };
 
         const renderHeuristicEditionPassBars = () => {
-          const strictOnly = strictToggle ? strictToggle.checked : true;
+          const strictOnly = strictToggle ? strictToggle.checked : false;
           const hostEnabled = hostToggle ? hostToggle.checked : true;
 
           document.querySelectorAll(".feat-section").forEach((section) => {
