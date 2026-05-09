@@ -729,6 +729,10 @@ export function generateModule(
     if (sourceContainsClass(ast.sourceFile)) {
       const regProtoTypeIdx = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], []);
       addImport(ctx, "env", "__register_prototype", { kind: "func", typeIdx: regProtoTypeIdx });
+      // (#1395) Same rationale for the class-object registry — must be
+      // registered up-front so `emitLazyClassObjectGet` finds it in funcMap.
+      const regClassTypeIdx = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], []);
+      addImport(ctx, "env", "__register_class_object", { kind: "func", typeIdx: regClassTypeIdx });
     }
 
     // Emit inline Wasm implementations for Math methods (after all imports are registered)

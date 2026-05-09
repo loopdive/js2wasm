@@ -222,6 +222,22 @@ export function collectClassDeclaration(
     ctx.protoGlobals.set(className, protoGlobalIdx);
   }
 
+  // (#1395) Register a class-object singleton global (externref, lazily
+  // initialized). The bare class identifier `C` resolves to this global,
+  // giving `Object.getOwnPropertyDescriptor(C, "m")` a real receiver to
+  // inspect. Skip for externref-backed builtin subclasses (#1366a) — those
+  // don't have a `$ClassName` WasmGC struct.
+  if (!ctx.classBuiltinParentMap.has(className)) {
+    const classObjectGlobalIdx = nextModuleGlobalIdx(ctx);
+    ctx.mod.globals.push({
+      name: `__class_${className}`,
+      type: { kind: "externref" },
+      mutable: true,
+      init: [{ op: "ref.null.extern" }],
+    });
+    ctx.classObjectGlobals.set(className, classObjectGlobalIdx);
+  }
+
   // Register constructor function: takes ctor params, returns (ref $structTypeIdx)
   const ctorParams: ValType[] = [];
   const ctorName = `${className}_new`;
@@ -535,6 +551,30 @@ export function collectClassDeclaration(
       }
     }
     ctx.classMethodNames.set(className, protoMethodNames);
+  }
+
+  // (#1395) Collect own static method names — analog of the prototype loop
+  // above. Used by `_staticMethodNames` allowlist so
+  // `Object.getOwnPropertyDescriptor(C, "m")` returns the spec descriptor for
+  // static methods. Inherited statics are intentionally excluded — spec
+  // §8.10.6 says `getOwnPropertyDescriptor` returns descriptors only for OWN
+  // properties. Static accessors (`static get m()`) are excluded for now —
+  // their descriptor shape differs (`get`/`set` vs `value`/`writable`) and
+  // they're out of Phase 1 scope.
+  {
+    const staticMethodNames: string[] = [];
+    const seenStatic = new Set<string>();
+    for (const member of decl.members) {
+      if (!hasStaticModifier(member)) continue;
+      if (!ts.isMethodDeclaration(member)) continue;
+      if (!member.name) continue;
+      const n = resolveClassMemberName(ctx, member.name);
+      if (n === undefined) continue;
+      if (seenStatic.has(n)) continue;
+      seenStatic.add(n);
+      staticMethodNames.push(n);
+    }
+    ctx.classStaticMethodNames.set(className, staticMethodNames);
   }
 
   // Register static properties as module globals

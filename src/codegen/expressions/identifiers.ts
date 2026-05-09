@@ -6,6 +6,7 @@ import { ts, forEachChild } from "../../ts-api.js";
 import { isBooleanType, isHeterogeneousUnion, isNumberType, isStringType } from "../../checker/type-mapper.js";
 import type { Instr, ValType } from "../../ir/types.js";
 import { emitFuncRefAsClosure } from "../closures.js";
+import { emitLazyClassObjectGet } from "./extern.js";
 import type { CodegenContext, FunctionContext } from "../context/types.js";
 import {
   addFuncType,
@@ -446,6 +447,27 @@ function compileIdentifier(ctx: CodegenContext, fctx: FunctionContext, id: ts.Id
   if (globalInfo) {
     fctx.body.push({ op: "call", funcIdx: globalInfo.funcIdx });
     return globalInfo.type;
+  }
+
+  // (#1395) Class identifier as a value — emit lazy-initialized class-object
+  // singleton, registering static-method names with the runtime's
+  // `_staticMethodNames` allowlist so `Object.getOwnPropertyDescriptor(C, "m")`
+  // returns the spec-correct descriptor for static methods. Without this,
+  // bare `C` falls through to the `ref.null.extern` graceful-default below
+  // and `getOwnPropertyDescriptor(null, "m")` returns null, breaking
+  // verifyProperty-style static-method tests under
+  // `language/{statements,expressions}/class/elements/`.
+  //
+  // Order matters: this is AFTER `localMap`, `capturedGlobals`,
+  // `moduleGlobals`, and `declaredGlobals` so user shadowing
+  // (`var C = ...; class C {}` — though unusual) takes precedence.
+  // It is BEFORE the funcMap-funcref path so a class never gets re-wrapped
+  // as a closure, and BEFORE the `ref.null.extern` fallback so we beat the
+  // null result.
+  if (ctx.classObjectGlobals?.has(name)) {
+    if (emitLazyClassObjectGet(ctx, fctx, name)) {
+      return { kind: "externref" };
+    }
   }
 
   // globalThis — return the JS global object via host import

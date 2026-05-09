@@ -2595,10 +2595,18 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
           // `ref.null.extern` (undefined) for any class method lookup, and
           // `verifyProperty(C.prototype, "m", {...})` fails before checking
           // any flag.
+          //
+          // (#1395) Same logic for static methods on the class object —
+          // `verifyProperty(C, "m", {...})` lookups need the runtime arm to
+          // fire instead of returning `ref.null.extern` here.
           const methodNames = ctx.classMethodNames.get(structName);
-          if (methodNames && methodNames.includes(propLiteral)) {
+          const staticMethodNames = ctx.classStaticMethodNames.get(structName);
+          const isMethodLookup =
+            (methodNames && methodNames.includes(propLiteral)) ||
+            (staticMethodNames && staticMethodNames.includes(propLiteral));
+          if (isMethodLookup) {
             // Skip the fast-path null-return; let the dynamic fallback below
-            // handle the proto-method case via the host import.
+            // handle the method case via the host import.
           } else {
             // Property not found in struct — return undefined
             // (own property doesn't exist on this shape)

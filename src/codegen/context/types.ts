@@ -551,6 +551,12 @@ export interface CodegenContext {
   classMethodNames: Map<string, string[]>;
   /** Map from class name → global idx of the method-name CSV string constant (see #1047) */
   classMethodsCsvGlobal: Map<string, number>;
+  /** Map from class name → global index of the class-object externref singleton (#1395). Used so `C` resolves to a real object whose static-method descriptors are queryable. */
+  classObjectGlobals: Map<string, number>;
+  /** Map from class name → own static method names (for the static method allowlist; #1395) */
+  classStaticMethodNames: Map<string, string[]>;
+  /** Map from class name → global idx of the static-method-name CSV string constant (#1395) */
+  classStaticMethodsCsvGlobal: Map<string, number>;
   /** Whether targeting WASI */
   wasi: boolean;
   /** WASI import indices */
