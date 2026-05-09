@@ -1,0 +1,22 @@
+{
+  "pr": 330,
+  "conclusion": "success",
+  "head_branch": "issue-1382-phase2-hofs",
+  "head_sha": "b6c5ea3c50b00eb845fc3f744e8639208a13e0f2",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25592002796",
+  "timestamp": "2026-05-09T05:40:05Z",
+  "pass": 27774,
+  "fail": 14128,
+  "compile_error": 1164,
+  "snapshot_delta": 10,
+  "net_per_test": 63,
+  "regressions": 65,
+  "regressions_real": 16,
+  "regressions_wasm_change": 16,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 49,
+  "improvements": 79,
+  "baseline_sha": "b6c5ea3c50b00eb845fc3f744e8639208a13e0f2",
+  "baseline_staleness_commits": 20,
+  "baseline_stale": false
+}
