@@ -60,7 +60,7 @@ and any environment without a JS runtime. This follows the pattern of
 | **1030** | Array.prototype method dispatch long tail — 372 'object is not a function' | 40 | done | critical |
 | **1062** | compileProject emits invalid Wasm for lodash-es/clamp.js (toNumber type mismatch) | 41 | done | high |
 | **1070** | codegen: unsupported new expression for Intl.ListFormat (and other Intl builtins) | 41 | done | medium |
-| **1104** | Wasm-native Error construction and stack traces without JS host | Backlog | ready | medium |
+| **1104** | Wasm-native Error construction and stack traces without JS host | Backlog | suspended | medium |
 | **1105** | Wasm-native String method implementations for standalone mode | Backlog | ready | high |
 | **1169p** | IR Phase 4 Slice 13 — String + Array prototype methods through IR | 47 | done | medium |
 | **1232** | IR Phase 4 Slice 13c — String fixed-signature methods through IR | 47 | done | high |
@@ -70,6 +70,7 @@ and any environment without a JS runtime. This follows the pattern of
 | **1324** | JSON.stringify and JSON.parse: implement in pure Wasm, eliminate JS host dependency | 50 | done | medium |
 | **1325** | instanceof against built-in types: compile-time type-tag registry eliminates JS host for common cases | 50 | in-progress | medium |
 | **1326** | Async standalone: implement microtask queue + CPS scheduler in Wasm for Promise/async without JS host | 50 | ready | low |
+| **1326c** | Async standalone Phase 1C: microtask queue + Promise.then chained-resolution (follow-up to #1326 Phase 1B) | 51 | ready | medium |
 | **1335** | Number.prototype formatting in pure Wasm: integer toString(radix), then Ryu for floats (standalone) | 50 | ready | medium |
 | **1353** | JSON.stringify (objects/arrays) + JSON.parse: architect spec for Wasm shape-walking and recursive-descent parser | 50 | ready | medium |
 

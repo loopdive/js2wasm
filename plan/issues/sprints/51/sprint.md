@@ -171,22 +171,29 @@ Two parallel tracks:
 
 _Generated from issue files. Update issue `status`, then rerun `node scripts/sync-sprint-issue-tables.mjs`._
 
+### Blocked
+
+| Issue | Title | Priority | Status |
+|---|---|---|---|
+| #1373b | IR async Phase C: CPS lowering for await + async-return + async-throw | medium | blocked |
+
 ### Ready
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
-| #1366 | spec gap: class subclass + subclass-builtins prototype chain (~154 fails) | medium | ready |
+| #1326c | Async standalone Phase 1C: microtask queue + Promise.then chained-resolution (follow-up to #1326 Phase 1B) | medium | ready |
 | #1373 | IR: claim async functions (async/await through IR path) | medium | ready |
-| #1375 | IR: full optional-chain support (?. and ?.[]) without resolver fallback | medium | ready |
 | #1382 | structural: Wasm closures not JS-callable from host imports — bridge gap | high | ready |
 | #1387 | feat: implement `with` statement — architect exploration of dynamic-scope compilation strategies | medium | ready |
-| #1392 | IR: null-safe access primitives — ref.is_null IrUnop + value-producing if/else IR node | high | ready |
+| #1394 | class method-closure caching: C.prototype.method returns stable singleton closure | high | ready |
+| #1395 | class static method descriptors: class identifier resolves to string_constant, not constructor object | medium | ready |
 
 ### In Progress
 
 | Issue | Title | Priority | Status |
 |---|---|---|---|
 | #1364 | spec gap: class elements — method/field descriptor enumerable/configurable/writable (~700 fails) | high | in-progress |
+| #1375 | IR: full optional-chain support (?. and ?.[]) without resolver fallback | medium | in-progress |
 | #1378 | spec gap: try/catch/finally — error type fidelity, finally completion override, dstr-binding (~85 fails) | medium | in-progress |
 | #1381 | spec gap: String.prototype.{substring,slice,indexOf,search,charAt,charCodeAt,codePointAt,at,includes,startsWith,endsWith,trim,concat} edge cases (~128 fails) | medium | in-progress |
 
@@ -201,6 +208,7 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | #1362 | spec gap: Object.defineProperties — apply full descriptor map (332 fails) | high | done |
 | #1363 | spec gap: class dstr — 'Cannot destructure null/undefined' in method default-binding (~700 runtime_errors) | high | done |
 | #1365 | spec gap: class private fields, methods, accessors and brand checks (~97 fails in elements/private-*) | medium | done |
+| #1366 | spec gap: class subclass + subclass-builtins prototype chain (~154 fails) | medium | done |
 | #1366a | spec gap: class extends Error/TypeError/RangeError — builtin subclassing via existing host imports (+40-60 passes) | high | done |
 | #1367 | spec gap: Iterator.prototype helpers — get-next-once, non-constructible, return-on-throw (~244 fails) | high | done |
 | #1368 | spec gap: Promise.{all,allSettled,any,race} — resolver-element semantics, ctor type-check (~109 fails) | medium | done |
@@ -220,6 +228,7 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | #1389 | fix: false CE — var + function-declaration same name at top-level scope | medium | done |
 | #1390 | fix: import-defer proposal tests fail as CE (no test export) when TEST262_INCLUDE_PROPOSALS=1 | low | done |
 | #1391 | infra: CI feed baseline staleness detection — warn when baseline_sha diverges from current main | high | done |
+| #1392 | IR: null-safe access primitives — ref.is_null IrUnop + value-producing if/else IR node | high | done |
 | #1393 | infra: content-hash CI cache + GitHub Merge Queue — eliminate baseline drift and redundant re-runs | high | done |
 
 <!-- GENERATED_ISSUE_TABLES_END -->

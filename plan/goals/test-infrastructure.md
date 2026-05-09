@@ -122,7 +122,7 @@ shipping trustworthy compiler work.
 | **1048** | async-generator destructuring: illegal cast inside __closure_N | 40 | done | low |
 | **1049** | Destructuring default init fn-name-cover: wrong .name on covered function | 40 | done | medium |
 | **1051** | Private static class methods: wrong return value via private-name dispatch | 40 | done | low |
-| **1052** | Array destructuring ignores user-overridden Array.prototype[Symbol.iterator] | Backlog | ready | low |
+| **1052** | Array destructuring ignores user-overridden Array.prototype[Symbol.iterator] | Backlog | backlog | low |
 | **1053** | arguments.length wrong in class methods with trailing-comma call sites | 41 | done | medium |
 | **1055** | RegExp pattern modifiers: SyntaxError not thrown for invalid modifier syntax | 40 | done | low |
 | **1056** | DataView setUintN / setIntN / setFloatN instance methods missing | 41 | done | low |
