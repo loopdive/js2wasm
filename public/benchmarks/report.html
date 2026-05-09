@@ -607,6 +607,7 @@
     <script>
       const REPORT_JSON = "results/test262-report.json";
       const RESULTS_JSONL = "results/test262-results.jsonl";
+      const CATEGORY_EDITIONS_JSON = "results/test262-category-editions.json";
       const PROPOSAL_LABEL = "Proposals";
       const BENCH_SUITE_FILES = [
         "benchmarks/suites/strings.ts",
@@ -1530,6 +1531,12 @@
           syncToggleStyles();
           renderSummaryCard();
           renderEditionSection();
+          // (#1398) Re-filter the category table when the edition scope
+          // changes. `applyFilters` is hoisted (declared via function
+          // statement later in this scope) so it's safe to call here even
+          // before the table is built — the first call is a no-op until
+          // `rowsByGroup` is populated.
+          if (typeof applyFilters === "function") applyFilters();
         }
 
         function renderSummaryCard() {
@@ -1654,12 +1661,37 @@
           const query = searchInput.value.toLowerCase().trim();
           tbody.querySelectorAll(".detail-row").forEach((r) => r.remove());
 
+          // (#1398) Edition filter: when the timeline slider is set to a
+          // specific edition (`scoreState.editionScope` !== "overall"), hide
+          // category rows that have no tests in editions with rank ≤ the
+          // selected edition's rank. The data is keyed by the friendly
+          // edition name (e.g. "ES2022"), populated by
+          // `scripts/generate-editions.ts` (#1398 data pipeline).
+          const editionFilterActive =
+            scoreState.editionScope !== "overall" && scoreState.editionScope !== "overall+proposal";
+          const limitRank = editionFilterActive ? editionDetail?.limitRank : undefined;
+          const allowedEditionNames = editionFilterActive
+            ? new Set(
+                (editionDetail?.rows || [])
+                  .filter((r) => typeof r.rank === "number" && typeof limitRank === "number" && r.rank <= limitRank)
+                  .map((r) => r.edition),
+              )
+            : null;
+          const categoryEditions = data.category_editions || {};
+
           for (const [group, { groupRow, catRows }] of rowsByGroup) {
             let groupVisible = false;
             for (const { row, cat } of catRows) {
               const nameMatch =
                 !query || cat.name.toLowerCase().includes(query) || shortName(cat.name).toLowerCase().includes(query);
-              const visible = nameMatch;
+              let editionMatch = true;
+              if (editionFilterActive && allowedEditionNames) {
+                // Show the row only if at least one of its edition buckets is
+                // within the allowed (≤ selected rank) set.
+                const byEdition = categoryEditions[cat.name];
+                editionMatch = byEdition ? Object.keys(byEdition).some((ed) => allowedEditionNames.has(ed)) : false;
+              }
+              const visible = nameMatch && editionMatch;
               row.style.display = visible ? "" : "none";
               if (visible) groupVisible = true;
             }
@@ -2229,16 +2261,24 @@
       }
 
       async function main() {
-        const [conformance, benchmarkHistory, snippets, conformanceRuns] = await Promise.all([
+        const [conformance, benchmarkHistory, snippets, conformanceRuns, categoryEditions] = await Promise.all([
           loadReportWithFallback(),
           loadJSON(assetPath("benchmarks/results/history.json")),
           loadBenchmarkSnippets(),
           loadJSON(assetPath("benchmarks/results/runs/index.json")),
+          loadJSON(CATEGORY_EDITIONS_JSON),
         ]);
         const app = document.getElementById("app");
         app.textContent = "";
 
         if (conformance) {
+          // (#1398) Attach the per-category × per-edition counts so
+          // `renderConformance` can pass them into `applyFilters` for the
+          // category-table edition filter. Stored on the report object to
+          // avoid changing the signature of the chain of consumers.
+          if (categoryEditions) {
+            conformance.category_editions = categoryEditions;
+          }
           renderConformance(conformance, app, conformanceRuns);
         } else {
           app.appendChild(
