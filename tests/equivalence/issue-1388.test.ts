@@ -84,11 +84,45 @@ describe("#1388 — detached class method extraction", () => {
     expect(exp.test!()).toBe(7);
   });
 
-  it.todo(
-    "instance method, detached via prototype — regressed slice 2 (needs method-closure caching to preserve `c.m === C.prototype.m`)",
-  );
+  // (#1394) Slice 2 — method-closure caching landed; the prototype-extraction
+  // pattern now produces a stable closure, restoring +120 wins on
+  // language/{expressions,statements}/class/async-gen-method yield-star tests.
+  it("instance method, detached via prototype — invokable + stable identity (#1394)", async () => {
+    const exp = await compileToWasm(`
+      class C {
+        method(): number { return 5; }
+      }
+      export function test(): number {
+        const f: any = C.prototype.method;
+        if (f === null) return 0;
+        // The cached closure carries no this binding (matches strict-mode
+        // detached-call semantics). The method body has no this access, so
+        // the call succeeds and returns the literal.
+        if (f() !== 5) return 1;
+        // Identity invariant: instance and prototype access yield the SAME
+        // closure ref — a single externref module global is reused.
+        const c = new C();
+        if (c.method !== C.prototype.method) return 2;
+        return 1;
+      }
+    `);
+    expect(exp.test!()).toBe(1);
+  });
 
-  it.todo("instance method with arg, detached via prototype — same slice 2 dependency");
+  it("instance method with arg, detached via prototype (#1394)", async () => {
+    const exp = await compileToWasm(`
+      class C {
+        method(x: number): number { return x + 1; }
+      }
+      export function test(): number {
+        const f: any = C.prototype.method;
+        if (f === null) return 0;
+        if (f(41) !== 42) return 1;
+        return 1;
+      }
+    `);
+    expect(exp.test!()).toBe(1);
+  });
 
   it("static method extracted, typeof reports 'function'", async () => {
     const exp = await compileToWasm(`

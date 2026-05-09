@@ -15,7 +15,7 @@ import { popBody } from "./context/bodies.js";
 import { reportError, reportErrorNoNode } from "./context/errors.js";
 import { allocLocal, allocTempLocal, releaseTempLocal } from "./context/locals.js";
 import type { CodegenContext, FunctionContext } from "./context/types.js";
-import { emitFuncRefAsClosure } from "./closures.js";
+import { emitCachedMethodClosureAccess, emitFuncRefAsClosure } from "./closures.js";
 import { emitLazyProtoGet, findExternInfoForMember } from "./expressions/extern.js";
 import { emitThrowTypeError, resolveDeclaringClassForPrivateName } from "./expressions/helpers.js";
 import { patchStructNewForAddedField } from "./expressions/late-imports.js";
@@ -1350,15 +1350,37 @@ export function compilePropertyAccess(
     }
   }
 
-  // (#1388 regression fix) The earlier `ClassName.prototype.<method>` handler
-  // emitted a freshly-allocated closure struct on every access, which broke
-  // method identity: `c.m === C.prototype.m` failed (each side returned a
-  // different closure ref). 478 tests under `language/{expressions,statements}/
-  // class/elements/*` exercise this exact assertion via `verifyProperty` and
-  // turned pass→fail after the original PR landed. The handler is intentionally
-  // omitted here until method-closure caching is implemented (slice 2). Until
-  // then, `C.prototype.<method>` falls through to the legacy generic externref
-  // path, restoring the previous null-externref behaviour and the 478 wins.
+  // (#1394) `ClassName.prototype.<method>` — emit a cached singleton
+  // closure-struct externref. The previous PR #294 emitted a fresh
+  // closure on every access, breaking the `c.m === C.prototype.m`
+  // identity assertion that 478 class/elements tests verify. The cache
+  // (one externref global per `${className}_${methodName}`, lazily
+  // initialised on first access) gives stable identity AND restores
+  // the +120 wins on instance-method-via-prototype yield-star
+  // extractions that PR #305's revert lost.
+  if (
+    ts.isPropertyAccessExpression(expr.expression) &&
+    ts.isIdentifier(expr.expression.expression) &&
+    expr.expression.name.text === "prototype"
+  ) {
+    const rawName = expr.expression.expression.text;
+    const className = ctx.classExprNameMap.get(rawName) ?? rawName;
+    if (ctx.classSet.has(className)) {
+      const fullName = `${className}_${propName}`;
+      // Only intercept actual instance methods. Skip static methods
+      // (they live on the constructor, not the prototype) and
+      // accessors (handled by the existing accessor path below).
+      if (ctx.classMethodSet.has(fullName) && !ctx.staticMethodSet.has(fullName)) {
+        const funcIdx = ctx.funcMap.get(fullName);
+        const structTypeIdx = ctx.structMap.get(className);
+        if (funcIdx !== undefined && structTypeIdx !== undefined) {
+          if (emitCachedMethodClosureAccess(ctx, fctx, fullName, funcIdx, structTypeIdx)) {
+            return { kind: "externref" };
+          }
+        }
+      }
+    }
+  }
 
   // Handle Math.<method>.length — static function arity
   if (
@@ -1927,6 +1949,27 @@ export function compilePropertyAccess(
               fctx.body.push({ op: "struct.get", typeIdx: structTypeIdx, fieldIdx });
               const fType = structFields[fieldIdx]!.type;
               return fType;
+            }
+          }
+          // (#1394) For CLASS instances, return the SAME cached singleton
+          // closure as `C.prototype.<method>` so the identity invariant
+          // `c.m === C.prototype.m` holds. Spec'd in
+          // verifyProperty(C.prototype, "m", { value: m }) across 478
+          // class/elements tests.
+          if (ctx.classSet.has(typeName) && ctx.classMethodSet.has(methodFullName)) {
+            const structTypeIdx = ctx.structMap.get(typeName);
+            if (structTypeIdx !== undefined) {
+              // Compile + drop the object expression for side effects;
+              // the cached closure carries no per-instance binding (JS
+              // strict mode `var fn = c.m; fn();` calls with `this =
+              // undefined`, so the lost-binding semantics match spec).
+              const objResult = compileExpression(ctx, fctx, expr.expression);
+              if (objResult) {
+                fctx.body.push({ op: "drop" });
+              }
+              if (emitCachedMethodClosureAccess(ctx, fctx, methodFullName, funcIdx, structTypeIdx)) {
+                return { kind: "externref" };
+              }
             }
           }
           // Legacy fallback for class methods or unresolved cases:

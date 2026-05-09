@@ -3019,6 +3019,112 @@ export function emitObjectMethodAsClosure(
   return { kind: "ref", typeIdx: structTypeIdx };
 }
 
+/**
+ * (#1394) Emit a cached singleton closure for a class method, preserving
+ * identity: every emit of `C.prototype.<method>` (or `instance.<method>`
+ * as a value) returns the same externref so JS's `===` works (e.g.
+ * `c.m === C.prototype.m`). 478 tests under
+ * `language/{expressions,statements}/class/elements/*` exercise this
+ * exact assertion via `verifyProperty(C.prototype, "m", { value: m })`.
+ *
+ * The cache is a per-class-method module-level externref global,
+ * lazily initialised on first access (matches the existing
+ * `emitLazyProtoGet` pattern). The canonical trampoline is registered
+ * once per method too — its name is
+ * `__obj_meth_tramp_${methodName}_cached`, distinct from the legacy
+ * per-call-site `__obj_meth_tramp_${methodName}_${counter}` that
+ * `emitObjectMethodAsClosure` emits.
+ *
+ * Returns `true` if the access was emitted; `false` if the method's
+ * signature couldn't be resolved (caller should fall back).
+ */
+export function emitCachedMethodClosureAccess(
+  ctx: CodegenContext,
+  fctx: FunctionContext,
+  methodName: string,
+  methodFuncIdx: number,
+  objStructTypeIdx: number,
+): boolean {
+  // Resolve the user-visible signature so we know the wrapper struct's
+  // funcref shape. Method signature is [(ref null objStruct), ...userParams]
+  // → results; strip the leading `this` to derive the closure-callable
+  // user signature.
+  const sig = getFuncSignature(ctx, methodFuncIdx);
+  if (!sig || sig.params.length === 0) return false;
+  const userParams = sig.params.slice(1);
+  const results = sig.results;
+
+  const wrapperTypes = getOrCreateFuncRefWrapperTypes(ctx, userParams, results);
+  if (!wrapperTypes) return false;
+  const { structTypeIdx, liftedFuncTypeIdx } = wrapperTypes;
+
+  // Reuse the canonical trampoline if one was already registered for
+  // this method; otherwise build it once.
+  const trampolineName = `__obj_meth_tramp_${methodName}_cached`;
+  let trampolineFuncIdx = ctx.funcMap.get(trampolineName);
+  if (trampolineFuncIdx === undefined) {
+    // Trampoline body: drop the closure-self arg (param 0), push
+    // `ref.null <objStruct>` for the method's `this` (matches the
+    // per-call-site emitObjectMethodAsClosure semantics — JS strict
+    // mode `var fn = c.m; fn();` calls with `this = undefined`, so a
+    // null receiver propagates the spec-mandated TypeError on
+    // `this.field` access), then forward user params, then call the
+    // method.
+    const trampolineBody: Instr[] = [{ op: "ref.null", typeIdx: objStructTypeIdx } as Instr];
+    for (let i = 0; i < userParams.length; i++) {
+      trampolineBody.push({ op: "local.get", index: i + 1 } as Instr);
+    }
+    trampolineBody.push({ op: "call", funcIdx: methodFuncIdx } as Instr);
+    trampolineFuncIdx = ctx.numImportFuncs + ctx.mod.functions.length;
+    ctx.mod.functions.push({
+      name: trampolineName,
+      typeIdx: liftedFuncTypeIdx,
+      locals: [],
+      body: trampolineBody,
+      exported: false,
+    });
+    ctx.funcMap.set(trampolineName, trampolineFuncIdx);
+    ctx.mod.declaredFuncRefs.push(trampolineFuncIdx);
+  }
+
+  // Reuse or allocate the cache global. Type is externref so the value
+  // is stable across access sites (the closure-struct ref is converted
+  // via `extern.convert_any` once at init).
+  let cacheGlobalIdx = ctx.methodClosureGlobals.get(methodName);
+  if (cacheGlobalIdx === undefined) {
+    cacheGlobalIdx = ctx.numImportGlobals + ctx.mod.globals.length;
+    ctx.mod.globals.push({
+      name: `__method_closure_${methodName}`,
+      type: { kind: "externref" },
+      mutable: true,
+      init: [{ op: "ref.null.extern" }],
+    });
+    ctx.methodClosureGlobals.set(methodName, cacheGlobalIdx);
+  }
+
+  // Emit the lazy-init access (mirrors `emitLazyProtoGet`):
+  //   global.get $cache
+  //   ref.is_null
+  //   if (then: build closure, store in $cache)
+  //   global.get $cache
+  const initBody: Instr[] = [
+    { op: "ref.func", funcIdx: trampolineFuncIdx } as Instr,
+    { op: "struct.new", typeIdx: structTypeIdx } as Instr,
+    { op: "extern.convert_any" } as Instr,
+    { op: "global.set", index: cacheGlobalIdx } as Instr,
+  ];
+  fctx.body.push({ op: "global.get", index: cacheGlobalIdx });
+  fctx.body.push({ op: "ref.is_null" });
+  fctx.body.push({
+    op: "if",
+    blockType: { kind: "empty" },
+    then: initBody,
+    else: [],
+  } as unknown as Instr);
+  fctx.body.push({ op: "global.get", index: cacheGlobalIdx });
+  return true;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────
 
 /**
