@@ -1566,6 +1566,23 @@ export function compileBinaryExpression(
             // Strict equality: __host_eq (JS ===) for reference identity.
             // If that returns false, fall through to numeric unboxing for
             // boxed numbers that differ in identity but have the same value. (#1065)
+            //
+            // (#1383) Gate the numeric-unbox fallback on a runtime typeof
+            // check — only fire it when BOTH operands are typeof === "number".
+            // The fallback was load-bearing for genuinely-different-identity
+            // boxed numbers (V8 sometimes returns different externref ids for
+            // numerically-equal JS numbers), but it incorrectly succeeded for
+            // cross-type strict comparisons too: `null === 0` produced
+            // `__unbox_number(null) === 0`, `__unbox_number(0) === 0`, true.
+            // Spec §7.2.16 says strict equality between values of different
+            // types is always false.
+            //
+            // Earlier PR #272 tried to drop the fallback entirely and caused
+            // -12 net test262 — the fallback was masking unrelated mismatches
+            // (boolean / undefined externrefs that also happen to land in
+            // the externref-vs-externref path). Gating with a typeof check
+            // preserves the load-bearing same-type case AND fixes the
+            // cross-type leak.
             const hostEqIdx = ensureLateImport(
               ctx,
               "__host_eq",
@@ -1573,6 +1590,7 @@ export function compileBinaryExpression(
               [{ kind: "i32" }],
             );
             flushLateImportShifts(ctx, fctx);
+            const typeofNumIdx = ctx.funcMap.get("__typeof_number")!;
             return [
               { op: "local.get", index: tmpLeft },
               { op: "local.get", index: tmpRight },
@@ -1582,11 +1600,31 @@ export function compileBinaryExpression(
                 blockType: { kind: "val", type: { kind: "i32" } },
                 then: [{ op: "i32.const", value: isNeqOp ? 0 : 1 } as Instr],
                 else: [
+                  // Both operands must be JS numbers for the numeric-unbox
+                  // fallback to be sound. Otherwise host_eq's `false` is
+                  // definitive (cross-type strict equality is always false).
                   { op: "local.get", index: tmpLeft },
-                  { op: "call", funcIdx: unboxIdx },
+                  { op: "call", funcIdx: typeofNumIdx } as Instr,
                   { op: "local.get", index: tmpRight },
-                  { op: "call", funcIdx: unboxIdx },
-                  { op: isEqOp ? "f64.eq" : "f64.ne" } as Instr,
+                  { op: "call", funcIdx: typeofNumIdx } as Instr,
+                  { op: "i32.and" } as Instr,
+                  {
+                    op: "if",
+                    blockType: { kind: "val", type: { kind: "i32" } },
+                    then: [
+                      // Both numbers: numeric-unbox compare is safe and
+                      // recovers same-value-different-identity cases.
+                      { op: "local.get", index: tmpLeft },
+                      { op: "call", funcIdx: unboxIdx },
+                      { op: "local.get", index: tmpRight },
+                      { op: "call", funcIdx: unboxIdx },
+                      { op: isEqOp ? "f64.eq" : "f64.ne" } as Instr,
+                    ] as Instr[],
+                    else: [
+                      // Cross-type or non-number: host_eq's false is final.
+                      { op: "i32.const", value: isNeqOp ? 1 : 0 } as Instr,
+                    ] as Instr[],
+                  } as Instr,
                 ] as Instr[],
               } as Instr,
             ] as Instr[];
