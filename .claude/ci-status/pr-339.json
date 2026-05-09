@@ -1,0 +1,22 @@
+{
+  "pr": 339,
+  "conclusion": "success",
+  "head_branch": "issue-1397-static-method-dispatch",
+  "head_sha": "5ab6fa75f845c83c610523f662f7effa3669e095",
+  "run_url": "https://github.com/loopdive/js2wasm/actions/runs/25598982452",
+  "timestamp": "2026-05-09T11:02:45Z",
+  "pass": 27983,
+  "fail": 13953,
+  "compile_error": 1141,
+  "snapshot_delta": 4,
+  "net_per_test": 54,
+  "regressions": 49,
+  "regressions_real": 8,
+  "regressions_wasm_change": 8,
+  "wasm_identical_noise": 0,
+  "compile_timeouts": 41,
+  "improvements": 62,
+  "baseline_sha": "5ab6fa75f845c83c610523f662f7effa3669e095",
+  "baseline_staleness_commits": 3,
+  "baseline_stale": false
+}
