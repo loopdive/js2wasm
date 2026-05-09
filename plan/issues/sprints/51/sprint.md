@@ -187,6 +187,7 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | #1387 | feat: implement `with` statement — architect exploration of dynamic-scope compilation strategies | medium | ready |
 | #1394 | class method-closure caching: C.prototype.method returns stable singleton closure | high | ready |
 | #1395 | class static method descriptors: class identifier resolves to string_constant, not constructor object | medium | ready |
+| #1396 | for-of/dstr + assignment/dstr default initializers don't fire on OOB extenref-array reads | high | ready |
 
 ### In Progress
 

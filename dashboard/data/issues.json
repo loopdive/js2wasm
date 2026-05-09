@@ -245,6 +245,16 @@
   ],
   "ready": [
     {
+      "id": "1396",
+      "title": "for-of/dstr + assignment/dstr default initializers don't fire on OOB extenref-array reads",
+      "priority": "high",
+      "feasibility": "medium",
+      "depends_on": [],
+      "goal": "spec-completeness",
+      "status": "ready",
+      "sprint": "51"
+    },
+    {
       "id": "1395",
       "title": "class static method descriptors: class identifier resolves to string_constant, not constructor object",
       "priority": "medium",

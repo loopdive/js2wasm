@@ -19194,6 +19194,18 @@
       "files": [],
       "goal": "spec-completeness",
       "cluster": "spec-completeness"
+    },
+    {
+      "id": "1396",
+      "title": "for-of/dstr + assignment/dstr default initializers don't fire on OOB extenref-array reads",
+      "priority": "high",
+      "status": "ready",
+      "raw_status": "ready",
+      "sprint": "51",
+      "depends_on": [],
+      "files": [],
+      "goal": "spec-completeness",
+      "cluster": "spec-completeness"
     }
   ],
   "links": [
@@ -21515,7 +21527,8 @@
         "1389",
         "1390",
         "1394",
-        "1395"
+        "1395",
+        "1396"
       ]
     },
     {
@@ -26546,6 +26559,10 @@
       "issue": "1395"
     },
     {
+      "goal": "spec-completeness",
+      "issue": "1396"
+    },
+    {
       "goal": "standalone-mode",
       "issue": "34"
     },
@@ -31116,6 +31133,10 @@
       "issue": "1395"
     },
     {
+      "goal": "async-model",
+      "issue": "1396"
+    },
+    {
       "goal": "symbol-protocol",
       "issue": "10"
     },
@@ -31740,6 +31761,10 @@
       "issue": "1395"
     },
     {
+      "goal": "symbol-protocol",
+      "issue": "1396"
+    },
+    {
       "goal": "builtin-methods",
       "issue": "10"
     },
@@ -32364,6 +32389,10 @@
       "issue": "1395"
     },
     {
+      "goal": "builtin-methods",
+      "issue": "1396"
+    },
+    {
       "goal": "property-model",
       "issue": "10"
     },
@@ -32986,6 +33015,10 @@
     {
       "goal": "property-model",
       "issue": "1395"
+    },
+    {
+      "goal": "property-model",
+      "issue": "1396"
     },
     {
       "goal": "iterator-protocol",
