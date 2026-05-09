@@ -25,6 +25,7 @@ import {
   addFuncType,
   destructureParamArray,
   destructureParamObject,
+  destructureParamObjectExternref,
   ensureExnTag,
   ensureStructForType,
   getArrTypeIdxFromVec,
@@ -1891,7 +1892,20 @@ export function compileArrowAsClosure(
     } else if (ts.isObjectBindingPattern(param.name)) {
       // Object destructuring: function({a, b}) { ... }
       let handled = false;
-      if (paramType.kind === "ref" || paramType.kind === "ref_null") {
+
+      // Externref params (e.g. callback from JS host or `: any`-typed) need
+      // the host-import-driven extraction path that mirrors the array case
+      // above. Without this, the object pattern's binding locals get
+      // allocated but never written, so any code reading w/x/y/z sees the
+      // default-zero/null value of the local instead of the property pulled
+      // off the argument object. (#43 cluster — function-expression dstr
+      // on `any` params)
+      if (paramType.kind === "externref") {
+        destructureParamObjectExternref(ctx, liftedFctx, paramIdx, param.name);
+        handled = true;
+      }
+
+      if (!handled && (paramType.kind === "ref" || paramType.kind === "ref_null")) {
         const typeIdx = paramType.typeIdx;
         const typeDef = ctx.mod.types[typeIdx];
         if (typeDef && typeDef.kind === "struct") {

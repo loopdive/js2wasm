@@ -209,7 +209,6 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | #1349 | spec gap: BigInt typed-path eager f64 assumptions (47 test262 fails, 4 illegal_cast + 13 runtime) | medium | ready |
 | #1350 | spec gap: ArrayBuffer resizable + TypedArray detached-buffer guards (100 + 39 test262 fails) | medium | ready |
 | #1351 | spec gap: ArrayBuffer resizable + TypedArray detached-buffer guards (100 + 39 test262 fails) | medium | ready |
-| #1352 | spec gap: Set methods (union/intersection/etc.) accept any set-like argument (101 test262 fails) | medium | ready |
 | #1353 | JSON.stringify (objects/arrays) + JSON.parse: architect spec for Wasm shape-walking and recursive-descent parser | medium | ready |
 
 ### In Progress
@@ -222,6 +221,7 @@ _Generated from issue files. Update issue `status`, then rerun `node scripts/syn
 | #1336 | spec gap: Object.assign drops getters / Symbol keys (27 of 38 test262 fails) | medium | in-progress |
 | #1342 | spec gap: JSON.stringify replacer/toJSON/property-list (49 of 66 test262 fails) | medium | in-progress |
 | #1348 | spec gap: for-of doesn't IteratorClose on body throw (portion of 389 fails) | high | in-progress |
+| #1352 | spec gap: Set methods (union/intersection/etc.) accept any set-like argument (101 test262 fails) | medium | in-progress |
 
 ### Done
 

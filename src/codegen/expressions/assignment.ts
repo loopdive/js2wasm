@@ -521,21 +521,162 @@ function compileDestructuringAssignment(
       fctx.body.push({ op: "local.get", index: tmpNullChk });
     }
 
-    // Ensure any target identifiers are allocated as locals
-    for (const prop of target.properties) {
-      if (ts.isShorthandPropertyAssignment(prop)) {
-        const name = prop.name.text;
-        if (!fctx.localMap.has(name) && !ctx.moduleGlobals.has(name)) {
-          allocLocal(fctx, name, { kind: "externref" });
+    // Stash the RHS so we can use it for property reads via __extern_get,
+    // then restore it as the expression result.
+    const rhsTmp = allocLocal(fctx, `__destruct_rhs_${fctx.locals.length}`, resultType);
+    fctx.body.push({ op: "local.tee", index: rhsTmp });
+    fctx.body.push({ op: "drop" } as Instr);
+
+    // (#43) For each target binding, read the property via __extern_get
+    // (which handles real JS objects, sidecar maps, and __sget_* fallbacks)
+    // and apply default initializers per ECMA-262 §13.15.5.3 step 8 (only
+    // when the read returns `undefined`). Without this, `result = { x = 1 }
+    // = vals` left x at its initial zero/null even when vals had no `x`
+    // property, because the no-struct-fields path returned early without
+    // touching any of the target identifiers.
+    if (resultType.kind === "externref") {
+      let getIdx = ctx.funcMap.get("__extern_get");
+      if (getIdx === undefined) {
+        const importsBefore = ctx.numImportFuncs;
+        const getType = addFuncType(ctx, [{ kind: "externref" }, { kind: "externref" }], [{ kind: "externref" }]);
+        addImport(ctx, "env", "__extern_get", { kind: "func", typeIdx: getType });
+        shiftLateImportIndices(ctx, fctx, importsBefore, ctx.numImportFuncs - importsBefore);
+        getIdx = ctx.funcMap.get("__extern_get");
+      }
+      const undefIdx = ensureLateImport(ctx, "__extern_is_undefined", [{ kind: "externref" }], [{ kind: "i32" }]);
+      flushLateImportShifts(ctx, fctx);
+      getIdx = ctx.funcMap.get("__extern_get");
+
+      if (getIdx !== undefined && undefIdx !== undefined) {
+        for (const prop of target.properties) {
+          if (!ts.isShorthandPropertyAssignment(prop)) continue;
+          const name = prop.name.text;
+
+          // Resolve write target: local first, then module global. Allocate
+          // a local only if neither exists.
+          let localIdx = fctx.localMap.get(name);
+          let moduleGlobalIdx = ctx.moduleGlobals.get(name);
+          let targetType: ValType;
+          if (localIdx !== undefined) {
+            targetType = getLocalType(fctx, localIdx) ?? { kind: "externref" as const };
+          } else if (moduleGlobalIdx !== undefined) {
+            const globalDef = ctx.mod.globals[localGlobalIdx(ctx, moduleGlobalIdx)];
+            targetType = globalDef?.type ?? { kind: "externref" as const };
+          } else {
+            localIdx = allocLocal(fctx, name, { kind: "externref" });
+            targetType = { kind: "externref" as const };
+          }
+
+          // Read prop value: tmp = __extern_get(rhs, "name")
+          addStringConstantGlobal(ctx, name);
+          const strGlobalIdx = ctx.stringGlobalMap.get(name);
+          if (strGlobalIdx === undefined) continue;
+
+          const tmpVal = allocLocal(fctx, `__destruct_val_${fctx.locals.length}`, { kind: "externref" });
+          fctx.body.push({ op: "local.get", index: rhsTmp });
+          fctx.body.push({ op: "global.get", index: strGlobalIdx });
+          fctx.body.push({ op: "call", funcIdx: getIdx });
+          fctx.body.push({ op: "local.set", index: tmpVal });
+
+          // Helper: emit `<value-on-stack> -> coerce -> set target`.
+          const emitSetTarget = (instrs: Instr[]): void => {
+            // The value is currently on the Wasm stack as externref. Coerce
+            // and then set. We append into `instrs` so the caller can splice
+            // it into a then/else branch.
+            if (!valTypesMatch({ kind: "externref" }, targetType)) {
+              const saved = fctx.body;
+              fctx.body = instrs;
+              coerceType(ctx, fctx, { kind: "externref" }, targetType);
+              fctx.body = saved;
+            }
+            if (localIdx !== undefined) {
+              instrs.push({ op: "local.set", index: localIdx } as Instr);
+            } else if (moduleGlobalIdx !== undefined) {
+              instrs.push({ op: "global.set", index: moduleGlobalIdx } as Instr);
+            }
+          };
+
+          if (prop.objectAssignmentInitializer) {
+            // Per spec: defaults fire ONLY on undefined. Use
+            // __extern_is_undefined (not ref.is_null) so JS null falls
+            // through to the assignment branch.
+            fctx.body.push({ op: "local.get", index: tmpVal });
+            fctx.body.push({ op: "call", funcIdx: undefIdx });
+
+            // then-branch: compile default into target
+            const trueInstrs: Instr[] = [];
+            const savedTrueBody = fctx.body;
+            fctx.body = trueInstrs;
+            const initType = compileExpression(ctx, fctx, prop.objectAssignmentInitializer, targetType);
+            if (initType && !valTypesMatch(initType, targetType)) {
+              coerceType(ctx, fctx, initType, targetType);
+            }
+            fctx.body = savedTrueBody;
+            if (localIdx !== undefined) {
+              trueInstrs.push({ op: "local.set", index: localIdx } as Instr);
+            } else if (moduleGlobalIdx !== undefined) {
+              // Re-read in case compileExpression shifted indices.
+              moduleGlobalIdx = ctx.moduleGlobals.get(name)!;
+              trueInstrs.push({ op: "global.set", index: moduleGlobalIdx } as Instr);
+            }
+
+            // else-branch: forward the read value (with optional coerce)
+            const elseInstrs: Instr[] = [{ op: "local.get", index: tmpVal } as Instr];
+            emitSetTarget(elseInstrs);
+
+            fctx.body.push({
+              op: "if",
+              blockType: { kind: "empty" },
+              then: trueInstrs,
+              else: elseInstrs,
+            });
+          } else {
+            // No default: just assign whatever __extern_get returned (which
+            // is `undefined` if missing — JS-equivalent behaviour).
+            fctx.body.push({ op: "local.get", index: tmpVal });
+            const tail: Instr[] = [];
+            emitSetTarget(tail);
+            for (const i of tail) fctx.body.push(i);
+          }
         }
-      } else if (ts.isSpreadAssignment(prop) && ts.isIdentifier(prop.expression)) {
-        const name = prop.expression.text;
-        if (!fctx.localMap.has(name) && !ctx.moduleGlobals.has(name)) {
-          allocLocal(fctx, name, { kind: "externref" });
+      } else {
+        // Imports unavailable — fall through to the legacy alloc-only path
+        // so we at least don't trap.
+        for (const prop of target.properties) {
+          if (ts.isShorthandPropertyAssignment(prop)) {
+            const name = prop.name.text;
+            if (!fctx.localMap.has(name) && !ctx.moduleGlobals.has(name)) {
+              allocLocal(fctx, name, { kind: "externref" });
+            }
+          } else if (ts.isSpreadAssignment(prop) && ts.isIdentifier(prop.expression)) {
+            const name = prop.expression.text;
+            if (!fctx.localMap.has(name) && !ctx.moduleGlobals.has(name)) {
+              allocLocal(fctx, name, { kind: "externref" });
+            }
+          }
+        }
+      }
+    } else {
+      // Non-externref RHS (struct ref already typed) — preserve old
+      // alloc-only behaviour; the typed-struct path above (lines 570+)
+      // handles the real extraction.
+      for (const prop of target.properties) {
+        if (ts.isShorthandPropertyAssignment(prop)) {
+          const name = prop.name.text;
+          if (!fctx.localMap.has(name) && !ctx.moduleGlobals.has(name)) {
+            allocLocal(fctx, name, { kind: "externref" });
+          }
+        } else if (ts.isSpreadAssignment(prop) && ts.isIdentifier(prop.expression)) {
+          const name = prop.expression.text;
+          if (!fctx.localMap.has(name) && !ctx.moduleGlobals.has(name)) {
+            allocLocal(fctx, name, { kind: "externref" });
+          }
         }
       }
     }
-    // RHS value is already on the stack — return it as the expression result
+
+    // Restore RHS as the expression result.
+    fctx.body.push({ op: "local.get", index: rhsTmp });
     return resultType;
   }
 
@@ -574,8 +715,35 @@ function compileDestructuringAssignment(
       let localIdx = fctx.localMap.get(propName);
 
       const fieldIdx = fields.findIndex((f) => f.name === propName);
+
+      // (#43) When the source struct has no matching field but the pattern
+      // supplies a default initializer (e.g. `{ x = 1 } = {}`), the spec
+      // says: read `obj.x` → `undefined` → default fires → x = 1. The old
+      // path reported "Unknown field" and skipped the binding entirely,
+      // leaving the local at its initial zero/null. Now we treat field-not-
+      // found as "the value is undefined" — fire the default if present,
+      // otherwise just leave the binding alone (matching JS where reading
+      // a missing property gives undefined; the destructured local then
+      // holds undefined).
       if (fieldIdx === -1) {
-        reportError(ctx, prop, `Unknown field in destructuring: ${propName}`);
+        if (!prop.objectAssignmentInitializer) {
+          // No default, no field — silently skip (the destructured local
+          // is already undefined / its zero value). This matches the
+          // "primitive RHS / no destructure" branch above which lets
+          // bindings stay at their defaults.
+          continue;
+        }
+        // Auto-allocate local if not declared. Use externref so a
+        // boxed-anything default (number, string, object) flows through.
+        if (localIdx === undefined) {
+          localIdx = allocLocal(fctx, propName, { kind: "externref" });
+        }
+        const targetType = getLocalType(fctx, localIdx) ?? { kind: "externref" as const };
+        const initType = compileExpression(ctx, fctx, prop.objectAssignmentInitializer, targetType);
+        if (initType && !valTypesMatch(initType, targetType)) {
+          coerceType(ctx, fctx, initType, targetType);
+        }
+        fctx.body.push({ op: "local.set", index: localIdx });
         continue;
       }
 

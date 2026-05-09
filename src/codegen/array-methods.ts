@@ -23,7 +23,7 @@ import {
   registerEmitBoundsCheckedArrayGet,
   VOID_RESULT,
 } from "./shared.js";
-import { emitUndefined } from "./expressions/late-imports.js";
+import { emitUndefined, ensureGetUndefined } from "./expressions/late-imports.js";
 import { stringConstantExternrefInstrs } from "./native-strings.js";
 import { ensureTimsortHelper } from "./timsort.js";
 import { coerceType, coercionInstrs, defaultValueInstrs } from "./type-coercion.js";
@@ -176,14 +176,39 @@ function isReceiverNonNull(expr: ts.Expression, checker: ts.TypeChecker): boolea
  * Emit a bounds-checked array.get.  Stack must contain [arrayref, i32 index].
  * If the index is out of bounds (< 0 or >= array.len), a default value for the
  * element type is produced instead of trapping.
+ *
+ * #1396 — `useUndefinedSentinel` (default false): when true AND `elementType`
+ * is `externref`/`ref_extern`, the OOB else-branch pushes the JS `undefined`
+ * value (via `__get_undefined` host import) instead of `ref.null.extern`.
+ * Required by destructuring callers — JS spec §13.7.5.5 fires defaults only
+ * for `undefined`, not for `null`, and `ref.null.extern` surfaces to JS as
+ * `null` causing `__extern_is_undefined` to return 0 → default never fires
+ * for OOB extern-array reads (~320 fails in `for-of/dstr`, ~171 in
+ * `assignment/dstr`).
  */
-export function emitBoundsCheckedArrayGet(fctx: FunctionContext, arrTypeIdx: number, elementType: ValType): void {
+export function emitBoundsCheckedArrayGet(
+  fctx: FunctionContext,
+  arrTypeIdx: number,
+  elementType: ValType,
+  ctx?: CodegenContext,
+  useUndefinedSentinel = false,
+): void {
   // Save index and array ref to locals so we can use them in both branches
   const idxLocal = allocLocal(fctx, `__bounds_idx_${fctx.locals.length}`, { kind: "i32" });
   const arrLocal = allocLocal(fctx, `__bounds_arr_${fctx.locals.length}`, { kind: "ref", typeIdx: arrTypeIdx });
 
   fctx.body.push({ op: "local.set", index: idxLocal }); // save index
   fctx.body.push({ op: "local.set", index: arrLocal }); // save array ref
+
+  // (#1396) When the destructuring caller asked for an undefined sentinel and
+  // the element type is externref-shaped, register the `__get_undefined`
+  // import BEFORE building the if-block so its funcIdx is stable and any
+  // index-shifts have already been flushed into the current function body.
+  let undefinedFuncIdx: number | undefined;
+  if (useUndefinedSentinel && ctx && (elementType.kind === "externref" || elementType.kind === "ref_extern")) {
+    undefinedFuncIdx = ensureGetUndefined(ctx);
+    if (undefinedFuncIdx !== undefined) flushLateImportShifts(ctx, fctx);
+  }
 
   // Condition: idx >= 0 && idx < array.len(arr)
   // We use: (unsigned)idx < array.len — this handles negative indices too
@@ -200,8 +225,12 @@ export function emitBoundsCheckedArrayGet(fctx: FunctionContext, arrTypeIdx: num
     { op: "array.get", typeIdx: arrTypeIdx } as Instr,
   ];
 
-  // Build the "else" branch: out-of-bounds -> default value
-  const elseInstrs: Instr[] = defaultValueInstrs(elementType);
+  // Build the "else" branch: out-of-bounds -> default value (or JS undefined
+  // when the destructuring caller opted in via `useUndefinedSentinel`).
+  const elseInstrs: Instr[] =
+    undefinedFuncIdx !== undefined
+      ? [{ op: "call", funcIdx: undefinedFuncIdx } as Instr]
+      : defaultValueInstrs(elementType);
 
   // When the element type is a non-null ref, the else branch produces ref.null
   // which is ref_null. Use ref_null as the block type so both branches validate,

@@ -71,8 +71,15 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 concurrency:
-  group: test262-sharded
-  cancel-in-progress: false
+  # PR branches: per-PR group so a new push cancels the old run for that PR only.
+  # Push to main: shared queue (cancel-in-progress: false) so rapid merges queue
+  #   rather than each evicting the previous — baseline always gets updated.
+  # workflow_dispatch: unique group so manual runs never cancel each other.
+  group: >-
+    ${{ github.event_name == 'push' && 'test262-sharded-main'
+     || github.event_name == 'pull_request' && format('test262-sharded-pr-{0}', github.ref)
+     || format('test262-sharded-dispatch-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test262-shard:
