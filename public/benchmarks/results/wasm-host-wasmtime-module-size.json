@@ -1,21 +1,20 @@
 [
   {
-    "name": "JS²",
-    "jsUs": 418.94250037216716,
+    "name": "AOT compiled",
+    "jsUs": 249.73509212540364,
     "value": 349.04545713436005,
     "label": "0.34 kB"
   },
   {
-    "name": "JS interpreter",
-    "jsUs": 418.94250037216716,
+    "name": "interpreter",
+    "jsUs": 249.73509212540364,
     "value": 3049.4519271503073,
-    "label": "2.98 kB + 1212 kB",
-    "extraValue": 1241545.0000000016
+    "label": "2.98 kB (+ 1.2 MB interpreter)"
   },
   {
-    "name": "JS engine",
-    "jsUs": 418.94250037216716,
+    "name": "engine",
+    "jsUs": 249.73509212540364,
     "value": 14817186.68030358,
-    "label": "14470 kB"
+    "label": "14.4 MB"
   }
 ]

@@ -443,8 +443,8 @@
       .host-bench-copy {
         max-width: 860px;
         margin-top: 18px;
-        font-size: 14px;
-        line-height: 1.7;
+        font-size: 16px;
+        line-height: 1.75;
         color: var(--fg-faint);
       }
 
@@ -457,20 +457,18 @@
       }
 
       .host-bench-title {
-        font-family: var(--mono);
-        font-size: 11px;
-        font-weight: 500;
-        letter-spacing: 0.1em;
-        text-transform: uppercase;
-        color: var(--fg-faint);
-        margin: 0 0 16px;
+        font-size: 22px;
+        line-height: 1.18;
+        font-weight: 650;
+        color: var(--fg);
+        margin: 0 0 14px;
       }
 
       .host-bench-subcopy {
         max-width: 780px;
-        margin: 0 0 28px;
-        font-size: 14px;
-        line-height: 1.7;
+        margin: 0 0 34px;
+        font-size: 17px;
+        line-height: 1.72;
         color: var(--fg-faint);
       }
       .host-bench-subcopy a {
@@ -483,7 +481,7 @@
       /* Donut and edition bar styles are now in <t262-donut> / <t262-edition-bars> shadow DOM */
       /* Benchmark performance chart is now in <perf-benchmark-chart> shadow DOM */
 
-      /* Size/coldstart charts reuse <perf-benchmark-chart> with mode="size"|"coldstart" */
+      /* Size/coldstart charts reuse <perf-benchmark-chart> with mode="module-size"|"coldstart" */
 
       .edition-chart {
         grid-column: span 1;
@@ -618,7 +616,7 @@
         grid-template-columns: minmax(0, 1fr) 18px;
         gap: 18px;
         align-items: center;
-        padding: 20px 0;
+        padding: 24px 0;
         color: var(--fg-soft);
         cursor: pointer;
         list-style: none;
@@ -652,12 +650,13 @@
       }
       .approach-faq-question {
         min-width: 0;
-        font-size: 16px;
-        line-height: 1.45;
+        font-size: 21px;
+        line-height: 1.36;
+        font-weight: 600;
       }
       .approach-faq-answer {
         max-width: 820px;
-        padding: 0 42px 22px 0;
+        padding: 0 42px 28px 0;
         opacity: 0;
         transform: translateY(-4px);
         transition:
@@ -673,13 +672,22 @@
         transform: translateY(-4px);
       }
       .approach-faq-answer p {
-        margin: 0 0 14px;
+        margin: 0 0 16px;
         color: var(--fg-faint);
-        font-size: 14px;
-        line-height: 1.68;
+        font-size: 17px;
+        line-height: 1.74;
       }
       .approach-faq-answer p:last-child {
         margin-bottom: 0;
+      }
+      .approach-faq-answer a:not(.btn-solid):not(.btn-outline) {
+        color: var(--fg);
+        text-decoration: underline;
+        text-decoration-color: rgba(255, 255, 255, 0.42);
+        text-underline-offset: 3px;
+      }
+      .approach-faq-answer a:not(.btn-solid):not(.btn-outline):hover {
+        text-decoration-color: rgba(255, 255, 255, 0.64);
       }
       .approach-faq-answer strong {
         color: var(--fg);
@@ -696,8 +704,8 @@
         padding-left: 16px;
         border-left: 2px solid var(--line-strong);
         color: var(--fg-faint);
-        font-size: 14px;
-        line-height: 1.62;
+        font-size: 17px;
+        line-height: 1.7;
       }
 
       .code-section {
@@ -1332,7 +1340,7 @@
           <p>
             The project is motivated by the idea that JavaScript, despite being a dynamic language, can be compiled
             efficiently ahead of time without limiting it to an incompatible subset or shipping a full JS runtime like
-            V8 or SpiderMonkey.
+            V8, SpiderMonkey or JavaScriptCore.
           </p>
           <p>The project is guided by the following goals:</p>
         </div>
@@ -3046,32 +3054,38 @@ match (value) {
         </div>
 
         <div class="host-bench-group">
-          <h3 class="host-bench-title">Browser &amp; Node.js</h3>
+          <h3 class="host-bench-title">JavaScript host (V8, JIT enabled)</h3>
           <p class="host-bench-subcopy">
-            Runtime execution speed relative to plain JavaScript, measured in browser and Node.js environments.
+            A benchmark comparing JavaScript in its native environment to the exact same source code compiled with JS²
+            as a WebAssembly module. Both were run inside Google's V8 engine in Node.js. Press the button to run the
+            benchmark in your browser including additional DOM benchmarks.
           </p>
           <div class="conformance-diagrams">
             <div class="diagram-panel">
               <perf-benchmark-chart
                 src="./benchmarks/results/playground-benchmark-sidebar.json"
+                mode="runtime"
                 rerun-src="./benchmarks/results/loadtime-benchmarks.json"
-                rerun-label="Run full browser benchmark"
-                title="Runtime Speed"
-                legend="Wasm runtime speed relative to JS (cached snapshot; run full benchmark on request)"
+                rerun-label="Run Browser Benchmark"
+                title="Runtime"
+                baseline-label="JS in V8"
+                show-delta
+                delta-kind="runtime"
+                legend="Median Wasm runtime per benchmark. JS lines show the same benchmark in JavaScript."
               ></perf-benchmark-chart>
             </div>
           </div>
         </div>
 
         <div class="host-bench-group" id="wasmtime-bench-group" style="display: none">
-          <h3 class="host-bench-title">Standalone WebAssembly</h3>
+          <h3 class="host-bench-title">WebAssembly host (Wasmtime, JIT disabled)</h3>
           <p class="host-bench-subcopy">
-            Five small benchmark programs run from the same source. The baseline starts a fresh JS runtime process; the
-            standalone rows start a fresh minimal native host that embeds a WebAssembly runtime, deserializes a
-            precompiled artifact, instantiates it, and calls the benchmark export. Compile time is reported separately
-            in the labs run and is not included here. Source:
-            <a href="./benchmarks/competitive/programs/index.html">competitive programs</a>
-            .
+            This test case approximates a multi-tenant Wasm native serverless environment. 5 small
+            <a href="./benchmarks/competitive/programs/">JavaScript programs</a>
+            are run as WebAssembly in three different setups: 1. compiled ahead of time with JS², 2. interpreted by a
+            separate dynamically linked interpreter module, 3. interpreted by a bundled JS engine (preinitialized +
+            partial AOT evaluation). As a baseline we show the same code running in its native environment inside a V8
+            engine in Node.js with JIT enabled, spawning a fresh runtime process.
           </p>
           <div class="conformance-diagrams">
             <div
@@ -3082,9 +3096,11 @@ match (value) {
               <perf-benchmark-chart
                 src="./benchmarks/results/wasm-host-wasmtime-hot-runtime.json"
                 mode="absolute-lower-better"
-                title="Hot Runtime"
-                baseline-label="JS runtime"
-                legend="Geometric mean over comparable competitive benchmarks; lower is better."
+                title="Runtime"
+                baseline-label="JS in V8"
+                show-delta
+                delta-kind="runtime"
+                legend="Geometric mean of repeated calls inside one fresh process after module load."
               ></perf-benchmark-chart>
             </div>
             <div
@@ -3096,8 +3112,10 @@ match (value) {
                 src="./benchmarks/results/wasm-host-wasmtime-module-size.json"
                 mode="absolute-lower-better"
                 title="Module Size"
-                baseline-label="JS source"
-                legend="Geometric mean of raw deployable module size; JS source includes harness metadata, and the faint segment is the shared interpreter runtime."
+                baseline-label="JS source (minified)"
+                show-delta
+                delta-kind="size"
+                legend="Geometric mean of raw deployable module size; JS source counts only the minified benchmark .js files. Parenthetical interpreter payload is not included in the bar or delta."
               ></perf-benchmark-chart>
             </div>
             <div
@@ -3108,9 +3126,11 @@ match (value) {
               <perf-benchmark-chart
                 src="./benchmarks/results/wasm-host-wasmtime-coldstart.json"
                 mode="absolute-lower-better"
-                title="Precompiled Start"
-                baseline-label="JS runtime"
-                legend="Geometric mean of a fresh JS source process or fresh precompiled WebAssembly artifact process plus first run; lower is better."
+                title="Cold Start"
+                baseline-label="JS in V8"
+                show-delta
+                delta-kind="runtime"
+                legend="Geometric mean of a fresh JS source process or fresh precompiled WebAssembly artifact process through first invocation."
               ></perf-benchmark-chart>
             </div>
           </div>
@@ -3303,37 +3323,18 @@ console.log(instance.exports.run()); // &rarr; 55</pre
           <div class="approach-faq-list">
             <details>
               <summary>
-                <span class="approach-faq-question">Why not just run JavaScript in a JavaScript engine?</span>
+                <span class="approach-faq-question">Why not just use a JavaScript engine or interpreter?</span>
               </summary>
               <div class="approach-faq-answer">
                 <p>
-                  JavaScript is the most widely used programming language in the world. It is run in web browsers in JS
-                  engines like V8, SpiderMonkey, or JavaScriptCore, on the server in Node.js, Deno, or Bun. Many desktop
-                  applications also use JavaScript and bundle a whole browser inside the application, like Electron
-                  shipping about 150 MB. WebAssembly is a low-level assembly-like language that can be compiled to run
-                  inside a browser but also beyond in server or embedded environments. Compiling JavaScript to
-                  WebAssembly allows for the execution of JavaScript in a WebAssembly runtime, which has a tighter
-                  module sandbox with no ambient access to the host. In some cases it can also be more efficient than
-                  running in a JavaScript engine.
+                  Good question! JavaScript engines like V8 are highly optimized
+                  multi-tier streaming JIT compilers that often run code two magnitudes faster than interpreters -
+                  within reach of native performance - and have a mature battle tested sandbox. WebAssembly has an edge in some scenarios, but overall it is not always faster or even on par. Interpreters like QuickJS on the other hand trade simplicity for performance.
                 </p>
-              </div>
-            </details>
-            <details>
-              <summary>
-                <span class="approach-faq-question">
-                  How is your approach different from other JavaScript on WebAssembly approaches?
-                </span>
-              </summary>
-              <div class="approach-faq-answer">
+                <h3>Runtime overhead</h3>
                 <p>
-                  <strong>
-                    JS
-                    <sup>2</sup>
-                  </strong>
-                  is in the direct ahead-of-time compilation category: it produces WebAssembly GC from JavaScript and
-                  TypeScript. In contrast to existing approaches it neither bundles a JavaScript interpreter or engine
-                  in the output module or deviates from the ECMAScript specification by supporting only a subset of the
-                  language.
+                  However, in <strong>constrained environments</strong> like multi-tenant function as a service - aka. "<strong>serverless</strong>" - or <strong>embedded</strong>
+                  environments a JS host might simply be too heavy-weight and costly. It may result in a slow interpreter path and having to ship a JS interpreter or engine with JIT disabled (which typically results in a 10x slowdown) alongside the binary in the Megabyte range. On desktop this might even mean shipping a full browser or server runtime with 100 MB or more.
                 </p>
                 <ul>
                   <li>
@@ -3346,82 +3347,118 @@ console.log(instance.exports.run()); // &rarr; 55</pre
                     inherit mature JavaScript engine semantics, but also inherit the size, startup, integration,
                     sandboxing, and runtime code-generation tradeoffs of shipping an engine.
                   </li>
+                </ul>
+                <h3>Dependency management</h3>
+                <p>
+                  NPM dependencies are fragile and hard to manage. If you upgrade one module globally in a project, this
+                  often forces a cascade of updates across the project which may take weeks, break things loudly,
+                  introduce silent bugs, and you may sometimes end up in situations where one dependency already needs a
+                  newer version while another still depends on an older version, hindering upgrades In contrast,
+                  WebAssembly modules declare their imports, and you can satisfy them on a module by module basis that
+                  do not force to keep the version of a module in lock step across modules.
+                </p>
+                <h3>Supply Chain Attacks</h3>
+                <p>
+                  Running untrusted code in JavaScript exposes the process to the risk of supply chain attacks: 95% of
+                  JavaScript code is a third party dependency. A single malicious or buggy module can take over the
+                  whole JavaScript process and extract sensitive information or in Node.js even access the file system
+                  or start programs with user rights. While isolation techniques exists they are rarely used in practice
+                  due their overhead, complexity, or ecosystem fragmentation. Supply chain attacks have become a real
+                  threat including high profile incidents in cornerstone dependencies such as
+                  <a href="https://github.com/axios/axios/issues/10636">axios</a>
+                  or
+                  <a
+                    href="https://semgrep.dev/blog/2025/chalk-debug-and-color-on-npm-compromised-in-new-supply-chain-attack/"
+                  >
+                    chalk
+                  </a>
+                  .
+                </p>
+                <p>
+                  JavaScript engines are highly complex and expose a large attack surface. Despite decades of hardening
+                  hackers and engine developers are in an arms race finding and fixing zero day vulnerabilities, and AI
+                  agents find vulnerabilities in high volumes (e.g. Anthropic's glasswing found
+                  <a href="https://blog.mozilla.org/en/firefox/ai-security-zero-day-vulnerabilities/">
+                    271 vulnerabilities in Firefox
+                  </a>
+                  ) . If your code ships with a full browser and Node depdendency like in the case of Electron, you need
+                  to maintain manual patches for security vulnerabilities.
+                </p>
+                <p>
+                  WebAssembly has a simpler execution and deny by default security model in which access is granted
+                  explicitly, limiting the blast radius of incidents significantly.
+                </p>
+              </div>
+            </details>
+            <details>
+              <summary>
+                <span class="approach-faq-question">Why target ECMAScript, not a language subset or superset?</span>
+              </summary>
+              <div class="approach-faq-answer">
+                <ul>
                   <li>
-                    <strong>Subsets, supersets, and new languages</strong>
-                    make compilation easier by changing the semantic contract: unsupported dynamic JavaScript is
-                    excluded, custom APIs are introduced, or the language is designed around Wasm from the start.
+                    <strong>Following the ECMAScript standard</strong>
+                    as the north star maintains full compatibility with the JS and NPM ecosystem. TypeScript annotations are only treated as optimization hints where types can be proven, not as ground truth and do not affect JavaScript runtime behavior.
                   </li>
                   <li>
-                    <strong>Direct AOT compilation to WasmGC</strong>
-                    keeps JavaScript semantics as the target and uses WasmGC as the object and heap model where those
-                    semantics can be represented directly.
+                    <strong>Subsets, supersets, and new languages</strong>
+                    make compilation easier by subtly breaking the language contract: unsupported dynamic JavaScript is
+                    excluded, custom APIs are introduced, or the language is designed around Wasm from the start.
                   </li>
                 </ul>
                 <p>
-                  That is the JS
-                  <sup>2</sup>
-                  direction: ECMAScript compatibility stays the north star, and TypeScript annotations are not treated
-                  as proof that JavaScript runtime behavior has changed.
+                  JavaScript is the most widely used programming language. It is easy to use, familiar to millions, and
+                  with NPM has the largest ecosystem in the world. It runs everywhere from browsers (e.g. Chrome,
+                  Firefox, Safari) to servers (e.g. Node, Deno, Bun) and even on desktop (Electron), mobile, or embedded
+                  devices.
+                </p>
+                <p>
+                  While it is not a perfect language due to its legacy and its dynamic nature makes it hard to optimize,
+                  it simply is what everyone uses and changing the language - even slightly - would break compatibility
+                  with existing codebases and fragment the ecosystem. We think chosing the right tool for the job should
+                  not require switching languages or porting code.
+                </p>
+
+              </div>
+            </details>
+
+            <details>
+              <summary>
+                <span class="approach-faq-question">Do you plan to support all dynamic parts of the language?</span>
+              </summary>
+              <div class="approach-faq-answer">
+                <p>
+                  We are intending to push the boundaries of what is possible here. The assumption is most code today is actually using very little of the dynamic features, so the goal is to isolate the cost of dynamic language features to the code paths that actually need them. We aim for a seamless experience so the user does not have to think about if code falls within a supported subset. Dynamic features may require guards, boxed representations, host fallbacks, or separately compiled units. You can track our progress in the ECMAScript compatibility reports.
                 </p>
               </div>
             </details>
             <details>
               <summary>
-                <span class="approach-faq-question">How do you deal with the dynamic parts of JavaScript?</span>
+                <span class="approach-faq-question">How do you support host APIs like the DOM?</span>
               </summary>
               <div class="approach-faq-answer">
                 <p>
-                  Yes. Compatibility is incomplete today because JS
-                  <sup>2</sup>
-                  is an active compiler effort, but the project is driven by ECMAScript semantics and Test262
-                  conformance rather than by defining a permanent JavaScript-like subset.
-                </p>
-                <p>
-                  The long-term target is 100% compatibility with JavaScript and npm packages, with compiled modules
-                  gaining explicit security boundaries and composition points instead of being rewritten for a new
-                  language.
-                </p>
-                <p>
-                  Dynamic features may require guards, boxed representations, host fallbacks, or separately compiled
-                  units. The goal is to isolate those costs to the code paths that need them.
+                  We see these as platform APIs that are imported using safe adapters from the host if in a browser or Node.js environment or polyfilled (e.g. using WASI). In browsers we auto generate adapters for Web APIs and JS builtins from their TypeScript definitions. Providing alternative implementations e.g. in standalone mode is possible by swapping out the import (e.g. <a href="https://edgejs.org/">
+                    Edge.js
+                  </a> emulates Node.js APIs WASIX).
                 </p>
               </div>
             </details>
             <details>
               <summary>
-                <span class="approach-faq-question">Does "no bundled runtime" mean no helper code at all?</span>
+                <span class="approach-faq-question">Why do you depend on Wasm GC?</span>
               </summary>
               <div class="approach-faq-answer">
                 <p>
-                  No. Real JavaScript semantics still require helpers for builtins, coercions, interop, dynamic values,
-                  and host boundaries.
-                </p>
-                <p>
-                  The distinction is that JS
-                  <sup>2</sup>
-                  does not ship a fixed interpreter or engine whose cost is paid by every program. The compiler should
-                  emit or retain only the support code the compiled program needs.
-                </p>
-              </div>
-            </details>
-            <details>
-              <summary>
-                <span class="approach-faq-question">Why does WasmGC matter?</span>
-              </summary>
-              <div class="approach-faq-answer">
-                <p>
-                  Without WasmGC, a JavaScript compiler usually needs a custom object heap in linear memory or a bundled
-                  runtime that manages its own objects.
-                </p>
-                <p>
-                  WasmGC gives the compiler host-managed structs, arrays, references, and function references that can
+                  In supported WebAssembly 3.0 runtime a portable garbarge collector (GC) is provided by the host, so runtimes no
+                  longer need to implement their own GC in linear memory. They can now build on top of a built-in implementation, making modules leaner and interop with the host environment and across components more seamless. WasmGC gives the compiler host-managed structs, arrays, references, and function references that can
                   represent many JavaScript object shapes more directly.
                 </p>
               </div>
             </details>
             <details>
               <summary>
-                <span class="approach-faq-question">Which architecture decisions are guiding your approach?</span>
+                <span class="approach-faq-question">What are your guiding principles?</span>
               </summary>
               <div class="approach-faq-answer">
                 <p>

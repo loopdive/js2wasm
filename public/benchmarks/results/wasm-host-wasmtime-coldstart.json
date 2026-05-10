@@ -1,18 +1,18 @@
 [
   {
-    "name": "JS²",
+    "name": "AOT compiled",
     "jsUs": 20753.991795097805,
     "value": 13696.16732207001,
     "label": "13.7 ms"
   },
   {
-    "name": "JS interpreter",
+    "name": "interpreter",
     "jsUs": 20753.991795097805,
     "value": 24718.388917842844,
     "label": "24.7 ms"
   },
   {
-    "name": "JS engine",
+    "name": "engine",
     "jsUs": 20753.991795097805,
     "value": 24662.156310869697,
     "label": "24.7 ms"

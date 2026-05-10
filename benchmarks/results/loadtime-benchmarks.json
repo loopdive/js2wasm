@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-05-07T20:41:23.610Z",
+  "timestamp": "2026-05-09T23:10:28.117Z",
   "benchmarks": [
     {
       "name": "fib",
@@ -8,6 +8,8 @@
       "exportName": "bench_fib",
       "jsUrl": "loadtime/fib.mjs",
       "wasmUrl": "loadtime/fib.wasm",
+      "wasmOptimized": true,
+      "wasmOptimizeLevel": 4,
       "runtimeEnvironment": "node",
       "imports": [
         {
@@ -239,6 +241,8 @@
       "exportName": "bench_loop",
       "jsUrl": "loadtime/loop.mjs",
       "wasmUrl": "loadtime/loop.wasm",
+      "wasmOptimized": true,
+      "wasmOptimizeLevel": 4,
       "runtimeEnvironment": "node",
       "imports": [
         {
@@ -469,6 +473,8 @@
       "exportName": "bench_string",
       "jsUrl": "loadtime/string.mjs",
       "wasmUrl": "loadtime/string.wasm",
+      "wasmOptimized": true,
+      "wasmOptimizeLevel": 4,
       "runtimeEnvironment": "node",
       "imports": [
         {
@@ -700,6 +706,8 @@
       "exportName": "bench_array",
       "jsUrl": "loadtime/array.mjs",
       "wasmUrl": "loadtime/array.wasm",
+      "wasmOptimized": true,
+      "wasmOptimizeLevel": 4,
       "runtimeEnvironment": "node",
       "imports": [
         {
@@ -930,6 +938,8 @@
       "exportName": "bench_dom",
       "jsUrl": "loadtime/dom.mjs",
       "wasmUrl": "loadtime/dom.wasm",
+      "wasmOptimized": true,
+      "wasmOptimizeLevel": 4,
       "runtimeEnvironment": "browser",
       "imports": [
         {
@@ -1173,6 +1183,8 @@
       "exportName": "bench_style",
       "jsUrl": "loadtime/style.mjs",
       "wasmUrl": "loadtime/style.wasm",
+      "wasmOptimized": true,
+      "wasmOptimizeLevel": 4,
       "runtimeEnvironment": "browser",
       "imports": [
         {
@@ -1438,6 +1450,8 @@
       "exportName": "bench_calendar",
       "jsUrl": "loadtime/calendar.mjs",
       "wasmUrl": "loadtime/calendar.wasm",
+      "wasmOptimized": true,
+      "wasmOptimizeLevel": 4,
       "runtimeEnvironment": "node",
       "imports": [
         {

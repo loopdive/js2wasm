@@ -1,6 +1,6 @@
 # FAQ
 
-## How is js2 different from other JavaScript on WebAssembly approaches?
+## Why is a language superset or subset insufficient?
 
 **js2** is in the direct ahead-of-time compilation category. It compiles
 JavaScript and TypeScript source to WebAssembly GC without embedding a
@@ -23,7 +23,7 @@ That is the `js2` direction: ECMAScript compatibility stays the north star.
 TypeScript syntax is accepted as input, but TypeScript annotations are not
 treated as proof that JavaScript runtime behavior has changed.
 
-## How do you deal with the dynamic parts of JavaScript?
+## What about the dynamic parts of JavaScript?
 
 Yes. `js2` is still an active compiler effort, so compatibility is incomplete
 today, but the project is driven by ECMAScript semantics and Test262
@@ -43,7 +43,7 @@ At dynamic or untyped boundaries, the compiler inserts guards, normalizes
 values, falls back to dynamic representations, or delegates to host imports when
 needed.
 
-## Why does WasmGC matter?
+## Why do you not implement your own GC in linear memory?
 
 Without WasmGC, a JavaScript compiler usually needs a custom object heap in
 linear memory or a bundled runtime that manages its own objects. WasmGC gives

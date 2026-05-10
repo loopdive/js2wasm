@@ -3,7 +3,7 @@
 import { copyFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import * as ts from "typescript";
-import { buildImports, compileMulti, instantiateWasm } from "./compiler-bundle.mjs";
+import { buildImports, compileMulti, instantiateWasm, optimizeBinaryAsync } from "./compiler-bundle.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const HELPERS_PATH = resolve(ROOT, "playground", "examples", "benchmarks", "helpers.ts");
@@ -71,6 +71,31 @@ function stddev(values) {
   return Math.sqrt(variance);
 }
 
+function bytesEqual(a, b) {
+  if (a.byteLength !== b.byteLength) return false;
+  for (let i = 0; i < a.byteLength; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+async function optimizeBenchmarkWasm(binary, entryPath) {
+  let optimizedBinary = binary;
+  for (let pass = 0; pass < 4; pass++) {
+    const optResult = await optimizeBinaryAsync(optimizedBinary, { level: 4 });
+    if (!optResult.optimized) {
+      throw new Error(
+        `wasm-opt optimization is required for offline benchmark artifacts (${entryPath}): ${
+          optResult.warning ?? "optimizer returned the original binary"
+        }`,
+      );
+    }
+    if (bytesEqual(optResult.binary, optimizedBinary)) return optimizedBinary;
+    optimizedBinary = optResult.binary;
+  }
+  return optimizedBinary;
+}
+
 async function measureBenchmark(entryPath, exportName) {
   const absEntryPath = resolve(ROOT, "playground", entryPath);
   const source = readFileSync(absEntryPath, "utf8");
@@ -81,15 +106,17 @@ async function measureBenchmark(entryPath, exportName) {
       "examples/benchmarks/helpers.ts": HELPERS_SOURCE,
     },
     entryPath,
-    { optimize: 4 },
+    {},
   );
 
   if (!result.success) {
     throw new Error(`Compilation failed for ${entryPath}:\n${result.errors.map((e) => e.message).join("\n")}`);
   }
 
+  const wasmBinary = await optimizeBenchmarkWasm(result.binary, entryPath);
+
   const imports = buildImports(result.imports, {}, result.stringPool);
-  const { instance } = await instantiateWasm(result.binary, imports.env, imports.string_constants);
+  const { instance } = await instantiateWasm(wasmBinary, imports.env, imports.string_constants);
   if (imports.setExports) imports.setExports(instance.exports);
   const wasmFn = instance.exports[exportName];
   if (typeof wasmFn !== "function") {
@@ -132,6 +159,8 @@ async function measureBenchmark(entryPath, exportName) {
 
   return {
     path: entryPath,
+    wasmOptimized: true,
+    wasmOptimizeLevel: 4,
     wasmUs,
     jsUs,
     wasmStdUs: stddev(wasmSamplesUs),

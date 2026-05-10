@@ -115,3 +115,125 @@ export async function instantiateWasmStreaming(source, env, stringConstants = {}
   }
   return instantiateWasm(new Uint8Array(await fallback.arrayBuffer()), env, stringConstants);
 }
+
+let binaryenModulePromise = null;
+
+function addBinaryenFeature(features, featureFlags, name) {
+  const flag = featureFlags?.[name];
+  return typeof flag === "number" ? features | flag : features;
+}
+
+async function loadBinaryen() {
+  if (binaryenModulePromise) return binaryenModulePromise;
+  binaryenModulePromise = (async () => {
+    const browserLike = typeof window !== "undefined" || typeof globalThis.WorkerGlobalScope !== "undefined";
+    const globalObject = globalThis;
+    const hadProcess = "process" in globalObject;
+    const hadOwnProcess = Object.prototype.hasOwnProperty.call(globalObject, "process");
+    const previousProcess = globalObject.process;
+
+    if (browserLike && hadProcess) {
+      try {
+        globalObject.process = undefined;
+      } catch {
+        // Some runtimes expose a non-writable process global.
+      }
+    }
+
+    try {
+      const mod = await import(new URL("./binaryen.js", import.meta.url).href);
+      return mod.default ?? mod;
+    } catch {
+      return null;
+    } finally {
+      if (browserLike) {
+        if (hadProcess && hadOwnProcess) {
+          globalObject.process = previousProcess;
+        } else if (!hadOwnProcess) {
+          try {
+            delete globalObject.process;
+          } catch {
+            globalObject.process = undefined;
+          }
+        }
+      }
+    }
+  })();
+  return binaryenModulePromise;
+}
+
+export async function optimizeWasm(binary, options = {}) {
+  const binaryen = await loadBinaryen();
+  if (!binaryen?.readBinary) {
+    return {
+      binary,
+      optimized: false,
+      warning: "wasm-opt is unavailable in this browser benchmark runtime.",
+    };
+  }
+
+  const featureFlags = binaryen.Features ?? binaryen.features;
+  if (!featureFlags) {
+    return {
+      binary,
+      optimized: false,
+      warning: "wasm-opt feature flags are unavailable in this browser benchmark runtime.",
+    };
+  }
+
+  let mod;
+  try {
+    mod = binaryen.readBinary(binary);
+  } catch (error) {
+    return {
+      binary,
+      optimized: false,
+      warning: "wasm-opt could not read benchmark module: " + (error?.message || String(error)),
+    };
+  }
+
+  const previousOptimizeLevel =
+    typeof binaryen.getOptimizeLevel === "function" ? binaryen.getOptimizeLevel() : undefined;
+  const previousShrinkLevel = typeof binaryen.getShrinkLevel === "function" ? binaryen.getShrinkLevel() : undefined;
+
+  try {
+    let features = 0;
+    for (const name of ["GC", "ReferenceTypes", "ExceptionHandling", "BulkMemory", "MutableGlobals"]) {
+      features = addBinaryenFeature(features, featureFlags, name);
+    }
+    if (typeof mod.setFeatures === "function") mod.setFeatures(features);
+
+    const requestedLevel = Number.isFinite(options.level) ? Math.trunc(options.level) : 4;
+    const level = Math.max(1, Math.min(4, requestedLevel));
+    if (typeof binaryen.setOptimizeLevel === "function") {
+      binaryen.setOptimizeLevel(level >= 4 ? 3 : level);
+    }
+    if (typeof binaryen.setShrinkLevel === "function") {
+      binaryen.setShrinkLevel(level >= 4 ? 1 : 0);
+    }
+
+    const optimizePasses = level >= 4 ? 3 : 1;
+    for (let pass = 0; pass < optimizePasses; pass++) {
+      mod.optimize();
+    }
+
+    return {
+      binary: new Uint8Array(mod.emitBinary()),
+      optimized: true,
+    };
+  } catch (error) {
+    return {
+      binary,
+      optimized: false,
+      warning: "wasm-opt failed for benchmark module: " + (error?.message || String(error)),
+    };
+  } finally {
+    if (typeof binaryen.setOptimizeLevel === "function" && previousOptimizeLevel !== undefined) {
+      binaryen.setOptimizeLevel(previousOptimizeLevel);
+    }
+    if (typeof binaryen.setShrinkLevel === "function" && previousShrinkLevel !== undefined) {
+      binaryen.setShrinkLevel(previousShrinkLevel);
+    }
+    mod?.dispose?.();
+  }
+}
