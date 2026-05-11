@@ -131,6 +131,7 @@ class PerfBenchmarkChart extends HTMLElement {
           font-size: 13px;
           color: var(--fg-soft, rgba(255,255,255,0.55));
           text-align: left;
+          min-width: 0;
           white-space: nowrap;
         }
 
@@ -140,6 +141,7 @@ class PerfBenchmarkChart extends HTMLElement {
           border-radius: 4px;
           overflow: visible;
           position: relative;
+          min-width: 0;
         }
 
         .bench-track-bg {
@@ -245,6 +247,7 @@ class PerfBenchmarkChart extends HTMLElement {
           white-space: nowrap;
           text-align: left;
           width: var(--bench-factor-width, auto);
+          min-width: var(--bench-factor-width, auto);
         }
 
         .legend {
@@ -298,17 +301,24 @@ class PerfBenchmarkChart extends HTMLElement {
 
         @media (max-width: 720px) {
           .bench-row {
-            grid-template-columns: 70px 1fr;
-            gap: 8px;
-          }
-
-          .bench-row-has-factor {
-            grid-template-columns: 70px minmax(0, 1fr);
+            grid-template-columns: minmax(86px, 30%) minmax(0, 1fr);
+            column-gap: 8px;
             row-gap: 6px;
           }
 
-          .bench-row-has-factor .bench-factor {
-            grid-column: 2;
+          .bench-row-has-factor {
+            grid-template-columns: minmax(86px, 30%) minmax(36px, 1fr) var(--bench-factor-width, max-content);
+          }
+
+          .bench-name {
+            font-size: 11px;
+            line-height: 1.15;
+            white-space: normal;
+            overflow-wrap: anywhere;
+          }
+
+          .bench-factor {
+            font-size: 11px;
           }
         }
       </style>
@@ -719,7 +729,7 @@ class PerfBenchmarkChart extends HTMLElement {
 
     const factorWidth = Math.max(...preparedRows.map((row) => row.factorLabel.length), 0);
     if (factorWidth > 0) {
-      container.style.setProperty("--bench-factor-width", `${factorWidth}ch`);
+      container.style.setProperty("--bench-factor-width", `${factorWidth + 1}ch`);
     } else {
       container.style.removeProperty("--bench-factor-width");
     }
