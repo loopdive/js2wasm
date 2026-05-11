@@ -2190,16 +2190,21 @@ function t262BuildTree(cats: T262CategorySummary[]): T262TreeNode {
 }
 
 const t262ExpandedFolders = new Set<string>(["__ex_dom__"]);
+let t262RenderGeneration = 0;
 
 async function t262Render() {
   const listEl = test262Panel.querySelector(".t262-list") as HTMLElement;
   if (!listEl) return;
-  listEl.innerHTML = "";
+  const renderGeneration = ++t262RenderGeneration;
+  const isStaleRender = () => renderGeneration !== t262RenderGeneration;
+  const listFragment = document.createDocumentFragment();
 
   await ensureBenchmarkSidebarSnapshot();
+  if (isStaleRender()) return;
 
   // Load test262 results report
   const report = await t262LoadReport();
+  if (isStaleRender()) return;
 
   const filter = t262Filter.toLowerCase();
 
@@ -2360,13 +2365,13 @@ async function t262Render() {
     const exHeader = document.createElement("div");
     exHeader.className = "t262-section-header";
     exHeader.textContent = "EXAMPLES";
-    listEl.appendChild(exHeader);
+    listFragment.appendChild(exHeader);
 
     for (const group of exampleGroups) {
       const groupMatches =
         !filter || group.folder.includes(filter) || group.files.some((f) => f.name.toLowerCase().includes(filter));
       if (!groupMatches) continue;
-      await renderTopFolder(group.folder, `__ex_${group.folder}__`, listEl, (container) => {
+      await renderTopFolder(group.folder, `__ex_${group.folder}__`, listFragment, (container) => {
         const filesEl = document.createElement("div");
         filesEl.className = "t262-files";
         filesEl.style.paddingLeft = "22px";
@@ -2379,6 +2384,7 @@ async function t262Render() {
         }
         container.appendChild(filesEl);
       });
+      if (isStaleRender()) return;
     }
   }
 
@@ -2386,7 +2392,7 @@ async function t262Render() {
   const unitHeader = document.createElement("div");
   unitHeader.className = "t262-section-header";
   unitHeader.textContent = "UNIT TESTS";
-  listEl.appendChild(unitHeader);
+  listFragment.appendChild(unitHeader);
 
   // Count total files in a tree node (recursively)
   function nodeFileCount(node: T262TreeNode): number {
@@ -2584,7 +2590,7 @@ async function t262Render() {
   async function renderTopFolder(
     name: string,
     folderKey: string,
-    parent: HTMLElement,
+    parent: HTMLElement | DocumentFragment,
     renderContents: (container: HTMLElement) => void | Promise<void>,
     summaryHtml?: string,
     onOpen?: () => void | Promise<void>,
@@ -2628,7 +2634,7 @@ async function t262Render() {
     await renderTopFolder(
       "js2wasm Test Suite",
       "__js2wasm__",
-      listEl,
+      listFragment,
       (container) => {
         const filesEl = document.createElement("div");
         filesEl.className = "t262-files";
@@ -2660,22 +2666,25 @@ async function t262Render() {
       },
       buildEquivSummaryHtml(equivTests.length),
     );
+    if (isStaleRender()) return;
   }
 
   // ── test262 folder ──
   const cats = await t262LoadIndex();
+  if (isStaleRender()) return;
   const tree = t262BuildTree(cats);
   const t262Matches = !filter || nodeMatchesFilter(tree, filter) || "ecmascript test suite".includes(filter);
   if (t262Matches) {
     await renderTopFolder(
       "ECMAScript Test Suite",
       "__test262__",
-      listEl,
+      listFragment,
       async (container) => {
         await renderNode(tree, container, 1);
       },
       report ? buildT262SummaryHtml(report.summary) : "",
     );
+    if (isStaleRender()) return;
   }
 
   // ── BENCHMARKS section ──
@@ -2695,9 +2704,9 @@ async function t262Render() {
     benchHeader.appendChild(benchTitle);
     benchBtn.classList.add("bench-section-btn");
     benchHeader.appendChild(benchBtn);
-    listEl.appendChild(benchHeader);
+    listFragment.appendChild(benchHeader);
 
-    await renderTopFolder("js2wasm Benchmark Suite", "__benchmarks__", listEl, (container) => {
+    await renderTopFolder("js2wasm Benchmark Suite", "__benchmarks__", listFragment, (container) => {
       const filesEl = document.createElement("div");
       filesEl.className = "t262-files";
       filesEl.style.paddingLeft = "22px";
@@ -2707,7 +2716,10 @@ async function t262Render() {
       }
       container.appendChild(filesEl);
     });
+    if (isStaleRender()) return;
   }
+
+  listEl.replaceChildren(listFragment);
 }
 
 // Wire up the search input
