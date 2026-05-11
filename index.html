@@ -3327,14 +3327,24 @@ console.log(instance.exports.run()); // &rarr; 55</pre
               </summary>
               <div class="approach-faq-answer">
                 <p>
-                  Good question! JavaScript engines like V8 are highly optimized
-                  multi-tier streaming JIT compilers that often run code two magnitudes faster than interpreters -
-                  within reach of native performance - and have a mature battle tested sandbox. WebAssembly has an edge in some scenarios, but overall it is not always faster or even on par. Interpreters like QuickJS on the other hand trade simplicity for performance.
+                  Good question! JavaScript engines like V8 are highly optimized multi-tier streaming JIT compilers that
+                  often run code two magnitudes faster than interpreters - within reach of native performance - and have
+                  a mature battle tested sandbox. WebAssembly has an edge in some scenarios, but overall it is not
+                  always faster or even on par. Interpreters like QuickJS on the other hand trade simplicity for
+                  performance.
                 </p>
                 <h3>Runtime overhead</h3>
                 <p>
-                  However, in <strong>constrained environments</strong> like multi-tenant function as a service - aka. "<strong>serverless</strong>" - or <strong>embedded</strong>
-                  environments a JS host might simply be too heavy-weight and costly. It may result in a slow interpreter path and having to ship a JS interpreter or engine with JIT disabled (which typically results in a 10x slowdown) alongside the binary in the Megabyte range. On desktop this might even mean shipping a full browser or server runtime with 100 MB or more.
+                  However, in
+                  <strong>constrained environments</strong>
+                  like multi-tenant function as a service - aka. "
+                  <strong>serverless</strong>
+                  " - or
+                  <strong>embedded</strong>
+                  environments a JS host might simply be too heavy-weight and costly. It may result in a slow
+                  interpreter path and having to ship a JS interpreter or engine with JIT disabled (which typically
+                  results in a 10x slowdown) alongside the binary in the Megabyte range. On desktop this might even mean
+                  shipping a full browser or server runtime with 100 MB or more in the case of Electron.
                 </p>
                 <ul>
                   <li>
@@ -3353,7 +3363,7 @@ console.log(instance.exports.run()); // &rarr; 55</pre
                   NPM dependencies are fragile and hard to manage. If you upgrade one module globally in a project, this
                   often forces a cascade of updates across the project which may take weeks, break things loudly,
                   introduce silent bugs, and you may sometimes end up in situations where one dependency already needs a
-                  newer version while another still depends on an older version, hindering upgrades In contrast,
+                  newer version while another still depends on an older version, hindering upgrades. In contrast,
                   WebAssembly modules declare their imports, and you can satisfy them on a module by module basis that
                   do not force to keep the version of a module in lock step across modules.
                 </p>
@@ -3398,7 +3408,9 @@ console.log(instance.exports.run()); // &rarr; 55</pre
                 <ul>
                   <li>
                     <strong>Following the ECMAScript standard</strong>
-                    as the north star maintains full compatibility with the JS and NPM ecosystem. TypeScript annotations are only treated as optimization hints where types can be proven, not as ground truth and do not affect JavaScript runtime behavior.
+                    as the north star maintains full compatibility with the JS and NPM ecosystem. TypeScript annotations
+                    are only treated as optimization hints where types can be proven, not as ground truth and do not
+                    affect JavaScript runtime behavior.
                   </li>
                   <li>
                     <strong>Subsets, supersets, and new languages</strong>
@@ -3418,7 +3430,6 @@ console.log(instance.exports.run()); // &rarr; 55</pre
                   with existing codebases and fragment the ecosystem. We think chosing the right tool for the job should
                   not require switching languages or porting code.
                 </p>
-
               </div>
             </details>
 
@@ -3428,7 +3439,12 @@ console.log(instance.exports.run()); // &rarr; 55</pre
               </summary>
               <div class="approach-faq-answer">
                 <p>
-                  We are intending to push the boundaries of what is possible here. The assumption is most code today is actually using very little of the dynamic features, so the goal is to isolate the cost of dynamic language features to the code paths that actually need them. We aim for a seamless experience so the user does not have to think about if code falls within a supported subset. Dynamic features may require guards, boxed representations, host fallbacks, or separately compiled units. You can track our progress in the ECMAScript compatibility reports.
+                  We are intending to push the boundaries of what is possible here. The assumption is most code today is
+                  actually using very little of the dynamic features, so the goal is to isolate the cost of dynamic
+                  language features to the code paths that actually need them. We aim for a seamless experience so the
+                  user does not have to think about if code falls within a supported subset. Dynamic features may
+                  require guards, boxed representations, host fallbacks, or separately compiled units. You can track our
+                  progress in the ECMAScript compatibility reports.
                 </p>
               </div>
             </details>
@@ -3438,9 +3454,12 @@ console.log(instance.exports.run()); // &rarr; 55</pre
               </summary>
               <div class="approach-faq-answer">
                 <p>
-                  We see these as platform APIs that are imported using safe adapters from the host if in a browser or Node.js environment or polyfilled (e.g. using WASI). In browsers we auto generate adapters for Web APIs and JS builtins from their TypeScript definitions. Providing alternative implementations e.g. in standalone mode is possible by swapping out the import (e.g. <a href="https://edgejs.org/">
-                    Edge.js
-                  </a> emulates Node.js APIs WASIX).
+                  We see these as platform APIs that are imported using safe adapters from the host if in a browser or
+                  Node.js environment or polyfilled (e.g. using WASI). In browsers we auto generate adapters for Web
+                  APIs and JS builtins from their TypeScript definitions. Providing alternative implementations e.g. in
+                  standalone mode is possible by swapping out the import (e.g.
+                  <a href="https://edgejs.org/">Edge.js</a>
+                  emulates Node.js APIs WASIX).
                 </p>
               </div>
             </details>
@@ -3450,9 +3469,11 @@ console.log(instance.exports.run()); // &rarr; 55</pre
               </summary>
               <div class="approach-faq-answer">
                 <p>
-                  In supported WebAssembly 3.0 runtime a portable garbarge collector (GC) is provided by the host, so runtimes no
-                  longer need to implement their own GC in linear memory. They can now build on top of a built-in implementation, making modules leaner and interop with the host environment and across components more seamless. WasmGC gives the compiler host-managed structs, arrays, references, and function references that can
-                  represent many JavaScript object shapes more directly.
+                  In supported WebAssembly 3.0 runtime a portable garbarge collector (GC) is provided by the host, so
+                  runtimes no longer need to implement their own GC in linear memory. They can now build on top of a
+                  built-in implementation, making modules leaner and interop with the host environment and across
+                  components more seamless. WasmGC gives the compiler host-managed structs, arrays, references, and
+                  function references that can represent many JavaScript object shapes more directly.
                 </p>
               </div>
             </details>
