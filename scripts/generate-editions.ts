@@ -30,7 +30,7 @@ const ROOT = join(__dirname, "..");
 function findTest262Root(base: string): string {
   const direct = join(base, "test262");
   if (existsSync(join(direct, "test"))) return direct;
-  // Worktrees are at .claude/worktrees/<name> — main workspace is 3 levels up
+  // Local worktrees are usually three levels below the main workspace.
   const mainWs = join(base, "..", "..", "..");
   const fromMain = join(mainWs, "test262");
   if (existsSync(join(fromMain, "test"))) return fromMain;

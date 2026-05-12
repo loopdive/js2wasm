@@ -17,8 +17,6 @@ import { dirname, join, resolve } from "node:path";
 const ROOT = resolve(import.meta.dirname, "..");
 const PLAYGROUND_DIST = join(ROOT, "dist", "playground");
 const PAGES_DIST = join(ROOT, "dist", "pages");
-const DASHBOARD_DIR = join(ROOT, "dashboard");
-const PLAN_DIR = join(ROOT, "plan");
 const BENCHMARKS_RESULTS_DIR = join(ROOT, "benchmarks", "results");
 const PUBLIC_BENCH = join(ROOT, "public", "benchmarks", "results");
 const RUNS_DIR = join(BENCHMARKS_RESULTS_DIR, "runs");
@@ -224,12 +222,6 @@ function buildStaticTest262DataFromReport(reportPath) {
 }
 
 ensureExists(PLAYGROUND_DIST);
-const hasDashboardBundle =
-  existsSync(join(DASHBOARD_DIR, "index.html")) &&
-  existsSync(join(DASHBOARD_DIR, "data")) &&
-  existsSync(join(DASHBOARD_DIR, "data.js"));
-// issues-graph.html and graph-data.json live in public/ — Vite copies them
-// into playground-dist automatically, so they're already in PAGES_DIST.
 
 rmSync(PAGES_DIST, { recursive: true, force: true });
 mkdirSync(PAGES_DIST, { recursive: true });
@@ -246,15 +238,6 @@ const PUBLIC_REPORT_SHORT = join(ROOT, "public", "benchmarks", "report.html");
 copyFileIfExists(PUBLIC_REPORT, join(PAGES_DIST, "benchmarks", "results", "report.html"));
 copyFileIfExists(PUBLIC_REPORT_SHORT, join(PAGES_DIST, "benchmarks", "report.html"));
 
-// Add the static dashboard route and pre-generated dashboard data when the
-// private planning artifacts are present. Public exports intentionally omit
-// them.
-if (hasDashboardBundle) {
-  copyFile(join(DASHBOARD_DIR, "index.html"), join(PAGES_DIST, "dashboard", "index.html"));
-  copyDirectory(join(DASHBOARD_DIR, "data"), join(PAGES_DIST, "dashboard", "data"));
-  copyFile(join(DASHBOARD_DIR, "data.js"), join(PAGES_DIST, "dashboard", "data.js"));
-}
-// issues-graph.html + graph-data.json are in public/ → included via Vite build
 copyDirectoryIfExists(join(ROOT, "benchmarks", "suites"), join(PAGES_DIST, "benchmarks", "suites"));
 
 // spec-compliance audit data — fetched by benchmarks/spec-compliance.html at /spec-compliance/summary.json
@@ -272,7 +255,7 @@ copyFileIfExists(join(PUBLIC_BENCH, "latest.json"), join(PAGES_DIST, "benchmarks
 //   3. latest test262-results-*.jsonl in benchmarks/results/ — local dev fallback.
 //
 // Do NOT fall back to runs/ archive — those files can be months old and would
-// silently poison the deployed dashboard.
+// silently poison the deployed report.
 const test262ReportSource = resolvePreferredFile(
   join(PUBLIC_BENCH, "test262-report.json"),
   join(BENCHMARKS_RESULTS_DIR, "test262-current.json"),
@@ -342,10 +325,10 @@ writeFileSync(join(PAGES_DIST, ".nojekyll"), "");
 // Emit CNAME so the GitHub Pages custom domain (js2.loopdive.com) survives
 // every re-deploy. GitHub Pages reads this file from the deployed artifact
 // and points the Pages site at the custom domain. Bare hostname only —
-// no scheme, trailing newline. See plan/issues/sprints/46/1188.md.
+// no scheme, trailing newline.
 writeFileSync(join(PAGES_DIST, "CNAME"), "js2.loopdive.com\n");
 
-// Copy web components to pages-dist root and dashboard
+// Copy web components to pages-dist root.
 const COMPONENTS_DIR = join(ROOT, "components");
 for (const file of ["site-nav.js", "t262-charts.js", "trend-chart.js", "perf-benchmark-chart.js"]) {
   copyFileIfExists(join(COMPONENTS_DIR, file), join(PAGES_DIST, "components", file));
@@ -357,13 +340,5 @@ for (const file of ["site-nav.js", "t262-charts.js", "trend-chart.js", "perf-ben
 // `await import(...)` alone is a no-op — call the export explicitly.
 const { buildAdrPages } = await import("./build-adr-html.mjs");
 buildAdrPages();
-
-// Copy sprint-stats.json to dashboard data when dashboard artifacts exist.
-if (hasDashboardBundle) {
-  copyFileIfExists(
-    join(ROOT, "dashboard", "data", "sprint-stats.json"),
-    join(PAGES_DIST, "dashboard", "data", "sprint-stats.json"),
-  );
-}
 
 console.log(`GitHub Pages artifact ready at ${PAGES_DIST}`);

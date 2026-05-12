@@ -19,9 +19,4 @@ Files / runtime imports involved:
 
 ## Gap
 
-1412/3081 (45.8%). 222 wasm_compile errors — type-mixing in callbacks (heterogeneous arrays). 1052 assertion_fail — sparse-array semantics, custom-class constructors (Symbol.species), Array.from with iterable hosts. Array.from externref iterator bridge: #1320.
-
-## Issues filed / referenced
-
-- [#1320](../plan/issues/sprints/50/1320-*.md)
-- [#1339](../plan/issues/sprints/50/1339-*.md)
+1412/3081 (45.8%). 222 wasm_compile errors — type-mixing in callbacks (heterogeneous arrays). 1052 assertion_fail — sparse-array semantics, custom-class constructors (Symbol.species), Array.from with iterable hosts. Array.from externref iterator bridge: follow-up work.

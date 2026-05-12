@@ -19,4 +19,4 @@ Files / runtime imports involved:
 
 ## Gap
 
-Module-code 55%, import 33%. Top-level await not supported. Cyclic imports work but error-binding propagation incomplete. import.meta partially supported (only .url).
+Module-code 55%, import 33%. Top-level await not supported. Cyclic imports work but error-binding propagation incomplete. import.meta partially supported (only.url).

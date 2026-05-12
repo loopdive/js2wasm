@@ -4,7 +4,7 @@ Direct AOT compilation from JavaScript and TypeScript to WebAssembly GC.
 
 `js2wasm` compiles source code into WasmGC binaries without embedding a JavaScript interpreter or shipping a bundled runtime. That removes the runtime tax common in interpreter-in-Wasm and bundled-engine stacks, where interpreters often land in the high-hundreds-of-kilobytes range and full-fledged JavaScript engines in the megabytes, and keeps the output aligned with Wasm-native deployment models.
 
-`js2wasm` is the core compiler product of **Loopdive GmbH**, released under **Apache License 2.0 with LLVM Exceptions** — and developed fully in the open, including its agentic engineering workflow. The repository contains the compiler source, the complete planning surface (`plan/`), and the agent coordination infrastructure (`.claude/`) that a small team uses to ship fixes in parallel.
+`js2wasm` is the core compiler product of **Loopdive GmbH**, released under **Apache License 2.0 with LLVM Exceptions**. The repository contains the public compiler source, examples, tests, benchmarks, and documentation needed to review and use the project.
 
 ## Value Proposition
 
@@ -142,51 +142,6 @@ Areas with meaningful progress today include:
 
 This is not yet a “drop in any npm package” story. It is a serious compiler with a growing compatibility baseline and a clear infrastructure target.
 
-## The Methodology
-
-Loopdive develops `js2wasm` with an **Automated Agile Team** model. The goal is not novelty for its own sake. The goal is to compress the feedback loop between product intent, compiler implementation, and conformance verification.
-
-### Operating Roles
-
-- **Product Owner**: defines goals with the human stakeholder, plans sprints, prioritizes work, and keeps the backlog aligned with the product surface.
-- **Technical Delivery Lead**: orchestrates sprint execution, coordinates task flow, manages merge discipline, and keeps implementation work moving through the pipeline.
-- **Compiler Engineer (AI)**: implements ECMA-262 behavior, compiler pipeline changes, WasmGC lowering, and code generation details.
-- **QA Engineer (Automated)**: runs CI-based conformance and regression feedback loops, especially around Test262 trend tracking and behavioral drift.
-- **Architect (Human / Loopdive)**: owns system design, strategic constraints, runtime boundaries, and platform-facing product decisions.
-
-### Why It Matters
-
-This model is designed around one claim:
-
-**Velocity is our moat.**
-
-The project is optimized for:
-
-- short implementation-to-validation cycles
-- continuous spec-aligned compiler iteration
-- rapid backlog triage from conformance data
-- keeping product direction, engineering execution, and QA tightly coupled
-
-### Open Agentic Development
-
-The workflow is not hidden behind a consultancy. It is **in this repository**:
-
-- `plan/issues/` — architect-written implementation specs for every open and completed work item
-- `plan/log/dependency-graph.md` — current priorities and what's blocked on what
-- `plan/issues/sprints/` — sprint plans and retrospectives
-- `.claude/agents/` — agent role definitions (product owner, architect, developer, scrum master)
-- `.claude/hooks/` — safety scripts (pre-commit gates, path checks)
-- `.claude/skills/` — reusable workflow protocols (test-and-merge, self-merge, harvest-errors)
-- `.claude/memory/` — accumulated feedback and learnings shared across sessions
-
-Anyone with a [Claude Code](https://docs.claude.com/claude-code) subscription can clone the repo, spawn a `developer` agent from `.claude/agents/developer.md`, point it at a `status: ready` issue under `plan/issues/sprints/`, and contribute a real fix through the same pipeline the core team uses. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the agentic contribution path.
-
-### How this is built
-
-For a long-form, technical account of the agentic development methodology — how the team is structured, how correctness is anchored across multiple test suites, where the decision boundaries between human and agent are drawn, what has gone wrong, and how the methodology has evolved — see [`docs/methodology.md`](./docs/methodology.md).
-
-The document is intended for senior engineers who are skeptical but curious. It cites concrete numbers (sprint count, PR count, test262 pass rate), names the failure modes the team has hit, and discusses honest tradeoffs versus a traditional engineering team. It synthesizes the raw planning material in `plan/` for an external reader without contradicting it; if the two ever diverge, `plan/` is the primary source.
-
 ## Licensing
 
 This repository is licensed under the **Apache License 2.0 with LLVM Exceptions**. See [LICENSE](./LICENSE).
@@ -231,7 +186,6 @@ The foundational design choices behind `js2wasm` — why WasmGC instead of linea
 - [Playground](https://loopdive.github.io/js2wasm/playground/)
 - [Roadmap](./ROADMAP.md)
 - [Architecture Decisions](./docs/adr/README.md)
-- [Architecture Notes](./CLAUDE.md)
 - [Contributing](./CONTRIBUTING.md)
 
 ## Acknowledgments

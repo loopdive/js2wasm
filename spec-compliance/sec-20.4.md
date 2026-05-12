@@ -20,8 +20,3 @@ Files / runtime imports involved:
 ## Gap
 
 53/98 (54.1%) — TypeErrors on Symbol → string/number coercion (must throw, currently returns NaN/'Symbol()'). Symbol.for / Symbol.keyFor: partial.
-
-## Issues filed / referenced
-
-- [#1319](../plan/issues/sprints/50/1319-*.md)
-- [#1343](../plan/issues/sprints/50/1343-*.md)

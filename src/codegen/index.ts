@@ -3114,8 +3114,8 @@ function registerWasiImports(ctx: CodegenContext, sourceFile: ts.SourceFile): vo
 
   // #1322: random_get(buf_ptr: i32, buf_len: i32) -> errno (i32)
   // Used by `Math_random` (emitted in math-helpers.ts:emitInlineMathFunctions).
-  // Registered HERE — before any defined helpers — so the late-import shift
-  // bug (CLAUDE.md "addUnionImports" note) doesn't break `__str_*` indices.
+  // Registered HERE — before any defined helpers — so late import insertion
+  // doesn't break `__str_*` indices.
   if (needsRandomGet) {
     const randomGetType = addFuncType(ctx, [{ kind: "i32" }, { kind: "i32" }], [{ kind: "i32" }], "$wasi_random_get");
     addImport(ctx, "wasi_snapshot_preview1", "random_get", { kind: "func", typeIdx: randomGetType });

@@ -7,7 +7,7 @@
 // selector claims the function as expected, and instantiates both modules
 // to confirm both produce the same return value.
 //
-// Slice 12 scope (`plan/issues/sprints/47/1169o.md`):
+// Slice 12 scope:
 //   - `arr[i]` where `i` is any Phase-1 expression (literal, identifier,
 //     binary expression, etc.) on a vec-typed receiver. Lowered as
 //     `vec.get` with a saturating f64 → i32 index conversion.

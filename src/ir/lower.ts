@@ -1773,9 +1773,7 @@ export function lowerIrFunctionToWasm(func: IrFunction, resolver: IrLowerResolve
       case "await":
       case "async.return":
       case "async.throw":
-        throw new Error(
-          `ir/lower: ${instr.kind} not yet implemented (#1373 Phase C / #1373b — see issue plan/issues/sprints/51/1373-ir-async-function.md)`,
-        );
+        throw new Error(`ir/lower: ${instr.kind} not yet implemented (#1373 Phase C / #1373b)`);
     }
   };
 

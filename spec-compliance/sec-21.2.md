@@ -19,7 +19,3 @@ Files / runtime imports involved:
 ## Gap
 
 30/77 (39.0%). 13 runtime errors and 4 illegal_cast — typed paths assume f64 too eagerly. Standalone BigInt (i64 + arbitrary-precision fallback) not implemented.
-
-## Issues filed / referenced
-
-- [#1350](../plan/issues/sprints/50/1350-*.md)

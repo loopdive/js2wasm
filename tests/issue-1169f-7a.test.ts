@@ -13,7 +13,7 @@
 //      with `gen.next()` until exhaustion, asserting the same
 //      sequence of values comes out of both.
 //
-// Slice 7a scope (mirror of `plan/issues/sprints/45/1169f.md`):
+// Slice 7a scope:
 //   - `function* g() { yield 1; yield 2; ...; return <num>; }` —
 //     sequential numeric yields followed by an explicit numeric tail
 //     return. The selector requires a tail return because Phase 1's

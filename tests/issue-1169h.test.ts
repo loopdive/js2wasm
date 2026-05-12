@@ -12,7 +12,7 @@
 //   3. instantiates both modules and drives the exported entry point,
 //      asserting both produce the same return value.
 //
-// Slice 9 scope (`plan/issues/sprints/45/1169h.md`):
+// Slice 9 scope:
 //   - `throw <expr>;` for non-numeric expressions (string literal,
 //     `new Error(...)`, etc.). Numeric throws fall back to legacy.
 //   - `try { ... } catch (e) { ... }` (identifier binding only).

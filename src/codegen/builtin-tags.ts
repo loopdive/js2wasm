@@ -25,7 +25,7 @@
  * Phase-2 scope (later): tagged WasmGC wrapper structs for thrown errors so
  *   `catch (e) { if (e instanceof TypeError) ... }` works without a JS host.
  *
- * See plan/issues/sprints/50/1325-instanceof-builtin-type-tag-registry.md.
+ * See the Error wrapper implementation for the companion type-tag use.
  */
 
 /**

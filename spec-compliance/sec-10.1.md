@@ -20,7 +20,3 @@ Files / runtime imports involved:
 ## Gap
 
 [[Extensible]] flag (preventExtensions/freeze/seal) is not enforced for typed structs — we don't have a hidden 'extensible' bit. Property attributes (writable/configurable/enumerable) are not tracked per property except via host fallback.
-
-## Issues filed / referenced
-
-- [#1335](../plan/issues/sprints/50/1335-*.md)

@@ -45,7 +45,7 @@ describe("#1244 Hono Tier 1 — router math primitives", () => {
    * Note: parameters are typed `any` rather than `string[]` because typing
    * the local explicitly as `string[]` triggers a struct-type mismatch in
    * codegen (`struct.get[0] expected type (ref null 6), found local.get of
-   * type (ref null 1)`) — see `plan/issues/backlog/1247.md` for the follow-up.
+   * type (ref null 1)`) — tracked as a follow-up.
    */
   it("Tier 1a — splitPath: pure string split + leading-empty drop", async () => {
     const { exports } = await run(`
@@ -142,7 +142,7 @@ describe("#1244 Hono Tier 1 — router math primitives", () => {
       // Returns 1 if route matches request and writes captured params (by
       // index) into out array; 0 otherwise.
       // (Note: the natural typeof-guarded form mishandles substring(1).
-      //  Filed as plan/issues/backlog/1248.md. Omitted here as workaround.)
+      //  Omitted here as a workaround for a tracked follow-up.)
       export function matchRoute(routeParts: any, reqParts: any, outNames: any, outValues: any): number {
         if (routeParts.length !== reqParts.length) return 0;
         var captured: number = 0;

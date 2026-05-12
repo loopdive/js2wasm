@@ -246,26 +246,6 @@
         color: var(--text-muted);
       }
 
-      /* Issues column */
-      .issues {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 4px;
-      }
-      .issues a {
-        background: rgba(109, 179, 255, 0.1);
-        border: 1px solid rgba(109, 179, 255, 0.25);
-        border-radius: 4px;
-        padding: 1px 7px;
-        font-size: 0.6875rem;
-        font-family: var(--mono);
-        color: #6db3ff;
-        white-space: nowrap;
-      }
-      .issues a:hover {
-        background: rgba(109, 179, 255, 0.2);
-        text-decoration: none;
-      }
       .muted {
         color: var(--text-muted);
         font-size: 0.75rem;
@@ -308,7 +288,6 @@
           <th>Title</th>
           <th style="width: 130px">Status</th>
           <th style="width: 220px">Coverage</th>
-          <th style="width: 190px">Issues</th>
         </tr>
       </thead>
       <tbody id="rows"></tbody>
@@ -347,7 +326,7 @@
         }
         if (!data) {
           document.getElementById("rows").innerHTML =
-            '<tr><td colspan="5" style="color:var(--text-muted);padding:2rem;text-align:center">Could not load summary.json — open this page from the dashboard server.</td></tr>';
+            '<tr><td colspan="4" style="color:var(--text-muted);padding:2rem;text-align:center">Could not load summary.json — open this page from the dashboard server.</td></tr>';
           document.getElementById("meta").textContent = "";
           return;
         }
@@ -435,30 +414,6 @@
               '<span class="muted" title="Covered indirectly — no direct test262 category mapping">indirect</span>';
           }
           tr.appendChild(covTd);
-
-          // Issues
-          const issuesTd = document.createElement("td");
-          if (s.issues && s.issues.length) {
-            const wrap = document.createElement("div");
-            wrap.className = "issues";
-            for (let i = 0; i < s.issues.length; i++) {
-              const id = s.issues[i];
-              const filePath = s.issue_files && s.issue_files[i];
-              const il = document.createElement("a");
-              if (filePath) {
-                il.href = "https://github.com/loopdive/js2wasm/blob/main/" + filePath;
-              } else {
-                il.href = "https://github.com/loopdive/js2wasm/blob/main/plan/issues";
-              }
-              il.title = "plan issue #" + id;
-              il.textContent = "#" + id;
-              wrap.appendChild(il);
-            }
-            issuesTd.appendChild(wrap);
-          } else {
-            issuesTd.innerHTML = '<span class="muted">—</span>';
-          }
-          tr.appendChild(issuesTd);
 
           rows.appendChild(tr);
         }

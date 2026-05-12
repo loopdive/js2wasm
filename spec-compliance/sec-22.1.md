@@ -8,7 +8,7 @@
 
 ## What the spec requires
 
-Strings are dual-mode: wasm:js-string (host) or WasmGC i16-array (--nativeStrings). All String.prototype methods (slice, substring, indexOf, includes, startsWith, endsWith, split, replace, replaceAll, match, matchAll, normalize, padStart, padEnd, repeat, trim*, iterator, charAt, charCodeAt, codePointAt, fromCharCode, fromCodePoint, raw, ...).
+Strings are dual-mode: wasm:js-string (host) or WasmGC i16-array (--nativeStrings). All String.prototype methods (slice, substring, indexOf, includes, startsWith, endsWith, split, replace, replaceAll, match, matchAll, normalize, padStart, padEnd, repeat, trim\*, iterator, charAt, charCodeAt, codePointAt, fromCharCode, fromCodePoint, raw,...).
 
 ## Current implementation
 

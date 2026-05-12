@@ -17,9 +17,6 @@ benchmarks/results/*.json
 benchmarks/results/*.md
 benchmarks/results/*.txt
 .pnpm-store/
-.claude/settings.local.json
-.claude/worktrees/
-.claude/agents/
 .test262-cache/
 output/
 scripts/compiler-bundle.mjs
@@ -66,18 +63,13 @@ tests/fixtures/*.wasm
 tests/fixtures/*.wat
 tests/fixtures/*.d.ts
 tests/fixtures/*.imports.js
-.claude/nonces/
 *.jsonl
 benchmarks/results/runs/
 .playwright-cli/
 vendor/
 docs/publications/
 
-# Claude Code scheduled tasks lock
-.claude/scheduled_tasks.lock
-
-# CI status snapshots and diff reports (generated, not committed)
-.claude/ci-status/*.bak
+# CI diff reports (generated, not committed)
 test262-diff-branch-merged/
 test262-diff-main-merged/
 test262-diff-regressions-report/

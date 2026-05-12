@@ -18,8 +18,4 @@ Files / runtime imports involved:
 
 ## Gap
 
-Proxy coverage is 21.5% — most failures are assertion_fail (trap return value validation) and type_error (invariant checks). Pure-Wasm Proxy needs a meta-runtime — backlog #1355.
-
-## Issues filed / referenced
-
-- [#1355](../plan/issues/sprints/50/1355-*.md)
+Proxy coverage is 21.5% — most failures are assertion_fail (trap return value validation) and type_error (invariant checks). Pure-Wasm Proxy needs a meta-runtime — backlog follow-up work.

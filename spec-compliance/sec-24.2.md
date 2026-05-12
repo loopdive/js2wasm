@@ -19,8 +19,4 @@ Files / runtime imports involved:
 
 ## Gap
 
-282/383 (73.6%). 39 'other' errors and 46 assertion_fail — likely the new Set methods on non-Set 'set-like' arguments (must accept any object with .has/.size/.keys).
-
-## Issues filed / referenced
-
-- [#1352](../plan/issues/sprints/50/1352-*.md)
+282/383 (73.6%). 39 'other' errors and 46 assertion_fail — likely the new Set methods on non-Set 'set-like' arguments (must accept any object with.has/.size/.keys).

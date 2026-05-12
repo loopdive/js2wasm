@@ -1,7 +1,7 @@
 # WASI hello-world: TypeScript → standalone native executable
 
 This example shows how to compile a small TypeScript program that writes to
-**stdout** *and* the **filesystem** down to a single self-contained WASI
+**stdout** _and_ the **filesystem** down to a single self-contained WASI
 binary — no Node, no JS host, no runtime dependencies on the consumer's
 machine.
 
@@ -20,10 +20,10 @@ It uses two of the most common Node.js APIs (`console.log` and
 `fs.writeFileSync`). With `--target wasi`, js2wasm rewrites both to WASI
 syscalls:
 
-| TypeScript                         | WASI primitives                           |
-| ---------------------------------- | ----------------------------------------- |
-| `console.log(s)`                   | `fd_write` (fd=1)                         |
-| `writeFileSync(path, contents)`    | `path_open` → `fd_write` → `fd_close`     |
+| TypeScript                      | WASI primitives                       |
+| ------------------------------- | ------------------------------------- |
+| `console.log(s)`                | `fd_write` (fd=1)                     |
+| `writeFileSync(path, contents)` | `path_open` → `fd_write` → `fd_close` |
 
 The compiled module imports only from `wasi_snapshot_preview1` — there are
 **no `env.*` imports**, so the binary runs on any standards-compliant WASI
@@ -200,8 +200,7 @@ npx js2wasm examples/wasi/hello-fs.ts -o out
 ```
 
 This demonstrates js2wasm's **dual-mode** principle (same source, two
-targets — see [`#679`](../../plan/issues/done/679.md) /
-[`#682`](../../plan/issues/done/682.md)) applied to filesystem I/O. The
+targets) applied to filesystem I/O. The
 import resolver routes `node:fs` to the JS host's `fs` module in JS-host
 mode, and to WASI syscalls (`path_open`/`fd_write`/`fd_close`) in WASI
 mode.
@@ -213,8 +212,7 @@ filesystem demo. Known limitations:
 
 - **Hardcoded preopen dirfd = 3.** Most WASI runtimes assign fd=3 to the
   first `--dir` mount, so this works in practice. A full preopen-table
-  walk via `fd_prestat_get` / `fd_prestat_dir_name` is tracked in
-  [`#1041`](../../plan/issues/blocked/1041.md).
+  walk via `fd_prestat_get` / `fd_prestat_dir_name` is still pending.
 - **`writeFileSync` only.** `readFileSync` (#1036), `existsSync` (#1037),
   `mkdirSync` (#1038), `unlinkSync` (#1039), `readdirSync` (#1040), and
   `node:fs/promises` (#1042) are follow-up issues.
@@ -222,5 +220,4 @@ filesystem demo. Known limitations:
   `const path = '...'` style, but a true runtime GC-string → linear-memory
   encoder is still pending.
 
-See [`plan/issues/sprints/45/1035.md`](../../plan/issues/done/1035.md) for
-the design notes and full follow-up list.
+The full follow-up list is tracked in the private planning workspace.

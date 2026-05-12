@@ -15,7 +15,3 @@ Proxy host-only — see §10.5. 67/311 (21.5%).
 Files / runtime imports involved:
 
 - `src/runtime.ts (host)`
-
-## Issues filed / referenced
-
-- [#1355](../plan/issues/sprints/50/1355-*.md)

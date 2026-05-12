@@ -14,7 +14,7 @@
 // pointer to the specific blocking issue so the test progressively
 // unskips as those issues close.
 //
-// Known dependencies (from `plan/issues/sprints/48/1282-eslint-tier-1-stress-test.md`):
+// Known dependencies:
 //
 //   - CJS `require()`             → #1279 (DONE)
 //   - CJS `module.exports`        → #1277 (DONE)

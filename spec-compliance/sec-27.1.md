@@ -18,9 +18,4 @@ Files / runtime imports involved:
 
 ## Gap
 
-Iterator 156/510 (30.6%). 142 wasm_compile errors — iterator typed-protocol mismatch. Pure-Wasm iterator-protocol: #1323. Iterator.from on externref: #1320.
-
-## Issues filed / referenced
-
-- [#1320](../plan/issues/sprints/50/1320-*.md)
-- [#1323](../plan/issues/sprints/50/1323-*.md)
+Iterator 156/510 (30.6%). 142 wasm_compile errors — iterator typed-protocol mismatch. Pure-Wasm iterator-protocol: follow-up work. Iterator.from on externref: follow-up work.

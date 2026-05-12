@@ -18,4 +18,4 @@ Files / runtime imports involved:
 
 ## Gap
 
-AsyncGeneratorPrototype 54.2% — type_error on misuse of .next/.return/.throw before/after completion.
+AsyncGeneratorPrototype 54.2% — type_error on misuse of.next/.return/.throw before/after completion.

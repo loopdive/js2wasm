@@ -20,7 +20,3 @@ Files / runtime imports involved:
 ## Gap
 
 for-of fails on iterables that throw inside next() — IteratorClose isn't called in some paths. for-await-of fails on null_deref (50) and illegal_cast (36) — likely missing externref guards.
-
-## Issues filed / referenced
-
-- [#1348](../plan/issues/sprints/50/1348-*.md)

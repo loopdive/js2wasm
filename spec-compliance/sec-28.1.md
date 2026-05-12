@@ -19,9 +19,4 @@ Files / runtime imports involved:
 
 ## Gap
 
-70/153 (45.8%). 77 assertion_fail — Reflect.* are direct mirrors of [[InternalMethod]]s, and our internal-method semantics gaps surface here too.
-
-## Issues filed / referenced
-
-- [#1335](../plan/issues/sprints/50/1335-*.md)
-- [#1346](../plan/issues/sprints/50/1346-*.md)
+70/153 (45.8%). 77 assertion_fail — Reflect.\* are direct mirrors of [[InternalMethod]]s, and our internal-method semantics gaps surface here too.

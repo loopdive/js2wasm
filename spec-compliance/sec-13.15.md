@@ -18,8 +18,4 @@ Files / runtime imports involved:
 
 ## Gap
 
-Destructuring with default values that throw: error context lost. Compound assignment on member: getter side-effects may be observed twice (issue #1268).
-
-## Issues filed / referenced
-
-- [#1268](../plan/issues/sprints/50/1268-*.md)
+Destructuring with default values that throw: error context lost. Compound assignment on member: getter side-effects may be observed twice.

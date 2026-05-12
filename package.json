@@ -61,7 +61,7 @@
   "scripts": {
     "build": "vite build --config vite.config.lib.ts",
     "build:playground": "vite build --config playground/vite.config.ts",
-    "dev": "pnpm run build:compiler-bundle && (pnpm run dashboard:watch &) && vite serve --config playground/vite.config.ts",
+    "dev": "pnpm run build:compiler-bundle && vite serve --config playground/vite.config.ts",
     "test": "node node_modules/vitest/dist/cli.js run",
     "test:watch": "node node_modules/vitest/dist/cli.js",
     "test:262": "bash scripts/run-test262-vitest.sh",
@@ -81,9 +81,6 @@
     "generate:feature-examples": "npx tsx scripts/generate-feature-examples.ts",
     "generate:size-benchmarks": "npx tsx scripts/generate-size-benchmarks.ts",
     "generate:browser-runtime-benchmarks": "node scripts/generate-browser-runtime-benchmarks.mjs",
-    "build:planning-artifacts": "node scripts/build-planning-artifacts.mjs",
-    "dashboard": "node dashboard/build-data.js",
-    "dashboard:watch": "node --watch --watch-path plan/issues --watch-path plan/issues/sprints --watch-path plan/issues/done --watch-path plan/issues/ready --watch-path plan/issues/blocked dashboard/build-data.js",
     "report": "npx tsx scripts/serve-report.ts",
     "build:pages": "node scripts/run-pages-build.mjs",
     "deploy:registry-home": "mkdir -p .registry-home && cp index.html .registry-home/index.html && node ../file-registry-cli/dist/bin/main.js commit .registry-home -r users/tt/projects/ts2wasm && node ../file-registry-cli/dist/bin/main.js push .registry-home -r users/tt/projects/ts2wasm --public",

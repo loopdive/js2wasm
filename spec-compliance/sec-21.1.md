@@ -19,8 +19,4 @@ Files / runtime imports involved:
 
 ## Gap
 
-292/338 (86.4%). 6 RangeError fails on toFixed extreme-digits. Number.prototype formatting in standalone mode is incomplete (#1321).
-
-## Issues filed / referenced
-
-- [#1321](../plan/issues/sprints/50/1321-*.md)
+292/338 (86.4%). 6 RangeError fails on toFixed extreme-digits. Number.prototype formatting in standalone mode is incomplete.

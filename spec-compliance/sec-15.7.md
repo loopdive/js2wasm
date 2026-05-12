@@ -18,9 +18,4 @@ Files / runtime imports involved:
 
 ## Gap
 
-Coverage ~67% across class expression+statement. Largest fail buckets: assertion_fail (1500+) — instance method this-binding, static initialization order, super-class field shadowing. Computed property names with side-effects: 31% (#1239).
-
-## Issues filed / referenced
-
-- [#1239](../plan/issues/sprints/50/1239-*.md)
-- [#1349](../plan/issues/sprints/50/1349-*.md)
+Coverage ~67% across class expression+statement. Largest fail buckets: assertion_fail (1500+) — instance method this-binding, static initialization order, super-class field shadowing. Computed property names with side-effects: 31%.

@@ -19,4 +19,4 @@ Files / runtime imports involved:
 
 ## Gap
 
-166/204 (81.4%). Map.prototype.upsert (#837 stage-3 proposal) not implemented. forEach callback closure capture: assertion_fail on `this`-binding (#859).
+166/204 (81.4%). Map.prototype.upsert not implemented. forEach callback closure capture: assertion_fail on `this`-binding.

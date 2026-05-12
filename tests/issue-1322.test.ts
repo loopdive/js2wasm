@@ -19,9 +19,8 @@ import { compile } from "../src/index.js";
  *   4. multiplies by 2⁻⁵³ to land in `[0, 1)`
  *
  * The `random_get` import is registered EARLY (in `registerWasiImports`)
- * before any defined helper functions are emitted, so the late-import
- * shift bug (CLAUDE.md "addUnionImports" note) doesn't reorder
- * `__str_*` indices and break their `call N` instructions.
+ * before any defined helper functions are emitted, so late import insertion
+ * doesn't reorder `__str_*` indices and break their `call N` instructions.
  *
  * JS-host mode (no `--target wasi`) is unchanged — `env.Math_random` is
  * still the host-import path.

@@ -7,7 +7,7 @@
 // selector either claims or does NOT claim the function as expected, and
 // instantiates both modules to confirm both produce the same return value.
 //
-// Slice 11 scope (`plan/issues/sprints/47/1169n.md`):
+// Slice 11 scope:
 //   - Bitwise ops on f64 operands: `&`, `|`, `^`, `<<`, `>>`, `>>>`
 //   - `delete <expr>` (returns `true`, lowers operand for side effects)
 //   - `void <expr>` (lowers operand for side effects, result is f64 NaN)

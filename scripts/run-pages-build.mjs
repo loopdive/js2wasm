@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -11,17 +10,6 @@ function run(command, args) {
     cwd: ROOT,
     stdio: "inherit",
   });
-}
-
-const hasPlanningArtifacts =
-  existsSync(resolve(ROOT, "plan")) &&
-  existsSync(resolve(ROOT, "dashboard")) &&
-  existsSync(resolve(ROOT, "scripts", "sprint-stats.ts")) &&
-  existsSync(resolve(ROOT, "scripts", "build-planning-artifacts.mjs"));
-
-if (hasPlanningArtifacts) {
-  run(process.execPath, ["--experimental-strip-types", "scripts/sprint-stats.ts"]);
-  run("node", ["scripts/build-planning-artifacts.mjs"]);
 }
 
 run(process.execPath, ["--experimental-strip-types", "scripts/generate-editions.ts"]);

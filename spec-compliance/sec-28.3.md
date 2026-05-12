@@ -19,7 +19,3 @@ Files / runtime imports involved:
 ## Gap
 
 3/64 (4.7%). 58 type_error — constructor exists but most operations throw.
-
-## Issues filed / referenced
-
-- [#1356](../plan/issues/sprints/50/1356-*.md)

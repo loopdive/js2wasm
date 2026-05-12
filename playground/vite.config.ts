@@ -1,15 +1,11 @@
 import { defineConfig, type Plugin } from "vite";
 import { resolve } from "node:path";
-import { copyFileSync, existsSync } from "node:fs";
+import { copyFileSync } from "node:fs";
 import { test262Plugin } from "./vite-plugin-test262.js";
 import { compilerBundlePlugin } from "./vite-plugin-compiler-bundle.js";
 import { adrPlugin } from "./vite-plugin-adr.js";
-import { dashboardPlugin } from "./vite-plugin-dashboard.js";
 
 const projectRoot = resolve(import.meta.dirname, "..");
-const dashboardPluginPath = resolve(import.meta.dirname, "vite-plugin-dashboard.ts");
-const hasDashboardData =
-  existsSync(resolve(projectRoot, "dashboard", "index.html")) && existsSync(resolve(projectRoot, "plan", "issues"));
 
 function frameNavSyncPlugin(): Plugin {
   let outDir = resolve(projectRoot, "dist/playground");
@@ -27,9 +23,6 @@ function frameNavSyncPlugin(): Plugin {
 
 export default defineConfig(async () => {
   const plugins = [compilerBundlePlugin(), test262Plugin(), adrPlugin(), frameNavSyncPlugin()];
-  if (hasDashboardData && existsSync(dashboardPluginPath)) {
-    plugins.push(dashboardPlugin());
-  }
 
   return {
     root: projectRoot,
@@ -60,12 +53,11 @@ export default defineConfig(async () => {
         allow: ["."],
       },
       watch: {
-        // Exclude agent worktrees, test262, node_modules, and build artifacts.
+        // Exclude large local data, dependencies, and build artifacts.
         // Without this, Vite watches the entire project root including full repo
-        // copies in .claude/worktrees/ — each file change triggers transforms
-        // that accumulate and OOM after ~4 minutes.
+        // copies and generated test262 logs. Each file change triggers transforms
+        // that can accumulate and OOM long-running dev servers.
         ignored: [
-          "**/.claude/worktrees/**",
           "**/test262/**",
           "**/node_modules/**",
           "**/.test262-cache/**",

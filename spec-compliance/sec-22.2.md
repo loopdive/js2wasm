@@ -8,7 +8,7 @@
 
 ## What the spec requires
 
-RegExp is host-only (issue #1002 closed as scoping). The four Symbol-protocol bridges (@@match, @@replace, @@search, @@split) are mostly working but have spec-compliance gaps.
+RegExp is host-only. The four Symbol-protocol bridges (@@match, @@replace, @@search, @@split) are mostly working but have spec-compliance gaps.
 
 ## Current implementation
 
@@ -18,14 +18,4 @@ Files / runtime imports involved:
 
 ## Gap
 
-1494/1879 (79.5%). 136 null_deref, 127 assertion_fail. Sub-issues: #1328-1333 cover all Symbol-protocol and edge-case work.
-
-## Issues filed / referenced
-
-- [#1002](../plan/issues/sprints/50/1002-*.md)
-- [#1328](../plan/issues/sprints/50/1328-*.md)
-- [#1329](../plan/issues/sprints/50/1329-*.md)
-- [#1330](../plan/issues/sprints/50/1330-*.md)
-- [#1331](../plan/issues/sprints/50/1331-*.md)
-- [#1332](../plan/issues/sprints/50/1332-*.md)
-- [#1333](../plan/issues/sprints/50/1333-*.md)
+1494/1879 (79.5%). 136 null_deref, 127 assertion_fail. Follow-up work covers all Symbol-protocol and edge-case work.

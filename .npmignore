@@ -18,13 +18,9 @@ runs/
 pages-dist/
 playground-dist/
 
-# Planning / agent infra
-plan/
-.claude/
+# Repository automation and local-only metadata
 .github/
 .husky/
-.devcontainer/
-agent-sessions/
 
 # Config files
 tsconfig*.json
@@ -40,8 +36,6 @@ biome.json
 CODEOWNERS
 CONTRIBUTING.md
 CLA.md
-AGENTS.md
-CLAUDE.md
 CNAME
 index.html
 playground.png

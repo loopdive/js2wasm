@@ -8,7 +8,7 @@
 
 ## What the spec requires
 
-Error and the 8 NativeErrors (TypeError, RangeError, SyntaxError, ReferenceError, EvalError, URIError, AggregateError, SuppressedError) construct proper externref instances. .message, .stack, .cause are set.
+Error and the 8 NativeErrors (TypeError, RangeError, SyntaxError, ReferenceError, EvalError, URIError, AggregateError, SuppressedError) construct proper externref instances..message,.stack,.cause are set.
 
 ## Current implementation
 
@@ -20,7 +20,3 @@ Files / runtime imports involved:
 ## Gap
 
 AggregateError 16.0%, SuppressedError 27.3% — `errors` array iteration semantics, constructor coercion of non-iterable errors. Error.prototype.toString custom-toString-overrides not always honored.
-
-## Issues filed / referenced
-
-- [#1340](../plan/issues/sprints/50/1340-*.md)

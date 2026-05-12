@@ -7,12 +7,8 @@
 
 ## What the spec requires
 
-Stage 3 proposal not yet shipped; some test262 tests reference it (issue #1315).
+Stage 3 proposal not yet shipped; some test262 tests reference it.
 
 ## Current implementation
 
 _No dedicated implementation files; see linked sub-sections._
-
-## Issues filed / referenced
-
-- [#1315](../plan/issues/sprints/50/1315-*.md)

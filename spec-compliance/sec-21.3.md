@@ -19,4 +19,4 @@ Files / runtime imports involved:
 
 ## Gap
 
-309/327 (94.5%). Math.random uses host import (issue #1322 plans wasi_random_get). 9 assertion_fail on edge cases (sign of -0, hypot 0/Inf, etc.).
+309/327 (94.5%). Math.random uses host import. 9 assertion_fail on edge cases (sign of -0, hypot 0/Inf, etc.).

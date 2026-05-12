@@ -19,9 +19,4 @@ Files / runtime imports involved:
 
 ## Gap
 
-Async recursive closure leaks unhandled rejection (issue #1312). await of non-Promise should pass-through; currently doesn't always unwrap thenables (#1313).
-
-## Issues filed / referenced
-
-- [#1312](../plan/issues/sprints/50/1312-*.md)
-- [#1313](../plan/issues/sprints/50/1313-*.md)
+Async recursive closure leaks unhandled rejection. await of non-Promise should pass-through; currently doesn't always unwrap thenables.

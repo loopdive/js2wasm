@@ -8,7 +8,7 @@
 
 ## What the spec requires
 
-Function objects carry [[Environment]] (closure capture struct) and [[FormalParameters]] (via Wasm function-type signature). [[Call]] and [[Construct]] dispatch through the function-table. .length is computed from formal parameter count.
+Function objects carry [[Environment]] (closure capture struct) and [[FormalParameters]] (via Wasm function-type signature). [[Call]] and [[Construct]] dispatch through the function-table..length is computed from formal parameter count.
 
 ## Current implementation
 
@@ -19,9 +19,4 @@ Files / runtime imports involved:
 
 ## Gap
 
-Function objects from Wasm are not always JS-callable (issue #1308). .name, .toString(), Function.prototype.bind partial application are partial. Function/internals: 1/8 pass.
-
-## Issues filed / referenced
-
-- [#1308](../plan/issues/sprints/50/1308-*.md)
-- [#1338](../plan/issues/sprints/50/1338-*.md)
+Function objects from Wasm are not always JS-callable..name,.toString(), Function.prototype.bind partial application are partial. Function/internals: 1/8 pass.

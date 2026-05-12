@@ -1,18 +1,10 @@
 // Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 //
-// #1296 Tier 1 — pure-compute aggregation kernels for the js2wasm dashboard.
+// Pure-compute aggregation kernels used as a js2wasm dogfood fixture.
 //
-// These functions are compiled to Wasm by js2wasm itself and used by the
-// GitHub Pages site to aggregate the test262 trend and the issue-status
-// counts shown on the Kanban board. The kernels intentionally take raw
-// `number[]` parameters (not full run/issue objects) so the module compiles
-// without touching `JSON.parse`, `fetch`, or any DOM API. The dashboard
-// boot script (or test harness) is responsible for unpacking the underlying
-// JSON shape into parallel primitive arrays before invoking these kernels.
-//
-// Tier 2 (object/string parsing, DOM updates) and Tier 3 (landing page)
-// are tracked in the issue file. This file is the dogfood proof that the
-// pure-compute path through js2wasm works end-to-end on real dashboard math.
+// These functions are compiled to Wasm by js2wasm itself and exercise trend
+// and status aggregation over raw `number[]` parameters without touching
+// `JSON.parse`, `fetch`, or any DOM API.
 
 // ─── Pass-rate / trend kernels ─────────────────────────────────────────
 
@@ -74,10 +66,9 @@ export function cumulativeLoss(passes: number[]): number {
 // ─── Run / issue filters ───────────────────────────────────────────────
 
 /**
- * `dashboard/build-data.js` filters runs by minimum total (20000 for
- * pre-2026-03-20 runs, 40000 after). This is the count of qualifying
- * entries — the JS host then uses the indexes to slice the original
- * objects.
+ * Count qualifying entries above a minimum total. The JS host can use this
+ * count to slice the original objects without moving object graphs through
+ * the Wasm boundary.
  */
 export function countRunsAboveTotal(totals: number[], minTotal: number): number {
   let n = 0;
@@ -118,7 +109,7 @@ function fixtureTotals(): number[] {
 }
 
 function fixtureStatuses(): number[] {
-  // 12 sample issues across the Kanban lanes:
+  // 12 sample statuses across representative workflow lanes:
   //   3 backlog (0), 2 ready (1), 1 in-progress (2), 6 done (5)
   return [5, 5, 5, 0, 1, 5, 2, 5, 5, 0, 1, 0];
 }

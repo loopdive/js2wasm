@@ -19,7 +19,3 @@ Files / runtime imports involved:
 ## Gap
 
 27/51 (52.9%) — assertion failures on Boolean wrapper coercion (Boolean.prototype.toString.call(0) etc.).
-
-## Issues filed / referenced
-
-- [#1343](../plan/issues/sprints/50/1343-*.md)

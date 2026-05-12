@@ -19,10 +19,4 @@ Files / runtime imports involved:
 
 ## Gap
 
-466/652 (71.5%). 80 'other' + 38 promise_error + 29 assertion_fail. Microtask scheduling: #1326. Async closure leaks: #1311, #1312.
-
-## Issues filed / referenced
-
-- [#1311](../plan/issues/sprints/50/1311-*.md)
-- [#1312](../plan/issues/sprints/50/1312-*.md)
-- [#1326](../plan/issues/sprints/50/1326-*.md)
+466/652 (71.5%). 80 'other' + 38 promise_error + 29 assertion_fail. Microtask scheduling: follow-up work. Async closure leaks: follow-up work, follow-up work.

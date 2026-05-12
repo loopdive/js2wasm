@@ -1,5 +1,4 @@
 // Issue #1135: rest-destructuring of Wasm-constructed arrays after setExports.
-// See plan/issues/ready/1135.md for the root cause.
 import { describe, expect, it } from "vitest";
 import { compile } from "../src/index.js";
 import { buildImports } from "../src/runtime.js";

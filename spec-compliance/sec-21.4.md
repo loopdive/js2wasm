@@ -19,7 +19,3 @@ Files / runtime imports involved:
 ## Gap
 
 360/594 (60.6%). 199 assertion_fail — likely Date string parsing (Date.parse format quirks), year-2-digit handling, and timezone-offset edge cases.
-
-## Issues filed / referenced
-
-- [#1344](../plan/issues/sprints/50/1344-*.md)

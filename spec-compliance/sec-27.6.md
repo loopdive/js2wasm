@@ -18,8 +18,4 @@ Files / runtime imports involved:
 
 ## Gap
 
-DisposableStack 47/91 (52%), AsyncDisposableStack 22/52 (42%), SuppressedError 6/22 (27%). TypeError on misuse-of-disposed-stack incomplete. await using TDZ tests null (#1020).
-
-## Issues filed / referenced
-
-- [#1020](../plan/issues/sprints/50/1020-*.md)
+DisposableStack 47/91 (52%), AsyncDisposableStack 22/52 (42%), SuppressedError 6/22 (27%). TypeError on misuse-of-disposed-stack incomplete. await using TDZ tests null.

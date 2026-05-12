@@ -21,8 +21,7 @@ import { compileToWasm } from "./helpers.js";
 // Sequencing note: this PR lands #1205 only. The companion `for-await-of`
 // destructure-default cluster (test262
 // `language/statements/for-await-of/async-{func,gen}-decl-dstr-*`) needs
-// the Stage 1 re-application of #1177 on top of this work to fully retire
-// — see plan/issues/sprints/46/1205.md for the staging plan.
+// the Stage 1 re-application of #1177 on top of this work to fully retire.
 
 describe("#1205 — async / generator fn-decl TDZ flag boxing", () => {
   it.todo(

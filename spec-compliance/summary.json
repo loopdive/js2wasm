@@ -19,8 +19,7 @@
       "fail": 30,
       "skip": 0,
       "anchor": "sec-ecmascript-data-types-and-values",
-      "file": "spec-compliance/sec-6.md",
-      "issues": []
+      "file": "spec-compliance/sec-6.md"
     },
     {
       "id": "sec-7",
@@ -31,8 +30,7 @@
       "fail": 0,
       "skip": 0,
       "anchor": "sec-abstract-operations",
-      "file": "spec-compliance/sec-7.md",
-      "issues": []
+      "file": "spec-compliance/sec-7.md"
     },
     {
       "id": "sec-7.1.1",
@@ -43,9 +41,7 @@
       "fail": 0,
       "skip": 0,
       "anchor": "sec-toprimitive",
-      "file": "spec-compliance/sec-7.1.1.md",
-      "issues": [1319],
-      "issue_files": ["plan/issues/sprints/50/1319-cannot-convert-to-primitive-symbol-toprimitive.md"]
+      "file": "spec-compliance/sec-7.1.1.md"
     },
     {
       "id": "sec-7.1.2",
@@ -56,8 +52,7 @@
       "fail": 0,
       "skip": 0,
       "anchor": "sec-toboolean",
-      "file": "spec-compliance/sec-7.1.2.md",
-      "issues": []
+      "file": "spec-compliance/sec-7.1.2.md"
     },
     {
       "id": "sec-7.1.4",
@@ -68,8 +63,7 @@
       "fail": 0,
       "skip": 0,
       "anchor": "sec-tonumber",
-      "file": "spec-compliance/sec-7.1.4.md",
-      "issues": []
+      "file": "spec-compliance/sec-7.1.4.md"
     },
     {
       "id": "sec-7.1.17",
@@ -80,8 +74,7 @@
       "fail": 0,
       "skip": 0,
       "anchor": "sec-tostring",
-      "file": "spec-compliance/sec-7.1.17.md",
-      "issues": []
+      "file": "spec-compliance/sec-7.1.17.md"
     },
     {
       "id": "sec-7.1.18",
@@ -92,9 +85,7 @@
       "fail": 0,
       "skip": 0,
       "anchor": "sec-toobject",
-      "file": "spec-compliance/sec-7.1.18.md",
-      "issues": [1317],
-      "issue_files": ["plan/issues/sprints/50/1317-null-deref-error-add-expression-context.md"]
+      "file": "spec-compliance/sec-7.1.18.md"
     },
     {
       "id": "sec-7.2",
@@ -105,8 +96,7 @@
       "fail": 0,
       "skip": 0,
       "anchor": "sec-testing-and-comparison-operations",
-      "file": "spec-compliance/sec-7.2.md",
-      "issues": []
+      "file": "spec-compliance/sec-7.2.md"
     },
     {
       "id": "sec-7.3",
@@ -117,13 +107,7 @@
       "fail": 1551,
       "skip": 2,
       "anchor": "sec-operations-on-objects",
-      "file": "spec-compliance/sec-7.3.md",
-      "issues": [1335, 1336, 1337],
-      "issue_files": [
-        "plan/issues/sprints/50/1335-spec-gap-object-defineproperty-descriptor-attributes.md",
-        "plan/issues/sprints/50/1336-spec-gap-object-create-properties-map.md",
-        "plan/issues/sprints/50/1337-spec-gap-function-bind-tostring-internals.md"
-      ]
+      "file": "spec-compliance/sec-7.3.md"
     },
     {
       "id": "sec-7.4",
@@ -134,13 +118,7 @@
       "fail": 378,
       "skip": 0,
       "anchor": "sec-operations-on-iterator-objects",
-      "file": "spec-compliance/sec-7.4.md",
-      "issues": [1320, 1323, 1341],
-      "issue_files": [
-        "plan/issues/sprints/50/1320-array-from-externref-iterator-bridge.md",
-        "plan/issues/sprints/50/1323-iterator-protocol-pure-wasm.md",
-        "plan/issues/sprints/50/1341-spec-gap-iterator-helpers-wasm-compile.md"
-      ]
+      "file": "spec-compliance/sec-7.4.md"
     },
     {
       "id": "sec-8",
@@ -151,8 +129,7 @@
       "fail": 0,
       "skip": 0,
       "anchor": "sec-syntax-directed-operations",
-      "file": "spec-compliance/sec-8.md",
-      "issues": []
+      "file": "spec-compliance/sec-8.md"
     },
     {
       "id": "sec-9",
@@ -163,8 +140,7 @@
       "fail": 417,
       "skip": 12,
       "anchor": "sec-executable-code-and-execution-contexts",
-      "file": "spec-compliance/sec-9.md",
-      "issues": []
+      "file": "spec-compliance/sec-9.md"
     },
     {
       "id": "sec-9.5",
@@ -175,8 +151,7 @@
       "fail": 171,
       "skip": 15,
       "anchor": "sec-jobs",
-      "file": "spec-compliance/sec-9.5.md",
-      "issues": []
+      "file": "spec-compliance/sec-9.5.md"
     },
     {
       "id": "sec-10",
@@ -187,8 +162,7 @@
       "fail": 0,
       "skip": 0,
       "anchor": "sec-ordinary-and-exotic-objects-behaviours",
-      "file": "spec-compliance/sec-10.md",
-      "issues": []
+      "file": "spec-compliance/sec-10.md"
     },
     {
       "id": "sec-10.1",
@@ -199,9 +173,7 @@
       "fail": 751,
       "skip": 2,
       "anchor": "sec-ordinary-object-internal-methods-and-internal-slots",
-      "file": "spec-compliance/sec-10.1.md",
-      "issues": [1335],
-      "issue_files": ["plan/issues/sprints/50/1335-spec-gap-object-defineproperty-descriptor-attributes.md"]
+      "file": "spec-compliance/sec-10.1.md"
     },
     {
       "id": "sec-10.2",
@@ -212,12 +184,7 @@
       "fail": 301,
       "skip": 1,
       "anchor": "sec-ecmascript-function-objects",
-      "file": "spec-compliance/sec-10.2.md",
-      "issues": [1308, 1338],
-      "issue_files": [
-        "plan/issues/sprints/50/1308-wasm-closure-not-js-callable.md",
-        "plan/issues/sprints/50/1338-spec-gap-function-bind-tostring-internals.md"
-      ]
+      "file": "spec-compliance/sec-10.2.md"
     },
     {
       "id": "sec-10.3",
@@ -228,8 +195,7 @@
       "fail": 0,
       "skip": 0,
       "anchor": "sec-built-in-function-objects",
-      "file": "spec-compliance/sec-10.3.md",
-      "issues": []
+      "file": "spec-compliance/sec-10.3.md"
     },
     {
       "id": "sec-10.4",
@@ -240,9 +206,7 @@
       "fail": 2097,
       "skip": 20,
       "anchor": "sec-built-in-exotic-object-internal-methods-and-slots",
-      "file": "spec-compliance/sec-10.4.md",
-      "issues": [1339],
-      "issue_files": ["plan/issues/sprints/50/1339-spec-gap-array-from-of-construct.md"]
+      "file": "spec-compliance/sec-10.4.md"
     },
     {
       "id": "sec-10.5",
@@ -253,9 +217,7 @@
       "fail": 235,
       "skip": 9,
       "anchor": "sec-proxy-object-internal-methods-and-internal-slots",
-      "file": "spec-compliance/sec-10.5.md",
-      "issues": [1355],
-      "issue_files": ["plan/issues/backlog/1355-spec-backlog-proxy-pure-wasm.md"]
+      "file": "spec-compliance/sec-10.5.md"
     },
     {
       "id": "sec-11",
@@ -266,9 +228,7 @@
       "fail": 30,
       "skip": 1,
       "anchor": "sec-ecmascript-language-source-code",
-      "file": "spec-compliance/sec-11.md",
-      "issues": [1355],
-      "issue_files": ["plan/issues/backlog/1355-spec-backlog-proxy-pure-wasm.md"]
+      "file": "spec-compliance/sec-11.md"
     },
     {
       "id": "sec-12",
@@ -279,8 +239,7 @@
       "fail": 16,
       "skip": 15,
       "anchor": "sec-ecmascript-language-lexical-grammar",
-      "file": "spec-compliance/sec-12.md",
-      "issues": []
+      "file": "spec-compliance/sec-12.md"
     },
     {
       "id": "sec-13",
@@ -291,9 +250,7 @@
       "fail": 3714,
       "skip": 550,
       "anchor": "sec-ecmascript-language-expressions",
-      "file": "spec-compliance/sec-13.md",
-      "issues": [1347],
-      "issue_files": ["plan/issues/sprints/50/1347-spec-gap-yield-in-try-finally.md"]
+      "file": "spec-compliance/sec-13.md"
     },
     {
       "id": "sec-13.5",
@@ -304,8 +261,7 @@
       "fail": 104,
       "skip": 18,
       "anchor": "sec-unary-operators",
-      "file": "spec-compliance/sec-13.5.md",
-      "issues": []
+      "file": "spec-compliance/sec-13.5.md"
     },
     {
       "id": "sec-13.10",
@@ -316,9 +272,7 @@
       "fail": 88,
       "skip": 0,
       "anchor": "sec-relational-operators",
-      "file": "spec-compliance/sec-13.10.md",
-      "issues": [1325],
-      "issue_files": ["plan/issues/sprints/50/1325-instanceof-builtin-type-tag-registry.md"]
+      "file": "spec-compliance/sec-13.10.md"
     },
     {
       "id": "sec-13.11",
@@ -329,8 +283,7 @@
       "fail": 55,
       "skip": 0,
       "anchor": "sec-equality-operators",
-      "file": "spec-compliance/sec-13.11.md",
-      "issues": []
+      "file": "spec-compliance/sec-13.11.md"
     },
     {
       "id": "sec-13.15",
@@ -341,9 +294,7 @@
       "fail": 363,
       "skip": 50,
       "anchor": "sec-assignment-operators",
-      "file": "spec-compliance/sec-13.15.md",
-      "issues": [1268],
-      "issue_files": ["plan/issues/sprints/50/1268-index-signature-nullish-assign-nan.md"]
+      "file": "spec-compliance/sec-13.15.md"
     },
     {
       "id": "sec-14",
@@ -354,12 +305,7 @@
       "fail": 3205,
       "skip": 207,
       "anchor": "sec-ecmascript-language-statements-and-declarations",
-      "file": "spec-compliance/sec-14.md",
-      "issues": [1348, 1349],
-      "issue_files": [
-        "plan/issues/sprints/50/1348-spec-gap-class-static-init-and-private-fields.md",
-        "plan/issues/sprints/50/1349-spec-gap-class-static-init-and-private-fields.md"
-      ]
+      "file": "spec-compliance/sec-14.md"
     },
     {
       "id": "sec-14.7.5",
@@ -370,9 +316,7 @@
       "fail": 990,
       "skip": 0,
       "anchor": "sec-for-in-and-for-of-statements",
-      "file": "spec-compliance/sec-14.7.5.md",
-      "issues": [1348],
-      "issue_files": ["plan/issues/sprints/50/1348-spec-gap-class-static-init-and-private-fields.md"]
+      "file": "spec-compliance/sec-14.7.5.md"
     },
     {
       "id": "sec-14.13",
@@ -383,8 +327,7 @@
       "fail": 0,
       "skip": 0,
       "anchor": "sec-labelled-statements",
-      "file": "spec-compliance/sec-14.13.md",
-      "issues": []
+      "file": "spec-compliance/sec-14.13.md"
     },
     {
       "id": "sec-14.14",
@@ -395,8 +338,7 @@
       "fail": 0,
       "skip": 0,
       "anchor": "sec-throw-statement",
-      "file": "spec-compliance/sec-14.14.md",
-      "issues": []
+      "file": "spec-compliance/sec-14.14.md"
     },
     {
       "id": "sec-14.15",
@@ -407,8 +349,7 @@
       "fail": 99,
       "skip": 1,
       "anchor": "sec-try-statement",
-      "file": "spec-compliance/sec-14.15.md",
-      "issues": []
+      "file": "spec-compliance/sec-14.15.md"
     },
     {
       "id": "sec-14.11",
@@ -419,8 +360,7 @@
       "fail": 0,
       "skip": 181,
       "anchor": "sec-with-statement",
-      "file": "spec-compliance/sec-14.11.md",
-      "issues": []
+      "file": "spec-compliance/sec-14.11.md"
     },
     {
       "id": "sec-15",
@@ -431,8 +371,7 @@
       "fail": 67,
       "skip": 0,
       "anchor": "sec-ecmascript-language-functions-and-classes",
-      "file": "spec-compliance/sec-15.md",
-      "issues": []
+      "file": "spec-compliance/sec-15.md"
     },
     {
       "id": "sec-15.1",
@@ -443,9 +382,7 @@
       "fail": 8,
       "skip": 0,
       "anchor": "sec-parameter-lists",
-      "file": "spec-compliance/sec-15.1.md",
-      "issues": [1158],
-      "issue_files": ["plan/issues/sprints/50/1158-destructureparamarray-fallback-eagerly-consumes-iterators.md"]
+      "file": "spec-compliance/sec-15.1.md"
     },
     {
       "id": "sec-15.2",
@@ -456,8 +393,7 @@
       "fail": 0,
       "skip": 0,
       "anchor": "sec-function-definitions",
-      "file": "spec-compliance/sec-15.2.md",
-      "issues": []
+      "file": "spec-compliance/sec-15.2.md"
     },
     {
       "id": "sec-15.4",
@@ -468,12 +404,7 @@
       "fail": 295,
       "skip": 4,
       "anchor": "sec-generator-function-definitions",
-      "file": "spec-compliance/sec-15.4.md",
-      "issues": [1345, 1347],
-      "issue_files": [
-        "plan/issues/sprints/50/1345-spec-gap-generator-prototype-receiver-checks.md",
-        "plan/issues/sprints/50/1347-spec-gap-yield-in-try-finally.md"
-      ]
+      "file": "spec-compliance/sec-15.4.md"
     },
     {
       "id": "sec-15.5",
@@ -484,12 +415,7 @@
       "fail": 57,
       "skip": 8,
       "anchor": "sec-async-function-definitions",
-      "file": "spec-compliance/sec-15.5.md",
-      "issues": [1312, 1313],
-      "issue_files": [
-        "plan/issues/sprints/50/1312-async-recursive-closure-unhandled-rejection.md",
-        "plan/issues/sprints/50/1313-await-passthrough-doesnt-unwrap-promises.md"
-      ]
+      "file": "spec-compliance/sec-15.5.md"
     },
     {
       "id": "sec-15.6",
@@ -500,8 +426,7 @@
       "fail": 324,
       "skip": 6,
       "anchor": "sec-async-generator-function-definitions",
-      "file": "spec-compliance/sec-15.6.md",
-      "issues": []
+      "file": "spec-compliance/sec-15.6.md"
     },
     {
       "id": "sec-15.7",
@@ -512,12 +437,7 @@
       "fail": 2790,
       "skip": 7,
       "anchor": "sec-class-definitions",
-      "file": "spec-compliance/sec-15.7.md",
-      "issues": [1239, 1349],
-      "issue_files": [
-        "plan/issues/sprints/50/1239-object-literals-with-getaccessor-setaccessor.md",
-        "plan/issues/sprints/50/1349-spec-gap-class-static-init-and-private-fields.md"
-      ]
+      "file": "spec-compliance/sec-15.7.md"
     },
     {
       "id": "sec-16",
@@ -528,8 +448,7 @@
       "fail": 397,
       "skip": 13,
       "anchor": "sec-ecmascript-language-scripts-and-modules",
-      "file": "spec-compliance/sec-16.md",
-      "issues": []
+      "file": "spec-compliance/sec-16.md"
     },
     {
       "id": "sec-16.2.1.7",
@@ -540,9 +459,7 @@
       "fail": 0,
       "skip": 0,
       "anchor": "sec-import-defer",
-      "file": "spec-compliance/sec-16.2.1.7.md",
-      "issues": [1315],
-      "issue_files": ["plan/issues/sprints/50/1315-import-defer-source-early-error-gap.md"]
+      "file": "spec-compliance/sec-16.2.1.7.md"
     },
     {
       "id": "sec-19",
@@ -553,8 +470,7 @@
       "fail": 10,
       "skip": 0,
       "anchor": "sec-global-object",
-      "file": "spec-compliance/sec-19.md",
-      "issues": []
+      "file": "spec-compliance/sec-19.md"
     },
     {
       "id": "sec-19.1",
@@ -565,8 +481,7 @@
       "fail": 1,
       "skip": 0,
       "anchor": "sec-value-properties-of-the-global-object",
-      "file": "spec-compliance/sec-19.1.md",
-      "issues": []
+      "file": "spec-compliance/sec-19.1.md"
     },
     {
       "id": "sec-19.2",
@@ -577,8 +492,7 @@
       "fail": 76,
       "skip": 0,
       "anchor": "sec-function-properties-of-the-global-object",
-      "file": "spec-compliance/sec-19.2.md",
-      "issues": []
+      "file": "spec-compliance/sec-19.2.md"
     },
     {
       "id": "sec-20",
@@ -589,8 +503,7 @@
       "fail": 0,
       "skip": 0,
       "anchor": "sec-fundamental-objects",
-      "file": "spec-compliance/sec-20.md",
-      "issues": []
+      "file": "spec-compliance/sec-20.md"
     },
     {
       "id": "sec-20.1",
@@ -601,14 +514,7 @@
       "fail": 1551,
       "skip": 2,
       "anchor": "sec-object-objects",
-      "file": "spec-compliance/sec-20.1.md",
-      "issues": [1335, 1336, 1337, 1239],
-      "issue_files": [
-        "plan/issues/sprints/50/1335-spec-gap-object-defineproperty-descriptor-attributes.md",
-        "plan/issues/sprints/50/1336-spec-gap-object-create-properties-map.md",
-        "plan/issues/sprints/50/1337-spec-gap-function-bind-tostring-internals.md",
-        "plan/issues/sprints/50/1239-object-literals-with-getaccessor-setaccessor.md"
-      ]
+      "file": "spec-compliance/sec-20.1.md"
     },
     {
       "id": "sec-20.2",
@@ -619,12 +525,7 @@
       "fail": 301,
       "skip": 1,
       "anchor": "sec-function-objects",
-      "file": "spec-compliance/sec-20.2.md",
-      "issues": [1338, 1308],
-      "issue_files": [
-        "plan/issues/sprints/50/1338-spec-gap-function-bind-tostring-internals.md",
-        "plan/issues/sprints/50/1308-wasm-closure-not-js-callable.md"
-      ]
+      "file": "spec-compliance/sec-20.2.md"
     },
     {
       "id": "sec-20.3",
@@ -635,9 +536,7 @@
       "fail": 24,
       "skip": 0,
       "anchor": "sec-boolean-objects",
-      "file": "spec-compliance/sec-20.3.md",
-      "issues": [1343],
-      "issue_files": ["plan/issues/sprints/50/1343-spec-gap-date-prototype-formatters.md"]
+      "file": "spec-compliance/sec-20.3.md"
     },
     {
       "id": "sec-20.4",
@@ -648,12 +547,7 @@
       "fail": 45,
       "skip": 0,
       "anchor": "sec-symbol-objects",
-      "file": "spec-compliance/sec-20.4.md",
-      "issues": [1319, 1343],
-      "issue_files": [
-        "plan/issues/sprints/50/1319-cannot-convert-to-primitive-symbol-toprimitive.md",
-        "plan/issues/sprints/50/1343-spec-gap-date-prototype-formatters.md"
-      ]
+      "file": "spec-compliance/sec-20.4.md"
     },
     {
       "id": "sec-20.5",
@@ -664,9 +558,7 @@
       "fail": 82,
       "skip": 0,
       "anchor": "sec-error-objects",
-      "file": "spec-compliance/sec-20.5.md",
-      "issues": [1340],
-      "issue_files": ["plan/issues/sprints/50/1340-spec-gap-iterator-helpers-wasm-compile.md"]
+      "file": "spec-compliance/sec-20.5.md"
     },
     {
       "id": "sec-21.1",
@@ -677,9 +569,7 @@
       "fail": 44,
       "skip": 2,
       "anchor": "sec-number-objects",
-      "file": "spec-compliance/sec-21.1.md",
-      "issues": [1321],
-      "issue_files": ["plan/issues/sprints/50/1321-number-prototype-formatting-pure-wasm.md"]
+      "file": "spec-compliance/sec-21.1.md"
     },
     {
       "id": "sec-21.2",
@@ -690,9 +580,7 @@
       "fail": 47,
       "skip": 0,
       "anchor": "sec-bigint-objects",
-      "file": "spec-compliance/sec-21.2.md",
-      "issues": [1350],
-      "issue_files": ["plan/issues/sprints/50/1350-spec-gap-arraybuffer-resizable-and-typedarray-detached.md"]
+      "file": "spec-compliance/sec-21.2.md"
     },
     {
       "id": "sec-21.3",
@@ -703,8 +591,7 @@
       "fail": 18,
       "skip": 0,
       "anchor": "sec-math-object",
-      "file": "spec-compliance/sec-21.3.md",
-      "issues": []
+      "file": "spec-compliance/sec-21.3.md"
     },
     {
       "id": "sec-21.4",
@@ -715,9 +602,7 @@
       "fail": 234,
       "skip": 0,
       "anchor": "sec-date-objects",
-      "file": "spec-compliance/sec-21.4.md",
-      "issues": [1344],
-      "issue_files": ["plan/issues/sprints/50/1344-spec-gap-date-prototype-formatters.md"]
+      "file": "spec-compliance/sec-21.4.md"
     },
     {
       "id": "sec-22.1",
@@ -728,8 +613,7 @@
       "fail": 447,
       "skip": 1,
       "anchor": "sec-string-objects",
-      "file": "spec-compliance/sec-22.1.md",
-      "issues": []
+      "file": "spec-compliance/sec-22.1.md"
     },
     {
       "id": "sec-22.2",
@@ -740,17 +624,7 @@
       "fail": 402,
       "skip": 0,
       "anchor": "sec-regexp-regular-expression-objects",
-      "file": "spec-compliance/sec-22.2.md",
-      "issues": [1002, 1328, 1329, 1330, 1331, 1332, 1333],
-      "issue_files": [
-        "plan/issues/sprints/50/1002-regexp-js-host-mode-finish.md",
-        "plan/issues/sprints/50/1328-regexp-symbol-match-protocol-spec-compliance.md",
-        "plan/issues/sprints/50/1329-regexp-symbol-replace-protocol-spec-compliance.md",
-        "plan/issues/sprints/50/1330-regexp-symbol-search-protocol-spec-compliance.md",
-        "plan/issues/sprints/50/1331-regexp-symbol-split-protocol-spec-compliance.md",
-        "plan/issues/sprints/50/1332-regexp-prototype-method-edge-cases.md",
-        "plan/issues/sprints/50/1333-regexp-pre-es6-and-annexb-tests.md"
-      ]
+      "file": "spec-compliance/sec-22.2.md"
     },
     {
       "id": "sec-23.1",
@@ -761,12 +635,7 @@
       "fail": 1660,
       "skip": 19,
       "anchor": "sec-array-objects",
-      "file": "spec-compliance/sec-23.1.md",
-      "issues": [1320, 1339],
-      "issue_files": [
-        "plan/issues/sprints/50/1320-array-from-externref-iterator-bridge.md",
-        "plan/issues/sprints/50/1339-spec-gap-array-from-of-construct.md"
-      ]
+      "file": "spec-compliance/sec-23.1.md"
     },
     {
       "id": "sec-23.2",
@@ -777,9 +646,7 @@
       "fail": 343,
       "skip": 109,
       "anchor": "sec-typedarray-objects",
-      "file": "spec-compliance/sec-23.2.md",
-      "issues": [1351],
-      "issue_files": ["plan/issues/sprints/50/1351-spec-gap-set-methods-set-like-arg.md"]
+      "file": "spec-compliance/sec-23.2.md"
     },
     {
       "id": "sec-24.1",
@@ -790,8 +657,7 @@
       "fail": 38,
       "skip": 0,
       "anchor": "sec-map-objects",
-      "file": "spec-compliance/sec-24.1.md",
-      "issues": []
+      "file": "spec-compliance/sec-24.1.md"
     },
     {
       "id": "sec-24.2",
@@ -802,9 +668,7 @@
       "fail": 101,
       "skip": 0,
       "anchor": "sec-set-objects",
-      "file": "spec-compliance/sec-24.2.md",
-      "issues": [1352],
-      "issue_files": ["plan/issues/sprints/50/1352-spec-gap-set-methods-set-like-arg.md"]
+      "file": "spec-compliance/sec-24.2.md"
     },
     {
       "id": "sec-24.3",
@@ -815,8 +679,7 @@
       "fail": 31,
       "skip": 0,
       "anchor": "sec-weakmap-objects",
-      "file": "spec-compliance/sec-24.3.md",
-      "issues": []
+      "file": "spec-compliance/sec-24.3.md"
     },
     {
       "id": "sec-24.4",
@@ -827,8 +690,7 @@
       "fail": 9,
       "skip": 0,
       "anchor": "sec-weakset-objects",
-      "file": "spec-compliance/sec-24.4.md",
-      "issues": []
+      "file": "spec-compliance/sec-24.4.md"
     },
     {
       "id": "sec-25.1",
@@ -839,9 +701,7 @@
       "fail": 100,
       "skip": 9,
       "anchor": "sec-arraybuffer-objects",
-      "file": "spec-compliance/sec-25.1.md",
-      "issues": [1351],
-      "issue_files": ["plan/issues/sprints/50/1351-spec-gap-set-methods-set-like-arg.md"]
+      "file": "spec-compliance/sec-25.1.md"
     },
     {
       "id": "sec-25.2",
@@ -852,9 +712,7 @@
       "fail": 0,
       "skip": 104,
       "anchor": "sec-sharedarraybuffer-objects",
-      "file": "spec-compliance/sec-25.2.md",
-      "issues": [1354],
-      "issue_files": ["plan/issues/backlog/1354-spec-backlog-sharedarraybuffer-atomics.md"]
+      "file": "spec-compliance/sec-25.2.md"
     },
     {
       "id": "sec-25.3",
@@ -865,12 +723,7 @@
       "fail": 112,
       "skip": 39,
       "anchor": "sec-dataview-objects",
-      "file": "spec-compliance/sec-25.3.md",
-      "issues": [1351, 1350],
-      "issue_files": [
-        "plan/issues/sprints/50/1351-spec-gap-set-methods-set-like-arg.md",
-        "plan/issues/sprints/50/1350-spec-gap-arraybuffer-resizable-and-typedarray-detached.md"
-      ]
+      "file": "spec-compliance/sec-25.3.md"
     },
     {
       "id": "sec-25.4",
@@ -881,9 +734,7 @@
       "fail": 48,
       "skip": 242,
       "anchor": "sec-atomics",
-      "file": "spec-compliance/sec-25.4.md",
-      "issues": [1354],
-      "issue_files": ["plan/issues/backlog/1354-spec-backlog-sharedarraybuffer-atomics.md"]
+      "file": "spec-compliance/sec-25.4.md"
     },
     {
       "id": "sec-25.5",
@@ -894,12 +745,7 @@
       "fail": 78,
       "skip": 0,
       "anchor": "sec-json-object",
-      "file": "spec-compliance/sec-25.5.md",
-      "issues": [1324, 1342],
-      "issue_files": [
-        "plan/issues/sprints/50/1324-json-stringify-parse-pure-wasm.md",
-        "plan/issues/sprints/50/1342-spec-gap-json-stringify-replacer-tojson.md"
-      ]
+      "file": "spec-compliance/sec-25.5.md"
     },
     {
       "id": "sec-26.1",
@@ -910,9 +756,7 @@
       "fail": 11,
       "skip": 0,
       "anchor": "sec-weak-ref-objects",
-      "file": "spec-compliance/sec-26.1.md",
-      "issues": [1354],
-      "issue_files": ["plan/issues/backlog/1354-spec-backlog-sharedarraybuffer-atomics.md"]
+      "file": "spec-compliance/sec-26.1.md"
     },
     {
       "id": "sec-26.2",
@@ -923,8 +767,7 @@
       "fail": 4,
       "skip": 25,
       "anchor": "sec-finalization-registry-objects",
-      "file": "spec-compliance/sec-26.2.md",
-      "issues": []
+      "file": "spec-compliance/sec-26.2.md"
     },
     {
       "id": "sec-27",
@@ -935,8 +778,7 @@
       "fail": 0,
       "skip": 0,
       "anchor": "sec-control-abstraction-objects",
-      "file": "spec-compliance/sec-27.md",
-      "issues": []
+      "file": "spec-compliance/sec-27.md"
     },
     {
       "id": "sec-27.1",
@@ -947,12 +789,7 @@
       "fail": 354,
       "skip": 0,
       "anchor": "sec-iteration",
-      "file": "spec-compliance/sec-27.1.md",
-      "issues": [1320, 1323],
-      "issue_files": [
-        "plan/issues/sprints/50/1320-array-from-externref-iterator-bridge.md",
-        "plan/issues/sprints/50/1323-iterator-protocol-pure-wasm.md"
-      ]
+      "file": "spec-compliance/sec-27.1.md"
     },
     {
       "id": "sec-27.2",
@@ -963,13 +800,7 @@
       "fail": 171,
       "skip": 15,
       "anchor": "sec-promise-objects",
-      "file": "spec-compliance/sec-27.2.md",
-      "issues": [1311, 1312, 1326],
-      "issue_files": [
-        "plan/issues/sprints/50/1311-map-async-handler-dispatch-null-deref.md",
-        "plan/issues/sprints/50/1312-async-recursive-closure-unhandled-rejection.md",
-        "plan/issues/sprints/50/1326-async-microtask-queue-wasm-scheduler.md"
-      ]
+      "file": "spec-compliance/sec-27.2.md"
     },
     {
       "id": "sec-27.3",
@@ -980,9 +811,7 @@
       "fail": 69,
       "skip": 0,
       "anchor": "sec-generatorfunction-constructor",
-      "file": "spec-compliance/sec-27.3.md",
-      "issues": [1345],
-      "issue_files": ["plan/issues/sprints/50/1345-spec-gap-generator-prototype-receiver-checks.md"]
+      "file": "spec-compliance/sec-27.3.md"
     },
     {
       "id": "sec-27.4",
@@ -993,8 +822,7 @@
       "fail": 12,
       "skip": 0,
       "anchor": "sec-async-function-constructor",
-      "file": "spec-compliance/sec-27.4.md",
-      "issues": []
+      "file": "spec-compliance/sec-27.4.md"
     },
     {
       "id": "sec-27.5",
@@ -1005,9 +833,7 @@
       "fail": 39,
       "skip": 0,
       "anchor": "sec-async-generator-function-constructor",
-      "file": "spec-compliance/sec-27.5.md",
-      "issues": [1345],
-      "issue_files": ["plan/issues/sprints/50/1345-spec-gap-generator-prototype-receiver-checks.md"]
+      "file": "spec-compliance/sec-27.5.md"
     },
     {
       "id": "sec-27.6",
@@ -1018,9 +844,7 @@
       "fail": 90,
       "skip": 0,
       "anchor": "sec-disposablestack-objects",
-      "file": "spec-compliance/sec-27.6.md",
-      "issues": [1020],
-      "issue_files": ["plan/issues/sprints/50/1020-await-using-tdz-tests-null.md"]
+      "file": "spec-compliance/sec-27.6.md"
     },
     {
       "id": "sec-28.1",
@@ -1031,12 +855,7 @@
       "fail": 83,
       "skip": 0,
       "anchor": "sec-reflect-object",
-      "file": "spec-compliance/sec-28.1.md",
-      "issues": [1335, 1346],
-      "issue_files": [
-        "plan/issues/sprints/50/1335-spec-gap-object-defineproperty-descriptor-attributes.md",
-        "plan/issues/sprints/50/1346-spec-gap-yield-in-try-finally.md"
-      ]
+      "file": "spec-compliance/sec-28.1.md"
     },
     {
       "id": "sec-28.2",
@@ -1047,9 +866,7 @@
       "fail": 235,
       "skip": 9,
       "anchor": "sec-proxy-objects",
-      "file": "spec-compliance/sec-28.2.md",
-      "issues": [1355],
-      "issue_files": ["plan/issues/backlog/1355-spec-backlog-proxy-pure-wasm.md"]
+      "file": "spec-compliance/sec-28.2.md"
     },
     {
       "id": "sec-28.3",
@@ -1060,9 +877,7 @@
       "fail": 61,
       "skip": 0,
       "anchor": "sec-shadowrealm-objects",
-      "file": "spec-compliance/sec-28.3.md",
-      "issues": [1356],
-      "issue_files": ["plan/issues/backlog/1356-spec-backlog-shadowrealm.md"]
+      "file": "spec-compliance/sec-28.3.md"
     },
     {
       "id": "sec-28.4",
@@ -1073,9 +888,7 @@
       "fail": 8,
       "skip": 0,
       "anchor": "sec-abstract-module-source",
-      "file": "spec-compliance/sec-28.4.md",
-      "issues": [1357],
-      "issue_files": ["plan/issues/backlog/1357-spec-backlog-abstractmodulesource.md"]
+      "file": "spec-compliance/sec-28.4.md"
     },
     {
       "id": "annex-b",
@@ -1086,9 +899,7 @@
       "fail": 531,
       "skip": 0,
       "anchor": "sec-additional-ecmascript-features-for-web-browsers",
-      "file": "spec-compliance/annex-b.md",
-      "issues": [1333],
-      "issue_files": ["plan/issues/sprints/50/1333-regexp-pre-es6-and-annexb-tests.md"]
+      "file": "spec-compliance/annex-b.md"
     },
     {
       "id": "sec-29",
@@ -1099,9 +910,7 @@
       "fail": 0,
       "skip": 0,
       "anchor": "sec-memory-model",
-      "file": "spec-compliance/sec-29.md",
-      "issues": [1353],
-      "issue_files": ["plan/issues/sprints/50/1353-json-stringify-parse-shape-walking-spec.md"]
+      "file": "spec-compliance/sec-29.md"
     }
   ]
 }

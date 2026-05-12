@@ -1,18 +1,14 @@
 // Copyright (c) 2026 Loopdive GmbH. Licensed under Apache-2.0 WITH LLVM-exception.
 //
-// #1296 Tier 1 — dogfood: compile dashboard/analytics.ts with js2wasm itself,
+// Dogfood: compile a pure analytics fixture with js2wasm itself,
 // run the aggregation kernels in Wasm, and assert each result matches the
 // JS-equivalent calculation against the same fixture data.
 //
-// Tier 1 covers the pure-compute aggregation logic (no DOM, no fetch, no
-// JSON.parse). Tiers 2 (DOM rendering) and 3 (landing page) are tracked
-// separately in the issue file.
-//
-// The fixtures inside `dashboard/analytics.ts` (`fixturePasses`,
+// The fixtures inside `tests/fixtures/dashboard-analytics.ts` (`fixturePasses`,
 // `fixtureTotals`, `fixtureStatuses`) MUST stay in sync with the
 // `FIXTURE_*` arrays below — both are sampled from
 // `benchmarks/results/runs/index.json` (the test262 trend) and a
-// representative slice of the Kanban board.
+// representative status distribution.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -22,9 +18,9 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { compile } from "../src/index.js";
 import { buildImports } from "../src/runtime.js";
 
-const ANALYTICS_PATH = join(__dirname, "..", "dashboard", "analytics.ts");
+const ANALYTICS_PATH = join(__dirname, "fixtures", "dashboard-analytics.ts");
 
-// JS-side mirror of the fixtures inside dashboard/analytics.ts.
+// JS-side mirror of the fixtures inside tests/fixtures/dashboard-analytics.ts.
 const FIXTURE_PASSES = [15246, 15104, 15526, 16268, 17194, 18256, 18611, 20643, 21190, 22157];
 const FIXTURE_TOTALS = [48174, 42934, 42934, 43120, 43120, 43120, 43120, 43120, 43164, 43171];
 const FIXTURE_STATUSES = [5, 5, 5, 0, 1, 5, 2, 5, 5, 0, 1, 0];
@@ -70,13 +66,13 @@ function jsSprintCompletionBp(total: number, completed: number): number {
 
 let exp: Record<string, () => number>;
 
-describe("#1296 Tier 1 — dashboard/analytics.ts compiles and aggregates correctly", () => {
+describe("dashboard-analytics fixture compiles and aggregates correctly", () => {
   beforeAll(async () => {
     const src = readFileSync(ANALYTICS_PATH, "utf-8");
-    const r = compile(src, { fileName: "dashboard/analytics.ts" });
+    const r = compile(src, { fileName: "tests/fixtures/dashboard-analytics.ts" });
     if (!r.success) {
       throw new Error(
-        `dashboard/analytics.ts failed to compile: ${r.errors.map((e) => `L${e.line}: ${e.message}`).join("; ")}`,
+        `dashboard-analytics fixture failed to compile: ${r.errors.map((e) => `L${e.line}: ${e.message}`).join("; ")}`,
       );
     }
     expect(r.binary.length).toBeGreaterThan(0);

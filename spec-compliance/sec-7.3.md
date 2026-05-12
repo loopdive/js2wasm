@@ -21,9 +21,3 @@ Files / runtime imports involved:
 ## Gap
 
 Object.defineProperty descriptor semantics are incomplete (467/1131 = 41%). Property attribute flags (configurable/enumerable/writable) are ignored on most paths. CopyDataProperties (for Object.assign / spread) drops getters from source.
-
-## Issues filed / referenced
-
-- [#1335](../plan/issues/sprints/50/1335-*.md)
-- [#1336](../plan/issues/sprints/50/1336-*.md)
-- [#1337](../plan/issues/sprints/50/1337-*.md)

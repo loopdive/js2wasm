@@ -8,7 +8,7 @@
 
 ## What the spec requires
 
-Numeric comparisons use Wasm f64/i32 ops directly. String comparison uses host import. instanceof uses prototype-chain walk via host or typed type-tag for known classes (issue #1325).
+Numeric comparisons use Wasm f64/i32 ops directly. String comparison uses host import. instanceof uses prototype-chain walk via host or typed type-tag for known classes.
 
 ## Current implementation
 
@@ -18,8 +18,4 @@ Files / runtime imports involved:
 
 ## Gap
 
-instanceof on built-in types (Error, Array, etc.) is partial (issue #1325).
-
-## Issues filed / referenced
-
-- [#1325](../plan/issues/sprints/50/1325-*.md)
+instanceof on built-in types (Error, Array, etc.) is partial.

@@ -18,4 +18,4 @@ Files / runtime imports involved:
 
 ## Gap
 
-6/18 (33.3%). new AsyncFunction(...) requires runtime parse+compile — #1324-style pure-Wasm path needed.
+6/18 (33.3%). new AsyncFunction(...) requires runtime parse+compile — corresponding pure-Wasm path needed.

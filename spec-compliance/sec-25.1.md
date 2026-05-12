@@ -20,7 +20,3 @@ Files / runtime imports involved:
 ## Gap
 
 87/196 (44.4%). 44 wasm_compile errors — TypedArray constructor + ArrayBuffer interaction. Resizable buffers (#growable proposal) partial.
-
-## Issues filed / referenced
-
-- [#1351](../plan/issues/sprints/50/1351-*.md)

@@ -8,7 +8,7 @@
 
 ## What the spec requires
 
-Generator functions are compiled to a state-machine struct + a step function. yield/yield* re-enter via a tagged union of suspension points.
+Generator functions are compiled to a state-machine struct + a step function. yield/yield\* re-enter via a tagged union of suspension points.
 
 ## Current implementation
 
@@ -18,9 +18,4 @@ Files / runtime imports involved:
 
 ## Gap
 
-GeneratorPrototype 14.8% — many type_error and unreachable failures suggest the .return()/.throw() paths are incomplete. yield in nested try/finally has bugs.
-
-## Issues filed / referenced
-
-- [#1345](../plan/issues/sprints/50/1345-*.md)
-- [#1347](../plan/issues/sprints/50/1347-*.md)
+GeneratorPrototype 14.8% — many type_error and unreachable failures suggest the.return()/.throw() paths are incomplete. yield in nested try/finally has bugs.

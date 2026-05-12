@@ -7,7 +7,7 @@
 
 ## What the spec requires
 
-ToString fast paths: number → string uses `Number.prototype.toString` (host import or `__num_to_string` Wasm helper). null/undefined/boolean inline string literals. Object → string calls __to_primitive(hint=string) → ToString.
+ToString fast paths: number → string uses `Number.prototype.toString` (host import or `__num_to_string` Wasm helper). null/undefined/boolean inline string literals. Object → string calls \_\_to_primitive(hint=string) → ToString.
 
 ## Current implementation
 
@@ -18,4 +18,4 @@ Files / runtime imports involved:
 
 ## Gap
 
-Number formatting in standalone mode does not match the ECMAScript Number.prototype.toString algorithm exactly for non-integer values (issue #1321). Symbol → ToString does not throw TypeError as required by spec (must throw, but Symbol.prototype.toString allowed only via explicit call).
+Number formatting in standalone mode does not match the ECMAScript Number.prototype.toString algorithm exactly for non-integer values. Symbol → ToString does not throw TypeError as required by spec (must throw, but Symbol.prototype.toString allowed only via explicit call).

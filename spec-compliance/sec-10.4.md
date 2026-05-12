@@ -20,7 +20,3 @@ Files / runtime imports involved:
 ## Gap
 
 Array.prototype methods coverage 45.7% — many tests fail on assertion_fail (custom-class arrays, non-extensible array, holes-in-array semantics).
-
-## Issues filed / referenced
-
-- [#1339](../plan/issues/sprints/50/1339-*.md)

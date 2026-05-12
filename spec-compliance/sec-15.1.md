@@ -18,8 +18,4 @@ Files / runtime imports involved:
 
 ## Gap
 
-Rest params 27.3% — failures on rest-param destructuring with iterators (#1158). wasm_compile errors suggest array-coercion type-mismatch.
-
-## Issues filed / referenced
-
-- [#1158](../plan/issues/sprints/50/1158-*.md)
+Rest params 27.3% — failures on rest-param destructuring with iterators. wasm_compile errors suggest array-coercion type-mismatch.

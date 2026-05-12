@@ -20,7 +20,3 @@ Files / runtime imports involved:
 ## Gap
 
 Coverage 6772/11036 = 61.4%. Worst sub-buckets: assignment (54.4%), yield (25.4%), await (45.5%). Largest absolute regression source: assertion_fail in arithmetic edge cases (precision, signed-zero, NaN propagation).
-
-## Issues filed / referenced
-
-- [#1347](../plan/issues/sprints/50/1347-*.md)

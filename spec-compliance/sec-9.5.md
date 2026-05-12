@@ -19,4 +19,4 @@ Files / runtime imports involved:
 
 ## Gap
 
-Pure-Wasm microtask queue is not yet implemented (issue #1326).
+Pure-Wasm microtask queue is not yet implemented.

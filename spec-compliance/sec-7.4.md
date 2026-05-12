@@ -19,10 +19,4 @@ Files / runtime imports involved:
 
 ## Gap
 
-Pure-Wasm iterator protocol is not yet implemented for standalone mode (issue #1323). Iterator helpers (drop/take/map/filter/flatMap/some/every/find/reduce/toArray) coverage is 30% — many fail with assertion_fail or wasm_compile errors.
-
-## Issues filed / referenced
-
-- [#1320](../plan/issues/sprints/50/1320-*.md)
-- [#1323](../plan/issues/sprints/50/1323-*.md)
-- [#1341](../plan/issues/sprints/50/1341-*.md)
+Pure-Wasm iterator protocol is not yet implemented for standalone mode. Iterator helpers (drop/take/map/filter/flatMap/some/every/find/reduce/toArray) coverage is 30% — many fail with assertion_fail or wasm_compile errors.

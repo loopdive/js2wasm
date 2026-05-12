@@ -7358,8 +7358,8 @@ function compileCallExpression(ctx: CodegenContext, fctx: FunctionContext, expr:
   // Args are evaluated into locals BEFORE the ref.test so the else branch
   // doesn't have to re-evaluate them (preserves side-effect ordering).
   //
-  // See plan/issues/sprints/50/1298-fn-typed-fields-call-drops.md
-  // (`## Fix #3 — Safe reimplementation`) for the full design.
+  // See the function-typed-fields call-drop regression notes for the
+  // full design.
   {
     const calleeTsType = ctx.checker.getTypeAtLocation(expr.expression);
     let callSigs = calleeTsType.getCallSignatures?.();

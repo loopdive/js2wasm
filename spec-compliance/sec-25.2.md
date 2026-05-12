@@ -7,12 +7,8 @@
 
 ## What the spec requires
 
-SharedArrayBuffer requires multi-threaded Wasm with shared memories — not the current target. All 104 tests are skipped. Backlog issue #1354 tracks the implementation work.
+SharedArrayBuffer requires multi-threaded Wasm with shared memories — not the current target. All 104 tests are skipped. Follow-up work tracks the implementation work.
 
 ## Current implementation
 
 _No dedicated implementation files; see linked sub-sections._
-
-## Issues filed / referenced
-
-- [#1354](../plan/issues/sprints/50/1354-*.md)

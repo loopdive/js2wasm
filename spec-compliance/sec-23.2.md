@@ -20,7 +20,3 @@ Files / runtime imports involved:
 ## Gap
 
 TypedArray prototype: 1200/1438 (83.4%). Uint8Array.fromBase64/fromHex (newer methods): 31/68 (45.6%). %TypedArray% generic algorithms (sort, copyWithin, set) have detached-buffer guards missing on some paths.
-
-## Issues filed / referenced
-
-- [#1351](../plan/issues/sprints/50/1351-*.md)

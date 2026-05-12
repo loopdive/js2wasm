@@ -18,8 +18,4 @@ Files / runtime imports involved:
 
 ## Gap
 
-TypeError messages do not always include the original expression context (issue #1317).
-
-## Issues filed / referenced
-
-- [#1317](../plan/issues/sprints/50/1317-*.md)
+TypeError messages do not always include the original expression context.

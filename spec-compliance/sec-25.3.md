@@ -8,7 +8,7 @@
 
 ## What the spec requires
 
-DataView wraps an ArrayBuffer with offset+length. .getInt8/16/32, .getUint8/16/32, .getFloat32/64, .setInt8/16/32 etc. are inlined to Wasm load/store with i32-bswap when little-endian flag set.
+DataView wraps an ArrayBuffer with offset+length..getInt8/16/32,.getUint8/16/32,.getFloat32/64,.setInt8/16/32 etc. are inlined to Wasm load/store with i32-bswap when little-endian flag set.
 
 ## Current implementation
 
@@ -20,8 +20,3 @@ Files / runtime imports involved:
 ## Gap
 
 410/561 (73.1%). 26 runtime_error — likely byteLength bounds-checks on resizable buffers. BigInt64/BigUint64 view reads need i64↔BigInt host bridge.
-
-## Issues filed / referenced
-
-- [#1351](../plan/issues/sprints/50/1351-*.md)
-- [#1350](../plan/issues/sprints/50/1350-*.md)

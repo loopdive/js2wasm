@@ -19,7 +19,3 @@ Files / runtime imports involved:
 ## Gap
 
 AsyncGeneratorPrototype 26/48 (54%); AsyncIteratorPrototype 1/13 (7.7%) — receiver TypeErrors.
-
-## Issues filed / referenced
-
-- [#1345](../plan/issues/sprints/50/1345-*.md)

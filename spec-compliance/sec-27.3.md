@@ -19,7 +19,3 @@ Files / runtime imports involved:
 ## Gap
 
 GeneratorFunction 6/23 (26%), GeneratorPrototype 9/61 (14.8%). High type_error count — invalid-receiver checks missing.
-
-## Issues filed / referenced
-
-- [#1345](../plan/issues/sprints/50/1345-*.md)

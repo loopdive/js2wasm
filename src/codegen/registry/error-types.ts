@@ -37,7 +37,6 @@
  * does allow `error.name = "x"` overrides on subclasses, but Phase 2 will
  * decide whether to mirror that into the struct field or via a sidecar map.
  *
- * Issue: plan/issues/backlog/1104-wasm-native-error-construction-and.md
  * Related: src/codegen/builtin-tags.ts (#1325 type-tag registry)
  */
 

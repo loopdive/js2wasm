@@ -20,8 +20,3 @@ Files / runtime imports involved:
 ## Gap
 
 40.7% pass — bind partial application fails when bound length doesn't match. Function.prototype.toString returns an opaque marker, not the original source. new Function() compiles via host eval bridge — not standalone.
-
-## Issues filed / referenced
-
-- [#1338](../plan/issues/sprints/50/1338-*.md)
-- [#1308](../plan/issues/sprints/50/1308-*.md)

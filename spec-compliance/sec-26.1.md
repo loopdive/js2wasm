@@ -15,7 +15,3 @@ WeakRef host-only. 18/29 (62.1%).
 Files / runtime imports involved:
 
 - `src/runtime.ts (host)`
-
-## Issues filed / referenced
-
-- [#1354](../plan/issues/sprints/50/1354-*.md)

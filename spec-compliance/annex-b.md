@@ -18,8 +18,4 @@ Files / runtime imports involved:
 
 ## Gap
 
-RegExp legacy accessors and pre-ES6 RegExp tests covered by #1333.
-
-## Issues filed / referenced
-
-- [#1333](../plan/issues/sprints/50/1333-*.md)
+RegExp legacy accessors and pre-ES6 RegExp tests covered by follow-up work.

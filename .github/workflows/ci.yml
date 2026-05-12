@@ -61,25 +61,3 @@ jobs:
             mkdir -p benchmarks/results/runs
             cp /tmp/js2wasm-baselines/runs/index.json benchmarks/results/runs/index.json
           fi
-
-      - name: Regenerate planning artifacts
-        if: github.event_name == 'push'
-        run: |
-          if [ -d plan ] || [ -d dashboard ]; then
-            pnpm run build:planning-artifacts
-          else
-            echo "No private planning artifacts in this checkout; skipping regeneration."
-          fi
-
-      - name: Commit regenerated planning artifacts
-        if: github.event_name == 'push'
-        run: |
-          if [ -d plan ] || [ -d dashboard ]; then
-            if ! git diff --quiet -- plan/goals plan/issues/sprints dashboard/data.js dashboard/data public/graph-data.json; then
-              git config user.name "github-actions[bot]"
-              git config user.email "github-actions[bot]@users.noreply.github.com"
-              git add -f plan/goals plan/issues/sprints dashboard/data.js dashboard/data public/graph-data.json
-              git commit -m "chore(planning-artifacts): regen after merge [skip ci]"
-              git push
-            fi
-          fi
