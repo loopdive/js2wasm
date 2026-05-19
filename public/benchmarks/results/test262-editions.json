@@ -10,18 +10,18 @@
   },
   {
     "edition": "ES5",
-    "pass": 8617,
-    "fail": 4066,
-    "ce": 401,
+    "pass": 8616,
+    "fail": 4062,
+    "ce": 406,
     "skip": 0,
     "total": 13084,
     "pct": 66
   },
   {
     "edition": "ES2015",
-    "pass": 9668,
-    "fail": 5252,
-    "ce": 495,
+    "pass": 9679,
+    "fail": 5247,
+    "ce": 489,
     "skip": 0,
     "total": 15415,
     "pct": 63
@@ -37,36 +37,36 @@
   },
   {
     "edition": "ES2017",
-    "pass": 383,
-    "fail": 234,
-    "ce": 50,
+    "pass": 384,
+    "fail": 236,
+    "ce": 47,
     "skip": 0,
     "total": 667,
-    "pct": 57
+    "pct": 58
   },
   {
     "edition": "ES2018",
-    "pass": 3079,
+    "pass": 3080,
     "fail": 1102,
-    "ce": 70,
+    "ce": 69,
     "skip": 0,
     "total": 4251,
     "pct": 72
   },
   {
     "edition": "ES2019",
-    "pass": 76,
-    "fail": 58,
-    "ce": 2,
+    "pass": 77,
+    "fail": 56,
+    "ce": 3,
     "skip": 0,
     "total": 136,
-    "pct": 56
+    "pct": 57
   },
   {
     "edition": "ES2020",
-    "pass": 1282,
-    "fail": 503,
-    "ce": 119,
+    "pass": 1277,
+    "fail": 502,
+    "ce": 125,
     "skip": 0,
     "total": 1904,
     "pct": 67
@@ -83,53 +83,53 @@
   {
     "edition": "ES2022",
     "pass": 2830,
-    "fail": 1287,
-    "ce": 117,
+    "fail": 1288,
+    "ce": 116,
     "skip": 0,
     "total": 4234,
     "pct": 67
   },
   {
     "edition": "ES2023",
-    "pass": 207,
-    "fail": 119,
+    "pass": 202,
+    "fail": 124,
     "ce": 8,
     "skip": 0,
     "total": 334,
-    "pct": 62
+    "pct": 60
   },
   {
     "edition": "ES2024",
-    "pass": 421,
+    "pass": 422,
     "fail": 217,
-    "ce": 7,
+    "ce": 6,
     "skip": 0,
     "total": 645,
     "pct": 65
   },
   {
     "edition": "ES2025",
-    "pass": 697,
-    "fail": 503,
-    "ce": 81,
+    "pass": 698,
+    "fail": 501,
+    "ce": 82,
     "skip": 0,
     "total": 1281,
     "pct": 54
   },
   {
     "edition": "ES2026",
-    "pass": 99,
-    "fail": 243,
-    "ce": 7,
+    "pass": 100,
+    "fail": 244,
+    "ce": 5,
     "skip": 0,
     "total": 349,
-    "pct": 28
+    "pct": 29
   },
   {
     "edition": "Proposals",
-    "pass": 1363,
+    "pass": 1360,
     "fail": 3335,
-    "ce": 188,
+    "ce": 191,
     "skip": 96,
     "total": 4982,
     "pct": 27
